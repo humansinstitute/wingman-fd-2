@@ -1,10 +1,47 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const mocks = vi.hoisted(() => ({
+  createTowerPgWorkspaceScope: vi.fn(),
+  hydrateTowerPgScopes: vi.fn(),
+  isTowerPgBackendMode: vi.fn(() => false),
+  resolveTowerPgWorkspaceContext: vi.fn(() => ({
+    workspaceId: 'workspace-1',
+    baseUrl: 'https://tower.example',
+    appNpub: 'flightdeck_pg',
+  })),
+}));
+
+vi.mock('../src/api.js', () => ({
+  createTowerPgWorkspaceScope: mocks.createTowerPgWorkspaceScope,
+}));
+
+vi.mock('../src/backend-mode.js', () => ({
+  isTowerPgBackendMode: mocks.isTowerPgBackendMode,
+}));
+
+vi.mock('../src/pg-read-hydrator.js', () => ({
+  hydrateTowerPgScopes: mocks.hydrateTowerPgScopes,
+  resolveTowerPgWorkspaceContext: mocks.resolveTowerPgWorkspaceContext,
+}));
+
 import {
   getAvailableParents,
   readScopeAssignment,
   sameScopeAssignment,
   scopesManagerMixin,
 } from '../src/scopes-manager.js';
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.createTowerPgWorkspaceScope.mockResolvedValue({ scope: { id: 'scope-1' } });
+  mocks.hydrateTowerPgScopes.mockResolvedValue([]);
+  mocks.isTowerPgBackendMode.mockReturnValue(false);
+  mocks.resolveTowerPgWorkspaceContext.mockReturnValue({
+    workspaceId: 'workspace-1',
+    baseUrl: 'https://tower.example',
+    appNpub: 'flightdeck_pg',
+  });
+});
 
 function createScopeStore(overrides = {}) {
   const store = {
@@ -171,6 +208,75 @@ describe('scopes-manager pure utilities', () => {
       expect(store.scopePickerQuery).toBe('');
       expect(store.showChannelScopePicker).toBe(false);
       expect(store.showNewScopeForm).toBe(false);
+    });
+  });
+
+  describe('Tower PG scope state', () => {
+    it('forces new scopes to the top-level PG model', () => {
+      mocks.isTowerPgBackendMode.mockReturnValue(true);
+      const store = createScopeStore({
+        scopeAssignableGroups: [{ groupId: 'group-1' }],
+        scopesMap: new Map(),
+        resolveGroupId(groupId) {
+          return groupId || null;
+        },
+      });
+
+      store.startNewScope('l4', 'legacy-parent');
+
+      expect(store.newScopeLevel).toBe('l1');
+      expect(store.newScopeParentId).toBe(null);
+      expect(store.showNewScopeForm).toBe(true);
+      expect(store.newScopeAssignedGroupIds).toEqual(['group-1']);
+    });
+
+    it('creates scopes through the Tower PG API instead of encrypted pending writes', async () => {
+      mocks.isTowerPgBackendMode.mockReturnValue(true);
+      const refreshScopes = vi.fn(async () => []);
+      const flushAndBackgroundSync = vi.fn(async () => {});
+      const store = createScopeStore({
+        session: { npub: 'npub1pete' },
+        newScopeTitle: 'Marketing',
+        newScopeDescription: 'Top-level marketing work area',
+        newScopeAssignedGroupIds: ['group-1'],
+        resolveGroupId(groupId) {
+          return groupId || null;
+        },
+        refreshScopes,
+        flushAndBackgroundSync,
+      });
+
+      await store.addScope();
+
+      expect(mocks.createTowerPgWorkspaceScope).toHaveBeenCalledWith('workspace-1', {
+        name: 'Marketing',
+        description: 'Top-level marketing work area',
+        kind: 'project',
+        owner_group_id: 'group-1',
+      }, {
+        baseUrl: 'https://tower.example',
+        appNpub: 'flightdeck_pg',
+      });
+      expect(refreshScopes).toHaveBeenCalledTimes(1);
+      expect(flushAndBackgroundSync).not.toHaveBeenCalled();
+      expect(store.showNewScopeForm).toBe(false);
+      expect(store.newScopeLevel).toBe('l1');
+      expect(store.newScopeParentId).toBe(null);
+    });
+
+    it('keeps the PG scope owner group as a single group selection', () => {
+      mocks.isTowerPgBackendMode.mockReturnValue(true);
+      const store = createScopeStore({
+        newScopeAssignedGroupIds: ['group-1'],
+        resolveGroupId(groupId) {
+          return groupId || null;
+        },
+      });
+
+      store.addNewScopeGroup('group-2');
+
+      expect(store.newScopeAssignedGroupIds).toEqual(['group-2']);
+      expect(store.newScopeGroupQuery).toBe('');
     });
   });
 

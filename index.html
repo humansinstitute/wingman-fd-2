@@ -5965,7 +5965,7 @@
           <div class="scopes-section">
           <div class="scopes-header">
             <h2>Scopes</h2>
-            <p class="scopes-subtitle">Organize work into a hierarchy of scopes.</p>
+            <p class="scopes-subtitle" x-text="$store.chat.isTowerPgMode ? 'Create top-level work areas. Channels and threads provide the next levels of context.' : 'Organize work into a hierarchy of scopes.'"></p>
           </div>
 
           <!-- New scope form -->
@@ -5980,13 +5980,13 @@
           <!-- Scope layout: cards + tree nav -->
           <div class="scope-layout" x-show="$store.chat.scopeTree.length > 0">
 
-            <!-- Cards area (5-level nested) -->
+            <!-- Cards area. Legacy encrypted-record workspaces can still render nested scope chains. -->
             <div class="scope-cards">
               <template x-for="s1 in $store.chat.scopeTree" :key="s1.record_id">
                 <div class="scope-card" :data-level="s1.level" :id="'scope-' + s1.record_id" x-data="{ expanded: false, actionsOpen: false }">
                   <div class="scope-card-header">
-                    <span class="scope-level-badge" :data-level="s1.level" x-text="$store.chat.scopeLevelLabel(s1.level)"></span>
-                    <div class="scope-card-actions" x-show="$store.chat.canAdminWorkspace">
+                    <span class="scope-level-badge" x-show="!$store.chat.isTowerPgMode" :data-level="s1.level" x-text="$store.chat.scopeLevelLabel(s1.level)"></span>
+                    <div class="scope-card-actions" x-show="$store.chat.canAdminWorkspace && !$store.chat.isTowerPgMode">
                       <div class="doc-actions-menu scope-actions-menu" @click.outside="actionsOpen = false">
                         <button type="button" class="doc-actions-toggle" title="Scope actions" aria-label="Scope actions" @click.stop="actionsOpen = !actionsOpen">
                           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/></svg>
@@ -6019,8 +6019,8 @@
                     <template x-for="s2 in (s1.children || [])" :key="s2.record_id">
                       <div class="scope-card" :data-level="s2.level" :id="'scope-' + s2.record_id" x-data="{ expanded: false, actionsOpen: false }">
                         <div class="scope-card-header">
-                          <span class="scope-level-badge" :data-level="s2.level" x-text="$store.chat.scopeLevelLabel(s2.level)"></span>
-                          <div class="scope-card-actions" x-show="$store.chat.canAdminWorkspace">
+                          <span class="scope-level-badge" x-show="!$store.chat.isTowerPgMode" :data-level="s2.level" x-text="$store.chat.scopeLevelLabel(s2.level)"></span>
+                          <div class="scope-card-actions" x-show="$store.chat.canAdminWorkspace && !$store.chat.isTowerPgMode">
                             <div class="doc-actions-menu scope-actions-menu" @click.outside="actionsOpen = false">
                               <button type="button" class="doc-actions-toggle" title="Scope actions" aria-label="Scope actions" @click.stop="actionsOpen = !actionsOpen">
                                 <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/></svg>
@@ -6053,8 +6053,8 @@
                           <template x-for="s3 in (s2.children || [])" :key="s3.record_id">
                             <div class="scope-card" :data-level="s3.level" :id="'scope-' + s3.record_id" x-data="{ expanded: false, actionsOpen: false }">
                               <div class="scope-card-header">
-                                <span class="scope-level-badge" :data-level="s3.level" x-text="$store.chat.scopeLevelLabel(s3.level)"></span>
-                                <div class="scope-card-actions" x-show="$store.chat.canAdminWorkspace">
+                                <span class="scope-level-badge" x-show="!$store.chat.isTowerPgMode" :data-level="s3.level" x-text="$store.chat.scopeLevelLabel(s3.level)"></span>
+                                <div class="scope-card-actions" x-show="$store.chat.canAdminWorkspace && !$store.chat.isTowerPgMode">
                                   <div class="doc-actions-menu scope-actions-menu" @click.outside="actionsOpen = false">
                                     <button type="button" class="doc-actions-toggle" title="Scope actions" aria-label="Scope actions" @click.stop="actionsOpen = !actionsOpen">
                                       <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/></svg>
@@ -6087,8 +6087,8 @@
                                 <template x-for="s4 in (s3.children || [])" :key="s4.record_id">
                                   <div class="scope-card" :data-level="s4.level" :id="'scope-' + s4.record_id" x-data="{ expanded: false, actionsOpen: false }">
                                     <div class="scope-card-header">
-                                      <span class="scope-level-badge" :data-level="s4.level" x-text="$store.chat.scopeLevelLabel(s4.level)"></span>
-                                      <div class="scope-card-actions" x-show="$store.chat.canAdminWorkspace">
+                                      <span class="scope-level-badge" x-show="!$store.chat.isTowerPgMode" :data-level="s4.level" x-text="$store.chat.scopeLevelLabel(s4.level)"></span>
+                                      <div class="scope-card-actions" x-show="$store.chat.canAdminWorkspace && !$store.chat.isTowerPgMode">
                                         <div class="doc-actions-menu scope-actions-menu" @click.outside="actionsOpen = false">
                                           <button type="button" class="doc-actions-toggle" title="Scope actions" aria-label="Scope actions" @click.stop="actionsOpen = !actionsOpen">
                                             <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/></svg>
@@ -6121,8 +6121,8 @@
                                       <template x-for="s5 in (s4.children || [])" :key="s5.record_id">
                                         <div class="scope-card" :data-level="s5.level" :id="'scope-' + s5.record_id" x-data="{ actionsOpen: false }">
                                           <div class="scope-card-header">
-                                            <span class="scope-level-badge" :data-level="s5.level" x-text="$store.chat.scopeLevelLabel(s5.level)"></span>
-                                            <div class="scope-card-actions" x-show="$store.chat.canAdminWorkspace">
+                                            <span class="scope-level-badge" x-show="!$store.chat.isTowerPgMode" :data-level="s5.level" x-text="$store.chat.scopeLevelLabel(s5.level)"></span>
+                                            <div class="scope-card-actions" x-show="$store.chat.canAdminWorkspace && !$store.chat.isTowerPgMode">
                                               <div class="doc-actions-menu scope-actions-menu" @click.outside="actionsOpen = false">
                                                 <button type="button" class="doc-actions-toggle" title="Scope actions" aria-label="Scope actions" @click.stop="actionsOpen = !actionsOpen">
                                                   <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/></svg>
@@ -6254,12 +6254,12 @@
               <button class="modal-close" type="button" @click="$store.chat.showNewScopeForm ? $store.chat.cancelNewScope() : $store.chat.cancelEditScope()">&times;</button>
               <h3>
                 <span x-text="$store.chat.showNewScopeForm ? 'New' : 'Edit'"></span>
-                <span x-text="$store.chat.showNewScopeForm ? ($store.chat.scopeLevelLabel($store.chat.newScopeLevel) || 'scope') : ($store.chat.editingScopeLevelLabel || 'scope')"></span>
+                <span x-text="$store.chat.isTowerPgMode ? 'Scope' : ($store.chat.showNewScopeForm ? ($store.chat.scopeLevelLabel($store.chat.newScopeLevel) || 'scope') : ($store.chat.editingScopeLevelLabel || 'scope'))"></span>
               </h3>
-              <p class="scope-edit-hint" x-text="$store.chat.showNewScopeForm ? 'Create a scope with default groups and folder structure for delivery work.' : 'Update the name, description, and default groups inherited by new work inside this scope.'"></p>
+              <p class="scope-edit-hint" x-text="$store.chat.isTowerPgMode ? ($store.chat.showNewScopeForm ? 'Create a top-level work area. Add channels inside it for specific subjects.' : 'Update the name, description, and default groups for this top-level work area.') : ($store.chat.showNewScopeForm ? 'Create a scope with default groups and folder structure for delivery work.' : 'Update the name, description, and default groups inherited by new work inside this scope.')"></p>
 
               <div class="scope-edit-meta" x-show="!$store.chat.showNewScopeForm && $store.chat.editingScope">
-                <span class="scope-level-badge" x-text="$store.chat.editingScopeLevelLabel || 'Scope'"></span>
+                <span class="scope-level-badge" x-show="!$store.chat.isTowerPgMode" x-text="$store.chat.editingScopeLevelLabel || 'Scope'"></span>
                 <span class="scope-node-desc" x-text="$store.chat.getScopeGroupSummary($store.chat.editingScope)"></span>
               </div>
               <p
@@ -6270,7 +6270,7 @@
               <p class="settings-success" x-show="$store.chat.scopePolicyRepairSummary" x-text="$store.chat.scopePolicyRepairSummary"></p>
 
               <div class="scope-modal-form" x-show="$store.chat.showNewScopeForm">
-                <div class="scope-field">
+                <div class="scope-field" x-show="!$store.chat.isTowerPgMode">
                   <label class="scope-field-label">Level</label>
                   <select x-model="$store.chat.newScopeLevel" @change="$store.chat.handleNewScopeLevelChange($event.target.value)">
                     <option value="l1">L1</option>
@@ -6280,7 +6280,7 @@
                     <option value="l5">L5</option>
                   </select>
                 </div>
-                <template x-if="$store.chat.newScopeLevel !== 'l1'">
+                <template x-if="!$store.chat.isTowerPgMode && $store.chat.newScopeLevel !== 'l1'">
                   <div class="scope-field">
                     <label class="scope-field-label">Parent scope</label>
                     <select x-model="$store.chat.newScopeParentId" @change="$store.chat.handleNewScopeParentChange($event.target.value)">
@@ -6312,7 +6312,7 @@
                   />
                 </div>
                 <div class="scope-field scope-field-wide">
-                  <label class="scope-field-label">Default groups</label>
+                  <label class="scope-field-label" x-text="$store.chat.isTowerPgMode ? 'Owner group' : 'Default groups'"></label>
                   <div class="scope-groups-list" x-show="$store.chat.newScopeAssignedGroupIds.length > 0">
                     <template x-for="groupId in $store.chat.newScopeAssignedGroupIds" :key="`new-scope-group-${groupId}`">
                       <div class="scope-group-chip">
@@ -6368,7 +6368,7 @@
                   />
                 </div>
                 <div class="scope-field scope-field-wide">
-                  <label class="scope-field-label">Default groups</label>
+                  <label class="scope-field-label" x-text="$store.chat.isTowerPgMode ? 'Owner group' : 'Default groups'"></label>
                   <div class="scope-groups-list" x-show="$store.chat.editingScopeAssignedGroupIds.length > 0">
                     <template x-for="groupId in $store.chat.editingScopeAssignedGroupIds" :key="`edit-scope-group-${groupId}`">
                       <div class="scope-group-chip">

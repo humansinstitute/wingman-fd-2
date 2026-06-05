@@ -612,7 +612,7 @@ export function initApp() {
     scopePickerTarget: null, // 'task' or record family being scoped
     newScopeTitle: '',
     newScopeDescription: '',
-    newScopeLevel: 'product',
+    newScopeLevel: 'l1',
     newScopeParentId: null,
     newScopeAssignedGroupIds: [],
     newScopeGroupQuery: '',

@@ -467,6 +467,15 @@ export async function getTowerPgWorkspaceScopes(workspaceId, { baseUrl = _baseUr
   return json(resp, { requestUrl: finalUrl, method: 'GET', prefix: 'Tower PG API' });
 }
 
+export async function createTowerPgWorkspaceScope(workspaceId, body, { baseUrl = _baseUrl, appNpub = APP_NPUB } = {}) {
+  const encodedWorkspaceId = encodeURIComponent(String(workspaceId || '').trim());
+  if (!encodedWorkspaceId) throw new Error('Tower PG workspace id is required');
+  const requestPath = `/api/v4/flightdeck-pg/workspaces/${encodedWorkspaceId}/scopes`;
+  const requestUrl = resolveTowerPgUrl(requestPath, baseUrl);
+  const resp = await signedTowerPgFetch(requestPath, { method: 'POST', body, baseUrl, appNpub });
+  return json(resp, { requestUrl, method: 'POST', prefix: 'Tower PG API' });
+}
+
 export async function getTowerPgScopeChannels(workspaceId, scopeId, { baseUrl = _baseUrl, appNpub = APP_NPUB, limit = 100 } = {}) {
   const encodedWorkspaceId = encodeURIComponent(String(workspaceId || '').trim());
   const encodedScopeId = encodeURIComponent(String(scopeId || '').trim());

@@ -19,6 +19,9 @@ import {
   addPendingWrite,
 } from './db.js';
 import {
+  createTowerPgWorkspaceScope,
+} from './api.js';
+import {
   outboundScope,
   resolveScopeChain,
   searchScopes,
@@ -55,7 +58,10 @@ import {
   getPreferredRecordWriteGroupForStore,
 } from './preferred-write-group.js';
 import { isTowerPgBackendMode } from './backend-mode.js';
-import { hydrateTowerPgScopes } from './pg-read-hydrator.js';
+import {
+  hydrateTowerPgScopes,
+  resolveTowerPgWorkspaceContext,
+} from './pg-read-hydrator.js';
 
 // ---------------------------------------------------------------------------
 // Pure utility functions (no `this` dependency)
@@ -754,6 +760,32 @@ export const scopesManagerMixin = {
     const title = String(this.newScopeTitle || '').trim();
     if (!title || !this.session?.npub) return;
 
+    if (isTowerPgBackendMode()) {
+      const groupIds = normalizeGroupIds(this.newScopeAssignedGroupIds)
+        .map((groupId) => this.resolveGroupId(groupId))
+        .filter(Boolean);
+      const { workspaceId, baseUrl, appNpub } = resolveTowerPgWorkspaceContext(this);
+      if (!workspaceId || !baseUrl) {
+        this.error = 'Flight Deck PG workspace is not connected.';
+        return;
+      }
+      await createTowerPgWorkspaceScope(workspaceId, {
+        name: title,
+        description: this.newScopeDescription || '',
+        kind: 'project',
+        owner_group_id: groupIds[0] || null,
+      }, { baseUrl, appNpub });
+      this.newScopeTitle = '';
+      this.newScopeDescription = '';
+      this.newScopeLevel = 'l1';
+      this.newScopeParentId = null;
+      this.newScopeAssignedGroupIds = [];
+      this.newScopeGroupQuery = '';
+      this.showNewScopeForm = false;
+      await this.refreshScopes();
+      return;
+    }
+
     const now = new Date().toISOString();
     const recordId = crypto.randomUUID();
     const ownerNpub = this.workspaceOwnerNpub;
@@ -828,11 +860,13 @@ export const scopesManagerMixin = {
       this.error = 'Only workspace admins can manage scopes.';
       return;
     }
-    this.newScopeLevel = level;
-    this.newScopeParentId = parentId;
+    const nextLevel = isTowerPgBackendMode() ? 'l1' : level;
+    const nextParentId = isTowerPgBackendMode() ? null : parentId;
+    this.newScopeLevel = nextLevel;
+    this.newScopeParentId = nextParentId;
     this.newScopeTitle = '';
     this.newScopeDescription = '';
-    this.newScopeAssignedGroupIds = this.getDefaultScopeGroupIds(level, parentId);
+    this.newScopeAssignedGroupIds = this.getDefaultScopeGroupIds(nextLevel, nextParentId);
     this.newScopeGroupQuery = '';
     this.showNewScopeForm = true;
   },
@@ -874,6 +908,10 @@ export const scopesManagerMixin = {
   async saveEditScope(options = {}) {
     if (!this.canAdminWorkspace) {
       this.error = 'Only workspace admins can manage scopes.';
+      return;
+    }
+    if (isTowerPgBackendMode()) {
+      this.error = 'Editing Flight Deck PG scopes is not available yet.';
       return;
     }
     if (!this.editingScopeId || !this.session?.npub) return;
@@ -1570,6 +1608,10 @@ export const scopesManagerMixin = {
       this.error = 'Only workspace admins can manage scopes.';
       return;
     }
+    if (isTowerPgBackendMode()) {
+      this.error = 'Deleting Flight Deck PG scopes is not available yet.';
+      return;
+    }
     const scope = this.scopes.find(s => s.record_id === scopeId);
     if (!scope || !this.session?.npub) return;
 
@@ -1625,12 +1667,24 @@ export const scopesManagerMixin = {
   },
 
   handleNewScopeLevelChange(level) {
+    if (isTowerPgBackendMode()) {
+      this.newScopeLevel = 'l1';
+      this.newScopeParentId = null;
+      this.syncNewScopePermissionDefaults();
+      return;
+    }
     this.newScopeLevel = level;
     if (level === 'l1') this.newScopeParentId = null;
     this.syncNewScopePermissionDefaults();
   },
 
   handleNewScopeParentChange(parentId) {
+    if (isTowerPgBackendMode()) {
+      this.newScopeLevel = 'l1';
+      this.newScopeParentId = null;
+      this.syncNewScopePermissionDefaults();
+      return;
+    }
     this.newScopeParentId = parentId || null;
     this.syncNewScopePermissionDefaults();
   },
@@ -1642,6 +1696,11 @@ export const scopesManagerMixin = {
   addNewScopeGroup(groupId) {
     const nextGroupId = this.resolveGroupId(groupId);
     if (!nextGroupId) return;
+    if (isTowerPgBackendMode()) {
+      this.newScopeAssignedGroupIds = [nextGroupId];
+      this.newScopeGroupQuery = '';
+      return;
+    }
     this.newScopeAssignedGroupIds = normalizeGroupIds([
       ...this.newScopeAssignedGroupIds,
       nextGroupId,
