@@ -27,6 +27,8 @@ import {
   addTowerPgWorkspaceGroupMember,
   createTowerPgWorkspaceGroup,
   createTowerPgWorkspaceMember,
+  createTowerPgChannelGrant,
+  getTowerPgChannelGrants,
   getTowerPgWorkspaceGroups,
   getTowerPgWorkspaceMembers,
   removeTowerPgWorkspaceChildGroup,
@@ -54,7 +56,14 @@ import { buildSuperBasedConnectionToken } from './superbased-token.js';
 import { APP_NPUB } from './app-identity.js';
 import { flightDeckLog } from './logging.js';
 import { isTowerPgBackendMode } from './backend-mode.js';
-import { hydrateTowerPgChannels, resolveTowerPgWorkspaceContext } from './pg-read-hydrator.js';
+import {
+  hydrateTowerPgAudioNotes,
+  hydrateTowerPgChannels,
+  hydrateTowerPgDocumentsAndFiles,
+  hydrateTowerPgScopes,
+  hydrateTowerPgTasks,
+  resolveTowerPgWorkspaceContext,
+} from './pg-read-hydrator.js';
 
 // ---------------------------------------------------------------------------
 // Pure utility functions (no `this` dependency)
@@ -251,6 +260,119 @@ export function parseGroupMemberQueryNpubs(query) {
   return result;
 }
 
+export const PG_CHANNEL_GRANT_CAPACITY_PRESETS = Object.freeze({
+  viewer: Object.freeze([
+    'channel.read',
+    'task.read',
+    'doc.read',
+    'file.read',
+    'audio_note.read',
+  ]),
+  contributor: Object.freeze([
+    'channel.read',
+    'channel.write',
+    'task.read',
+    'task.create',
+    'task.update',
+    'task.comment',
+    'comment.create',
+    'doc.read',
+    'doc.write',
+    'file.read',
+    'file.write',
+    'audio_note.read',
+    'audio_note.write',
+  ]),
+  manager: Object.freeze([
+    'channel.read',
+    'channel.write',
+    'channel.manage',
+    'channel.grant',
+    'channel.grants.read',
+    'channel.grants.manage',
+    'task.read',
+    'task.create',
+    'task.update',
+    'task.comment',
+    'comment.create',
+    'doc.read',
+    'doc.write',
+    'file.read',
+    'file.write',
+    'audio_note.read',
+    'audio_note.write',
+  ]),
+  agent: Object.freeze([
+    'channel.read',
+    'channel.write',
+    'task.read',
+    'task.create',
+    'comment.create',
+    'doc.read',
+    'doc.write',
+    'file.read',
+    'file.write',
+    'audio_note.read',
+    'audio_note.write',
+  ]),
+});
+
+export function permissionsForPgChannelCapacity(capacity) {
+  const key = String(capacity || '').trim();
+  const permissions = PG_CHANNEL_GRANT_CAPACITY_PRESETS[key] || PG_CHANNEL_GRANT_CAPACITY_PRESETS.viewer;
+  return [...permissions];
+}
+
+function permissionSetSignature(permissions = []) {
+  return [...new Set((permissions || []).map((permission) => String(permission || '').trim()).filter(Boolean))]
+    .sort()
+    .join('|');
+}
+
+const PG_CHANNEL_GRANT_CAPACITY_BY_SIGNATURE = new Map(
+  Object.entries(PG_CHANNEL_GRANT_CAPACITY_PRESETS)
+    .map(([capacity, permissions]) => [permissionSetSignature(permissions), capacity])
+);
+
+export function capacityForPgChannelPermissions(permissions = []) {
+  return PG_CHANNEL_GRANT_CAPACITY_BY_SIGNATURE.get(permissionSetSignature(permissions)) || 'custom';
+}
+
+export function aggregatePgChannelGrants(grants = []) {
+  const byPrincipal = new Map();
+  for (const grant of Array.isArray(grants) ? grants : []) {
+    const principalType = String(grant?.principal_type || '').trim();
+    const principalId = String(grant?.principal_id || '').trim();
+    if (!principalType || !principalId) continue;
+    const key = `${principalType}:${principalId}`;
+    const existing = byPrincipal.get(key) || {
+      key,
+      principal_type: principalType,
+      principal_id: principalId,
+      permissions: [],
+      grants: [],
+      created_at: grant?.created_at || null,
+      updated_at: grant?.updated_at || grant?.created_at || null,
+    };
+    const grantPermissions = Array.isArray(grant?.permissions)
+      ? grant.permissions
+      : [grant?.permission];
+    existing.permissions = [
+      ...new Set([
+        ...existing.permissions,
+        ...grantPermissions.map((permission) => String(permission || '').trim()).filter(Boolean),
+      ]),
+    ].sort();
+    existing.grants.push(grant);
+    existing.updated_at = grant?.updated_at || grant?.created_at || existing.updated_at;
+    byPrincipal.set(key, existing);
+  }
+  return [...byPrincipal.values()].map((entry) => ({
+    ...entry,
+    capacity: capacityForPgChannelPermissions(entry.permissions),
+  }));
+}
+
 // ---------------------------------------------------------------------------
 // Mixin — methods that use `this` (the Alpine store)
 // ---------------------------------------------------------------------------
@@ -294,6 +416,177 @@ export const channelsManagerMixin = {
       await this.rememberPeople(members.map((member) => member.npub), 'pg-workspace-member');
     }
     return members;
+  },
+
+  get pgChannelGrantCapacityOptions() {
+    return [
+      { value: 'viewer', label: 'Viewer' },
+      { value: 'contributor', label: 'Contributor' },
+      { value: 'manager', label: 'Manager' },
+      { value: 'agent', label: 'Agent' },
+    ];
+  },
+
+  get pgChannelGrantActorOptions() {
+    return (this.pgWorkspaceMembers || [])
+      .filter((member) => member?.actor_id && member?.npub)
+      .map((member) => ({
+        actorId: member.actor_id,
+        npub: member.npub,
+        label: this.getPgWorkspaceMemberLabel(member),
+      }));
+  },
+
+  get pgChannelGrantGroupOptions() {
+    const sourceGroups = Array.isArray(this.currentWorkspaceGroups) && this.currentWorkspaceGroups.length > 0
+      ? this.currentWorkspaceGroups
+      : this.groups;
+    return (sourceGroups || [])
+      .filter((group) => group?.group_id)
+      .map((group) => ({
+        groupId: group.group_id,
+        label: group.name || 'Untitled group',
+        subtitle: group.group_kind === 'workspace_admin'
+          ? 'Workspace admin group'
+          : `${(group.effective_member_npubs || group.member_npubs || []).length} effective members`,
+      }));
+  },
+
+  get channelGrantRows() {
+    return aggregatePgChannelGrants(this.channelGrants || []);
+  },
+
+  resetChannelGrantDraft() {
+    this.channelGrantPrincipalType = 'actor';
+    this.channelGrantActorId = this.pgChannelGrantActorOptions[0]?.actorId || '';
+    this.channelGrantGroupId = this.pgChannelGrantGroupOptions[0]?.groupId || '';
+    this.channelGrantCapacity = 'viewer';
+    this.channelGrantsError = null;
+    this.channelGrantsNotice = '';
+  },
+
+  openChannelSettings() {
+    if (!this.selectedChannel) return;
+    this.closeScopePicker();
+    this.closeChannelScopePicker();
+    this.channelDeleteConfirmArmed = false;
+    this.showChannelSettingsModal = true;
+    if (isTowerPgBackendMode()) {
+      this.preparePgChannelAccessPanel();
+    }
+  },
+
+  closeChannelSettings() {
+    this.closeChannelScopePicker();
+    this.channelDeleteConfirmArmed = false;
+    this.showChannelSettingsModal = false;
+  },
+
+  async preparePgChannelAccessPanel() {
+    this.channelGrantsError = null;
+    try {
+      await this.refreshGroups({ force: true, minIntervalMs: 0 });
+      this.resetChannelGrantDraft();
+      await this.refreshChannelGrants();
+    } catch (error) {
+      this.channelGrantsError = error?.message || 'Failed to load channel access';
+    }
+  },
+
+  async refreshChannelGrants() {
+    if (!isTowerPgBackendMode()) return [];
+    const channelId = String(this.selectedChannelId || '').trim();
+    if (!channelId) return [];
+    this.channelGrantsLoading = true;
+    this.channelGrantsError = null;
+    try {
+      const { workspaceId, baseUrl, appNpub } = resolveTowerPgWorkspaceContext(this);
+      if (!workspaceId || !baseUrl) throw new Error('Flight Deck PG workspace is not connected');
+      const result = await getTowerPgChannelGrants(workspaceId, channelId, { baseUrl, appNpub });
+      this.channelGrants = Array.isArray(result?.grants) ? result.grants : [];
+      return this.channelGrants;
+    } catch (error) {
+      this.channelGrantsError = error?.message || 'Failed to load channel grants';
+      return this.channelGrants || [];
+    } finally {
+      this.channelGrantsLoading = false;
+    }
+  },
+
+  resolveChannelGrantPrincipalId() {
+    if (this.channelGrantPrincipalType === 'group') {
+      return String(this.channelGrantGroupId || '').trim();
+    }
+    return String(this.channelGrantActorId || '').trim();
+  },
+
+  getPgChannelGrantPrincipalLabel(grant) {
+    const principalType = String(grant?.principal_type || '').trim();
+    const principalId = String(grant?.principal_id || '').trim();
+    if (principalType === 'group') {
+      return this.getPgGroupLabel(principalId);
+    }
+    const member = (this.pgWorkspaceMembers || []).find((entry) => entry.actor_id === principalId || entry.id === principalId);
+    return member ? this.getPgWorkspaceMemberLabel(member) : principalId;
+  },
+
+  getPgChannelGrantCapacityLabel(capacity) {
+    const value = String(capacity || '').trim();
+    return this.pgChannelGrantCapacityOptions.find((option) => option.value === value)?.label || 'Custom';
+  },
+
+  describePgChannelGrantPermissions(permissions = []) {
+    return (permissions || []).map(String).filter(Boolean).join(', ');
+  },
+
+  async refreshPgChannelAccessMaterialization() {
+    if (!isTowerPgBackendMode()) return;
+    await hydrateTowerPgScopes(this);
+    await hydrateTowerPgChannels(this);
+    await Promise.all([
+      hydrateTowerPgTasks(this),
+      hydrateTowerPgDocumentsAndFiles(this),
+      hydrateTowerPgAudioNotes(this),
+    ]);
+  },
+
+  async createChannelGrant() {
+    if (!isTowerPgBackendMode()) return;
+    if (!this.canAdminWorkspace) {
+      this.channelGrantsError = 'Only workspace admins can grant channel access.';
+      return;
+    }
+    const channelId = String(this.selectedChannelId || '').trim();
+    const principalType = String(this.channelGrantPrincipalType || '').trim();
+    const principalId = this.resolveChannelGrantPrincipalId();
+    if (!channelId) {
+      this.channelGrantsError = 'Select a channel first.';
+      return;
+    }
+    if (!['actor', 'group'].includes(principalType) || !principalId) {
+      this.channelGrantsError = 'Select a user or group.';
+      return;
+    }
+
+    this.channelGrantsSaving = true;
+    this.channelGrantsError = null;
+    this.channelGrantsNotice = '';
+    try {
+      const { workspaceId, baseUrl, appNpub } = resolveTowerPgWorkspaceContext(this);
+      if (!workspaceId || !baseUrl) throw new Error('Flight Deck PG workspace is not connected');
+      await createTowerPgChannelGrant(workspaceId, channelId, {
+        principal_type: principalType,
+        principal_id: principalId,
+        permissions: permissionsForPgChannelCapacity(this.channelGrantCapacity),
+      }, { baseUrl, appNpub });
+      await this.refreshChannelGrants();
+      await this.refreshPgChannelAccessMaterialization();
+      this.channelGrantsNotice = 'Channel access updated.';
+    } catch (error) {
+      this.channelGrantsError = error?.message || 'Failed to grant channel access';
+    } finally {
+      this.channelGrantsSaving = false;
+    }
   },
 
   async refreshGroups(options = {}) {

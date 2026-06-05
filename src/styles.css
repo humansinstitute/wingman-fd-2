@@ -6686,6 +6686,120 @@ button:disabled {
   z-index: 2;
 }
 
+.channel-access-panel {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.channel-access-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.channel-access-header h4 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.btn-compact {
+  padding: 0.35rem 0.65rem;
+  font-size: 0.8rem;
+}
+
+.channel-grant-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.channel-grant-grid {
+  display: grid;
+  grid-template-columns: minmax(7rem, 0.7fr) minmax(12rem, 1.4fr) minmax(9rem, 0.9fr) auto;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.channel-access-error {
+  color: var(--error-color, #dc2626);
+  margin-top: 0.5rem;
+}
+
+.channel-grants-empty {
+  padding: 1rem 0;
+}
+
+.channel-grants-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.channel-grant-row {
+  display: grid;
+  grid-template-columns: minmax(10rem, 1fr) auto;
+  gap: 0.25rem 0.75rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.channel-grant-principal {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.channel-grant-principal span,
+.channel-grant-principal small,
+.channel-grant-permissions {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.channel-grant-principal span {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.channel-grant-principal small,
+.channel-grant-permissions {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.channel-grant-capacity {
+  align-self: start;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #f8fafc;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.channel-grant-permissions {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 760px) {
+  .channel-grant-grid,
+  .channel-grant-row {
+    grid-template-columns: 1fr;
+  }
+
+  .channel-grant-capacity {
+    justify-self: start;
+  }
+}
+
 .record-status-modal {
   width: min(92vw, 560px);
   padding: 1rem;

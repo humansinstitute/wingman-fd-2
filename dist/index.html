@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-BuLa23E6.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-BeVtjkt9.css">
+  <script type="module" crossorigin src="/assets/index-B8vWH3x-.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-DvMs6zFi.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -7722,6 +7722,68 @@
                 </div>
               </div>
             </div>
+
+            <section class="channel-access-panel" x-show="$store.chat.isTowerPgMode">
+              <div class="channel-access-header">
+                <h4>Channel access</h4>
+                <button type="button" class="btn-secondary btn-compact" @click="$store.chat.refreshChannelGrants()" :disabled="$store.chat.channelGrantsLoading">Refresh</button>
+              </div>
+
+              <div class="channel-grant-form">
+                <label class="task-field-label">Grant to</label>
+                <div class="channel-grant-grid">
+                  <select class="new-group-input" x-model="$store.chat.channelGrantPrincipalType" :disabled="$store.chat.channelGrantsSaving">
+                    <option value="actor">User</option>
+                    <option value="group">Group</option>
+                  </select>
+
+                  <select class="new-group-input" x-show="$store.chat.channelGrantPrincipalType === 'actor'" x-model="$store.chat.channelGrantActorId" :disabled="$store.chat.channelGrantsSaving || $store.chat.pgChannelGrantActorOptions.length === 0">
+                    <option value="">Select user...</option>
+                    <template x-for="member in $store.chat.pgChannelGrantActorOptions" :key="member.actorId">
+                      <option :value="member.actorId" x-text="member.label"></option>
+                    </template>
+                  </select>
+
+                  <select class="new-group-input" x-show="$store.chat.channelGrantPrincipalType === 'group'" x-model="$store.chat.channelGrantGroupId" :disabled="$store.chat.channelGrantsSaving || $store.chat.pgChannelGrantGroupOptions.length === 0">
+                    <option value="">Select group...</option>
+                    <template x-for="group in $store.chat.pgChannelGrantGroupOptions" :key="group.groupId">
+                      <option :value="group.groupId" x-text="group.label"></option>
+                    </template>
+                  </select>
+
+                  <select class="new-group-input" x-model="$store.chat.channelGrantCapacity" :disabled="$store.chat.channelGrantsSaving">
+                    <template x-for="capacity in $store.chat.pgChannelGrantCapacityOptions" :key="capacity.value">
+                      <option :value="capacity.value" x-text="capacity.label"></option>
+                    </template>
+                  </select>
+
+                  <button
+                    type="button"
+                    class="btn-confirm"
+                    @click="$store.chat.createChannelGrant()"
+                    :disabled="$store.chat.channelGrantsSaving || !$store.chat.resolveChannelGrantPrincipalId()"
+                    x-text="$store.chat.channelGrantsSaving ? 'Granting...' : 'Grant access'"
+                  ></button>
+                </div>
+              </div>
+
+              <p class="settings-success" x-show="$store.chat.channelGrantsNotice" x-text="$store.chat.channelGrantsNotice"></p>
+              <p class="groups-subtitle channel-access-error" x-show="$store.chat.channelGrantsError" x-text="$store.chat.channelGrantsError"></p>
+              <p class="groups-empty channel-grants-empty" x-show="!$store.chat.channelGrantsLoading && $store.chat.channelGrantRows.length === 0">No channel grants loaded.</p>
+
+              <div class="channel-grants-list" x-show="$store.chat.channelGrantRows.length > 0">
+                <template x-for="grant in $store.chat.channelGrantRows" :key="grant.key">
+                  <div class="channel-grant-row">
+                    <div class="channel-grant-principal">
+                      <span x-text="$store.chat.getPgChannelGrantPrincipalLabel(grant)"></span>
+                      <small x-text="grant.principal_type === 'group' ? 'Group' : 'User'"></small>
+                    </div>
+                    <div class="channel-grant-capacity" x-text="$store.chat.getPgChannelGrantCapacityLabel(grant.capacity)"></div>
+                    <small class="channel-grant-permissions" x-text="$store.chat.describePgChannelGrantPermissions(grant.permissions)"></small>
+                  </div>
+                </template>
+              </div>
+            </section>
 
             <div class="new-doc-modal-actions">
               <button type="button" class="btn-cancel" @click="$store.chat.closeChannelSettings()">Close</button>

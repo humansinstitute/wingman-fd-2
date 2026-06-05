@@ -9,7 +9,10 @@ import {
   computeGroupMemberDiff,
   parseGroupMemberQueryNpubs,
   filterChannelsForViewer,
+  aggregatePgChannelGrants,
   channelsManagerMixin,
+  capacityForPgChannelPermissions,
+  permissionsForPgChannelCapacity,
 } from '../src/channels-manager.js';
 
 const channelsManagerSource = fs.readFileSync(
@@ -556,6 +559,97 @@ describe('channels-manager pure utilities', () => {
 
       expect(store.channelOrder).toEqual(['ch3', 'ch1', 'ch2']);
       expect(store.error).toBe('missing group keys');
+    });
+  });
+
+  describe('PG channel grant capacity presets', () => {
+    it('maps viewer to read-only channel-anchored permissions', () => {
+      expect(permissionsForPgChannelCapacity('viewer')).toEqual([
+        'channel.read',
+        'task.read',
+        'doc.read',
+        'file.read',
+        'audio_note.read',
+      ]);
+    });
+
+    it('maps manager to channel grant management without workspace management', () => {
+      const permissions = permissionsForPgChannelCapacity('manager');
+      expect(permissions).toEqual(expect.arrayContaining([
+        'channel.read',
+        'channel.write',
+        'channel.manage',
+        'channel.grants.read',
+        'channel.grants.manage',
+        'task.create',
+        'task.update',
+        'doc.write',
+        'file.write',
+        'audio_note.write',
+      ]));
+      expect(permissions).not.toContain('workspace.manage');
+      expect(permissions).not.toContain('scope.manage');
+    });
+
+    it('maps agent to content creation without workspace or channel management', () => {
+      const permissions = permissionsForPgChannelCapacity('agent');
+      expect(permissions).toEqual(expect.arrayContaining([
+        'channel.read',
+        'channel.write',
+        'task.read',
+        'task.create',
+        'doc.write',
+        'file.write',
+        'audio_note.write',
+      ]));
+      expect(permissions).not.toContain('task.update');
+      expect(permissions).not.toContain('channel.manage');
+      expect(permissions).not.toContain('channel.grants.manage');
+      expect(permissions).not.toContain('workspace.manage');
+    });
+
+    it('round-trips exact preset permissions to capacity names', () => {
+      expect(capacityForPgChannelPermissions(permissionsForPgChannelCapacity('viewer'))).toBe('viewer');
+      expect(capacityForPgChannelPermissions(permissionsForPgChannelCapacity('contributor'))).toBe('contributor');
+      expect(capacityForPgChannelPermissions(permissionsForPgChannelCapacity('manager'))).toBe('manager');
+      expect(capacityForPgChannelPermissions(permissionsForPgChannelCapacity('agent'))).toBe('agent');
+    });
+
+    it('aggregates Tower grant rows by principal and detects the matching capacity', () => {
+      const rows = aggregatePgChannelGrants([
+        {
+          id: 'grant-1',
+          principal_type: 'actor',
+          principal_id: 'actor-1',
+          permissions: ['channel.read'],
+          created_at: '2026-06-01T00:00:00.000Z',
+        },
+        {
+          id: 'grant-2',
+          principal_type: 'actor',
+          principal_id: 'actor-1',
+          permissions: ['task.read', 'doc.read', 'file.read', 'audio_note.read'],
+          created_at: '2026-06-01T00:00:01.000Z',
+        },
+        {
+          id: 'grant-3',
+          principal_type: 'group',
+          principal_id: 'group-1',
+          permission: 'channel.read',
+        },
+      ]);
+
+      expect(rows).toHaveLength(2);
+      expect(rows.find((row) => row.key === 'actor:actor-1')).toEqual(expect.objectContaining({
+        principal_type: 'actor',
+        principal_id: 'actor-1',
+        capacity: 'viewer',
+        permissions: ['audio_note.read', 'channel.read', 'doc.read', 'file.read', 'task.read'],
+      }));
+      expect(rows.find((row) => row.key === 'group:group-1')).toEqual(expect.objectContaining({
+        capacity: 'custom',
+        permissions: ['channel.read'],
+      }));
     });
   });
 });
