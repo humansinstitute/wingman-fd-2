@@ -7383,11 +7383,48 @@
           </div>
 
           <div class="settings-tab-content" x-show="$store.chat.canAdminWorkspace && $store.chat.settingsTab === 'sharing'">
+          <section class="settings-panel" x-show="$store.chat.isTowerPgMode">
+            <div class="groups-header">
+              <div>
+                <h2>Workspace members</h2>
+                <p class="groups-subtitle">People who can be added to PG workspace groups.</p>
+              </div>
+            </div>
+            <div class="scope-new-grid">
+              <div class="scope-field">
+                <label class="scope-field-label">Member npub</label>
+                <input class="new-group-input" type="text" x-model="$store.chat.pgWorkspaceMemberNpub" placeholder="npub1..." :disabled="$store.chat.groupActionsLocked" />
+              </div>
+            </div>
+            <div class="settings-actions">
+              <button type="button" class="btn-confirm" @click="$store.chat.addPgWorkspaceMember()" :disabled="$store.chat.groupActionsLocked || !$store.chat.pgWorkspaceMemberNpub">Add member</button>
+            </div>
+            <p class="groups-empty" x-show="($store.chat.pgWorkspaceMembers || []).length === 0">No PG members loaded.</p>
+            <div class="group-card-members" x-show="($store.chat.pgWorkspaceMembers || []).length > 0">
+              <template x-for="member in ($store.chat.pgWorkspaceMembers || [])" :key="member.actor_id || member.npub">
+                <div class="group-member-row" x-init="$store.chat.resolveChatProfile(member.npub)">
+                  <button type="button" class="identity-avatar-button" @click.stop="$store.chat.openIdentityCard($event, member.npub)" :title="$store.chat.getSenderName(member.npub)">
+                    <template x-if="$store.chat.getSenderAvatar(member.npub)">
+                      <img class="group-member-avatar" :src="$store.chat.getSenderAvatar(member.npub)" alt="" />
+                    </template>
+                    <template x-if="!$store.chat.getSenderAvatar(member.npub)">
+                      <span class="group-member-avatar group-member-avatar-fallback" x-text="$store.chat.getInitials($store.chat.getSenderName(member.npub))"></span>
+                    </template>
+                  </button>
+                  <div class="group-member-info">
+                    <span x-text="$store.chat.getSenderName(member.npub)"></span>
+                    <small x-text="(member.role || 'member') + ' · ' + member.npub"></small>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </section>
+
           <section class="settings-panel">
             <div class="groups-header">
               <div>
                 <h2>Groups</h2>
-                <p class="groups-subtitle">Share targets for documents and records.</p>
+                <p class="groups-subtitle" x-text="$store.chat.isTowerPgMode ? 'PG principals for workspace and channel access.' : 'Share targets for documents and records.'"></p>
               </div>
               <button type="button" class="groups-new-btn" @click="$store.chat.openNewGroupModal()" :disabled="$store.chat.groupActionsLocked">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
@@ -7410,7 +7447,7 @@
                         </summary>
                         <div class="group-actions-popover">
                           <button type="button" class="group-action-item" :disabled="$store.chat.groupActionsLocked" @click="$event.currentTarget.closest('details')?.removeAttribute('open'); $store.chat.openEditGroupModal(group.group_id)">Edit group</button>
-                          <button type="button" class="group-action-item group-action-delete" x-show="!$store.chat.isProtectedWorkspaceGroup(group)" :disabled="$store.chat.groupActionsLocked" @click="$event.currentTarget.closest('details')?.removeAttribute('open'); $store.chat.deleteSharingGroup(group.group_id)" x-text="$store.chat.isGroupDeletePending(group.group_id) ? 'Deleting…' : 'Delete group'"></button>
+                          <button type="button" class="group-action-item group-action-delete" x-show="!$store.chat.isTowerPgMode && !$store.chat.isProtectedWorkspaceGroup(group)" :disabled="$store.chat.groupActionsLocked" @click="$event.currentTarget.closest('details')?.removeAttribute('open'); $store.chat.deleteSharingGroup(group.group_id)" x-text="$store.chat.isGroupDeletePending(group.group_id) ? 'Deleting…' : 'Delete group'"></button>
                         </div>
                       </details>
                     </div>
@@ -7433,14 +7470,51 @@
                       </div>
                     </template>
                   </div>
+                  <template x-if="$store.chat.isTowerPgMode">
+                    <div class="group-card-members">
+                      <div class="scope-field">
+                        <label class="scope-field-label">Nested groups</label>
+                        <div class="scope-groups-list" x-show="(group.child_group_ids || []).length > 0">
+                          <template x-for="childGroupId in (group.child_group_ids || [])" :key="`${group.group_id}-child-${childGroupId}`">
+                            <div class="scope-group-chip">
+                              <div>
+                                <span class="new-channel-profile-name" x-text="$store.chat.getPgGroupLabel(childGroupId)"></span>
+                                <small>Nested group</small>
+                              </div>
+                              <button type="button" class="task-inline-clear-btn" @click="$store.chat.removePgChildGroup(group.group_id, childGroupId)" :disabled="$store.chat.groupActionsLocked">Remove</button>
+                            </div>
+                          </template>
+                        </div>
+                        <div style="display: flex; gap: 0.5rem; align-items: center;">
+                          <select class="new-group-input" :value="$store.chat.pgChildGroupDrafts[group.group_id] || ''" @change="$store.chat.handlePgChildGroupSelection(group.group_id, $event.target.value)" :disabled="$store.chat.groupActionsLocked">
+                            <option value="">Select group…</option>
+                            <template x-for="candidate in $store.chat.getPgChildGroupCandidates(group.group_id)" :key="`${group.group_id}-candidate-${candidate.group_id}`">
+                              <option :value="candidate.group_id" x-text="candidate.name || 'Untitled group'"></option>
+                            </template>
+                          </select>
+                          <button type="button" class="btn-confirm" @click="$store.chat.addPgChildGroup(group.group_id)" :disabled="$store.chat.groupActionsLocked || !($store.chat.pgChildGroupDrafts[group.group_id] || '')">Nest</button>
+                        </div>
+                      </div>
+                      <div class="scope-field" x-show="(group.effective_member_npubs || []).length > (group.member_npubs || []).length">
+                        <label class="scope-field-label">Effective members</label>
+                        <div class="scope-groups-list">
+                          <template x-for="memberNpub in (group.effective_member_npubs || [])" :key="`${group.group_id}-effective-${memberNpub}`">
+                            <span class="scope-group-chip">
+                              <span class="new-channel-profile-name" x-text="$store.chat.getSenderName(memberNpub)"></span>
+                            </span>
+                          </template>
+                        </div>
+                      </div>
+                    </div>
+                  </template>
                 </li>
               </template>
             </ul>
           </section>
 
           <section class="settings-panel" style="margin-top: 1.5rem;">
-            <h2>Invite via link</h2>
-            <p class="groups-subtitle">Add someone to a group and generate a connection link they can use to join this workspace.</p>
+            <h2 x-text="$store.chat.isTowerPgMode ? 'Add member to group' : 'Invite via link'"></h2>
+            <p class="groups-subtitle" x-text="$store.chat.isTowerPgMode ? 'Add an npub to this PG workspace and group.' : 'Add someone to a group and generate a connection link they can use to join this workspace.'"></p>
 
             <label class="docs-field-label">Invitee npub</label>
             <input class="new-group-input" type="text" x-model="$store.chat.shareInviteNpub"
@@ -7460,7 +7534,7 @@
               <button type="button" class="btn-confirm"
                 @click="$store.chat.generateShareLink()"
                 :disabled="$store.chat.shareInvitePending || !$store.chat.shareInviteNpub || !$store.chat.shareInviteGroupId"
-                x-text="$store.chat.shareInvitePending ? 'Generating…' : 'Generate link'"></button>
+                x-text="$store.chat.shareInvitePending ? ($store.chat.isTowerPgMode ? 'Adding…' : 'Generating…') : ($store.chat.isTowerPgMode ? 'Add to group' : 'Generate link')"></button>
               <button type="button" class="btn-cancel" x-show="$store.chat.shareInviteUrl"
                 @click="$store.chat.resetShareInvite()">Clear</button>
             </div>
@@ -7469,11 +7543,11 @@
               x-show="$store.chat.shareInviteError" x-text="$store.chat.shareInviteError"></p>
 
             <div x-show="$store.chat.shareInviteUrl" style="margin-top: 1rem;">
-              <label class="docs-field-label">Share link</label>
+              <label class="docs-field-label" x-text="$store.chat.isTowerPgMode ? 'Status' : 'Share link'"></label>
               <div style="display: flex; gap: 0.5rem; align-items: stretch;">
                 <input class="new-group-input" type="text" :value="$store.chat.shareInviteUrl" readonly
                   style="flex: 1; font-size: 0.8rem;" @click="$event.target.select()" />
-                <button type="button" class="btn-confirm"
+                <button type="button" class="btn-confirm" x-show="!$store.chat.isTowerPgMode"
                   @click="$store.chat.copyShareLink()"
                   x-text="$store.chat.shareInviteCopied ? 'Copied!' : 'Copy'"></button>
               </div>
@@ -7549,7 +7623,7 @@
             <p class="new-group-hint">Rename the group and manage who can use it for sharing.</p>
 
             <label class="docs-field-label">Name</label>
-            <input class="new-group-input" type="text" x-model="$store.chat.editGroupName" placeholder="e.g. Team, Clients, Reviewers" @keydown.enter.prevent="$store.chat.saveGroupEdits()" :disabled="$store.chat.groupEditPending || $store.chat.isProtectedWorkspaceGroup($store.chat.editGroupId)" />
+            <input class="new-group-input" type="text" x-model="$store.chat.editGroupName" placeholder="e.g. Team, Clients, Reviewers" @keydown.enter.prevent="$store.chat.saveGroupEdits()" :disabled="$store.chat.groupEditPending || $store.chat.isTowerPgMode || $store.chat.isProtectedWorkspaceGroup($store.chat.editGroupId)" />
 
             <label class="docs-field-label">Members</label>
             <input class="new-group-input" type="text" x-model="$store.chat.editGroupMemberQuery" placeholder="Paste npub or comma-separated npubs" @keydown.enter.prevent="$store.chat.addEditGroupMemberFromQuery()" @input="if($event.target.value.includes(',')) $store.chat.addEditGroupMemberFromQuery()" :disabled="$store.chat.groupEditPending" />

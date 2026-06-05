@@ -200,4 +200,62 @@ describe('Tower PG API helpers', () => {
     expect(createNip98AuthHeader).toHaveBeenCalledTimes(9);
     expect(createNip98AuthHeaderForSecret).not.toHaveBeenCalled();
   });
+
+  it('calls Tower PG workspace admin group and member routes', async () => {
+    const { createNip98AuthHeader, createNip98AuthHeaderForSecret } = await import('../src/auth/nostr.js');
+    const api = await import('../src/api.js');
+    api.setBaseUrl('https://tower.example');
+
+    await api.getTowerPgWorkspaceMembers('workspace-1', { appNpub: 'flightdeck_pg', limit: 25 });
+    await api.getTowerPgWorkspaceGroups('workspace-1', { appNpub: 'flightdeck_pg', limit: 26 });
+    await api.createTowerPgWorkspaceMember('workspace-1', { member_npub: 'npub1member' }, { appNpub: 'flightdeck_pg' });
+    await api.createTowerPgWorkspaceGroup('workspace-1', { name: 'Editors' }, { appNpub: 'flightdeck_pg' });
+    await api.addTowerPgWorkspaceGroupMember('workspace-1', 'group-1', { member_npub: 'npub1member' }, { appNpub: 'flightdeck_pg' });
+    await api.removeTowerPgWorkspaceGroupMember('workspace-1', 'group-1', 'actor-1', { appNpub: 'flightdeck_pg' });
+    await api.addTowerPgWorkspaceChildGroup('workspace-1', 'parent-1', { child_group_id: 'child-1' }, { appNpub: 'flightdeck_pg' });
+    await api.removeTowerPgWorkspaceChildGroup('workspace-1', 'parent-1', 'child-1', { appNpub: 'flightdeck_pg' });
+
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      1,
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/members?limit=25',
+      expect.objectContaining({ method: 'GET' }),
+    );
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      2,
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/groups?limit=26',
+      expect.objectContaining({ method: 'GET' }),
+    );
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      3,
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/members',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      4,
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/groups',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      5,
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/groups/group-1/members',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      6,
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/groups/group-1/members/actor-1',
+      expect.objectContaining({ method: 'DELETE' }),
+    );
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      7,
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/groups/parent-1/child-groups',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      8,
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/groups/parent-1/child-groups/child-1',
+      expect.objectContaining({ method: 'DELETE' }),
+    );
+    expect(createNip98AuthHeader).toHaveBeenCalledTimes(8);
+    expect(createNip98AuthHeaderForSecret).not.toHaveBeenCalled();
+  });
 });

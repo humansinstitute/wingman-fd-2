@@ -176,6 +176,12 @@ export const workspaceManagerMixin = {
   get canAdminWorkspace() {
     const viewerNpub = String(this.session?.npub || '').trim();
     if (!viewerNpub || !this.currentWorkspace) return false;
+    if (isTowerPgBackendMode() || this.currentWorkspace?.pgBackendMode) {
+      const permissions = Array.isArray(this.currentWorkspace.pgMe?.permissions)
+        ? this.currentWorkspace.pgMe.permissions
+        : [];
+      if (permissions.includes('workspace.manage')) return true;
+    }
     if (String(this.currentWorkspace.creatorNpub || '').trim() === viewerNpub) return true;
     return this.currentWorkspaceGroups.some((group) =>
       group.group_kind === 'workspace_admin'

@@ -235,6 +235,23 @@ describe('workspace computed getters', () => {
     expect(store.canAdminWorkspace).toBe(true);
   });
 
+  it('canAdminWorkspace is true in PG mode when /me includes workspace.manage', () => {
+    const ws = {
+      workspaceOwnerNpub: 'npub1ws',
+      workspaceKey: 'workspace:npub1ws',
+      pgBackendMode: true,
+      pgMe: { permissions: ['workspace.read', 'workspace.manage'] },
+    };
+    const { store } = bindMethod('getWorkspaceByOwner', {
+      knownWorkspaces: [ws],
+      currentWorkspaceOwnerNpub: 'npub1ws',
+      selectedWorkspaceKey: 'workspace:npub1ws',
+      session: { npub: 'npub1member' },
+      groups: [],
+    });
+    expect(store.canAdminWorkspace).toBe(true);
+  });
+
   it('currentWorkspaceContentGroups excludes the workspace admin group', () => {
     const { store } = bindMethod('getWorkspaceByOwner', {
       currentWorkspaceOwnerNpub: 'npub1ws',

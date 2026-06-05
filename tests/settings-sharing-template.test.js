@@ -14,4 +14,16 @@ describe('settings sharing template', () => {
     expect(html).toContain('x-model="$store.chat.shareInviteGroupId" :disabled="$store.chat.shareInvitePending || $store.chat.currentWorkspaceGroups.length === 0"');
     expect(html).toContain('x-show="$store.chat.currentWorkspaceGroups.length === 0">Create a group first.</p>');
   });
+
+  it('renders PG workspace member, nested group, and effective member controls', () => {
+    const html = readFileSync(INDEX_PATH, 'utf8');
+
+    expect(html).toContain('x-show="$store.chat.isTowerPgMode"');
+    expect(html).toContain('x-model="$store.chat.pgWorkspaceMemberNpub"');
+    expect(html).toContain('@click="$store.chat.addPgWorkspaceMember()"');
+    expect(html).toContain('$store.chat.getPgChildGroupCandidates(group.group_id)');
+    expect(html).toContain('@click="$store.chat.addPgChildGroup(group.group_id)"');
+    expect(html).toContain('@click="$store.chat.removePgChildGroup(group.group_id, childGroupId)"');
+    expect(html).toContain('group.effective_member_npubs');
+  });
 });

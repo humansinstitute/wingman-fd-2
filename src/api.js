@@ -340,6 +340,94 @@ export async function getTowerPgWorkspaceMe(workspaceId, { baseUrl = _baseUrl, a
   return json(resp, { requestUrl, method: 'GET', prefix: 'Tower PG API' });
 }
 
+export async function getTowerPgWorkspaceMembers(workspaceId, { baseUrl = _baseUrl, appNpub = APP_NPUB, limit = 200 } = {}) {
+  const encodedWorkspaceId = encodeURIComponent(String(workspaceId || '').trim());
+  if (!encodedWorkspaceId) throw new Error('Tower PG workspace id is required');
+  const params = new URLSearchParams();
+  if (limit) params.set('limit', String(limit));
+  const requestPath = `/api/v4/flightdeck-pg/workspaces/${encodedWorkspaceId}/members${params.size > 0 ? `?${params.toString()}` : ''}`;
+  const requestUrl = resolveTowerPgUrl(requestPath, baseUrl);
+  const resp = await signedTowerPgFetch(requestPath, { baseUrl, appNpub });
+  return json(resp, { requestUrl, method: 'GET', prefix: 'Tower PG API' });
+}
+
+export async function createTowerPgWorkspaceMember(workspaceId, body, { baseUrl = _baseUrl, appNpub = APP_NPUB } = {}) {
+  const encodedWorkspaceId = encodeURIComponent(String(workspaceId || '').trim());
+  if (!encodedWorkspaceId) throw new Error('Tower PG workspace id is required');
+  const requestPath = `/api/v4/flightdeck-pg/workspaces/${encodedWorkspaceId}/members`;
+  const requestUrl = resolveTowerPgUrl(requestPath, baseUrl);
+  const resp = await signedTowerPgFetch(requestPath, { method: 'POST', body, baseUrl, appNpub });
+  return json(resp, { requestUrl, method: 'POST', prefix: 'Tower PG API' });
+}
+
+export async function getTowerPgWorkspaceGroups(workspaceId, { baseUrl = _baseUrl, appNpub = APP_NPUB, limit = 200 } = {}) {
+  const encodedWorkspaceId = encodeURIComponent(String(workspaceId || '').trim());
+  if (!encodedWorkspaceId) throw new Error('Tower PG workspace id is required');
+  const params = new URLSearchParams();
+  if (limit) params.set('limit', String(limit));
+  const requestPath = `/api/v4/flightdeck-pg/workspaces/${encodedWorkspaceId}/groups${params.size > 0 ? `?${params.toString()}` : ''}`;
+  const requestUrl = resolveTowerPgUrl(requestPath, baseUrl);
+  const resp = await signedTowerPgFetch(requestPath, { baseUrl, appNpub });
+  return json(resp, { requestUrl, method: 'GET', prefix: 'Tower PG API' });
+}
+
+export async function createTowerPgWorkspaceGroup(workspaceId, body, { baseUrl = _baseUrl, appNpub = APP_NPUB } = {}) {
+  const encodedWorkspaceId = encodeURIComponent(String(workspaceId || '').trim());
+  if (!encodedWorkspaceId) throw new Error('Tower PG workspace id is required');
+  const requestPath = `/api/v4/flightdeck-pg/workspaces/${encodedWorkspaceId}/groups`;
+  const requestUrl = resolveTowerPgUrl(requestPath, baseUrl);
+  const resp = await signedTowerPgFetch(requestPath, { method: 'POST', body, baseUrl, appNpub });
+  return json(resp, { requestUrl, method: 'POST', prefix: 'Tower PG API' });
+}
+
+export async function addTowerPgWorkspaceGroupMember(workspaceId, groupId, body, { baseUrl = _baseUrl, appNpub = APP_NPUB } = {}) {
+  const encodedWorkspaceId = encodeURIComponent(String(workspaceId || '').trim());
+  const encodedGroupId = encodeURIComponent(String(groupId || '').trim());
+  if (!encodedWorkspaceId) throw new Error('Tower PG workspace id is required');
+  if (!encodedGroupId) throw new Error('Tower PG group id is required');
+  const requestPath = `/api/v4/flightdeck-pg/workspaces/${encodedWorkspaceId}/groups/${encodedGroupId}/members`;
+  const requestUrl = resolveTowerPgUrl(requestPath, baseUrl);
+  const resp = await signedTowerPgFetch(requestPath, { method: 'POST', body, baseUrl, appNpub });
+  return json(resp, { requestUrl, method: 'POST', prefix: 'Tower PG API' });
+}
+
+export async function removeTowerPgWorkspaceGroupMember(workspaceId, groupId, actorId, { baseUrl = _baseUrl, appNpub = APP_NPUB } = {}) {
+  const encodedWorkspaceId = encodeURIComponent(String(workspaceId || '').trim());
+  const encodedGroupId = encodeURIComponent(String(groupId || '').trim());
+  const encodedActorId = encodeURIComponent(String(actorId || '').trim());
+  if (!encodedWorkspaceId) throw new Error('Tower PG workspace id is required');
+  if (!encodedGroupId) throw new Error('Tower PG group id is required');
+  if (!encodedActorId) throw new Error('Tower PG actor id is required');
+  const requestPath = `/api/v4/flightdeck-pg/workspaces/${encodedWorkspaceId}/groups/${encodedGroupId}/members/${encodedActorId}`;
+  const requestUrl = resolveTowerPgUrl(requestPath, baseUrl);
+  const resp = await signedTowerPgFetch(requestPath, { method: 'DELETE', baseUrl, appNpub });
+  return json(resp, { requestUrl, method: 'DELETE', prefix: 'Tower PG API' });
+}
+
+export async function addTowerPgWorkspaceChildGroup(workspaceId, parentGroupId, body, { baseUrl = _baseUrl, appNpub = APP_NPUB } = {}) {
+  const encodedWorkspaceId = encodeURIComponent(String(workspaceId || '').trim());
+  const encodedGroupId = encodeURIComponent(String(parentGroupId || '').trim());
+  if (!encodedWorkspaceId) throw new Error('Tower PG workspace id is required');
+  if (!encodedGroupId) throw new Error('Tower PG group id is required');
+  const requestPath = `/api/v4/flightdeck-pg/workspaces/${encodedWorkspaceId}/groups/${encodedGroupId}/child-groups`;
+  const requestUrl = resolveTowerPgUrl(requestPath, baseUrl);
+  const resp = await signedTowerPgFetch(requestPath, { method: 'POST', body, baseUrl, appNpub });
+  return json(resp, { requestUrl, method: 'POST', prefix: 'Tower PG API' });
+}
+
+export async function removeTowerPgWorkspaceChildGroup(workspaceId, parentGroupId, childGroupId, { baseUrl = _baseUrl, appNpub = APP_NPUB } = {}) {
+  const encodedWorkspaceId = encodeURIComponent(String(workspaceId || '').trim());
+  const encodedGroupId = encodeURIComponent(String(parentGroupId || '').trim());
+  const encodedChildGroupId = encodeURIComponent(String(childGroupId || '').trim());
+  if (!encodedWorkspaceId) throw new Error('Tower PG workspace id is required');
+  if (!encodedGroupId) throw new Error('Tower PG group id is required');
+  if (!encodedChildGroupId) throw new Error('Tower PG child group id is required');
+  const requestPath = `/api/v4/flightdeck-pg/workspaces/${encodedWorkspaceId}/groups/${encodedGroupId}/child-groups/${encodedChildGroupId}`;
+  const requestUrl = resolveTowerPgUrl(requestPath, baseUrl);
+  const resp = await signedTowerPgFetch(requestPath, { method: 'DELETE', baseUrl, appNpub });
+  return json(resp, { requestUrl, method: 'DELETE', prefix: 'Tower PG API' });
+}
+
 export async function getTowerPgWorkspaceScopes(workspaceId, { baseUrl = _baseUrl, appNpub = APP_NPUB, path = null, limit = 100 } = {}) {
   const encodedWorkspaceId = encodeURIComponent(String(workspaceId || '').trim());
   if (!encodedWorkspaceId && !path) throw new Error('Tower PG workspace id is required');

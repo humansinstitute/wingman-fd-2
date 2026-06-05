@@ -23,6 +23,14 @@ import {
   getGroups,
   getGroupKeys,
   deleteGroup,
+  addTowerPgWorkspaceChildGroup,
+  addTowerPgWorkspaceGroupMember,
+  createTowerPgWorkspaceGroup,
+  createTowerPgWorkspaceMember,
+  getTowerPgWorkspaceGroups,
+  getTowerPgWorkspaceMembers,
+  removeTowerPgWorkspaceChildGroup,
+  removeTowerPgWorkspaceGroupMember,
 } from './api.js';
 import {
   outboundChannel,
@@ -46,7 +54,7 @@ import { buildSuperBasedConnectionToken } from './superbased-token.js';
 import { APP_NPUB } from './app-identity.js';
 import { flightDeckLog } from './logging.js';
 import { isTowerPgBackendMode } from './backend-mode.js';
-import { hydrateTowerPgChannels } from './pg-read-hydrator.js';
+import { hydrateTowerPgChannels, resolveTowerPgWorkspaceContext } from './pg-read-hydrator.js';
 
 // ---------------------------------------------------------------------------
 // Pure utility functions (no `this` dependency)
@@ -92,7 +100,54 @@ function groupSignature(group) {
     String(group?.private_member_npub || ''),
     String(group?.current_epoch || ''),
     [...(group?.member_npubs || [])].map(String).join(','),
+    [...(group?.child_group_ids || [])].map(String).join(','),
+    [...(group?.effective_member_npubs || [])].map(String).join(','),
   ].join('|');
+}
+
+function mapTowerPgActor(actor = {}) {
+  const actorId = String(actor.actor_id || actor.id || '').trim();
+  const npub = String(actor.npub || '').trim();
+  if (!actorId && !npub) return null;
+  return {
+    actor_id: actorId,
+    id: actorId,
+    npub,
+    kind: String(actor.kind || 'human').trim() || 'human',
+    display_name: String(actor.display_name || '').trim() || null,
+  };
+}
+
+function mapTowerPgGroupEntry(group = {}, { workspaceOwnerNpub = '' } = {}) {
+  const members = Array.isArray(group.members)
+    ? group.members.map(mapTowerPgActor).filter(Boolean)
+    : [];
+  const effectiveMembers = Array.isArray(group.effective_members)
+    ? group.effective_members.map(mapTowerPgActor).filter(Boolean)
+    : members;
+  const memberNpubs = Array.isArray(group.member_npubs)
+    ? group.member_npubs.map((member) => String(member || '').trim()).filter(Boolean)
+    : members.map((member) => member.npub).filter(Boolean);
+  const effectiveMemberNpubs = Array.isArray(group.effective_member_npubs)
+    ? group.effective_member_npubs.map((member) => String(member || '').trim()).filter(Boolean)
+    : effectiveMembers.map((member) => member.npub).filter(Boolean);
+  const groupId = String(group.group_id || group.id || '').trim();
+  return {
+    group_id: groupId,
+    group_npub: groupId,
+    current_epoch: 1,
+    owner_npub: workspaceOwnerNpub,
+    name: String(group.name || '').trim() || 'Untitled group',
+    group_kind: String(group.group_kind || group.kind || 'custom').trim() || 'custom',
+    private_member_npub: null,
+    member_npubs: memberNpubs,
+    members,
+    child_group_ids: Array.isArray(group.child_group_ids) ? group.child_group_ids.map(String).filter(Boolean) : [],
+    parent_group_ids: Array.isArray(group.parent_group_ids) ? group.parent_group_ids.map(String).filter(Boolean) : [],
+    effective_member_npubs: effectiveMemberNpubs,
+    effective_members: effectiveMembers,
+    pg_backend: true,
+  };
 }
 
 function normalizeGroupMemberNpubs(entries = []) {
@@ -214,6 +269,33 @@ export const channelsManagerMixin = {
     return channels;
   },
 
+  async refreshTowerPgWorkspaceMembers(options = {}) {
+    const { workspaceId, workspaceOwnerNpub, baseUrl, appNpub } = resolveTowerPgWorkspaceContext(this);
+    if (!workspaceId || !baseUrl) return [];
+    const result = await getTowerPgWorkspaceMembers(workspaceId, {
+      baseUrl,
+      appNpub,
+      limit: options.limit || 200,
+    });
+    const members = (result.members || [])
+      .map((entry) => {
+        const actor = mapTowerPgActor(entry.actor || entry);
+        if (!actor?.npub) return null;
+        return {
+          ...actor,
+          workspace_owner_npub: workspaceOwnerNpub,
+          role: String(entry.membership?.role || '').trim() || 'member',
+          joined_at: entry.membership?.joined_at || entry.membership?.created_at || null,
+        };
+      })
+      .filter(Boolean);
+    this.pgWorkspaceMembers = members;
+    if (members.length > 0) {
+      await this.rememberPeople(members.map((member) => member.npub), 'pg-workspace-member');
+    }
+    return members;
+  },
+
   async refreshGroups(options = {}) {
     const viewerNpub = this.session?.npub;
     if (!viewerNpub || !this.backendUrl) return;
@@ -235,6 +317,42 @@ export const channelsManagerMixin = {
       return this.groups;
     }
     try {
+      if (isTowerPgBackendMode()) {
+        const { workspaceId, workspaceOwnerNpub, baseUrl, appNpub } = resolveTowerPgWorkspaceContext(this);
+        if (!workspaceId || !baseUrl) return this.groups;
+        const [result] = await Promise.all([
+          getTowerPgWorkspaceGroups(workspaceId, { baseUrl, appNpub, limit: 200 }),
+          this.refreshTowerPgWorkspaceMembers({ limit: 200 }),
+        ]);
+        const mappedGroups = (result.groups || [])
+          .map((group) => mapTowerPgGroupEntry(group, { workspaceOwnerNpub }))
+          .filter((group) => group.group_id);
+        const groupsChanged = !sameListBySignature(this.groups, mappedGroups, groupSignature);
+        if (groupsChanged) {
+          this.groups = mappedGroups;
+          const memberNpubs = new Set();
+          for (const group of mappedGroups) {
+            await upsertGroup({
+              ...group,
+              member_npubs: [...(group.member_npubs ?? [])],
+            });
+            for (const memberNpub of [
+              ...(group.member_npubs ?? []),
+              ...(group.effective_member_npubs ?? []),
+            ]) {
+              if (memberNpub) memberNpubs.add(String(memberNpub));
+            }
+          }
+          if (memberNpubs.size > 0) {
+            await this.rememberPeople([...memberNpubs], 'pg-group');
+          }
+        }
+        this.lastGroupsRefreshAt = Date.now();
+        this.validateSelectedBoardId();
+        this.normalizeTaskFilterTags();
+        if (typeof this.normalizeSettingsTab === 'function') this.normalizeSettingsTab();
+        return this.groups;
+      }
       const [result, keyResult] = await Promise.all([
         getGroups(viewerNpub),
         getGroupKeys(viewerNpub),
@@ -851,6 +969,31 @@ export const channelsManagerMixin = {
     this.groupCreatePending = true;
 
     try {
+      if (isTowerPgBackendMode()) {
+        const { workspaceId, baseUrl, appNpub } = resolveTowerPgWorkspaceContext(this);
+        if (!workspaceId || !baseUrl) throw new Error('Flight Deck PG workspace is not connected');
+        const created = await createTowerPgWorkspaceGroup(workspaceId, {
+          name: this.newGroupName.trim(),
+          kind: 'custom',
+        }, { baseUrl, appNpub });
+        const groupId = created.group?.group_id || created.group?.id;
+        if (!groupId) throw new Error('Tower PG did not return a group id');
+        for (const memberNpub of [...new Set(members.map((member) => member.npub))]) {
+          await createTowerPgWorkspaceMember(workspaceId, {
+            member_npub: memberNpub,
+            role: 'member',
+            kind: 'human',
+          }, { baseUrl, appNpub });
+          await addTowerPgWorkspaceGroupMember(workspaceId, groupId, {
+            member_npub: memberNpub,
+          }, { baseUrl, appNpub });
+        }
+        await this.refreshGroups({ force: true, minIntervalMs: 0 });
+        await this.rememberPeople(members.map((member) => member.npub), 'pg-group');
+        this.showNewGroupModal = false;
+        this.resetNewGroupDraft();
+        return;
+      }
       await this.createEncryptedGroup(this.newGroupName.trim(), memberNpubs);
       await this.rememberPeople(members.map((member) => member.npub), 'group');
       this.showNewGroupModal = false;
@@ -916,6 +1059,40 @@ export const channelsManagerMixin = {
     this.groupEditPending = true;
 
     try {
+      if (isTowerPgBackendMode()) {
+        if (trimmedName !== group.name) {
+          throw new Error('PG group renaming is not available yet.');
+        }
+        const { workspaceId, baseUrl, appNpub } = resolveTowerPgWorkspaceContext(this);
+        if (!workspaceId || !baseUrl) throw new Error('Flight Deck PG workspace is not connected');
+        const actorIdByNpub = new Map();
+        for (const member of this.pgWorkspaceMembers || []) {
+          if (member?.npub && member?.actor_id) actorIdByNpub.set(member.npub, member.actor_id);
+        }
+        for (const memberNpub of membersToAdd) {
+          await createTowerPgWorkspaceMember(workspaceId, {
+            member_npub: memberNpub,
+            role: 'member',
+            kind: 'human',
+          }, { baseUrl, appNpub });
+          await addTowerPgWorkspaceGroupMember(workspaceId, group.group_id, {
+            member_npub: memberNpub,
+          }, { baseUrl, appNpub });
+        }
+        for (const memberNpub of membersToRemove) {
+          const actorId = actorIdByNpub.get(memberNpub)
+            || group.members?.find((member) => member.npub === memberNpub)?.actor_id
+            || '';
+          if (actorId) {
+            await removeTowerPgWorkspaceGroupMember(workspaceId, group.group_id, actorId, { baseUrl, appNpub });
+          }
+        }
+        await this.rememberPeople(desiredMembers, 'pg-group');
+        await this.refreshGroups({ force: true, minIntervalMs: 0 });
+        this.showEditGroupModal = false;
+        this.resetEditGroupDraft();
+        return;
+      }
       if (membersToRemove.length > 0) {
         await this.rotateEncryptedGroup(group.group_id, desiredMembers, {
           name: trimmedName,
@@ -949,6 +1126,10 @@ export const channelsManagerMixin = {
     if (this.groupDeletePendingId || this.groupCreatePending || this.groupEditPending) return;
     if (this.isProtectedWorkspaceGroup(groupId)) {
       this.error = 'Protected system groups cannot be deleted.';
+      return;
+    }
+    if (isTowerPgBackendMode()) {
+      this.error = 'PG group deletion is not available yet.';
       return;
     }
     const ownerNpub = this.session?.npub || this.ownerNpub;
@@ -991,6 +1172,120 @@ export const channelsManagerMixin = {
     this.shareInviteCopied = false;
   },
 
+  getPgWorkspaceMemberLabel(memberOrNpub) {
+    const npub = typeof memberOrNpub === 'string'
+      ? memberOrNpub
+      : String(memberOrNpub?.npub || '').trim();
+    if (!npub) return 'Unknown member';
+    return this.getSenderName(npub) || npub;
+  },
+
+  getPgWorkspaceMemberActorId(npub) {
+    const target = String(npub || '').trim();
+    if (!target) return '';
+    return String((this.pgWorkspaceMembers || []).find((member) => member.npub === target)?.actor_id || '').trim();
+  },
+
+  getPgChildGroupCandidates(parentGroupId) {
+    const parentId = String(parentGroupId || '').trim();
+    const parent = this.groups.find((group) => group.group_id === parentId);
+    const existingChildren = new Set(parent?.child_group_ids || []);
+    return (this.currentWorkspaceGroups || [])
+      .filter((group) =>
+        group.group_id
+        && group.group_id !== parentId
+        && !existingChildren.has(group.group_id)
+      );
+  },
+
+  getPgGroupLabel(groupId) {
+    const id = String(groupId || '').trim();
+    return this.groups.find((group) => group.group_id === id)?.name || id;
+  },
+
+  handlePgChildGroupSelection(parentGroupId, childGroupId) {
+    this.pgChildGroupDrafts = {
+      ...(this.pgChildGroupDrafts || {}),
+      [parentGroupId]: String(childGroupId || '').trim(),
+    };
+  },
+
+  async addPgWorkspaceMember() {
+    if (!isTowerPgBackendMode()) return;
+    if (!this.canAdminWorkspace) {
+      this.error = 'Only workspace admins can add members.';
+      return;
+    }
+    const memberNpub = String(this.pgWorkspaceMemberNpub || '').trim();
+    if (!memberNpub || !memberNpub.startsWith('npub1')) {
+      this.error = 'Enter a valid npub.';
+      return;
+    }
+    this.groupEditPending = true;
+    this.error = null;
+    try {
+      const { workspaceId, baseUrl, appNpub } = resolveTowerPgWorkspaceContext(this);
+      if (!workspaceId || !baseUrl) throw new Error('Flight Deck PG workspace is not connected');
+      await createTowerPgWorkspaceMember(workspaceId, {
+        member_npub: memberNpub,
+        role: 'member',
+        kind: 'human',
+      }, { baseUrl, appNpub });
+      this.pgWorkspaceMemberNpub = '';
+      await this.refreshGroups({ force: true, minIntervalMs: 0 });
+    } catch (error) {
+      this.error = error?.message || 'Failed to add workspace member';
+    } finally {
+      this.groupEditPending = false;
+    }
+  },
+
+  async addPgChildGroup(parentGroupId) {
+    if (!isTowerPgBackendMode()) return;
+    if (!this.canAdminWorkspace) {
+      this.error = 'Only workspace admins can nest groups.';
+      return;
+    }
+    const parentId = String(parentGroupId || '').trim();
+    const childGroupId = String(this.pgChildGroupDrafts?.[parentId] || '').trim();
+    if (!parentId || !childGroupId) return;
+    this.groupEditPending = true;
+    this.error = null;
+    try {
+      const { workspaceId, baseUrl, appNpub } = resolveTowerPgWorkspaceContext(this);
+      if (!workspaceId || !baseUrl) throw new Error('Flight Deck PG workspace is not connected');
+      await addTowerPgWorkspaceChildGroup(workspaceId, parentId, {
+        child_group_id: childGroupId,
+      }, { baseUrl, appNpub });
+      this.pgChildGroupDrafts = { ...(this.pgChildGroupDrafts || {}), [parentId]: '' };
+      await this.refreshGroups({ force: true, minIntervalMs: 0 });
+    } catch (error) {
+      this.error = error?.message || 'Failed to nest group';
+    } finally {
+      this.groupEditPending = false;
+    }
+  },
+
+  async removePgChildGroup(parentGroupId, childGroupId) {
+    if (!isTowerPgBackendMode()) return;
+    if (!this.canAdminWorkspace) {
+      this.error = 'Only workspace admins can update group nesting.';
+      return;
+    }
+    this.groupEditPending = true;
+    this.error = null;
+    try {
+      const { workspaceId, baseUrl, appNpub } = resolveTowerPgWorkspaceContext(this);
+      if (!workspaceId || !baseUrl) throw new Error('Flight Deck PG workspace is not connected');
+      await removeTowerPgWorkspaceChildGroup(workspaceId, parentGroupId, childGroupId, { baseUrl, appNpub });
+      await this.refreshGroups({ force: true, minIntervalMs: 0 });
+    } catch (error) {
+      this.error = error?.message || 'Failed to remove nested group';
+    } finally {
+      this.groupEditPending = false;
+    }
+  },
+
   async generateShareLink() {
     if (!this.canAdminWorkspace) {
       this.shareInviteError = 'Only workspace admins can generate invite links.';
@@ -1023,6 +1318,21 @@ export const channelsManagerMixin = {
 
       const alreadyMember = (group.member_npubs || []).includes(inviteeNpub);
       if (!alreadyMember) {
+        if (isTowerPgBackendMode()) {
+          const { workspaceId, baseUrl, appNpub } = resolveTowerPgWorkspaceContext(this);
+          if (!workspaceId || !baseUrl) throw new Error('Flight Deck PG workspace is not connected');
+          await createTowerPgWorkspaceMember(workspaceId, {
+            member_npub: inviteeNpub,
+            role: 'member',
+            kind: 'human',
+          }, { baseUrl, appNpub });
+          await addTowerPgWorkspaceGroupMember(workspaceId, groupId, {
+            member_npub: inviteeNpub,
+          }, { baseUrl, appNpub });
+          await this.refreshGroups({ force: true, minIntervalMs: 0 });
+          this.shareInviteUrl = 'Member added to this PG workspace and group.';
+          return;
+        }
         await this.addEncryptedGroupMember(groupId, inviteeNpub);
       }
 
