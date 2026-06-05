@@ -27,6 +27,10 @@ import { wappsManagerMixin } from './wapps-manager.js';
 import { reportsManagerMixin } from './reports-manager.js';
 import { filesManagerMixin } from './files-manager.js';
 import { hydrateTowerPgDocumentsAndFiles, hydrateTowerPgTasks } from './pg-read-hydrator.js';
+import {
+  createTowerPgTaskFromLocal,
+  updateTowerPgTaskFromLocal,
+} from './pg-write-adapter.js';
 import { createShellState } from './shell-state.js';
 import {
   checkoutErrorMessage,
@@ -3426,6 +3430,26 @@ export function initApp() {
       this.tasks = mergeTaskIntoList(this.tasks, localRow);
       this.newTaskTitle = '';
 
+      if (isTowerPgBackendMode()) {
+        try {
+          const createdTask = await createTowerPgTaskFromLocal(this, localRow);
+          await upsertTask(createdTask);
+          this.tasks = mergeTaskIntoList(
+            this.tasks.filter((task) => task.record_id !== localRow.record_id),
+            createdTask,
+          );
+          await this.refreshTasks();
+          return createdTask;
+        } catch (error) {
+          await upsertTask({ ...localRow, sync_status: 'failed', updated_at: new Date().toISOString() });
+          this.tasks = this.tasks.map((task) => task.record_id === localRow.record_id
+            ? { ...localRow, sync_status: 'failed' }
+            : task);
+          this.error = error?.message || 'Failed to create PG task';
+          return null;
+        }
+      }
+
       const taskWriteFields = await this.getTaskWriteFieldsForWrite(localRow);
       const envelope = await outboundTask({
         ...localRow,
@@ -3602,6 +3626,22 @@ export function initApp() {
 
       if (this.editingTask?.record_id === taskId) {
         this.editingTask = { ...updated };
+      }
+
+      if (isTowerPgBackendMode()) {
+        try {
+          const acceptedTask = await updateTowerPgTaskFromLocal(this, updated, task, patch);
+          await upsertTask(acceptedTask);
+          this.tasks = this.tasks.map((entry) => entry.record_id === taskId ? acceptedTask : entry);
+          if (this.editingTask?.record_id === taskId) this.editingTask = { ...acceptedTask };
+          if (options.refresh) await this.refreshTasks();
+          return acceptedTask;
+        } catch (error) {
+          await upsertTask({ ...updated, sync_status: 'failed', updated_at: new Date().toISOString() });
+          this.tasks = this.tasks.map((entry) => entry.record_id === taskId ? { ...updated, sync_status: 'failed' } : entry);
+          this.error = error?.message || 'Failed to update PG task';
+          return null;
+        }
       }
 
       const queueOptions = {

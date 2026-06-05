@@ -6,6 +6,8 @@ Planning restored and app-card baseline available. `wm-fd-2` is a clean copy of 
 
 Phase 2 is complete. PG mode can hydrate Tower PG scopes, accessible channels, chat messages/thread structure, tasks, docs, file metadata, and audio-note metadata into the existing Dexie-backed Flight Deck navigation, board, docs, files, and audio models.
 
+Phase 3 has started with an online-only task/chat write adapter slice. This is not yet the full PH3 queue contract: offline PG writes, task scope/channel moves, attachments, and doc/file/audio writes still need the remaining tickets.
+
 ## Decisions
 
 - Preserve the existing Flight Deck UI.
@@ -47,6 +49,7 @@ Phase 2 is complete. PG mode can hydrate Tower PG scopes, accessible channels, c
 - Renamed completed PH2-02 work package with the `COMPLETED-` prefix.
 - Completed PH2-03 PG read hydrator: added Tower PG docs/files/audio metadata API helpers; mapped PG docs into classic documents, PG files into storage-link document rows for the existing Files browser, and PG audio notes into classic audio-note rows; hydrated docs/files/audio after PG workspace bootstrap/switch.
 - Renamed completed PH2-03 work package with the `COMPLETED-` prefix.
+- Added initial Phase 3 online write adapter slice: Tower PG POST/PATCH helpers, a PG write adapter module, PG-mode task create/update/state routing, and PG-mode chat thread/message/reply creation from the existing classic UI. Kept PH3 tickets open because the offline queue and broader write surfaces are not complete.
 
 ## Outputs
 
@@ -59,3 +62,4 @@ Phase 2 is complete. PG mode can hydrate Tower PG scopes, accessible channels, c
 - PH2-01 validation: `bun run test -- tests/pg-read-hydrator.test.js tests/api-pg-workspaces.test.js tests/backend-mode.test.js tests/pg-workspace-manager.test.js tests/shell-state.test.js`; `bun run build`.
 - PH2-02 validation: `bun run test -- tests/pg-read-hydrator.test.js tests/api-pg-workspaces.test.js tests/backend-mode.test.js tests/pg-workspace-manager.test.js tests/shell-state.test.js`; `bun run build`.
 - PH2-03 validation: `bun run test -- tests/pg-read-hydrator.test.js tests/api-pg-workspaces.test.js tests/backend-mode.test.js tests/pg-workspace-manager.test.js tests/shell-state.test.js`; `bun run build`.
+- Phase 3 online write slice validation: `bun run test -- tests/pg-write-adapter.test.js tests/pg-read-hydrator.test.js tests/api-pg-workspaces.test.js tests/backend-mode.test.js tests/pg-workspace-manager.test.js tests/shell-state.test.js`; `bun run build`.

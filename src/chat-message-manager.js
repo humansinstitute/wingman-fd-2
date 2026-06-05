@@ -42,6 +42,8 @@ import { buildStoredFlowKickoffScopeAssignment } from './task-flow-helpers.js';
 import { UNSCOPED_TASK_BOARD_ID } from './task-board-state.js';
 import { sameListBySignature } from './utils/state-helpers.js';
 import { getRecordWriteFieldsForStore } from './preferred-write-group.js';
+import { isTowerPgBackendMode } from './backend-mode.js';
+import { createTowerPgMessageFromLocal } from './pg-write-adapter.js';
 import { buildSectionUrl, parseRouteLocation } from './route-helpers.js';
 import {
   hasPreviewId,
@@ -794,6 +796,10 @@ export const chatMessageManagerMixin = {
       this.error = 'Select a channel first';
       return;
     }
+    if (isTowerPgBackendMode() && drafts.length > 0) {
+      this.error = 'Audio drafts are not available in Tower PG chat yet.';
+      return;
+    }
 
     const channel = this.selectedChannel;
     if (!channel) {
@@ -834,6 +840,23 @@ export const chatMessageManagerMixin = {
     this.messageInput = '';
     this.messageAudioDrafts = [];
     this.scheduleComposerAutosize('message');
+
+    if (isTowerPgBackendMode()) {
+      try {
+        const accepted = await createTowerPgMessageFromLocal(this, localRow);
+        await upsertMessage(accepted);
+        this.messages = this.messages.filter((message) => message.record_id !== localRow.record_id);
+        this.patchMessageLocal(accepted);
+        this._fireMentionTriggers(body, `chat #${channel.label || channel.record_id}`, {
+          channelId: this.selectedChannelId,
+        });
+        await this.refreshMessages({ scrollToLatest: true });
+      } catch (error) {
+        await this.setMessageSyncStatus(msgId, 'failed');
+        this.error = error?.message || 'Failed to sync PG message';
+      }
+      return;
+    }
 
     try {
       const envelope = await outboundChatMessage({
@@ -876,6 +899,10 @@ export const chatMessageManagerMixin = {
       this.error = 'Open a thread first';
       return;
     }
+    if (isTowerPgBackendMode() && drafts.length > 0) {
+      this.error = 'Audio drafts are not available in Tower PG chat yet.';
+      return;
+    }
 
     const channel = this.selectedChannel;
     if (!channel) {
@@ -915,6 +942,24 @@ export const chatMessageManagerMixin = {
     this.threadInput = '';
     this.threadAudioDrafts = [];
     this.scheduleComposerAutosize('thread');
+
+    if (isTowerPgBackendMode()) {
+      try {
+        const parentMessage = this.getThreadParentMessage();
+        const accepted = await createTowerPgMessageFromLocal(this, localRow, { parentMessage });
+        await upsertMessage(accepted);
+        this.messages = this.messages.filter((message) => message.record_id !== localRow.record_id);
+        this.patchMessageLocal(accepted);
+        this._fireMentionTriggers(body, `chat #${channel.label || channel.record_id}`, {
+          channelId: this.selectedChannelId,
+        });
+        await this.refreshMessages({ scrollThreadToLatest: true });
+      } catch (error) {
+        await this.setMessageSyncStatus(msgId, 'failed');
+        this.error = error?.message || 'Failed to sync PG reply';
+      }
+      return;
+    }
 
     try {
       const envelope = await outboundChatMessage({
