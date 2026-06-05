@@ -8,6 +8,7 @@ import { createNip98AuthHeader, createNip98AuthHeaderForSecret } from './auth/no
 import { getActiveSessionNpub } from './crypto/group-keys.js';
 import { getActiveWorkspaceKeyNpub, getActiveWorkspaceKeySecretForAuth } from './crypto/workspace-keys.js';
 import { buildFlightDeckSyncRequest } from './superbased/sync-request.js';
+import { APP_NPUB } from './app-identity.js';
 
 let _baseUrl = '';
 
@@ -151,6 +152,32 @@ async function signedFetchAbsolute(requestUrl, { method = 'GET', body } = {}, op
   });
 }
 
+function resolveTowerPgUrl(pathOrUrl, baseUrl = _baseUrl) {
+  const value = String(pathOrUrl || '').trim();
+  if (!value) throw new Error('Tower PG request path is required');
+  if (/^https?:\/\//i.test(value)) return value;
+  const base = String(baseUrl || _baseUrl || '').trim().replace(/\/+$/, '');
+  if (!base) throw new Error('Backend URL not configured');
+  return `${base}${value.startsWith('/') ? value : `/${value}`}`;
+}
+
+async function signedTowerPgFetch(pathOrUrl, { method = 'GET', body, baseUrl = _baseUrl, appNpub = APP_NPUB } = {}) {
+  const requestUrl = resolveTowerPgUrl(pathOrUrl, baseUrl);
+  const headers = {
+    Authorization: await createApiAuthHeader(requestUrl, method, body ?? null, { useWorkspaceKey: false }),
+  };
+  const cleanAppNpub = String(appNpub || '').trim();
+  if (cleanAppNpub) headers['x-flightdeck-pg-app-npub'] = cleanAppNpub;
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+
+  return fetch(requestUrl, {
+    method,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(DEFAULT_FETCH_TIMEOUT_MS),
+  });
+}
+
 async function signedFetchWithFallbacks(path, { method = 'GET', body } = {}, options = {}) {
   const result = await signedFetchWithFallbackMeta(path, { method, body }, options);
   return result.response;
@@ -276,6 +303,41 @@ export async function getWorkspaces(memberNpub) {
   const requestUrl = url(requestPath);
   const resp = await signedFetchWithFallbacks(requestPath, {}, { useWorkspaceKey: false });
   return json(resp, { requestUrl, method: 'GET' });
+}
+
+export async function getTowerPgService({ baseUrl = _baseUrl, appNpub = APP_NPUB } = {}) {
+  const requestPath = '/api/v4/flightdeck-pg/service';
+  const requestUrl = resolveTowerPgUrl(requestPath, baseUrl);
+  const resp = await signedTowerPgFetch(requestPath, { baseUrl, appNpub });
+  return json(resp, { requestUrl, method: 'GET', prefix: 'Tower PG API' });
+}
+
+export async function listTowerPgWorkspaces({ baseUrl = _baseUrl, appNpub = APP_NPUB, limit = 50 } = {}) {
+  const params = new URLSearchParams();
+  if (appNpub) params.set('app_npub', String(appNpub));
+  if (limit) params.set('limit', String(limit));
+  const requestPath = `/api/v4/flightdeck-pg/workspaces?${params.toString()}`;
+  const requestUrl = resolveTowerPgUrl(requestPath, baseUrl);
+  const resp = await signedTowerPgFetch(requestPath, { baseUrl, appNpub });
+  return json(resp, { requestUrl, method: 'GET', prefix: 'Tower PG API' });
+}
+
+export async function getTowerPgWorkspaceDescriptor(workspaceId, { baseUrl = _baseUrl, appNpub = APP_NPUB, path = null } = {}) {
+  const encodedWorkspaceId = encodeURIComponent(String(workspaceId || '').trim());
+  if (!encodedWorkspaceId && !path) throw new Error('Tower PG workspace id is required');
+  const requestPath = path || `/api/v4/flightdeck-pg/workspaces/${encodedWorkspaceId}/descriptor`;
+  const requestUrl = resolveTowerPgUrl(requestPath, baseUrl);
+  const resp = await signedTowerPgFetch(requestPath, { baseUrl, appNpub });
+  return json(resp, { requestUrl, method: 'GET', prefix: 'Tower PG API' });
+}
+
+export async function getTowerPgWorkspaceMe(workspaceId, { baseUrl = _baseUrl, appNpub = APP_NPUB, path = null } = {}) {
+  const encodedWorkspaceId = encodeURIComponent(String(workspaceId || '').trim());
+  if (!encodedWorkspaceId && !path) throw new Error('Tower PG workspace id is required');
+  const requestPath = path || `/api/v4/flightdeck-pg/workspaces/${encodedWorkspaceId}/me`;
+  const requestUrl = resolveTowerPgUrl(requestPath, baseUrl);
+  const resp = await signedTowerPgFetch(requestPath, { baseUrl, appNpub });
+  return json(resp, { requestUrl, method: 'GET', prefix: 'Tower PG API' });
 }
 
 export async function recoverWorkspace(body) {

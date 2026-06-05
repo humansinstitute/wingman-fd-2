@@ -2,7 +2,7 @@
 
 ## Current Status
 
-Planning restored and app-card baseline available. `wm-fd-2` is a clean copy of `wingman-fd` with migration docs, installed dependencies, built static assets, and a running Autopilot app-card instance. PH1-01 has started the product migration baseline with an app-side backend-mode boundary.
+Planning restored and app-card baseline available. `wm-fd-2` is a clean copy of `wingman-fd` with migration docs, installed dependencies, built static assets, and a running Autopilot app-card instance. PH1-01 established the app-side backend-mode boundary, and PH1-02 now connects that boundary to Tower PG workspace descriptors through the classic Flight Deck connection flow.
 
 ## Decisions
 
@@ -25,9 +25,14 @@ Planning restored and app-card baseline available. `wm-fd-2` is a clean copy of 
 - App-card baseline available at `https://near-tea-crab.rick.runwingman.com`.
 - Removed the copied PM2 runtime file from source control and ignored it.
 - Added PH1-01 backend-mode resolution for `encrypted-records` and `tower-pg`.
+- Added PH1-02 PG auth/workspace connection wiring in `tower-pg` mode: the classic connect modal now accepts Tower PG workspace descriptors, stores verified descriptor metadata in the existing known-workspaces settings state, and calls Tower PG service, workspace list, descriptor, and `/me` routes with browser NIP-98 auth.
+- Added PH1-02 focused coverage for PG descriptor parsing, credential rejection, PG workspace materialization, PG workspace identity merging, and descriptor persistence through the existing connection manager.
+- Fixed PG workspace normalization so descriptor-backed workspaces do not generate or persist SuperBased connection tokens.
+- Recovered PH1-02 from stalled pipeline run `b1854b43-088e-4eae-9c34-905c7d9d74f6`; retained the useful partial patch, completed tests/build locally, and will continue with one ticket per pipeline where the runner remains healthy.
 
 ## Outputs
 
 - Migration plan is ready for pipeline execution.
 - App-card baseline is available for pipeline work.
-- PG migration product code now has a mode boundary, while UI behavior remains unchanged.
+- PG migration product code now has a mode boundary plus descriptor-based Tower PG workspace connection in the existing Flight Deck UI.
+- PH1-02 validation: `bunx vitest run tests/backend-mode.test.js tests/api-pg-workspaces.test.js tests/pg-workspace-descriptor.test.js tests/workspaces.test.js tests/connect-settings-manager.test.js tests/pg-connect-settings-manager.test.js`; `bun run build`.

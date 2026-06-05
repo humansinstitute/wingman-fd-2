@@ -61,6 +61,23 @@ function sameWorkspaceIdentity(left = {}, right = {}) {
   const rightOwner = String(right.workspaceOwnerNpub || '').trim();
   if (!leftOwner || !rightOwner || leftOwner !== rightOwner) return false;
 
+  if (left.pgBackendMode || right.pgBackendMode) {
+    const leftKey = String(left.workspaceKey || '').trim();
+    const rightKey = String(right.workspaceKey || '').trim();
+    if (leftKey && rightKey) return leftKey === rightKey;
+
+    const leftTower = String(left.towerServiceNpub || left.serviceNpub || '').trim();
+    const rightTower = String(right.towerServiceNpub || right.serviceNpub || '').trim();
+    const leftWorkspace = String(left.workspaceServiceNpub || '').trim();
+    const rightWorkspace = String(right.workspaceServiceNpub || '').trim();
+    const leftApp = String(left.appNpub || '').trim();
+    const rightApp = String(right.appNpub || '').trim();
+    return Boolean(leftTower && rightTower && leftWorkspace && rightWorkspace && leftApp && rightApp
+      && leftTower === rightTower
+      && leftWorkspace === rightWorkspace
+      && leftApp === rightApp);
+  }
+
   const leftService = String(left.serviceNpub || '').trim();
   const rightService = String(right.serviceNpub || '').trim();
   if (leftService && rightService) return leftService === rightService;
@@ -107,6 +124,8 @@ export function normalizeWorkspaceEntry(raw = {}) {
     || ''
   ).trim();
   const serviceNpub = String(raw.serviceNpub || raw.service_npub || parsedToken.serviceNpub || '').trim() || null;
+  const towerServiceNpub = String(raw.towerServiceNpub || raw.tower_service_npub || '').trim() || serviceNpub || null;
+  const workspaceServiceNpub = String(raw.workspaceServiceNpub || raw.workspace_service_npub || '').trim() || null;
   const appNpub = String(raw.appNpub || raw.app_npub || parsedToken.appNpub || APP_NPUB || '').trim() || null;
   const relayUrls = sanitizeRelayUrls(raw.relayUrls ?? raw.relay_urls ?? parsedToken.relayUrls);
   const towerName = sanitizeOptionalString(
@@ -141,8 +160,10 @@ export function normalizeWorkspaceEntry(raw = {}) {
     ?? null,
   );
 
-  const connectionToken = token
-    || buildSuperBasedConnectionToken({
+  const pgBackendMode = Boolean(raw.pgBackendMode || raw.pg_backend_mode);
+  const connectionToken = pgBackendMode
+    ? token
+    : (token || buildSuperBasedConnectionToken({
       directHttpsUrl,
       serviceNpub,
       towerName,
@@ -150,7 +171,7 @@ export function normalizeWorkspaceEntry(raw = {}) {
       workspaceOwnerNpub,
       appNpub,
       relayUrls,
-    });
+    }));
 
   const slug = String(raw.slug || '').trim() || slugify(name);
   const workspaceKey = String(raw.workspaceKey || raw.workspace_key || '').trim()
@@ -165,6 +186,14 @@ export function normalizeWorkspaceEntry(raw = {}) {
     avatarUrl,
     directHttpsUrl,
     serviceNpub,
+    towerServiceNpub,
+    workspaceServiceNpub,
+    workspaceId: String(raw.workspaceId || raw.workspace_id || '').trim() || null,
+    pgBackendMode,
+    pgDescriptor: raw.pgDescriptor || raw.pg_descriptor || null,
+    pgDescriptorVerifiedAt: String(raw.pgDescriptorVerifiedAt || raw.pg_descriptor_verified_at || '').trim() || null,
+    pgMe: raw.pgMe || raw.pg_me || null,
+    capabilities: Array.isArray(raw.capabilities) ? raw.capabilities : [],
     towerName,
     towerDescription,
     appNpub,
@@ -197,6 +226,14 @@ function normalizeWorkspacePatch(raw = {}) {
     [['avatarUrl', 'avatar_url', 'workspace_avatar_url', 'workspaceAvatarUrl'], 'avatarUrl'],
     [['directHttpsUrl', 'direct_https_url', 'backendUrl', 'httpUrl'], 'directHttpsUrl'],
     [['serviceNpub', 'service_npub'], 'serviceNpub'],
+    [['towerServiceNpub', 'tower_service_npub'], 'towerServiceNpub'],
+    [['workspaceServiceNpub', 'workspace_service_npub'], 'workspaceServiceNpub'],
+    [['workspaceId', 'workspace_id'], 'workspaceId'],
+    [['pgBackendMode', 'pg_backend_mode'], 'pgBackendMode'],
+    [['pgDescriptor', 'pg_descriptor'], 'pgDescriptor'],
+    [['pgDescriptorVerifiedAt', 'pg_descriptor_verified_at'], 'pgDescriptorVerifiedAt'],
+    [['pgMe', 'pg_me'], 'pgMe'],
+    [['capabilities'], 'capabilities'],
     [['towerName', 'tower_name'], 'towerName'],
     [['towerDescription', 'tower_description'], 'towerDescription'],
     [['appNpub', 'app_npub'], 'appNpub'],

@@ -9,15 +9,24 @@ import {
   setBaseUrl,
   createWorkspace,
   getWorkspaces,
+  getTowerPgService,
+  getTowerPgWorkspaceDescriptor,
+  getTowerPgWorkspaceMe,
+  listTowerPgWorkspaces,
 } from './api.js';
 import {
   normalizeWorkspaceEntry,
   workspaceFromToken,
 } from './workspaces.js';
+import { isTowerPgBackendMode } from './backend-mode.js';
 import { normalizeBackendUrl } from './utils/state-helpers.js';
 import { parseSuperBasedToken, buildSuperBasedConnectionToken } from './superbased-token.js';
 import { buildAgentConnectPackage } from './agent-connect.js';
 import { APP_NPUB, DEFAULT_SUPERBASED_URL } from './app-identity.js';
+import {
+  parsePgWorkspaceDescriptor,
+  pgWorkspaceEntryFromDescriptor,
+} from './pg-workspace-descriptor.js';
 import {
   personalEncryptForNpub,
 } from './auth/nostr.js';
@@ -46,6 +55,26 @@ function buildDefaultKnownHosts() {
   }];
 }
 
+function looksLikeJsonObject(value) {
+  return String(value || '').trim().startsWith('{');
+}
+
+function pgWorkspaceIdFromEntry(entry = {}) {
+  return trimText(
+    entry.workspaceId
+    || entry.workspace_id
+    || entry.identity?.workspace_id
+  );
+}
+
+function pgWorkspaceLabel(entry = {}) {
+  return trimText(entry.label || entry.name) || 'Untitled workspace';
+}
+
+function pgErrorMessage(error, fallback = 'Flight Deck PG connection failed') {
+  return error?.message || String(error || fallback);
+}
+
 async function fetchTowerDiscovery(url, fallbackLabel = '') {
   const cleanUrl = trimUrl(url);
   if (!cleanUrl) throw new Error('URL is required');
@@ -69,6 +98,10 @@ async function fetchTowerDiscovery(url, fallbackLabel = '') {
 // ---------------------------------------------------------------------------
 
 export const connectSettingsManagerMixin = {
+
+  get isTowerPgMode() {
+    return isTowerPgBackendMode();
+  },
 
   // --- settings ---
 
@@ -112,6 +145,14 @@ export const connectSettingsManagerMixin = {
   async saveConnectionSettings() {
     this.superbasedError = null;
     const token = String(this.superbasedTokenInput || '').trim();
+    if (isTowerPgBackendMode() && token && looksLikeJsonObject(token)) {
+      try {
+        await this.connectWithPgDescriptor(token, { closeModal: false });
+      } catch (error) {
+        this.superbasedError = pgErrorMessage(error);
+      }
+      return;
+    }
     if (token) {
       const config = parseSuperBasedToken(token);
       if (!config.isValid || !config.directHttpsUrl) {
@@ -222,6 +263,9 @@ export const connectSettingsManagerMixin = {
   },
 
   async connectToHost(hostUrl, hostLabel) {
+    if (isTowerPgBackendMode()) {
+      return this.connectToPgHost(hostUrl, hostLabel);
+    }
     this.connectHostError = null;
     this.connectHostBusy = true;
     try {
@@ -256,12 +300,62 @@ export const connectSettingsManagerMixin = {
     await this.connectToHost(this.connectManualUrl, '');
   },
 
+  async connectToPgHost(hostUrl, hostLabel) {
+    if (!this.session?.npub) {
+      this.connectHostError = 'Sign in first';
+      return;
+    }
+    this.connectHostError = null;
+    this.connectHostBusy = true;
+    try {
+      const cleanUrl = trimUrl(hostUrl);
+      if (!cleanUrl) throw new Error('URL is required');
+      this.backendUrl = normalizeBackendUrl(cleanUrl);
+      setBaseUrl(this.backendUrl);
+      const result = await getTowerPgService({ baseUrl: this.backendUrl, appNpub: APP_NPUB });
+      const service = result.service || {};
+      const towerName = trimText(service.name);
+      const towerDescription = trimText(service.description);
+      this.connectHostUrl = this.backendUrl;
+      this.connectHostLabel = towerName || trimText(hostLabel) || this.backendUrl;
+      this.connectHostServiceNpub = trimText(service.service_npub);
+      this.connectHostTowerName = towerName;
+      this.connectHostTowerDescription = towerDescription;
+      this.addKnownHost({
+        url: this.backendUrl,
+        label: this.connectHostLabel,
+        serviceNpub: this.connectHostServiceNpub,
+        towerName,
+        towerDescription,
+      });
+      await this.saveSettings();
+      this.connectStep = 2;
+      await this.loadConnectWorkspaces();
+    } catch (error) {
+      this.connectHostError = `Failed to connect: ${pgErrorMessage(error)}`;
+    } finally {
+      this.connectHostBusy = false;
+    }
+  },
+
   async connectByo() {
     const input = String(this.connectManualUrl || '').trim();
     if (!input) return;
     // If it looks like a URL, treat as host URL
     if (/^https?:\/\//i.test(input)) {
       return this.connectToHost(input, '');
+    }
+    if (isTowerPgBackendMode() && looksLikeJsonObject(input)) {
+      try {
+        await this.connectWithPgDescriptor(input);
+      } catch (error) {
+        this.connectHostError = pgErrorMessage(error);
+      }
+      return;
+    }
+    if (isTowerPgBackendMode()) {
+      this.connectHostError = 'Enter a Tower URL (https://...) or paste a Flight Deck PG descriptor';
+      return;
     }
     // Otherwise try to parse as a connection token
     const parsed = parseSuperBasedToken(input);
@@ -279,6 +373,25 @@ export const connectSettingsManagerMixin = {
     this.connectWorkspacesBusy = true;
     this.connectWorkspacesError = null;
     try {
+      if (isTowerPgBackendMode()) {
+        const result = await listTowerPgWorkspaces({
+          baseUrl: this.connectHostUrl || this.backendUrl,
+          appNpub: APP_NPUB,
+        });
+        this.connectWorkspaces = (result.workspaces || []).map((entry) => ({
+          ...entry,
+          directHttpsUrl: entry.tower_base_url || this.connectHostUrl || this.backendUrl,
+          serviceNpub: entry.identity?.tower_service_npub || this.connectHostServiceNpub,
+          workspaceId: entry.identity?.workspace_id,
+          workspaceOwnerNpub: entry.identity?.workspace_owner_npub,
+          workspaceServiceNpub: entry.identity?.workspace_service_npub,
+          appNpub: entry.identity?.app_npub || APP_NPUB,
+          name: entry.label,
+          description: entry.description,
+          pgBackendMode: true,
+        }));
+        return;
+      }
       const result = await getWorkspaces(this.session.npub);
       this.connectWorkspaces = (result.workspaces || []).map((entry) => ({
         ...entry,
@@ -295,6 +408,9 @@ export const connectSettingsManagerMixin = {
   },
 
   async connectSelectWorkspace(workspaceEntry) {
+    if (isTowerPgBackendMode()) {
+      return this.connectSelectPgWorkspace(workspaceEntry);
+    }
     const workspace = normalizeWorkspaceEntry({
       ...workspaceEntry,
       directHttpsUrl: this.connectHostUrl,
@@ -316,7 +432,100 @@ export const connectSettingsManagerMixin = {
     await this.selectWorkspace(workspace.workspaceKey || workspace.workspaceOwnerNpub);
   },
 
+  async verifyPgDescriptor(descriptorInput, { baseUrl = null } = {}) {
+    if (!this.session?.npub) throw new Error('Sign in first');
+    const candidate = parsePgWorkspaceDescriptor(descriptorInput);
+    const towerBaseUrl = normalizeBackendUrl(baseUrl || candidate.towerBaseUrl);
+    const descriptor = await getTowerPgWorkspaceDescriptor(candidate.workspaceId, {
+      baseUrl: towerBaseUrl,
+      appNpub: candidate.appNpub || APP_NPUB,
+      path: candidate.links.descriptor || null,
+    });
+    const verified = parsePgWorkspaceDescriptor({
+      ...descriptor,
+      tower_base_url: descriptor.tower_base_url || towerBaseUrl,
+    });
+    if (candidate.towerServiceNpub && verified.towerServiceNpub && candidate.towerServiceNpub !== verified.towerServiceNpub) {
+      throw new Error('Workspace descriptor Tower identity mismatch');
+    }
+    if (candidate.workspaceServiceNpub && verified.workspaceServiceNpub !== candidate.workspaceServiceNpub) {
+      throw new Error('Workspace descriptor workspace identity mismatch');
+    }
+    if (candidate.appNpub && verified.appNpub !== candidate.appNpub) {
+      throw new Error('Workspace descriptor app identity mismatch');
+    }
+    const me = await getTowerPgWorkspaceMe(verified.workspaceId, {
+      baseUrl: towerBaseUrl,
+      appNpub: verified.appNpub || APP_NPUB,
+      path: verified.links.me || null,
+    });
+    return { descriptor: verified, me };
+  },
+
+  async rememberVerifiedPgWorkspace(descriptor, me = null) {
+    const workspace = normalizeWorkspaceEntry(pgWorkspaceEntryFromDescriptor(descriptor, {
+      me,
+      verifiedAt: new Date().toISOString(),
+    }));
+    if (!workspace) throw new Error('Verified workspace descriptor could not be stored');
+    this.backendUrl = normalizeBackendUrl(workspace.directHttpsUrl || this.backendUrl);
+    if (this.backendUrl) setBaseUrl(this.backendUrl);
+    this.addKnownHost({
+      url: this.backendUrl,
+      label: workspace.towerName || workspace.directHttpsUrl || this.backendUrl,
+      serviceNpub: workspace.towerServiceNpub || workspace.serviceNpub,
+      towerName: workspace.towerName,
+      towerDescription: workspace.towerDescription,
+    });
+    this.mergeKnownWorkspaces([workspace]);
+    this.selectedWorkspaceKey = workspace.workspaceKey || '';
+    this.currentWorkspaceOwnerNpub = workspace.workspaceOwnerNpub;
+    this.ownerNpub = workspace.workspaceOwnerNpub;
+    this.superbasedTokenInput = '';
+    await this.saveSettings();
+    return workspace;
+  },
+
+  async connectWithPgDescriptor(descriptorInput, { closeModal = true } = {}) {
+    const { descriptor, me } = await this.verifyPgDescriptor(descriptorInput);
+    const workspace = await this.rememberVerifiedPgWorkspace(descriptor, me);
+    if (closeModal) this.showConnectModal = false;
+    await this.selectWorkspace(workspace.workspaceKey || workspace.workspaceOwnerNpub);
+    return workspace;
+  },
+
+  async connectSelectPgWorkspace(workspaceEntry) {
+    const workspaceId = pgWorkspaceIdFromEntry(workspaceEntry);
+    if (!workspaceId) return;
+    this.connectWorkspacesError = null;
+    this.connectWorkspacesBusy = true;
+    try {
+      const baseUrl = normalizeBackendUrl(workspaceEntry.directHttpsUrl || this.connectHostUrl || this.backendUrl);
+      const descriptorPath = workspaceEntry.links?.descriptor || null;
+      const descriptor = await getTowerPgWorkspaceDescriptor(workspaceId, {
+        baseUrl,
+        appNpub: workspaceEntry.appNpub || APP_NPUB,
+        path: descriptorPath,
+      });
+      const { descriptor: verified, me } = await this.verifyPgDescriptor({
+        ...descriptor,
+        tower_base_url: descriptor.tower_base_url || baseUrl,
+      }, { baseUrl });
+      const workspace = await this.rememberVerifiedPgWorkspace(verified, me);
+      this.showConnectModal = false;
+      await this.selectWorkspace(workspace.workspaceKey || workspace.workspaceOwnerNpub);
+    } catch (error) {
+      this.connectWorkspacesError = `Failed to connect to ${pgWorkspaceLabel(workspaceEntry)}: ${pgErrorMessage(error)}`;
+    } finally {
+      this.connectWorkspacesBusy = false;
+    }
+  },
+
   async connectCreateWorkspace() {
+    if (isTowerPgBackendMode()) {
+      this.connectWorkspacesError = 'Create PG workspaces from Tower, then connect here with the descriptor.';
+      return;
+    }
     const memberNpub = this.session?.npub;
     if (!memberNpub) { this.connectWorkspacesError = 'Sign in first'; return; }
     const name = String(this.connectNewWorkspaceName || '').trim();
@@ -366,6 +575,14 @@ export const connectSettingsManagerMixin = {
   async connectWithToken() {
     const token = String(this.connectTokenInput || '').trim();
     if (!token) return;
+    if (isTowerPgBackendMode() && looksLikeJsonObject(token)) {
+      try {
+        await this.connectWithPgDescriptor(token);
+      } catch (error) {
+        this.connectWorkspacesError = pgErrorMessage(error);
+      }
+      return;
+    }
     this.superbasedTokenInput = token;
     await this.saveConnectionSettings();
     this.showConnectModal = false;

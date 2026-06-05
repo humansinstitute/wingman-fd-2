@@ -370,8 +370,8 @@
         <!-- Step 1: Choose host -->
         <template x-if="$store.chat.connectStep === 1">
           <div>
-            <h2>Connect to SuperBased</h2>
-            <p>Choose a host or enter a custom URL.</p>
+            <h2 x-text="$store.chat.isTowerPgMode ? 'Connect to Flight Deck PG' : 'Connect to SuperBased'"></h2>
+            <p x-text="$store.chat.isTowerPgMode ? 'Choose a Tower host or paste a workspace descriptor.' : 'Choose a host or enter a custom URL.'"></p>
             <div class="connect-hosts-list">
               <template x-for="host in $store.chat.mergedHostsList" :key="host.url">
                 <button type="button" class="connect-host-row" @click="$store.chat.connectToHost(host.url, host.towerName || host.label || host.url)" :disabled="$store.chat.connectHostBusy">
@@ -383,8 +383,8 @@
             </div>
             <form class="connect-manual-form" @submit.prevent="$store.chat.connectByo()">
               <label>
-                <span>BYO SuperBased</span>
-                <input type="text" x-model="$store.chat.connectManualUrl" placeholder="URL or connection token" :disabled="$store.chat.connectHostBusy" />
+                <span x-text="$store.chat.isTowerPgMode ? 'BYO Tower PG' : 'BYO SuperBased'"></span>
+                <input type="text" x-model="$store.chat.connectManualUrl" :placeholder="$store.chat.isTowerPgMode ? 'URL or workspace descriptor JSON' : 'URL or connection token'" :disabled="$store.chat.connectHostBusy" />
               </label>
               <button class="auth-option" type="submit" :disabled="$store.chat.connectHostBusy || !$store.chat.connectManualUrl.trim()">
                 <span x-show="!$store.chat.connectHostBusy">Connect</span>
@@ -417,7 +417,7 @@
               No workspaces found on this host. Create one below.
             </p>
             <p class="auth-error" x-show="$store.chat.connectWorkspacesError" x-text="$store.chat.connectWorkspacesError"></p>
-            <div class="connect-create-workspace">
+            <div class="connect-create-workspace" x-show="!$store.chat.isTowerPgMode">
               <strong>Create new workspace</strong>
               <form class="connect-create-form" @submit.prevent="$store.chat.connectCreateWorkspace()">
                 <label><span>Name</span><input type="text" x-model="$store.chat.connectNewWorkspaceName" placeholder="My workspace" /></label>
