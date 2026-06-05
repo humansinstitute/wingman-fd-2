@@ -988,6 +988,7 @@ export const workspaceManagerMixin = {
       if (isTowerPgBackendMode() && workspace.pgBackendMode) {
         await this.refreshScopes?.();
         await this.refreshChannels?.();
+        await this.refreshTasks?.();
       }
       this.syncWorkspaceProfileDraft({ force: true });
     } finally {

@@ -1,12 +1,16 @@
 import { APP_NPUB } from './app-identity.js';
 import {
+  getTowerPgChannelMessages,
+  getTowerPgChannelTasks,
   getTowerPgChannelThreads,
   getTowerPgScopeChannels,
+  getTowerPgScopeTasks,
   getTowerPgWorkspaceScopes,
 } from './api.js';
 import {
   replaceChannelsForOwner,
-  replacePgThreadsForChannel,
+  replacePgMessagesForChannel,
+  replaceTasksForOwner,
   replaceScopesForOwner,
 } from './db.js';
 
@@ -142,6 +146,84 @@ export function mapPgThreadToLocal(thread, { workspaceOwnerNpub, senderNpub } = 
   };
 }
 
+export function mapPgMessageToLocal(message, { workspaceOwnerNpub, senderNpub, threadById = new Map() } = {}) {
+  const recordId = trimText(message?.id || message?.record_id);
+  const threadId = trimText(message?.thread_id);
+  const thread = threadId ? threadById.get(threadId) || null : null;
+  const sourceMessageId = trimText(thread?.source_message_id);
+  const updatedAt = isoTimestamp(message?.updated_at || message?.created_at);
+  return {
+    record_id: recordId,
+    channel_id: trimText(message?.channel_id),
+    parent_message_id: threadId && sourceMessageId && sourceMessageId !== recordId ? sourceMessageId : null,
+    body: trimText(message?.body),
+    attachments: [],
+    sender_npub: trimText(senderNpub) || trimText(workspaceOwnerNpub),
+    sync_status: 'synced',
+    record_state: 'active',
+    version: rowVersion(message?.row_version || message?.version),
+    created_at: isoTimestamp(message?.created_at || updatedAt),
+    updated_at: updatedAt,
+    pg_backend: true,
+    pg_record_type: 'message',
+    pg_workspace_id: trimText(message?.workspace_id),
+    pg_scope_id: trimText(message?.scope_id),
+    pg_thread_id: threadId || null,
+    pg_created_by_actor_id: trimText(message?.created_by_actor_id),
+    pg_updated_by_actor_id: trimText(message?.updated_by_actor_id),
+  };
+}
+
+export function mapPgTaskToLocal(task, { workspaceOwnerNpub } = {}) {
+  const scopeId = trimText(task?.scope_id);
+  const updatedAt = isoTimestamp(task?.updated_at || task?.created_at);
+  const metadata = task?.metadata && typeof task.metadata === 'object' && !Array.isArray(task.metadata)
+    ? task.metadata
+    : {};
+  return {
+    record_id: trimText(task?.id || task?.record_id),
+    owner_npub: trimText(workspaceOwnerNpub),
+    title: trimText(task?.title) || 'Untitled task',
+    description: trimText(task?.description),
+    state: trimText(task?.state) || 'new',
+    priority: trimText(task?.priority) || 'sand',
+    board_order: Number.isFinite(Number(metadata.board_order)) ? Number(metadata.board_order) : null,
+    parent_task_id: null,
+    board_group_id: null,
+    assigned_to_npub: null,
+    scheduled_for: null,
+    tags: typeof metadata.tags === 'string' ? metadata.tags : '',
+    scope_id: scopeId || null,
+    scope_l1_id: scopeId || null,
+    scope_l2_id: null,
+    scope_l3_id: null,
+    scope_l4_id: null,
+    scope_l5_id: null,
+    scope_policy_group_ids: null,
+    predecessor_task_ids: null,
+    flow_id: null,
+    flow_run_id: null,
+    flow_step: null,
+    source_links: [],
+    references: [],
+    deliverable_links: [],
+    shares: [],
+    group_ids: [],
+    sync_status: 'synced',
+    record_state: 'active',
+    version: rowVersion(task?.row_version || task?.version),
+    created_at: isoTimestamp(task?.created_at || updatedAt),
+    updated_at: updatedAt,
+    pg_backend: true,
+    pg_record_type: 'task',
+    pg_workspace_id: trimText(task?.workspace_id),
+    pg_channel_id: trimText(task?.channel_id),
+    pg_thread_id: trimText(task?.thread_id) || null,
+    pg_created_by_actor_id: trimText(task?.created_by_actor_id),
+    pg_updated_by_actor_id: trimText(task?.updated_by_actor_id),
+  };
+}
+
 export async function hydrateTowerPgScopes(store, deps = {}) {
   const context = resolveTowerPgWorkspaceContext(store);
   if (!context.workspaceId || !context.workspaceOwnerNpub || !context.baseUrl) return [];
@@ -165,8 +247,9 @@ export async function hydrateTowerPgChannels(store, deps = {}) {
   if (!context.workspaceId || !context.workspaceOwnerNpub || !context.baseUrl) return [];
   const readChannels = deps.getTowerPgScopeChannels || getTowerPgScopeChannels;
   const readThreads = deps.getTowerPgChannelThreads || getTowerPgChannelThreads;
+  const readMessages = deps.getTowerPgChannelMessages || getTowerPgChannelMessages;
   const replaceChannels = deps.replaceChannelsForOwner || replaceChannelsForOwner;
-  const replaceThreads = deps.replacePgThreadsForChannel || replacePgThreadsForChannel;
+  const replaceMessages = deps.replacePgMessagesForChannel || replacePgMessagesForChannel;
 
   let scopes = Array.isArray(store.scopes) ? store.scopes : [];
   if (scopes.length === 0 && typeof store.refreshScopes === 'function') {
@@ -195,13 +278,37 @@ export async function hydrateTowerPgChannels(store, deps = {}) {
       baseUrl: context.baseUrl,
       appNpub: context.appNpub,
     });
-    const threads = (Array.isArray(result?.threads) ? result.threads : [])
+    const rawThreads = Array.isArray(result?.threads) ? result.threads : [];
+    const threadById = new Map(rawThreads.map((thread) => [trimText(thread?.id), thread]).filter(([id]) => id));
+    const messagesResult = await readMessages(context.workspaceId, channel.record_id, {
+      baseUrl: context.baseUrl,
+      appNpub: context.appNpub,
+    });
+    const rawMessages = Array.isArray(messagesResult?.messages) ? messagesResult.messages : [];
+    const sourceMessageIds = new Set(rawThreads.map((thread) => trimText(thread?.source_message_id)).filter(Boolean));
+    const messageRows = rawMessages
+      .map((message) => mapPgMessageToLocal(message, {
+        workspaceOwnerNpub: context.workspaceOwnerNpub,
+        senderNpub,
+        threadById,
+      }))
+      .filter((message) => message.record_id && message.channel_id);
+    const messageIds = new Set(messageRows.map((message) => message.record_id));
+    const fallbackThreads = rawThreads
+      .filter((thread) => {
+        const sourceMessageId = trimText(thread?.source_message_id);
+        return !sourceMessageId || !messageIds.has(sourceMessageId);
+      })
       .map((thread) => mapPgThreadToLocal(thread, {
         workspaceOwnerNpub: context.workspaceOwnerNpub,
         senderNpub,
       }))
       .filter((thread) => thread.record_id && thread.channel_id);
-    await replaceThreads(channel.record_id, threads);
+    const rows = [
+      ...messageRows,
+      ...fallbackThreads.filter((thread) => !sourceMessageIds.has(thread.record_id)),
+    ];
+    await replaceMessages(channel.record_id, rows);
   }
 
   if (store.selectedChannelId && typeof store.refreshMessages === 'function') {
@@ -209,4 +316,50 @@ export async function hydrateTowerPgChannels(store, deps = {}) {
   }
 
   return channels;
+}
+
+export async function hydrateTowerPgTasks(store, deps = {}) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  if (!context.workspaceId || !context.workspaceOwnerNpub || !context.baseUrl) return [];
+  const readChannelTasks = deps.getTowerPgChannelTasks || getTowerPgChannelTasks;
+  const readScopeTasks = deps.getTowerPgScopeTasks || getTowerPgScopeTasks;
+  const replaceTasks = deps.replaceTasksForOwner || replaceTasksForOwner;
+
+  let channels = Array.isArray(store.channels) ? store.channels : [];
+  if (channels.length === 0 && typeof store.refreshChannels === 'function') {
+    const refreshed = await store.refreshChannels();
+    channels = Array.isArray(refreshed) ? refreshed : (Array.isArray(store.channels) ? store.channels : []);
+  }
+  let scopes = Array.isArray(store.scopes) ? store.scopes : [];
+  if (scopes.length === 0 && typeof store.refreshScopes === 'function') {
+    const refreshed = await store.refreshScopes();
+    scopes = Array.isArray(refreshed) ? refreshed : (Array.isArray(store.scopes) ? store.scopes : []);
+  }
+
+  const taskById = new Map();
+  for (const channel of channels.filter((entry) => entry?.record_id && entry.record_state !== 'deleted')) {
+    const result = await readChannelTasks(context.workspaceId, channel.record_id, {
+      baseUrl: context.baseUrl,
+      appNpub: context.appNpub,
+    });
+    for (const task of (Array.isArray(result?.tasks) ? result.tasks : [])) {
+      const row = mapPgTaskToLocal(task, { workspaceOwnerNpub: context.workspaceOwnerNpub });
+      if (row.record_id) taskById.set(row.record_id, row);
+    }
+  }
+  for (const scope of scopes.filter((entry) => entry?.record_id && entry.record_state !== 'deleted')) {
+    const result = await readScopeTasks(context.workspaceId, scope.record_id, {
+      baseUrl: context.baseUrl,
+      appNpub: context.appNpub,
+    });
+    for (const task of (Array.isArray(result?.tasks) ? result.tasks : [])) {
+      const row = mapPgTaskToLocal(task, { workspaceOwnerNpub: context.workspaceOwnerNpub });
+      if (row.record_id) taskById.set(row.record_id, row);
+    }
+  }
+
+  const tasks = [...taskById.values()];
+  await replaceTasks(context.workspaceOwnerNpub, tasks);
+  if (typeof store.applyTasks === 'function') await store.applyTasks(tasks);
+  return tasks;
 }

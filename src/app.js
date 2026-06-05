@@ -26,6 +26,7 @@ import { opportunitiesManagerMixin } from './opportunities-manager.js';
 import { wappsManagerMixin } from './wapps-manager.js';
 import { reportsManagerMixin } from './reports-manager.js';
 import { filesManagerMixin } from './files-manager.js';
+import { hydrateTowerPgTasks } from './pg-read-hydrator.js';
 import { createShellState } from './shell-state.js';
 import {
   checkoutErrorMessage,
@@ -1530,6 +1531,7 @@ export function initApp() {
       } else {
         await this.refreshScopes();
         await this.refreshChannels();
+        await this.refreshTasks();
       }
       this.selectedBoardId = this.readStoredTaskBoardId();
       this.collapsedSections = this.readStoredCollapsedSections();
@@ -2999,9 +3001,14 @@ export function initApp() {
     },
 
     async refreshTasks() {
+      if (isTowerPgBackendMode()) {
+        return hydrateTowerPgTasks(this);
+      }
       const ownerNpub = this.workspaceOwnerNpub;
       if (!ownerNpub) return;
-      await this.applyTasks(await getTasksByOwner(ownerNpub));
+      const tasks = await getTasksByOwner(ownerNpub);
+      await this.applyTasks(tasks);
+      return tasks;
     },
 
     async applySelectedTask(task = null) {

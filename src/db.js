@@ -490,6 +490,24 @@ export async function replacePgThreadsForChannel(channelId, messages = []) {
   });
 }
 
+export async function replacePgMessagesForChannel(channelId, messages = []) {
+  if (!channelId) return 0;
+  const rows = (Array.isArray(messages) ? messages : [])
+    .map((message) => sanitizeForStorage(message))
+    .filter((message) => message?.record_id);
+  const db = wsDb();
+  return db.transaction('rw', db.chat_messages, async () => {
+    const existing = await db.chat_messages.where('channel_id').equals(channelId).toArray();
+    const pgMessageIds = existing
+      .filter((message) => message?.pg_backend === true)
+      .map((message) => message.record_id)
+      .filter(Boolean);
+    if (pgMessageIds.length > 0) await db.chat_messages.bulkDelete(pgMessageIds);
+    if (rows.length > 0) await db.chat_messages.bulkPut(rows);
+    return rows.length;
+  });
+}
+
 export async function getMessageById(recordId) {
   return wsDb().chat_messages.get(recordId);
 }
@@ -766,6 +784,19 @@ export async function getRecentTaskChangesSince(sinceIso, options = {}) {
 
 export async function upsertTask(task) {
   return wsDb().tasks.put(sanitizeForStorage(task));
+}
+
+export async function replaceTasksForOwner(ownerNpub, tasks = []) {
+  if (!ownerNpub) return 0;
+  const rows = (Array.isArray(tasks) ? tasks : [])
+    .map((task) => sanitizeForStorage(task))
+    .filter((task) => task?.record_id);
+  const db = wsDb();
+  return db.transaction('rw', db.tasks, async () => {
+    await db.tasks.where('owner_npub').equals(ownerNpub).delete();
+    if (rows.length > 0) await db.tasks.bulkPut(rows);
+    return rows.length;
+  });
 }
 
 export async function getTaskById(recordId) {
