@@ -22,6 +22,7 @@ import {
   createWorkspace,
   fetchWorkspaceAppSchemas,
   getWorkspaces,
+  listTowerPgWorkspaces,
   publishWorkspaceAppSchema,
   recoverWorkspace,
   updateWorkspace,
@@ -37,6 +38,7 @@ import {
   workspaceFromToken,
   slugify,
 } from './workspaces.js';
+import { isTowerPgBackendMode } from './backend-mode.js';
 import {
   toRaw,
   normalizeBackendUrl,
@@ -935,15 +937,17 @@ export const workspaceManagerMixin = {
       this.validateSelectedBoardId();
       this.normalizeSettingsTab();
       await this.persistWorkspaceSettings();
-      if (typeof this.ensureWorkspaceSessionKey === 'function') {
+      if (!isTowerPgBackendMode() && typeof this.ensureWorkspaceSessionKey === 'function') {
         await this.ensureWorkspaceSessionKey();
       }
-      this.registerCurrentWorkspaceApp().catch((error) => {
-        console.debug('workspace app registration skipped:', error?.message || error);
-      });
-      this.publishCurrentWorkspaceAppSchema().catch((error) => {
-        console.debug('workspace app schema publish skipped:', error?.message || error);
-      });
+      if (!isTowerPgBackendMode()) {
+        this.registerCurrentWorkspaceApp().catch((error) => {
+          console.debug('workspace app registration skipped:', error?.message || error);
+        });
+        this.publishCurrentWorkspaceAppSchema().catch((error) => {
+          console.debug('workspace app schema publish skipped:', error?.message || error);
+        });
+      }
       await this.refreshWorkspaceSettings();
       this.syncWorkspaceProfileDraft({ force: true });
     } finally {
@@ -1081,6 +1085,26 @@ export const workspaceManagerMixin = {
   async loadRemoteWorkspaces() {
     if (!this.session?.npub || !this.backendUrl) return;
     try {
+      if (isTowerPgBackendMode()) {
+        const activeBackendUrl = normalizeBackendUrl(this.backendUrl);
+        const result = await listTowerPgWorkspaces({ baseUrl: activeBackendUrl, appNpub: APP_NPUB });
+        const workspaces = (result.workspaces || []).map((entry) => ({
+          ...entry,
+          directHttpsUrl: entry.tower_base_url || activeBackendUrl,
+          serviceNpub: entry.identity?.tower_service_npub || null,
+          towerServiceNpub: entry.identity?.tower_service_npub || null,
+          workspaceServiceNpub: entry.identity?.workspace_service_npub || null,
+          workspaceId: entry.identity?.workspace_id || null,
+          workspaceOwnerNpub: entry.identity?.workspace_owner_npub || null,
+          appNpub: entry.identity?.app_npub || APP_NPUB,
+          name: entry.label,
+          description: entry.description,
+          capabilities: entry.capabilities || [],
+          pgBackendMode: true,
+        }));
+        this.mergeKnownWorkspaces(workspaces);
+        return;
+      }
       const serviceNpub = await this.fetchBackendServiceNpub();
       const activeBackendUrl = normalizeBackendUrl(this.backendUrl);
       const result = await getWorkspaces(this.session.npub);

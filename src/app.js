@@ -215,6 +215,7 @@ import {
   schedulePreviewMeasurement,
   togglePreviewId,
 } from './preview-truncation.js';
+import { isTowerPgBackendMode } from './backend-mode.js';
 
 // Constants UNSCOPED_TASK_BOARD_ID, WEEKDAY_OPTIONS imported from task-board-state.js
 
@@ -314,6 +315,7 @@ export function initApp() {
     botNpub: '',
     session: null,
     get signingNpub() {
+      if (isTowerPgBackendMode()) return this.session?.npub || null;
       return getActiveWorkspaceKeyNpub() || this.session?.npub || null;
     },
     settingsTab: 'connection',
@@ -1480,6 +1482,7 @@ export function initApp() {
     },
 
     async ensureWorkspaceSessionKey() {
+      if (isTowerPgBackendMode()) return null;
       const workspaceOwnerNpub = this.workspaceOwnerNpub
         || this.currentWorkspaceOwnerNpub
         || this.ownerNpub
@@ -1514,14 +1517,16 @@ export function initApp() {
 
     async bootstrapSelectedWorkspace(options = {}) {
       if (!this.selectedWorkspaceKey && !this.currentWorkspaceOwnerNpub) return;
-      await this.ensureWorkspaceSessionKey();
-      await this.refreshGroups({ maxAgeMs: this.GROUP_KEY_REFRESH_MAX_AGE_MS });
-      // Flows are loaded eagerly so flow linkage resolution works from any section
-      this.refreshFlows().catch(() => {});
-      // Fetch ws_key → user_npub mappings for display identity resolution
-      this.refreshWorkspaceKeyMappings().catch(() => {});
-      if (options.runAccessPrune === true) {
-        this.runAccessPruneOnLogin().catch(() => {});
+      if (!isTowerPgBackendMode()) {
+        await this.ensureWorkspaceSessionKey();
+        await this.refreshGroups({ maxAgeMs: this.GROUP_KEY_REFRESH_MAX_AGE_MS });
+        // Flows are loaded eagerly so flow linkage resolution works from any section
+        this.refreshFlows().catch(() => {});
+        // Fetch ws_key → user_npub mappings for display identity resolution
+        this.refreshWorkspaceKeyMappings().catch(() => {});
+        if (options.runAccessPrune === true) {
+          this.runAccessPruneOnLogin().catch(() => {});
+        }
       }
       this.selectedBoardId = this.readStoredTaskBoardId();
       this.collapsedSections = this.readStoredCollapsedSections();

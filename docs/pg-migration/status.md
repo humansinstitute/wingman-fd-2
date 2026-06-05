@@ -35,4 +35,4 @@ Planning restored and app-card baseline available. `wm-fd-2` is a clean copy of 
 - Migration plan is ready for pipeline execution.
 - App-card baseline is available for pipeline work.
 - PG migration product code now has a mode boundary plus descriptor-based Tower PG workspace connection in the existing Flight Deck UI.
-- PH1-02 validation: `bunx vitest run tests/backend-mode.test.js tests/api-pg-workspaces.test.js tests/pg-workspace-descriptor.test.js tests/workspaces.test.js tests/connect-settings-manager.test.js tests/pg-connect-settings-manager.test.js`; `bun run build`.
+- PH1-02 validation: `bun run test -- tests/backend-mode.test.js tests/api-pg-workspaces.test.js tests/pg-workspace-descriptor.test.js tests/workspaces.test.js tests/connect-settings-manager.test.js tests/pg-connect-settings-manager.test.js tests/pg-workspace-manager.test.js`; `bun run build`.
