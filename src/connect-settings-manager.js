@@ -26,6 +26,7 @@ import { APP_NPUB, DEFAULT_SUPERBASED_URL } from './app-identity.js';
 import {
   parsePgWorkspaceDescriptor,
   pgWorkspaceEntryFromDescriptor,
+  pgWorkspaceSessionNpubFromMe,
 } from './pg-workspace-descriptor.js';
 import {
   personalEncryptForNpub,
@@ -463,8 +464,14 @@ export const connectSettingsManagerMixin = {
   },
 
   async rememberVerifiedPgWorkspace(descriptor, me = null) {
+    const sessionNpub = pgWorkspaceSessionNpubFromMe(me, this.session?.npub || '');
+    if (!sessionNpub) throw new Error('Verified workspace descriptor is missing actor identity');
+    if (this.session?.npub && sessionNpub !== this.session.npub) {
+      throw new Error('Workspace descriptor was verified by a different signer');
+    }
     const workspace = normalizeWorkspaceEntry(pgWorkspaceEntryFromDescriptor(descriptor, {
       me,
+      sessionNpub,
       verifiedAt: new Date().toISOString(),
     }));
     if (!workspace) throw new Error('Verified workspace descriptor could not be stored');
@@ -490,7 +497,7 @@ export const connectSettingsManagerMixin = {
     const { descriptor, me } = await this.verifyPgDescriptor(descriptorInput);
     const workspace = await this.rememberVerifiedPgWorkspace(descriptor, me);
     if (closeModal) this.showConnectModal = false;
-    await this.selectWorkspace(workspace.workspaceKey || workspace.workspaceOwnerNpub);
+    await this.selectWorkspace(workspace.workspaceKey || workspace.workspaceOwnerNpub, { pgVerified: true });
     return workspace;
   },
 
@@ -513,7 +520,7 @@ export const connectSettingsManagerMixin = {
       }, { baseUrl });
       const workspace = await this.rememberVerifiedPgWorkspace(verified, me);
       this.showConnectModal = false;
-      await this.selectWorkspace(workspace.workspaceKey || workspace.workspaceOwnerNpub);
+      await this.selectWorkspace(workspace.workspaceKey || workspace.workspaceOwnerNpub, { pgVerified: true });
     } catch (error) {
       this.connectWorkspacesError = `Failed to connect to ${pgWorkspaceLabel(workspaceEntry)}: ${pgErrorMessage(error)}`;
     } finally {

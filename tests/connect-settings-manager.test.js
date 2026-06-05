@@ -236,6 +236,7 @@ describe('connect modal', () => {
       this.knownWorkspaces = workspaces;
     });
     const { fn, store } = bindMethod('rememberVerifiedPgWorkspace', {
+      session: { npub: 'npub1user' },
       backendUrl: '',
       knownWorkspaces: [],
       mergeKnownWorkspaces,
@@ -259,13 +260,14 @@ describe('connect modal', () => {
       },
     };
 
-    const workspace = await fn(descriptor, { membership: { role: 'owner' } });
+    const workspace = await fn(descriptor, { actor: { npub: 'npub1user' }, membership: { role: 'owner' } });
 
     expect(workspace).toMatchObject({
-      workspaceKey: 'pg:npub1tower::workspace:npub1workspace_service::app:flightdeck_pg',
+      workspaceKey: 'pg:npub1user::tower:npub1tower::workspace:npub1workspace_service::app:flightdeck_pg',
       workspaceOwnerNpub: 'npub1owner',
       name: 'Wingmen',
       directHttpsUrl: 'https://tower.example.com',
+      pgSessionNpub: 'npub1user',
       pgBackendMode: true,
       connectionToken: '',
     });

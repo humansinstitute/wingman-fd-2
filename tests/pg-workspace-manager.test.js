@@ -128,10 +128,12 @@ describe('PG workspace manager mode', () => {
     });
     expect(api.getWorkspaces).not.toHaveBeenCalled();
     expect(store.knownWorkspaces[0]).toMatchObject({
+      workspaceKey: 'pg:npub1user::tower:npub1tower::workspace:npub1workspace::app:flightdeck_pg',
       workspaceOwnerNpub: 'npub1owner',
       workspaceServiceNpub: 'npub1workspace',
       workspaceId: 'workspace-1',
       directHttpsUrl: 'https://tower.example',
+      pgSessionNpub: 'npub1user',
       pgBackendMode: true,
     });
   });
@@ -139,9 +141,10 @@ describe('PG workspace manager mode', () => {
   it('selects PG workspaces without encrypted workspace key or app schema setup', async () => {
     const api = await import('../src/api.js');
     const workspace = {
-      workspaceKey: 'pg:npub1tower::workspace:npub1workspace::app:flightdeck_pg',
+      workspaceKey: 'pg:npub1user::tower:npub1tower::workspace:npub1workspace::app:flightdeck_pg',
       workspaceOwnerNpub: 'npub1owner',
       directHttpsUrl: 'https://tower.example',
+      pgSessionNpub: 'npub1user',
       pgBackendMode: true,
     };
     const store = await buildStore({
@@ -150,10 +153,84 @@ describe('PG workspace manager mode', () => {
     });
     store.syncWorkspaceProfileDraft = vi.fn();
 
-    await store.selectWorkspace(workspace.workspaceKey);
+    await store.selectWorkspace(workspace.workspaceKey, { pgVerified: true });
 
     expect(store.ensureWorkspaceSessionKey).not.toHaveBeenCalled();
     expect(api.registerWorkspaceApp).not.toHaveBeenCalled();
     expect(api.publishWorkspaceAppSchema).not.toHaveBeenCalled();
+  });
+
+  it('reverifies a cached same-signer PG workspace before selecting it after reload', async () => {
+    const descriptor = {
+      type: 'wingman_workspace_locator',
+      tower_base_url: 'https://tower.example',
+      identity: {
+        tower_service_npub: 'npub1tower',
+        workspace_service_npub: 'npub1workspace',
+        workspace_owner_npub: 'npub1owner',
+        workspace_id: 'workspace-1',
+        app_npub: 'flightdeck_pg',
+      },
+    };
+    const workspace = {
+      workspaceKey: 'pg:npub1user::tower:npub1tower::workspace:npub1workspace::app:flightdeck_pg',
+      workspaceOwnerNpub: 'npub1owner',
+      directHttpsUrl: 'https://tower.example',
+      towerServiceNpub: 'npub1tower',
+      workspaceServiceNpub: 'npub1workspace',
+      workspaceId: 'workspace-1',
+      appNpub: 'flightdeck_pg',
+      pgSessionNpub: 'npub1user',
+      pgBackendMode: true,
+      pgDescriptor: descriptor,
+    };
+    const verifiedWorkspace = { ...workspace, pgMe: { actor: { npub: 'npub1user' } } };
+    const store = await buildStore({
+      knownWorkspaces: [workspace],
+      selectedWorkspaceKey: workspace.workspaceKey,
+      verifyPgDescriptor: vi.fn().mockResolvedValue({
+        descriptor,
+        me: { actor: { npub: 'npub1user' }, membership: { role: 'member' } },
+      }),
+      rememberVerifiedPgWorkspace: vi.fn(function remember() {
+        this.knownWorkspaces = [verifiedWorkspace];
+        return verifiedWorkspace;
+      }),
+    });
+
+    await store.selectWorkspace(workspace.workspaceKey);
+
+    expect(store.verifyPgDescriptor).toHaveBeenCalledWith(descriptor, {
+      baseUrl: 'https://tower.example',
+    });
+    expect(store.rememberVerifiedPgWorkspace).toHaveBeenCalledWith(
+      descriptor,
+      { actor: { npub: 'npub1user' }, membership: { role: 'member' } },
+    );
+    expect(store.selectedWorkspaceKey).toBe(workspace.workspaceKey);
+    expect(store.currentWorkspaceOwnerNpub).toBe('npub1owner');
+  });
+
+  it('rejects a cached PG workspace scoped to a different signer before Tower calls', async () => {
+    const workspace = {
+      workspaceKey: 'pg:npub1other::tower:npub1tower::workspace:npub1workspace::app:flightdeck_pg',
+      workspaceOwnerNpub: 'npub1owner',
+      directHttpsUrl: 'https://tower.example',
+      pgSessionNpub: 'npub1other',
+      pgBackendMode: true,
+    };
+    const store = await buildStore({
+      knownWorkspaces: [workspace],
+      selectedWorkspaceKey: workspace.workspaceKey,
+      verifyPgDescriptor: vi.fn(),
+      rememberVerifiedPgWorkspace: vi.fn(),
+    });
+
+    await store.selectWorkspace(workspace.workspaceKey);
+
+    expect(store.verifyPgDescriptor).not.toHaveBeenCalled();
+    expect(store.selectedWorkspaceKey).toBe('');
+    expect(store.currentWorkspaceOwnerNpub).toBe('');
+    expect(store.showWorkspaceBootstrapModal).toBe(true);
   });
 });

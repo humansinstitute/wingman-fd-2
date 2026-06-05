@@ -33,6 +33,7 @@ import {
 } from './api.js';
 import {
   findWorkspaceByKey,
+  filterWorkspacesForSession,
   mergeWorkspaceEntries,
   normalizeWorkspaceEntry,
   workspaceFromToken,
@@ -72,6 +73,7 @@ import { buildSuperBasedConnectionToken } from './superbased-token.js';
 import { flightDeckLog } from './logging.js';
 import { APP_NAME, APP_NPUB, DEFAULT_SUPERBASED_URL } from './app-identity.js';
 import { getRecordWriteFieldsForStore } from './preferred-write-group.js';
+import { pgWorkspaceSessionNpubFromMe } from './pg-workspace-descriptor.js';
 
 export function guessDefaultBackendUrl() {
   return DEFAULT_SUPERBASED_URL || '';
@@ -353,6 +355,25 @@ export const workspaceManagerMixin = {
   mergeKnownWorkspaces(entries = []) {
     this.knownWorkspaces = mergeWorkspaceEntries(this.knownWorkspaces, entries);
     this.syncWorkspaceProfileDraft();
+  },
+
+  filterKnownWorkspacesForActiveSession() {
+    if (!isTowerPgBackendMode()) return;
+    const sessionNpub = String(this.session?.npub || '').trim();
+    if (!sessionNpub) {
+      const selected = this.getWorkspaceByKey(this.selectedWorkspaceKey) || this.getWorkspaceByOwner(this.currentWorkspaceOwnerNpub);
+      if (selected?.pgBackendMode) {
+        this.selectedWorkspaceKey = '';
+        this.currentWorkspaceOwnerNpub = '';
+      }
+      return;
+    }
+    const scoped = filterWorkspacesForSession(this.knownWorkspaces, sessionNpub);
+    const selectedStillVisible = scoped.some((workspace) => workspace.workspaceKey === this.selectedWorkspaceKey);
+    const ownerStillVisible = scoped.some((workspace) => workspace.workspaceOwnerNpub === this.currentWorkspaceOwnerNpub);
+    this.knownWorkspaces = scoped;
+    if (!selectedStillVisible) this.selectedWorkspaceKey = '';
+    if (!ownerStillVisible) this.currentWorkspaceOwnerNpub = '';
   },
 
   async hydrateKnownWorkspaceProfiles() {
@@ -869,8 +890,23 @@ export const workspaceManagerMixin = {
   // --- workspace CRUD ---
 
   async selectWorkspace(workspaceKeyOrOwner, options = {}) {
-    const workspace = this.getWorkspaceByKey(workspaceKeyOrOwner) || this.getWorkspaceByOwner(workspaceKeyOrOwner);
+    let workspace = this.getWorkspaceByKey(workspaceKeyOrOwner) || this.getWorkspaceByOwner(workspaceKeyOrOwner);
     if (!workspace) return;
+    if (isTowerPgBackendMode() && workspace.pgBackendMode && !options.pgVerified) {
+      try {
+        workspace = await this.verifyPgWorkspaceForSelection(workspace);
+      } catch (error) {
+        const message = error?.message || 'Workspace access verification failed';
+        this.superbasedError = message;
+        this.connectWorkspacesError = message;
+        this.selectedWorkspaceKey = '';
+        this.currentWorkspaceOwnerNpub = '';
+        this.showWorkspaceBootstrapModal = Boolean(this.session?.npub);
+        await this.persistWorkspaceSettings?.();
+        return;
+      }
+      if (!workspace) return;
+    }
 
     const previousWorkspaceKey = this.currentWorkspaceKey;
     this.selectedWorkspaceKey = workspace.workspaceKey || '';
@@ -958,6 +994,39 @@ export const workspaceManagerMixin = {
         this.workspaceSwitchPendingNpub = '';
       }
     }
+  },
+
+  async verifyPgWorkspaceForSelection(workspace) {
+    const sessionNpub = String(this.session?.npub || '').trim();
+    if (!sessionNpub) throw new Error('Sign in first');
+    const cachedSessionNpub = String(workspace?.pgSessionNpub || '').trim();
+    if (cachedSessionNpub && cachedSessionNpub !== sessionNpub) {
+      throw new Error('Cached workspace belongs to a different signer');
+    }
+    if (typeof this.verifyPgDescriptor !== 'function' || typeof this.rememberVerifiedPgWorkspace !== 'function') {
+      throw new Error('PG workspace verifier is unavailable');
+    }
+    const descriptorInput = workspace.pgDescriptor || {
+      type: 'wingman_workspace_locator',
+      tower_base_url: workspace.directHttpsUrl || this.backendUrl,
+      identity: {
+        tower_service_npub: workspace.towerServiceNpub || workspace.serviceNpub,
+        workspace_service_npub: workspace.workspaceServiceNpub,
+        workspace_owner_npub: workspace.workspaceOwnerNpub,
+        workspace_id: workspace.workspaceId,
+        app_npub: workspace.appNpub || APP_NPUB,
+      },
+      label: workspace.name,
+      description: workspace.description,
+    };
+    const { descriptor, me } = await this.verifyPgDescriptor(descriptorInput, {
+      baseUrl: workspace.directHttpsUrl || this.backendUrl,
+    });
+    const verifiedSessionNpub = pgWorkspaceSessionNpubFromMe(me, sessionNpub);
+    if (verifiedSessionNpub !== sessionNpub) {
+      throw new Error('Workspace descriptor was verified by a different signer');
+    }
+    return this.rememberVerifiedPgWorkspace(descriptor, me);
   },
 
   async registerCurrentWorkspaceApp() {
@@ -1088,20 +1157,23 @@ export const workspaceManagerMixin = {
       if (isTowerPgBackendMode()) {
         const activeBackendUrl = normalizeBackendUrl(this.backendUrl);
         const result = await listTowerPgWorkspaces({ baseUrl: activeBackendUrl, appNpub: APP_NPUB });
-        const workspaces = (result.workspaces || []).map((entry) => ({
-          ...entry,
-          directHttpsUrl: entry.tower_base_url || activeBackendUrl,
-          serviceNpub: entry.identity?.tower_service_npub || null,
-          towerServiceNpub: entry.identity?.tower_service_npub || null,
-          workspaceServiceNpub: entry.identity?.workspace_service_npub || null,
-          workspaceId: entry.identity?.workspace_id || null,
-          workspaceOwnerNpub: entry.identity?.workspace_owner_npub || null,
-          appNpub: entry.identity?.app_npub || APP_NPUB,
-          name: entry.label,
-          description: entry.description,
-          capabilities: entry.capabilities || [],
-          pgBackendMode: true,
-        }));
+        const workspaces = (result.workspaces || [])
+          .map((entry) => normalizeWorkspaceEntry({
+            ...entry,
+            directHttpsUrl: entry.tower_base_url || activeBackendUrl,
+            serviceNpub: entry.identity?.tower_service_npub || null,
+            towerServiceNpub: entry.identity?.tower_service_npub || null,
+            workspaceServiceNpub: entry.identity?.workspace_service_npub || null,
+            workspaceId: entry.identity?.workspace_id || null,
+            workspaceOwnerNpub: entry.identity?.workspace_owner_npub || null,
+            appNpub: entry.identity?.app_npub || APP_NPUB,
+            pgSessionNpub: this.session.npub,
+            name: entry.label,
+            description: entry.description,
+            capabilities: entry.capabilities || [],
+            pgBackendMode: true,
+          }))
+          .filter(Boolean);
         this.mergeKnownWorkspaces(workspaces);
         return;
       }

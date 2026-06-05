@@ -17,6 +17,7 @@
 import { getRunningBuildId } from './version-check.js';
 import {
   bootstrapWorkspaceSessionKey,
+  clearActiveWorkspaceKey,
   getActiveWorkspaceKeyNpub,
   markCachedWorkspaceKeyRegistered,
   markWorkspaceKeyRegistered,
@@ -53,6 +54,7 @@ import { guessDefaultBackendUrl } from './workspace-manager.js';
 import { parseSuperBasedToken } from './superbased-token.js';
 import { extractInviteToken } from './invite-link.js';
 import { flightDeckLog } from './logging.js';
+import { isTowerPgBackendMode } from './backend-mode.js';
 
 /**
  * Canonical list of shell state keys (data properties and getters).
@@ -421,6 +423,7 @@ export function createShellState(options = {}) {
       await this.hydrateKnownWorkspaceProfiles();
       this.ensureBackgroundSync();
       await this.maybeAutoLogin();
+      this.filterKnownWorkspacesForActiveSession?.();
       this.updateWorkspaceBootstrapPrompt();
       await this.loadRemoteWorkspaces();
       if (this.knownWorkspaces.length === 0 && this.superbasedConnectionConfig?.workspaceOwnerNpub && this.session?.npub) {
@@ -430,18 +433,25 @@ export function createShellState(options = {}) {
         const legacyMatch = this.knownWorkspaces.find((workspace) => workspace.workspaceOwnerNpub === this.currentWorkspaceOwnerNpub) || null;
         if (legacyMatch) this.selectedWorkspaceKey = legacyMatch.workspaceKey || '';
       }
-      if (!this.selectedWorkspaceKey && this.knownWorkspaces.length > 0) {
+      if (
+        (!isTowerPgBackendMode() || this.session?.npub)
+        && !this.selectedWorkspaceKey
+        && this.knownWorkspaces.length > 0
+      ) {
         this.selectedWorkspaceKey = this.knownWorkspaces[0].workspaceKey || '';
         this.currentWorkspaceOwnerNpub = this.knownWorkspaces[0].workspaceOwnerNpub;
       }
-      if (this.selectedWorkspaceKey || this.currentWorkspaceOwnerNpub) {
+      if (
+        (!isTowerPgBackendMode() || this.session?.npub)
+        && (this.selectedWorkspaceKey || this.currentWorkspaceOwnerNpub)
+      ) {
         await this.selectWorkspace(this.selectedWorkspaceKey || this.currentWorkspaceOwnerNpub, { refresh: false });
       }
       this.updateWorkspaceBootstrapPrompt();
       if (this.session?.npub && (!this.backendUrl || (!this.selectedWorkspaceKey && !this.showWorkspaceBootstrapModal))) {
         this.openConnectModal();
       }
-      if (this.selectedWorkspaceKey) {
+      if ((!isTowerPgBackendMode() || this.session?.npub) && this.selectedWorkspaceKey) {
         await this.bootstrapSelectedWorkspace({ runAccessPrune: true });
       }
       this.pendingInviteToken = null;
@@ -826,6 +836,7 @@ export function createShellState(options = {}) {
         this.ownerNpub = this.currentWorkspaceOwnerNpub || this.superbasedConnectionConfig?.workspaceOwnerNpub || npub;
         this.resolveChatProfile(npub);
         await this.rememberPeople([npub], 'self');
+        this.filterKnownWorkspacesForActiveSession?.();
         await this.loadRemoteWorkspaces();
         if (!this.selectedWorkspaceKey && this.currentWorkspaceOwnerNpub) {
           const legacyMatch = this.knownWorkspaces.find((workspace) => workspace.workspaceOwnerNpub === this.currentWorkspaceOwnerNpub) || null;
@@ -861,6 +872,7 @@ export function createShellState(options = {}) {
         setAutoLogin(method, pubkey);
         this.resolveChatProfile(npub);
         await this.rememberPeople([npub], 'self');
+        this.filterKnownWorkspacesForActiveSession?.();
         this.updateWorkspaceBootstrapPrompt();
 
         await this.loadRemoteWorkspaces();

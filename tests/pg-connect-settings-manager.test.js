@@ -70,7 +70,7 @@ describe('PG connect settings manager', () => {
   it('verifies a pasted descriptor with signed descriptor and me calls before storing it', async () => {
     const api = await import('../src/api.js');
     api.getTowerPgWorkspaceDescriptor.mockResolvedValue(descriptor);
-    api.getTowerPgWorkspaceMe.mockResolvedValue({ membership: { role: 'member' } });
+    api.getTowerPgWorkspaceMe.mockResolvedValue({ actor: { npub: 'npub1user' }, membership: { role: 'member' } });
     const { connectSettingsManagerMixin } = await import('../src/connect-settings-manager.js');
     const store = createStore();
     Object.defineProperties(store, Object.getOwnPropertyDescriptors(connectSettingsManagerMixin));
@@ -88,15 +88,19 @@ describe('PG connect settings manager', () => {
       path: '/api/v4/flightdeck-pg/workspaces/workspace-1/me',
     });
     expect(store.knownWorkspaces[0]).toMatchObject({
-      workspaceKey: 'pg:npub1tower::workspace:npub1workspace::app:flightdeck_pg',
+      workspaceKey: 'pg:npub1user::tower:npub1tower::workspace:npub1workspace::app:flightdeck_pg',
       workspaceOwnerNpub: 'npub1owner',
       directHttpsUrl: 'https://tower.example',
+      pgSessionNpub: 'npub1user',
       pgBackendMode: true,
       pgDescriptor: descriptor,
-      pgMe: { membership: { role: 'member' } },
+      pgMe: { actor: { npub: 'npub1user' }, membership: { role: 'member' } },
     });
-    expect(store.selectedWorkspaceKey).toBe('pg:npub1tower::workspace:npub1workspace::app:flightdeck_pg');
-    expect(store.selectWorkspace).toHaveBeenCalledWith('pg:npub1tower::workspace:npub1workspace::app:flightdeck_pg');
+    expect(store.selectedWorkspaceKey).toBe('pg:npub1user::tower:npub1tower::workspace:npub1workspace::app:flightdeck_pg');
+    expect(store.selectWorkspace).toHaveBeenCalledWith(
+      'pg:npub1user::tower:npub1tower::workspace:npub1workspace::app:flightdeck_pg',
+      { pgVerified: true },
+    );
   });
 
   it('does not call Tower PG routes when no Nostr session exists', async () => {

@@ -37,6 +37,33 @@ function normalizeUrlForIdentity(value) {
   return String(value || '').trim().replace(/\/+$/, '');
 }
 
+function buildPgWorkspaceKey({
+  sessionNpub = '',
+  towerServiceNpub = '',
+  workspaceServiceNpub = '',
+  appNpub = '',
+} = {}) {
+  const session = String(sessionNpub || '').trim();
+  const tower = String(towerServiceNpub || '').trim();
+  const workspace = String(workspaceServiceNpub || '').trim();
+  const app = String(appNpub || APP_NPUB || 'flightdeck_pg').trim();
+  if (!tower || !workspace || !app) return '';
+  const identity = `tower:${tower}::workspace:${workspace}::app:${app}`;
+  return session ? `pg:${session}::${identity}` : `pg:${identity}`;
+}
+
+function pgSessionNpubFromEntry(raw = {}) {
+  return String(
+    raw.pgSessionNpub
+    || raw.pg_session_npub
+    || raw.sessionNpub
+    || raw.session_npub
+    || raw.pgMe?.actor?.npub
+    || raw.pg_me?.actor?.npub
+    || ''
+  ).trim() || null;
+}
+
 export function buildWorkspaceKey({
   workspaceOwnerNpub,
   serviceNpub = null,
@@ -64,7 +91,11 @@ function sameWorkspaceIdentity(left = {}, right = {}) {
   if (left.pgBackendMode || right.pgBackendMode) {
     const leftKey = String(left.workspaceKey || '').trim();
     const rightKey = String(right.workspaceKey || '').trim();
-    if (leftKey && rightKey) return leftKey === rightKey;
+    if (leftKey && rightKey && leftKey === rightKey) return true;
+
+    const leftSession = String(left.pgSessionNpub || '').trim();
+    const rightSession = String(right.pgSessionNpub || '').trim();
+    if (leftSession && rightSession && leftSession !== rightSession) return false;
 
     const leftTower = String(left.towerServiceNpub || left.serviceNpub || '').trim();
     const rightTower = String(right.towerServiceNpub || right.serviceNpub || '').trim();
@@ -127,6 +158,7 @@ export function normalizeWorkspaceEntry(raw = {}) {
   const towerServiceNpub = String(raw.towerServiceNpub || raw.tower_service_npub || '').trim() || serviceNpub || null;
   const workspaceServiceNpub = String(raw.workspaceServiceNpub || raw.workspace_service_npub || '').trim() || null;
   const appNpub = String(raw.appNpub || raw.app_npub || parsedToken.appNpub || APP_NPUB || '').trim() || null;
+  const pgSessionNpub = pgSessionNpubFromEntry(raw);
   const relayUrls = sanitizeRelayUrls(raw.relayUrls ?? raw.relay_urls ?? parsedToken.relayUrls);
   const towerName = sanitizeOptionalString(
     raw.towerName
@@ -175,7 +207,9 @@ export function normalizeWorkspaceEntry(raw = {}) {
 
   const slug = String(raw.slug || '').trim() || slugify(name);
   const workspaceKey = String(raw.workspaceKey || raw.workspace_key || '').trim()
-    || buildWorkspaceKey({ workspaceOwnerNpub, serviceNpub, directHttpsUrl });
+    || (pgBackendMode
+      ? buildPgWorkspaceKey({ sessionNpub: pgSessionNpub, towerServiceNpub, workspaceServiceNpub, appNpub })
+      : buildWorkspaceKey({ workspaceOwnerNpub, serviceNpub, directHttpsUrl }));
 
   return {
     workspaceKey,
@@ -189,6 +223,7 @@ export function normalizeWorkspaceEntry(raw = {}) {
     towerServiceNpub,
     workspaceServiceNpub,
     workspaceId: String(raw.workspaceId || raw.workspace_id || '').trim() || null,
+    pgSessionNpub,
     pgBackendMode,
     pgDescriptor: raw.pgDescriptor || raw.pg_descriptor || null,
     pgDescriptorVerifiedAt: String(raw.pgDescriptorVerifiedAt || raw.pg_descriptor_verified_at || '').trim() || null,
@@ -229,6 +264,7 @@ function normalizeWorkspacePatch(raw = {}) {
     [['towerServiceNpub', 'tower_service_npub'], 'towerServiceNpub'],
     [['workspaceServiceNpub', 'workspace_service_npub'], 'workspaceServiceNpub'],
     [['workspaceId', 'workspace_id'], 'workspaceId'],
+    [['pgSessionNpub', 'pg_session_npub', 'sessionNpub', 'session_npub'], 'pgSessionNpub'],
     [['pgBackendMode', 'pg_backend_mode'], 'pgBackendMode'],
     [['pgDescriptor', 'pg_descriptor'], 'pgDescriptor'],
     [['pgDescriptorVerifiedAt', 'pg_descriptor_verified_at'], 'pgDescriptorVerifiedAt'],
@@ -286,6 +322,17 @@ export function mergeWorkspaceEntries(existing = [], incoming = []) {
     next.set(merged.workspaceKey, merged);
   }
   return [...next.values()];
+}
+
+export function filterWorkspacesForSession(workspaces = [], sessionNpub = '') {
+  const activeSession = String(sessionNpub || '').trim();
+  return (Array.isArray(workspaces) ? workspaces : [])
+    .map((entry) => normalizeWorkspaceEntry(entry))
+    .filter(Boolean)
+    .filter((entry) => {
+      if (!entry.pgBackendMode) return true;
+      return Boolean(activeSession && entry.pgSessionNpub === activeSession);
+    });
 }
 
 export function findWorkspaceByKey(workspaces, workspaceKey) {

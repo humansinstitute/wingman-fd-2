@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-B7ReQ9Eb.js"></script>
+  <script type="module" crossorigin src="/assets/index-DzhUSz57.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-BeVtjkt9.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
@@ -416,8 +416,11 @@
                 </button>
               </template>
             </div>
-            <p class="connect-workspace-empty" x-show="$store.chat.connectWorkspaces.length === 0 && !$store.chat.connectWorkspacesBusy && !$store.chat.connectWorkspacesError">
-              No workspaces found on this host. Create one below.
+            <p
+              class="connect-workspace-empty"
+              x-show="$store.chat.connectWorkspaces.length === 0 && !$store.chat.connectWorkspacesBusy && !$store.chat.connectWorkspacesError"
+              x-text="$store.chat.isTowerPgMode ? 'No PG workspaces found on this Tower. Create one in Tower, then reconnect by URL or descriptor.' : 'No workspaces found on this host. Create one below.'"
+            >
             </p>
             <p class="auth-error" x-show="$store.chat.connectWorkspacesError" x-text="$store.chat.connectWorkspacesError"></p>
             <div class="connect-create-workspace" x-show="!$store.chat.isTowerPgMode">
