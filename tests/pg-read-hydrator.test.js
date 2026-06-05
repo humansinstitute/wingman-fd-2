@@ -206,6 +206,7 @@ describe('PG read hydrator', () => {
       workspace_id: 'workspace-1',
       scope_id: 'scope-1',
       channel_id: 'channel-1',
+      metadata: { thread_id: 'thread-1' },
       storage_object_id: 'object-doc',
       title: 'Design note',
       summary: 'Doc summary',
@@ -221,6 +222,7 @@ describe('PG read hydrator', () => {
       scope_l1_id: 'scope-1',
       pg_record_type: 'doc',
       pg_channel_id: 'channel-1',
+      pg_thread_id: 'thread-1',
     });
 
     expect(mapPgFileToLocalDocument({
@@ -228,6 +230,7 @@ describe('PG read hydrator', () => {
       workspace_id: 'workspace-1',
       scope_id: 'scope-1',
       channel_id: 'channel-1',
+      metadata: { thread_id: 'thread-1' },
       storage_object_id: 'object-file',
       display_name: 'Brief.pdf',
       row_version: 4,
@@ -239,6 +242,7 @@ describe('PG read hydrator', () => {
       content_storage_object_id: null,
       scope_id: 'scope-1',
       pg_record_type: 'file',
+      pg_thread_id: 'thread-1',
       pg_storage_object_id: 'object-file',
     });
   });

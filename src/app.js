@@ -225,6 +225,7 @@ import {
   buildPgChannelTaskBoardId,
   resolvePgRecordContext,
 } from './pg-record-context.js';
+import { createTowerPgFileFromLocal } from './pg-write-adapter.js';
 
 // Constants UNSCOPED_TASK_BOARD_ID, WEEKDAY_OPTIONS imported from task-board-state.js
 
@@ -6034,12 +6035,22 @@ export function initApp() {
       if (options.uploadCounterContext) this.incrementInlineUploadCount(options.uploadCounterContext);
 
       try {
+        let pgContext = null;
+        if (isTowerPgBackendMode()) {
+          pgContext = resolvePgRecordContext(this, {
+            scopeId: options.scopeId,
+            channelId: options.channelId,
+            threadId: options.threadId,
+            threadMessageId: options.threadMessageId,
+            includeActiveThread: options.includeActiveThread === true,
+          });
+        }
         const bytes = new Uint8Array(await file.arrayBuffer());
         const fileName = String(file.name || '').trim() || this.defaultPastedImageName(file, options.fileLabel || 'file');
         const prepared = await prepareStorageObject(buildStoragePrepareBody({
           ownerNpub,
-          ownerGroupId: options.ownerGroupId,
-          accessGroupIds: options.accessGroupIds ?? options.accessGroupNpubs ?? [],
+          ownerGroupId: pgContext ? null : options.ownerGroupId,
+          accessGroupIds: pgContext ? [] : options.accessGroupIds ?? options.accessGroupNpubs ?? [],
           contentType: file.type || 'application/octet-stream',
           sizeBytes: file.size || bytes.byteLength,
           fileName,
@@ -6049,6 +6060,20 @@ export function initApp() {
           size_bytes: bytes.byteLength,
           sha256_hex: await this.sha256HexForBytes(bytes),
         });
+        if (pgContext) {
+          const acceptedFile = await createTowerPgFileFromLocal(this, {
+            title: fileName,
+            display_name: fileName,
+            storage_object_id: prepared.object_id,
+            content_storage_object_id: prepared.object_id,
+            content: this.createStorageFileMarkdown(prepared.object_id, fileName),
+            scope_id: pgContext.scopeId,
+            pg_channel_id: pgContext.channelId,
+            pg_thread_id: pgContext.threadId || null,
+          });
+          await upsertDocument(acceptedFile);
+          if (typeof this.patchDocumentLocal === 'function') this.patchDocumentLocal(acceptedFile);
+        }
         this.replaceTokenInModel(modelKey, token, this.createStorageFileMarkdown(prepared.object_id, fileName), event?.target);
       } catch (error) {
         this.replaceTokenInModel(modelKey, token, '[ Upload failed ]', event?.target);
@@ -6075,6 +6100,9 @@ export function initApp() {
         modelKey: context === 'thread' ? 'threadInput' : 'messageInput',
         ownerNpub: channel.owner_npub || this.workspaceOwnerNpub || this.session?.npub,
         accessGroupIds: channel.group_ids ?? [],
+        channelId: channel.record_id,
+        includeActiveThread: context === 'thread',
+        threadMessageId: context === 'thread' ? this.activeThreadId : null,
         fileLabel: context === 'thread' ? 'thread-file' : 'chat-file',
         uploadCounterContext: context,
       };

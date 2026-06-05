@@ -26,6 +26,7 @@ import { sameListBySignature } from './utils/state-helpers.js';
 import { isTowerPgBackendMode } from './backend-mode.js';
 import { hydrateTowerPgAudioNotes } from './pg-read-hydrator.js';
 import { resolvePgRecordContext } from './pg-record-context.js';
+import { createTowerPgAudioNoteFromLocal } from './pg-write-adapter.js';
 import {
   getEncryptableRecordGroupRefsForStore,
   getRecordGroupKeyState,
@@ -205,28 +206,32 @@ export const audioRecordingManagerMixin = {
     if (!this._audioRecorderBlob || !this.audioRecorderContext || !this.workspaceOwnerNpub) return;
     this.audioRecorderError = null;
     this.audioRecorderState = 'uploading';
-    this.audioRecorderStatusLabel = 'Encrypting and uploading…';
+    this.audioRecorderStatusLabel = isTowerPgBackendMode() ? 'Uploading…' : 'Encrypting and uploading…';
 
     try {
-      const encrypted = await encryptAudioBlob(this._audioRecorderBlob);
-      const accessGroupIds = this.getAudioRecorderStorageGroupIds(this.audioRecorderContext);
-      if (accessGroupIds == null) {
+      const pgMode = isTowerPgBackendMode();
+      const encrypted = pgMode ? null : await encryptAudioBlob(this._audioRecorderBlob);
+      const accessGroupIds = pgMode ? [] : this.getAudioRecorderStorageGroupIds(this.audioRecorderContext);
+      if (!pgMode && accessGroupIds == null) {
         throw new Error(this.error || 'Voice note upload is missing document comment group keys.');
       }
+      const uploadBytes = pgMode
+        ? new Uint8Array(await this._audioRecorderBlob.arrayBuffer())
+        : encrypted.encryptedBytes;
       const prepared = await prepareStorageObject(buildStoragePrepareBody({
         ownerNpub: this.workspaceOwnerNpub,
-        accessGroupIds,
+        accessGroupIds: pgMode ? [] : accessGroupIds,
         contentType: this._audioRecorderBlob.type || 'audio/webm;codecs=opus',
-        sizeBytes: encrypted.encryptedBytes.byteLength,
+        sizeBytes: uploadBytes.byteLength,
         fileName: `${(this.audioRecorderTitle || this.getAudioRecorderDefaultTitle()).replace(/[^a-zA-Z0-9._-]/g, '_')}.webm`,
       }));
       await uploadStorageObject(
         prepared,
-        encrypted.encryptedBytes,
+        uploadBytes,
         this._audioRecorderBlob.type || 'audio/webm;codecs=opus',
       );
       await completeStorageObject(prepared.object_id, {
-        size_bytes: encrypted.encryptedBytes.byteLength,
+        size_bytes: uploadBytes.byteLength,
       });
 
       const draft = {
@@ -236,8 +241,8 @@ export const audioRecordingManagerMixin = {
         storage_object_id: prepared.object_id,
         mime_type: this._audioRecorderBlob.type || 'audio/webm;codecs=opus',
         duration_seconds: this.audioRecorderDurationSeconds || null,
-        size_bytes: encrypted.encryptedBytes.byteLength,
-        media_encryption: encrypted.mediaEncryption,
+        size_bytes: uploadBytes.byteLength,
+        media_encryption: pgMode ? null : encrypted.mediaEncryption,
         transcript_status: 'pending',
         transcript_preview: null,
       };
@@ -280,14 +285,14 @@ export const audioRecordingManagerMixin = {
         boardId: this.selectedBoardId,
       });
     }
-    const audioWriteFields = await getRecordWriteFieldsForStore(this, {
+    const audioWriteFields = pgContext ? null : await getRecordWriteFieldsForStore(this, {
       group_ids: target_group_ids,
     }, {
       label: 'Audio note write',
       writeGroupRef: write_group_ref || write_group_npub,
     });
-    const encryptableGroupIds = audioWriteFields.group_ids;
-    const resolvedWriteGroupRef = audioWriteFields.write_group_ref;
+    const encryptableGroupIds = audioWriteFields?.group_ids || [];
+    const resolvedWriteGroupRef = audioWriteFields?.write_group_ref || null;
 
     for (const draft of drafts) {
       const recordId = crypto.randomUUID();
@@ -320,6 +325,19 @@ export const audioRecordingManagerMixin = {
         created_at: now,
         updated_at: now,
       };
+      if (pgContext) {
+        const accepted = await createTowerPgAudioNoteFromLocal(this, localRow);
+        await upsertAudioNote(accepted);
+        audioNotes.push(accepted);
+        attachments.push({
+          kind: 'audio',
+          audio_note_record_id: accepted.record_id,
+          title: accepted.title,
+          duration_seconds: accepted.duration_seconds,
+        });
+        continue;
+      }
+
       await upsertAudioNote(localRow);
       audioNotes.push(localRow);
       attachments.push({
@@ -369,13 +387,15 @@ export const audioRecordingManagerMixin = {
         return;
       }
     }
-    if (!note?.storage_object_id || !note?.media_encryption) {
+    if (!note?.storage_object_id || (!note?.media_encryption && !note?.pg_backend)) {
       this.error = 'Voice note is not available yet. Sync audio notes and try again.';
       return;
     }
     try {
       const encryptedBytes = await downloadStorageObject(note.storage_object_id);
-      const blob = await decryptAudioBytes(encryptedBytes, note.media_encryption, note.mime_type);
+      const blob = note.pg_backend && !note.media_encryption?.key_b64
+        ? new Blob([encryptedBytes], { type: note.mime_type || 'audio/webm;codecs=opus' })
+        : await decryptAudioBytes(encryptedBytes, note.media_encryption, note.mime_type);
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       audio.onended = () => URL.revokeObjectURL(url);

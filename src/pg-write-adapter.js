@@ -1,14 +1,21 @@
 import {
+  createTowerPgChannelAudioNote,
+  createTowerPgChannelDoc,
+  createTowerPgChannelFile,
   createTowerPgChannelMessage,
   createTowerPgChannelTask,
   updateTowerPgTask,
   updateTowerPgTaskState,
 } from './api.js';
 import {
+  mapPgAudioNoteToLocal,
+  mapPgDocToLocal,
+  mapPgFileToLocalDocument,
   mapPgMessageToLocal,
   mapPgTaskToLocal,
   resolveTowerPgWorkspaceContext,
 } from './pg-read-hydrator.js';
+import { recordFamilyHash } from './translators/chat.js';
 import {
   getPgChannelScopeId,
   resolvePgRecordContext,
@@ -43,6 +50,33 @@ function pgRequestOptions(context) {
   };
 }
 
+function resolveTowerPgChannelForRecord(store, record = {}) {
+  const recordContext = resolvePgRecordContext(store, {
+    scopeId: record.scope_id || record.scope_l1_id,
+    channelId: record.pg_channel_id || record.channel_id,
+    threadId: record.pg_thread_id || record.thread_id,
+    includeActiveThread: false,
+  });
+  return {
+    recordContext,
+    channel: recordContext.channel,
+  };
+}
+
+function pgMetadataWithThread(metadata = {}, threadId = null) {
+  const base = metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? { ...metadata } : {};
+  if (threadId) base.thread_id = threadId;
+  return base;
+}
+
+function pgAudioTargetType(familyHash) {
+  const family = trimText(familyHash);
+  if (family === recordFamilyHash('chat_message')) return 'message';
+  if (family === recordFamilyHash('task')) return 'task';
+  if (family === recordFamilyHash('document')) return 'doc';
+  return null;
+}
+
 export async function createTowerPgTaskFromLocal(store, task) {
   const context = resolveTowerPgWorkspaceContext(store);
   if (!context.workspaceId || !context.workspaceOwnerNpub || !context.baseUrl) throw new Error('Tower PG workspace is not ready');
@@ -70,6 +104,63 @@ export async function createTowerPgTaskFromLocal(store, task) {
     },
   }, pgRequestOptions(context));
   return mapPgTaskToLocal(result.task, { workspaceOwnerNpub: context.workspaceOwnerNpub });
+}
+
+export async function createTowerPgDocFromLocal(store, document) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  if (!context.workspaceId || !context.workspaceOwnerNpub || !context.baseUrl) throw new Error('Tower PG workspace is not ready');
+  const { recordContext, channel } = resolveTowerPgChannelForRecord(store, document);
+  if (!channel?.record_id) throw new Error('Selected PG channel does not match the document scope');
+  const result = await createTowerPgChannelDoc(context.workspaceId, channel.record_id, {
+    title: document.title || 'Untitled document',
+    storage_object_id: document.content_storage_object_id || document.storage_object_id,
+    summary: document.content || null,
+    metadata: pgMetadataWithThread(document.pg_metadata || document.metadata, recordContext.threadId),
+  }, pgRequestOptions(context));
+  return mapPgDocToLocal(result.doc, { workspaceOwnerNpub: context.workspaceOwnerNpub });
+}
+
+export async function createTowerPgFileFromLocal(store, file) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  if (!context.workspaceId || !context.workspaceOwnerNpub || !context.baseUrl) throw new Error('Tower PG workspace is not ready');
+  const { recordContext, channel } = resolveTowerPgChannelForRecord(store, file);
+  if (!channel?.record_id) throw new Error('Selected PG channel does not match the file scope');
+  const result = await createTowerPgChannelFile(context.workspaceId, channel.record_id, {
+    storage_object_id: file.storage_object_id || file.content_storage_object_id,
+    display_name: file.display_name || file.title || null,
+    description: file.description || file.content || null,
+    metadata: pgMetadataWithThread(file.pg_metadata || file.metadata, recordContext.threadId),
+  }, pgRequestOptions(context));
+  return mapPgFileToLocalDocument(result.file, { workspaceOwnerNpub: context.workspaceOwnerNpub });
+}
+
+export async function createTowerPgAudioNoteFromLocal(store, audioNote) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  if (!context.workspaceId || !context.workspaceOwnerNpub || !context.baseUrl) throw new Error('Tower PG workspace is not ready');
+  const { recordContext, channel } = resolveTowerPgChannelForRecord(store, audioNote);
+  if (!channel?.record_id) throw new Error('Selected PG channel does not match the audio note scope');
+  const targetType = pgAudioTargetType(audioNote.target_record_family_hash);
+  const result = await createTowerPgChannelAudioNote(context.workspaceId, channel.record_id, {
+    storage_object_id: audioNote.storage_object_id,
+    mime_type: audioNote.mime_type || 'audio/webm;codecs=opus',
+    title: audioNote.title || null,
+    thread_id: recordContext.threadId || null,
+    target_type: targetType,
+    target_id: targetType ? audioNote.target_record_id || null : null,
+    duration_seconds: audioNote.duration_seconds ?? null,
+    size_bytes: audioNote.size_bytes ?? 0,
+    media_encryption: audioNote.media_encryption || {},
+    waveform_preview: audioNote.waveform_preview || [],
+    transcript_status: audioNote.transcript_status || 'not_requested',
+    transcript_preview: audioNote.transcript_preview || null,
+    summary: audioNote.summary || null,
+    record_state: audioNote.record_state || 'active',
+    metadata: audioNote.pg_metadata || audioNote.metadata || {},
+  }, pgRequestOptions(context));
+  return mapPgAudioNoteToLocal(result.audio_note, {
+    workspaceOwnerNpub: context.workspaceOwnerNpub,
+    senderNpub: store?.session?.npub,
+  });
 }
 
 export async function updateTowerPgTaskFromLocal(store, task, previousTask = null, patch = {}) {

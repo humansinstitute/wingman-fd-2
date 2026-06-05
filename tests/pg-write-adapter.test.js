@@ -1,14 +1,30 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  createTowerPgAudioNoteFromLocal,
+  createTowerPgDocFromLocal,
+  createTowerPgFileFromLocal,
   createTowerPgMessageFromLocal,
   createTowerPgTaskFromLocal,
   resolveTowerPgTaskChannel,
   updateTowerPgTaskFromLocal,
 } from '../src/pg-write-adapter.js';
+import { recordFamilyHash } from '../src/translators/chat.js';
 
 vi.mock('../src/api.js', () => ({
+  createTowerPgChannelAudioNote: vi.fn(),
+  createTowerPgChannelDoc: vi.fn(),
+  createTowerPgChannelFile: vi.fn(),
   createTowerPgChannelMessage: vi.fn(),
   createTowerPgChannelTask: vi.fn(),
+  getTowerPgChannelAudioNotes: vi.fn(),
+  getTowerPgChannelDocs: vi.fn(),
+  getTowerPgChannelFiles: vi.fn(),
+  getTowerPgChannelMessages: vi.fn(),
+  getTowerPgChannelTasks: vi.fn(),
+  getTowerPgChannelThreads: vi.fn(),
+  getTowerPgScopeChannels: vi.fn(),
+  getTowerPgScopeTasks: vi.fn(),
+  getTowerPgWorkspaceScopes: vi.fn(),
   updateTowerPgTask: vi.fn(),
   updateTowerPgTaskState: vi.fn(),
 }));
@@ -112,6 +128,117 @@ describe('PG write adapter', () => {
       title: 'Task',
       scope_id: 'scope-2',
     })).rejects.toThrow('Selected PG channel does not belong to the requested scope');
+  });
+
+  it('creates Tower PG docs with selected channel and metadata thread context', async () => {
+    const api = await import('../src/api.js');
+    api.createTowerPgChannelDoc.mockResolvedValue({
+      doc: {
+        id: 'doc-1',
+        workspace_id: 'workspace-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        storage_object_id: 'storage-doc',
+        title: 'Doc',
+        metadata: { thread_id: 'thread-1' },
+        row_version: 1,
+      },
+    });
+
+    const doc = await createTowerPgDocFromLocal(store(), {
+      title: 'Doc',
+      content_storage_object_id: 'storage-doc',
+      scope_id: 'scope-1',
+      pg_channel_id: 'channel-1',
+      pg_thread_id: 'thread-1',
+    });
+
+    expect(api.createTowerPgChannelDoc).toHaveBeenCalledWith('workspace-1', 'channel-1', {
+      title: 'Doc',
+      storage_object_id: 'storage-doc',
+      summary: null,
+      metadata: { thread_id: 'thread-1' },
+    }, { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
+    expect(doc).toMatchObject({ record_id: 'doc-1', pg_channel_id: 'channel-1', pg_thread_id: 'thread-1' });
+  });
+
+  it('creates Tower PG files with selected channel and metadata thread context', async () => {
+    const api = await import('../src/api.js');
+    api.createTowerPgChannelFile.mockResolvedValue({
+      file: {
+        id: 'file-1',
+        workspace_id: 'workspace-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        storage_object_id: 'storage-file',
+        display_name: 'File.pdf',
+        metadata: { thread_id: 'thread-1' },
+        row_version: 1,
+      },
+    });
+
+    const file = await createTowerPgFileFromLocal(store(), {
+      display_name: 'File.pdf',
+      storage_object_id: 'storage-file',
+      scope_id: 'scope-1',
+      pg_channel_id: 'channel-1',
+      pg_thread_id: 'thread-1',
+    });
+
+    expect(api.createTowerPgChannelFile).toHaveBeenCalledWith('workspace-1', 'channel-1', {
+      storage_object_id: 'storage-file',
+      display_name: 'File.pdf',
+      description: null,
+      metadata: { thread_id: 'thread-1' },
+    }, { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
+    expect(file).toMatchObject({ record_id: 'file-1', pg_channel_id: 'channel-1', pg_thread_id: 'thread-1' });
+  });
+
+  it('rejects PG file creation when the selected channel mismatches the requested scope', async () => {
+    await expect(createTowerPgFileFromLocal(store({ selectedChannelId: 'channel-1' }), {
+      display_name: 'File.pdf',
+      storage_object_id: 'storage-file',
+      scope_id: 'scope-2',
+      pg_channel_id: 'channel-1',
+    })).rejects.toThrow('Selected PG channel does not belong to the requested scope');
+  });
+
+  it('creates Tower PG audio notes with selected channel and first-class thread context', async () => {
+    const api = await import('../src/api.js');
+    api.createTowerPgChannelAudioNote.mockResolvedValue({
+      audio_note: {
+        id: 'audio-1',
+        workspace_id: 'workspace-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        thread_id: 'thread-1',
+        storage_object_id: 'storage-audio',
+        title: 'Voice note',
+        mime_type: 'audio/webm',
+        size_bytes: 3,
+        row_version: 1,
+      },
+    });
+
+    const audio = await createTowerPgAudioNoteFromLocal(store(), {
+      title: 'Voice note',
+      storage_object_id: 'storage-audio',
+      mime_type: 'audio/webm',
+      size_bytes: 3,
+      scope_id: 'scope-1',
+      pg_channel_id: 'channel-1',
+      pg_thread_id: 'thread-1',
+      target_record_family_hash: recordFamilyHash('chat_message'),
+      target_record_id: 'message-1',
+    });
+
+    expect(api.createTowerPgChannelAudioNote).toHaveBeenCalledWith('workspace-1', 'channel-1', expect.objectContaining({
+      storage_object_id: 'storage-audio',
+      thread_id: 'thread-1',
+      target_type: 'message',
+      target_id: 'message-1',
+    }), { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
+    expect(audio).toMatchObject({ record_id: 'audio-1', pg_channel_id: 'channel-1', pg_thread_id: 'thread-1' });
   });
 
   it('uses the state endpoint for state-only task patches', async () => {

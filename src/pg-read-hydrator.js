@@ -33,6 +33,13 @@ function rowVersion(value) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
 }
 
+function pgMetadataThreadId(record = {}) {
+  const metadata = record?.metadata && typeof record.metadata === 'object' && !Array.isArray(record.metadata)
+    ? record.metadata
+    : {};
+  return trimText(record?.thread_id || metadata.thread_id || metadata.pg_thread_id) || null;
+}
+
 function descriptorLinks(workspace = {}) {
   const descriptor = workspace.pgDescriptor && typeof workspace.pgDescriptor === 'object'
     ? workspace.pgDescriptor
@@ -273,7 +280,7 @@ export function mapPgDocToLocal(doc, { workspaceOwnerNpub } = {}) {
     pg_record_type: 'doc',
     pg_workspace_id: trimText(doc?.workspace_id),
     pg_channel_id: trimText(doc?.channel_id),
-    pg_thread_id: trimText(doc?.thread_id) || null,
+    pg_thread_id: pgMetadataThreadId(doc),
     pg_body_route: trimText(doc?.body?.route),
     pg_created_by_actor_id: trimText(doc?.created_by_actor_id),
     pg_updated_by_actor_id: trimText(doc?.updated_by_actor_id),
@@ -324,7 +331,7 @@ export function mapPgFileToLocalDocument(file, { workspaceOwnerNpub } = {}) {
     pg_record_type: 'file',
     pg_workspace_id: trimText(file?.workspace_id),
     pg_channel_id: trimText(file?.channel_id),
-    pg_thread_id: trimText(file?.thread_id) || null,
+    pg_thread_id: pgMetadataThreadId(file),
     pg_storage_object_id: storageObjectId || null,
     pg_object_route: trimText(file?.object?.route),
     pg_created_by_actor_id: trimText(file?.created_by_actor_id),

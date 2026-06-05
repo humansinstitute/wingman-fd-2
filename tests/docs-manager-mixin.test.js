@@ -3,14 +3,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const {
   acquireRecordCheckoutMock,
   completeStorageObjectMock,
+  createTowerPgChannelDocMock,
   downloadStorageObjectMock,
+  isTowerPgBackendModeMock,
   prepareStorageObjectMock,
   releaseRecordCheckoutMock,
   uploadStorageObjectMock,
 } = vi.hoisted(() => ({
   acquireRecordCheckoutMock: vi.fn(),
   completeStorageObjectMock: vi.fn(),
+  createTowerPgChannelDocMock: vi.fn(),
   downloadStorageObjectMock: vi.fn(),
+  isTowerPgBackendModeMock: vi.fn(() => false),
   prepareStorageObjectMock: vi.fn(),
   releaseRecordCheckoutMock: vi.fn(),
   uploadStorageObjectMock: vi.fn(),
@@ -19,17 +23,41 @@ const {
 vi.mock('../src/api.js', () => ({
   acquireRecordCheckout: acquireRecordCheckoutMock,
   completeStorageObject: completeStorageObjectMock,
+  createTowerPgChannelAudioNote: vi.fn(),
+  createTowerPgChannelDoc: createTowerPgChannelDocMock,
+  createTowerPgChannelFile: vi.fn(),
+  createTowerPgChannelMessage: vi.fn(),
+  createTowerPgChannelTask: vi.fn(),
   downloadStorageObject: downloadStorageObjectMock,
   fetchRecordHistory: vi.fn(),
+  getTowerPgChannelAudioNotes: vi.fn(),
+  getTowerPgChannelDocs: vi.fn(),
+  getTowerPgChannelFiles: vi.fn(),
+  getTowerPgChannelMessages: vi.fn(),
+  getTowerPgChannelTasks: vi.fn(),
+  getTowerPgChannelThreads: vi.fn(),
+  getTowerPgScopeChannels: vi.fn(),
+  getTowerPgScopeTasks: vi.fn(),
+  getTowerPgWorkspaceScopes: vi.fn(),
   prepareStorageObject: prepareStorageObjectMock,
   releaseRecordCheckout: releaseRecordCheckoutMock,
+  updateTowerPgTask: vi.fn(),
+  updateTowerPgTaskState: vi.fn(),
   uploadStorageObject: uploadStorageObjectMock,
+}));
+
+vi.mock('../src/backend-mode.js', () => ({
+  isTowerPgBackendMode: isTowerPgBackendModeMock,
 }));
 
 import {
   docsManagerMixin,
   mergeDocumentSaveReferences,
 } from '../src/docs-manager.js';
+import {
+  getPendingWrites,
+  openWorkspaceDb,
+} from '../src/db.js';
 import { isCheckoutHeld } from '../src/lock-managed-records.js';
 import {
   DOCUMENT_CONTENT_STORAGE_FORMAT,
@@ -80,6 +108,10 @@ function createStore(overrides = {}) {
 
   return store;
 }
+
+beforeEach(() => {
+  isTowerPgBackendModeMock.mockReturnValue(false);
+});
 
 describe('docsManagerMixin record link save references', () => {
   it('preserves existing generic references when autosave adds parsed mentions', () => {
@@ -859,6 +891,79 @@ describe('docsManagerMixin canonical row normalization', () => {
     expect(payload.content_storage_format).toBe(DOCUMENT_CONTENT_STORAGE_FORMAT);
     expect(payload.content).toBe('Short note');
     expect(payload.content_blocks).toEqual([]);
+  });
+
+  it('creates PG documents through Tower without encrypted pending writes', async () => {
+    const wsDb = openWorkspaceDb('npub1workspace');
+    await wsDb.open();
+    await Promise.all(wsDb.tables.map((table) => table.clear()));
+    isTowerPgBackendModeMock.mockReturnValue(true);
+    prepareStorageObjectMock.mockResolvedValue({ object_id: 'storage-pg-doc-1', upload_url: '' });
+    uploadStorageObjectMock.mockResolvedValue({});
+    completeStorageObjectMock.mockResolvedValue({});
+    createTowerPgChannelDocMock.mockResolvedValue({
+      doc: {
+        id: 'pg-doc-1',
+        workspace_id: 'workspace-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        storage_object_id: 'storage-pg-doc-1',
+        title: 'PG document',
+        metadata: { thread_id: 'thread-1' },
+        row_version: 1,
+      },
+    });
+
+    const store = createStore({
+      workspaceOwnerNpub: 'npub1workspace',
+      backendUrl: 'https://tower.example',
+      currentWorkspace: {
+        workspaceId: 'workspace-1',
+        workspaceOwnerNpub: 'npub1workspace',
+        directHttpsUrl: 'https://tower.example',
+        appNpub: 'flightdeck_pg',
+      },
+      selectedChannelId: 'channel-1',
+      selectedBoardId: '',
+      channels: [{ record_id: 'channel-1', scope_id: 'scope-1', scope_l1_id: 'scope-1', record_state: 'active' }],
+      getInheritedDirectoryShares: vi.fn(() => []),
+      buildDocAccessForScope: vi.fn(() => ({
+        scope_id: 'scope-1',
+        scope_l1_id: 'scope-1',
+        scope_l2_id: null,
+        scope_l3_id: null,
+        scope_l4_id: null,
+        scope_l5_id: null,
+        scope_policy_group_ids: null,
+        shares: [],
+        group_ids: [],
+      })),
+      refreshDocuments: vi.fn(async function refreshDocuments() {
+        this.documents = [{
+          record_id: 'pg-doc-1',
+          title: 'PG document',
+          pg_backend: true,
+          pg_channel_id: 'channel-1',
+          pg_thread_id: 'thread-1',
+        }];
+        return this.documents;
+      }),
+      openDoc: vi.fn(),
+    });
+
+    const row = await store.createDocument('PG document', {
+      scopeId: 'scope-1',
+      channelId: 'channel-1',
+      threadId: 'thread-1',
+    });
+
+    expect(createTowerPgChannelDocMock).toHaveBeenCalledWith('workspace-1', 'channel-1', expect.objectContaining({
+      title: 'PG document',
+      storage_object_id: 'storage-pg-doc-1',
+      metadata: { thread_id: 'thread-1' },
+    }), { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
+    expect(row).toMatchObject({ record_id: 'pg-doc-1', pg_channel_id: 'channel-1', pg_thread_id: 'thread-1' });
+    expect(await getPendingWrites()).toEqual([]);
   });
 
   it('preserves non-writable delivery groups in canonical document rows', () => {

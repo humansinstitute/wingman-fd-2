@@ -7,7 +7,9 @@ const mocks = vi.hoisted(() => ({
   prepareStorageObject: vi.fn(),
   uploadStorageObject: vi.fn(),
   completeStorageObject: vi.fn(),
+  createTowerPgChannelAudioNote: vi.fn(),
   downloadStorageObject: vi.fn(),
+  isTowerPgBackendMode: vi.fn(() => false),
   outboundAudioNote: vi.fn(),
   encryptAudioBlob: vi.fn(),
   decryptAudioBytes: vi.fn(),
@@ -25,7 +27,27 @@ vi.mock('../src/api.js', () => ({
   prepareStorageObject: mocks.prepareStorageObject,
   uploadStorageObject: mocks.uploadStorageObject,
   completeStorageObject: mocks.completeStorageObject,
+  createTowerPgChannelAudioNote: mocks.createTowerPgChannelAudioNote,
+  createTowerPgChannelDoc: vi.fn(),
+  createTowerPgChannelFile: vi.fn(),
+  createTowerPgChannelMessage: vi.fn(),
+  createTowerPgChannelTask: vi.fn(),
+  getTowerPgChannelAudioNotes: vi.fn(),
+  getTowerPgChannelDocs: vi.fn(),
+  getTowerPgChannelFiles: vi.fn(),
+  getTowerPgChannelMessages: vi.fn(),
+  getTowerPgChannelTasks: vi.fn(),
+  getTowerPgChannelThreads: vi.fn(),
+  getTowerPgScopeChannels: vi.fn(),
+  getTowerPgScopeTasks: vi.fn(),
+  getTowerPgWorkspaceScopes: vi.fn(),
+  updateTowerPgTask: vi.fn(),
+  updateTowerPgTaskState: vi.fn(),
   downloadStorageObject: mocks.downloadStorageObject,
+}));
+
+vi.mock('../src/backend-mode.js', () => ({
+  isTowerPgBackendMode: mocks.isTowerPgBackendMode,
 }));
 
 vi.mock('../src/translators/audio-notes.js', () => ({
@@ -43,6 +65,7 @@ vi.mock('../src/crypto/group-keys.js', () => ({
 }));
 
 import { audioRecordingManagerMixin } from '../src/audio-recording-manager.js';
+import { recordFamilyHash } from '../src/translators/chat.js';
 
 function createStore(overrides = {}) {
   return Object.assign(Object.create(audioRecordingManagerMixin), {
@@ -56,6 +79,7 @@ function createStore(overrides = {}) {
 describe('audioRecordingManagerMixin', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.isTowerPgBackendMode.mockReturnValue(false);
     mocks.hasGroupKey.mockImplementation((groupId) => String(groupId || '').startsWith('shared'));
     mocks.encryptAudioBlob.mockResolvedValue({
       encryptedBytes: new Uint8Array([1, 2, 3]),
@@ -163,6 +187,47 @@ describe('audioRecordingManagerMixin', () => {
     });
   });
 
+  it('uploads PG voice-note drafts without local media encryption', async () => {
+    mocks.isTowerPgBackendMode.mockReturnValue(true);
+    const store = createStore({
+      workspaceOwnerNpub: 'npub-workspace',
+      audioRecorderContext: 'thread',
+      audioRecorderTitle: 'Thread voice note',
+      audioRecorderDurationSeconds: 8,
+      messageAudioDrafts: [],
+      threadAudioDrafts: [],
+      setAudioDraftsForContext(context, drafts) {
+        this[context === 'thread' ? 'threadAudioDrafts' : 'messageAudioDrafts'] = drafts;
+      },
+      getAudioDraftsForContext(context) {
+        return this[context === 'thread' ? 'threadAudioDrafts' : 'messageAudioDrafts'] || [];
+      },
+      closeAudioRecorder: vi.fn(),
+      _audioRecorderBlob: new Blob([new Uint8Array([4, 5, 6])], { type: 'audio/webm;codecs=opus' }),
+    });
+
+    await store.attachRecordedAudioDraft();
+
+    expect(mocks.encryptAudioBlob).not.toHaveBeenCalled();
+    const prepareBody = mocks.prepareStorageObject.mock.calls[0][0];
+    expect(prepareBody).toMatchObject({
+      owner_npub: 'npub-workspace',
+      content_type: 'audio/webm;codecs=opus',
+      size_bytes: 3,
+    });
+    expect(prepareBody).not.toHaveProperty('access_group_ids');
+    expect(mocks.uploadStorageObject).toHaveBeenCalledWith(
+      { object_id: 'storage-1' },
+      new Uint8Array([4, 5, 6]),
+      'audio/webm;codecs=opus',
+    );
+    expect(store.threadAudioDrafts[0]).toMatchObject({
+      title: 'Thread voice note',
+      storage_object_id: 'storage-1',
+      media_encryption: null,
+    });
+  });
+
   it('materializes audio notes with matching group payload and storage access assumptions', async () => {
     const store = createStore({
       workspaceOwnerNpub: 'npub-workspace',
@@ -185,7 +250,7 @@ describe('audioRecordingManagerMixin', () => {
         media_encryption: { scheme: 'aes-gcm', key_b64: 'key', iv_b64: 'iv' },
       }],
       target_record_id: 'message-1',
-      target_record_family_hash: 'app:chat_message',
+      target_record_family_hash: recordFamilyHash('chat_message'),
       target_group_ids: ['shared-channel', 'private-channel'],
       write_group_ref: 'shared-channel',
     });
@@ -199,7 +264,7 @@ describe('audioRecordingManagerMixin', () => {
     expect(mocks.upsertAudioNote).toHaveBeenCalledWith(expect.objectContaining({
       owner_npub: 'npub-workspace',
       target_record_id: 'message-1',
-      target_record_family_hash: 'app:chat_message',
+      target_record_family_hash: recordFamilyHash('chat_message'),
       group_ids: ['shared-channel'],
       sender_npub: 'npub-user',
       storage_object_id: 'storage-1',
@@ -207,7 +272,7 @@ describe('audioRecordingManagerMixin', () => {
     expect(mocks.outboundAudioNote).toHaveBeenCalledWith(expect.objectContaining({
       owner_npub: 'npub-workspace',
       target_record_id: 'message-1',
-      target_record_family_hash: 'app:chat_message',
+      target_record_family_hash: recordFamilyHash('chat_message'),
       target_group_ids: ['shared-channel'],
       signature_npub: 'npub-signer',
       write_group_ref: 'shared-channel',
@@ -218,6 +283,77 @@ describe('audioRecordingManagerMixin', () => {
         group_payloads: [{ group_id: 'shared-channel' }],
       }),
     }));
+  });
+
+  it('materializes PG audio notes through Tower without encrypted pending writes', async () => {
+    mocks.isTowerPgBackendMode.mockReturnValue(true);
+    mocks.createTowerPgChannelAudioNote.mockResolvedValue({
+      audio_note: {
+        id: 'audio-pg-1',
+        workspace_id: 'workspace-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        thread_id: 'thread-1',
+        storage_object_id: 'storage-1',
+        title: 'Thread voice note',
+        mime_type: 'audio/webm;codecs=opus',
+        duration_seconds: 12,
+        size_bytes: 3,
+        media_encryption: {},
+        waveform_preview: [],
+        transcript_status: 'pending',
+        record_state: 'active',
+        row_version: 1,
+      },
+    });
+    const store = createStore({
+      backendUrl: 'https://tower.example',
+      workspaceOwnerNpub: 'npub-workspace',
+      session: { npub: 'npub-user' },
+      selectedChannelId: 'channel-1',
+      selectedBoardId: '',
+      channels: [{ record_id: 'channel-1', scope_id: 'scope-1', scope_l1_id: 'scope-1', record_state: 'active' }],
+      currentWorkspace: {
+        workspaceId: 'workspace-1',
+        workspaceOwnerNpub: 'npub-workspace',
+        directHttpsUrl: 'https://tower.example',
+        appNpub: 'flightdeck_pg',
+      },
+    });
+
+    const result = await store.materializeAudioDrafts({
+      drafts: [{
+        title: 'Thread voice note',
+        storage_object_id: 'storage-1',
+        mime_type: 'audio/webm;codecs=opus',
+        duration_seconds: 12,
+        size_bytes: 3,
+        media_encryption: null,
+      }],
+      target_record_id: 'message-1',
+      target_record_family_hash: recordFamilyHash('chat_message'),
+      scopeId: 'scope-1',
+      channelId: 'channel-1',
+      threadId: 'thread-1',
+    });
+
+    expect(mocks.createTowerPgChannelAudioNote).toHaveBeenCalledWith('workspace-1', 'channel-1', expect.objectContaining({
+      storage_object_id: 'storage-1',
+      thread_id: 'thread-1',
+      target_type: 'message',
+      target_id: 'message-1',
+    }), { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
+    expect(mocks.outboundAudioNote).not.toHaveBeenCalled();
+    expect(mocks.addPendingWrite).not.toHaveBeenCalled();
+    expect(mocks.upsertAudioNote).toHaveBeenCalledWith(expect.objectContaining({
+      record_id: 'audio-pg-1',
+      pg_channel_id: 'channel-1',
+      pg_thread_id: 'thread-1',
+    }));
+    expect(result.attachments[0]).toMatchObject({
+      audio_note_record_id: 'audio-pg-1',
+      title: 'Thread voice note',
+    });
   });
 
   it('plays a group-visible voice note by downloading and decrypting the stored object', async () => {

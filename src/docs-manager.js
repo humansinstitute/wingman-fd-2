@@ -40,6 +40,7 @@ import {
   releaseRecordCheckout,
   uploadStorageObject,
 } from './api.js';
+import { createTowerPgDocFromLocal } from './pg-write-adapter.js';
 import { inboundDocument } from './translators/docs.js';
 import { renderMarkdownToHtml, hydrateStorageImageMarkup } from './markdown.js';
 import { normalizeGroupIds } from './scope-delivery.js';
@@ -2081,11 +2082,53 @@ export const docsManagerMixin = {
     }
     const recordId = crypto.randomUUID();
     const now = new Date().toISOString();
+    const contentModel = buildDocumentContentModel([]);
+    if (pgContext) {
+      try {
+        const contentPayload = await this.prepareDocumentContentForEnvelope({
+          record_id: recordId,
+          owner_npub: ownerNpub,
+          title,
+        }, contentModel, []);
+        const accepted = await createTowerPgDocFromLocal(this, {
+          record_id: recordId,
+          owner_npub: ownerNpub,
+          title,
+          ...contentModel,
+          ...contentPayload,
+          ...scopedAccess,
+          pg_channel_id: pgContext.channelId,
+          pg_thread_id: pgContext.threadId || null,
+        });
+        await upsertDocument({
+          ...accepted,
+          content: contentModel.content,
+          content_format: contentModel.content_format,
+          content_blocks: contentModel.content_blocks,
+          content_storage_object_id: contentPayload.content_storage_object_id,
+          content_storage_format: contentPayload.content_storage_format,
+          content_storage_content_type: contentPayload.content_storage_content_type,
+          content_size_bytes: contentPayload.content_size_bytes,
+          content_sha256_hex: contentPayload.content_sha256_hex,
+          content_storage_status: 'remote',
+          content_storage_error: null,
+          pg_thread_id: pgContext.threadId || accepted.pg_thread_id || null,
+        });
+        const row = await this.refreshDocuments()
+          .then(() => this.documents.find((item) => item.record_id === accepted.record_id) || accepted)
+          .catch(() => accepted);
+        this.openDoc(accepted.record_id);
+        return row;
+      } catch (error) {
+        this.error = error?.message || 'Could not create PG document.';
+        return null;
+      }
+    }
     let row = {
       record_id: recordId,
       owner_npub: ownerNpub,
       title,
-      ...buildDocumentContentModel([]),
+      ...contentModel,
       source_links: normalizeRecordLinkList(options.sourceLinks || [], 'source'),
       references: [],
       deliverable_links: normalizeRecordLinkList(options.deliverableLinks || [], 'deliverable'),

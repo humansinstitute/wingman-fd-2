@@ -583,6 +583,39 @@ export async function createTowerPgChannelTask(workspaceId, channelId, body, { b
   return json(resp, { requestUrl, method: 'POST', prefix: 'Tower PG API' });
 }
 
+export async function createTowerPgChannelDoc(workspaceId, channelId, body, { baseUrl = _baseUrl, appNpub = APP_NPUB } = {}) {
+  const encodedWorkspaceId = encodeURIComponent(String(workspaceId || '').trim());
+  const encodedChannelId = encodeURIComponent(String(channelId || '').trim());
+  if (!encodedWorkspaceId) throw new Error('Tower PG workspace id is required');
+  if (!encodedChannelId) throw new Error('Tower PG channel id is required');
+  const requestPath = `/api/v4/flightdeck-pg/workspaces/${encodedWorkspaceId}/channels/${encodedChannelId}/docs`;
+  const requestUrl = resolveTowerPgUrl(requestPath, baseUrl);
+  const resp = await signedTowerPgFetch(requestPath, { method: 'POST', body, baseUrl, appNpub });
+  return json(resp, { requestUrl, method: 'POST', prefix: 'Tower PG API' });
+}
+
+export async function createTowerPgChannelFile(workspaceId, channelId, body, { baseUrl = _baseUrl, appNpub = APP_NPUB } = {}) {
+  const encodedWorkspaceId = encodeURIComponent(String(workspaceId || '').trim());
+  const encodedChannelId = encodeURIComponent(String(channelId || '').trim());
+  if (!encodedWorkspaceId) throw new Error('Tower PG workspace id is required');
+  if (!encodedChannelId) throw new Error('Tower PG channel id is required');
+  const requestPath = `/api/v4/flightdeck-pg/workspaces/${encodedWorkspaceId}/channels/${encodedChannelId}/files`;
+  const requestUrl = resolveTowerPgUrl(requestPath, baseUrl);
+  const resp = await signedTowerPgFetch(requestPath, { method: 'POST', body, baseUrl, appNpub });
+  return json(resp, { requestUrl, method: 'POST', prefix: 'Tower PG API' });
+}
+
+export async function createTowerPgChannelAudioNote(workspaceId, channelId, body, { baseUrl = _baseUrl, appNpub = APP_NPUB } = {}) {
+  const encodedWorkspaceId = encodeURIComponent(String(workspaceId || '').trim());
+  const encodedChannelId = encodeURIComponent(String(channelId || '').trim());
+  if (!encodedWorkspaceId) throw new Error('Tower PG workspace id is required');
+  if (!encodedChannelId) throw new Error('Tower PG channel id is required');
+  const requestPath = `/api/v4/flightdeck-pg/workspaces/${encodedWorkspaceId}/channels/${encodedChannelId}/audio-notes`;
+  const requestUrl = resolveTowerPgUrl(requestPath, baseUrl);
+  const resp = await signedTowerPgFetch(requestPath, { method: 'POST', body, baseUrl, appNpub });
+  return json(resp, { requestUrl, method: 'POST', prefix: 'Tower PG API' });
+}
+
 export async function updateTowerPgTask(workspaceId, taskId, body, { baseUrl = _baseUrl, appNpub = APP_NPUB } = {}) {
   const encodedWorkspaceId = encodeURIComponent(String(workspaceId || '').trim());
   const encodedTaskId = encodeURIComponent(String(taskId || '').trim());
