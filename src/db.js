@@ -375,6 +375,19 @@ export async function upsertChannel(channel) {
   return wsDb().channels.put(sanitizeForStorage(channel));
 }
 
+export async function replaceChannelsForOwner(ownerNpub, channels = []) {
+  if (!ownerNpub) return 0;
+  const rows = (Array.isArray(channels) ? channels : [])
+    .map((channel) => sanitizeForStorage(channel))
+    .filter((channel) => channel?.record_id);
+  const db = wsDb();
+  return db.transaction('rw', db.channels, async () => {
+    await db.channels.where('owner_npub').equals(ownerNpub).delete();
+    if (rows.length > 0) await db.channels.bulkPut(rows);
+    return rows.length;
+  });
+}
+
 export async function getChannelById(recordId) {
   return wsDb().channels.get(recordId);
 }
@@ -457,6 +470,24 @@ export async function getMessagesByOwner(ownerNpub) {
 
 export async function upsertMessage(msg) {
   return wsDb().chat_messages.put(sanitizeForStorage(msg));
+}
+
+export async function replacePgThreadsForChannel(channelId, messages = []) {
+  if (!channelId) return 0;
+  const rows = (Array.isArray(messages) ? messages : [])
+    .map((message) => sanitizeForStorage(message))
+    .filter((message) => message?.record_id);
+  const db = wsDb();
+  return db.transaction('rw', db.chat_messages, async () => {
+    const existing = await db.chat_messages.where('channel_id').equals(channelId).toArray();
+    const pgThreadIds = existing
+      .filter((message) => message?.pg_record_type === 'thread')
+      .map((message) => message.record_id)
+      .filter(Boolean);
+    if (pgThreadIds.length > 0) await db.chat_messages.bulkDelete(pgThreadIds);
+    if (rows.length > 0) await db.chat_messages.bulkPut(rows);
+    return rows.length;
+  });
 }
 
 export async function getMessageById(recordId) {
@@ -934,6 +965,19 @@ export async function getRecentScopeChangesSince(sinceIso, options = {}) {
 
 export async function upsertScope(scope) {
   return wsDb().scopes.put(scope);
+}
+
+export async function replaceScopesForOwner(ownerNpub, scopes = []) {
+  if (!ownerNpub) return 0;
+  const rows = (Array.isArray(scopes) ? scopes : [])
+    .map((scope) => sanitizeForStorage(scope))
+    .filter((scope) => scope?.record_id);
+  const db = wsDb();
+  return db.transaction('rw', db.scopes, async () => {
+    await db.scopes.where('owner_npub').equals(ownerNpub).delete();
+    if (rows.length > 0) await db.scopes.bulkPut(rows);
+    return rows.length;
+  });
 }
 
 export async function getScopeById(recordId) {

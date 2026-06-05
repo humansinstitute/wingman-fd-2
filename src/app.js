@@ -1527,6 +1527,9 @@ export function initApp() {
         if (options.runAccessPrune === true) {
           this.runAccessPruneOnLogin().catch(() => {});
         }
+      } else {
+        await this.refreshScopes();
+        await this.refreshChannels();
       }
       this.selectedBoardId = this.readStoredTaskBoardId();
       this.collapsedSections = this.readStoredCollapsedSections();

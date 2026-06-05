@@ -4,6 +4,8 @@
 
 Planning restored and app-card baseline available. `wm-fd-2` is a clean copy of `wingman-fd` with migration docs, installed dependencies, built static assets, and a running Autopilot app-card instance. Phase 1 is complete: backend mode selection, PG workspace descriptor connection, encrypted-record sync disablement, and Wingmen PG workspace bootstrap are in place.
 
+Phase 2 has started. PH2-01 is complete: PG mode can hydrate Tower PG scopes, accessible channels, and thread headers into the existing Dexie-backed Flight Deck navigation models.
+
 ## Decisions
 
 - Preserve the existing Flight Deck UI.
@@ -39,6 +41,8 @@ Planning restored and app-card baseline available. `wm-fd-2` is a clean copy of 
 - Seeded local Wingmen PG workspace in the local Tower DB: workspace `52ed5143-9c7b-4d93-aa8a-e6fdabec7e2d`, scope `Wingman Suite`, channels `Flight Deck PG`, `Tower PG`, and `Implementation`; descriptor saved at `/tmp/wingmen-flightdeck-pg-descriptor.json` for local import testing.
 - Fixed Tower migration runner bootstrap ordering so `CREATE SEQUENCE IF NOT EXISTS` statements run before tables with sequence-backed defaults.
 - Renamed completed PH1-04 work package with the `COMPLETED-` prefix.
+- Completed PH2-01 PG read hydrator: added Tower PG scope/channel/thread API helpers, DB-master Dexie replace helpers, local PG-to-classic row mappers, and workspace/bootstrap hooks so connected PG workspaces populate the existing scope/channel/thread UI.
+- Renamed completed PH2-01 work package with the `COMPLETED-` prefix.
 
 ## Outputs
 
@@ -48,3 +52,4 @@ Planning restored and app-card baseline available. `wm-fd-2` is a clean copy of 
 - PH1-02 validation: `bun run test -- tests/backend-mode.test.js tests/api-pg-workspaces.test.js tests/pg-workspace-descriptor.test.js tests/workspaces.test.js tests/connect-settings-manager.test.js tests/pg-connect-settings-manager.test.js tests/pg-workspace-manager.test.js`; `bun run test -- tests/pg-workspace-descriptor.test.js tests/workspaces.test.js tests/connect-settings-manager.test.js tests/pg-connect-settings-manager.test.js tests/pg-workspace-manager.test.js tests/shell-state.test.js`; `bun run build`.
 - PH1-03 validation: `bun run test -- tests/backend-mode.test.js tests/sse-sync-lifecycle.test.js tests/sync-manager.test.js`; `bun run build`.
 - PH1-04 validation: Tower `DB_USER=postgres DB_PASSWORD=postgres bun test tests/flightdeck-pg-setup.test.ts`; Tower `bun --check src/services/flightdeck-pg-setup.ts src/scripts/setup-flightdeck-pg-workspace.ts src/routes/admin.ts src/schema/run-migrations.ts`; CLI `npm test`; live CLI smoke through temporary Tower on `localhost:3199` created/read/listed task `78435418-f4a8-4aa4-b301-3c7755dad201`.
+- PH2-01 validation: `bun run test -- tests/pg-read-hydrator.test.js tests/api-pg-workspaces.test.js tests/backend-mode.test.js tests/pg-workspace-manager.test.js tests/shell-state.test.js`; `bun run build`.

@@ -985,6 +985,10 @@ export const workspaceManagerMixin = {
         });
       }
       await this.refreshWorkspaceSettings();
+      if (isTowerPgBackendMode() && workspace.pgBackendMode) {
+        await this.refreshScopes?.();
+        await this.refreshChannels?.();
+      }
       this.syncWorkspaceProfileDraft({ force: true });
     } finally {
       if (this.workspaceSwitchPendingKey === workspace.workspaceKey) {

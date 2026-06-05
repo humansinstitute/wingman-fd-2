@@ -54,6 +54,8 @@ import {
   getRecordWriteFieldsForStore,
   getPreferredRecordWriteGroupForStore,
 } from './preferred-write-group.js';
+import { isTowerPgBackendMode } from './backend-mode.js';
+import { hydrateTowerPgScopes } from './pg-read-hydrator.js';
 
 // ---------------------------------------------------------------------------
 // Pure utility functions (no `this` dependency)
@@ -224,9 +226,14 @@ export const scopesManagerMixin = {
   },
 
   async refreshScopes() {
+    if (isTowerPgBackendMode()) {
+      return hydrateTowerPgScopes(this);
+    }
     const ownerNpub = this.workspaceOwnerNpub;
     if (!ownerNpub) return;
-    await this.applyScopes(await getScopesByOwner(ownerNpub));
+    const scopes = await getScopesByOwner(ownerNpub);
+    await this.applyScopes(scopes);
+    return scopes;
   },
 
   resolveScopeRecord(scopeOrId) {

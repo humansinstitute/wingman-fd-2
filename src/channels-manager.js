@@ -45,6 +45,8 @@ import { sameListBySignature, toRaw } from './utils/state-helpers.js';
 import { buildSuperBasedConnectionToken } from './superbased-token.js';
 import { APP_NPUB } from './app-identity.js';
 import { flightDeckLog } from './logging.js';
+import { isTowerPgBackendMode } from './backend-mode.js';
+import { hydrateTowerPgChannels } from './pg-read-hydrator.js';
 
 // ---------------------------------------------------------------------------
 // Pure utility functions (no `this` dependency)
@@ -202,9 +204,14 @@ export const channelsManagerMixin = {
   // --- channels ---
 
   async refreshChannels() {
+    if (isTowerPgBackendMode()) {
+      return hydrateTowerPgChannels(this);
+    }
     const ownerNpub = this.workspaceOwnerNpub;
     if (!ownerNpub) return;
-    await this.applyChannels(await getChannelsByOwner(ownerNpub));
+    const channels = await getChannelsByOwner(ownerNpub);
+    await this.applyChannels(channels);
+    return channels;
   },
 
   async refreshGroups(options = {}) {
