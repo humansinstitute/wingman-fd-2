@@ -1,5 +1,8 @@
 import { APP_NPUB } from './app-identity.js';
 import {
+  getTowerPgChannelAudioNotes,
+  getTowerPgChannelDocs,
+  getTowerPgChannelFiles,
   getTowerPgChannelMessages,
   getTowerPgChannelTasks,
   getTowerPgChannelThreads,
@@ -8,11 +11,14 @@ import {
   getTowerPgWorkspaceScopes,
 } from './api.js';
 import {
+  replaceAudioNotesForOwner,
   replaceChannelsForOwner,
+  replaceDocumentsForOwner,
   replacePgMessagesForChannel,
   replaceTasksForOwner,
   replaceScopesForOwner,
 } from './db.js';
+import { recordFamilyHash } from './translators/chat.js';
 
 function trimText(value) {
   return String(value ?? '').trim();
@@ -224,6 +230,151 @@ export function mapPgTaskToLocal(task, { workspaceOwnerNpub } = {}) {
   };
 }
 
+export function mapPgDocToLocal(doc, { workspaceOwnerNpub } = {}) {
+  const scopeId = trimText(doc?.scope_id);
+  const updatedAt = isoTimestamp(doc?.updated_at || doc?.created_at);
+  const storageObjectId = trimText(doc?.storage_object_id || doc?.body?.object_id);
+  const storageObject = doc?.body?.storage_object && typeof doc.body.storage_object === 'object'
+    ? doc.body.storage_object
+    : {};
+  return {
+    record_id: trimText(doc?.id || doc?.record_id),
+    owner_npub: trimText(workspaceOwnerNpub),
+    title: trimText(doc?.title) || 'Untitled document',
+    content: trimText(doc?.summary),
+    content_format: null,
+    content_blocks: [],
+    content_storage_object_id: storageObjectId || null,
+    content_storage_format: storageObjectId ? 'flightdeck_pg_doc_body' : null,
+    content_storage_content_type: trimText(storageObject.content_type),
+    content_size_bytes: Number.isFinite(Number(storageObject.size_bytes)) ? Number(storageObject.size_bytes) : null,
+    content_sha256_hex: trimText(storageObject.sha256_hex),
+    content_storage_status: storageObjectId ? 'remote' : null,
+    content_storage_error: null,
+    parent_directory_id: null,
+    scope_id: scopeId || null,
+    scope_l1_id: scopeId || null,
+    scope_l2_id: null,
+    scope_l3_id: null,
+    scope_l4_id: null,
+    scope_l5_id: null,
+    scope_policy_group_ids: null,
+    source_links: [],
+    references: [],
+    deliverable_links: [],
+    shares: [],
+    group_ids: [],
+    sync_status: 'synced',
+    record_state: 'active',
+    version: rowVersion(doc?.row_version || doc?.version),
+    created_at: isoTimestamp(doc?.created_at || updatedAt),
+    updated_at: updatedAt,
+    pg_backend: true,
+    pg_record_type: 'doc',
+    pg_workspace_id: trimText(doc?.workspace_id),
+    pg_channel_id: trimText(doc?.channel_id),
+    pg_body_route: trimText(doc?.body?.route),
+    pg_created_by_actor_id: trimText(doc?.created_by_actor_id),
+    pg_updated_by_actor_id: trimText(doc?.updated_by_actor_id),
+  };
+}
+
+export function mapPgFileToLocalDocument(file, { workspaceOwnerNpub } = {}) {
+  const scopeId = trimText(file?.scope_id);
+  const updatedAt = isoTimestamp(file?.updated_at || file?.created_at);
+  const storageObjectId = trimText(file?.storage_object_id || file?.object?.object_id);
+  const displayName = trimText(file?.display_name || file?.object?.storage_object?.file_name) || 'File';
+  const storageObject = file?.object?.storage_object && typeof file.object.storage_object === 'object'
+    ? file.object.storage_object
+    : {};
+  return {
+    record_id: trimText(file?.id || file?.record_id),
+    owner_npub: trimText(workspaceOwnerNpub),
+    title: displayName,
+    content: storageObjectId ? `[${displayName}](storage://${storageObjectId})` : trimText(file?.description),
+    content_format: null,
+    content_blocks: [],
+    content_storage_object_id: null,
+    content_storage_format: null,
+    content_storage_content_type: trimText(storageObject.content_type),
+    content_size_bytes: Number.isFinite(Number(storageObject.size_bytes)) ? Number(storageObject.size_bytes) : null,
+    content_sha256_hex: trimText(storageObject.sha256_hex),
+    content_storage_status: storageObjectId ? 'remote' : null,
+    content_storage_error: null,
+    parent_directory_id: null,
+    scope_id: scopeId || null,
+    scope_l1_id: scopeId || null,
+    scope_l2_id: null,
+    scope_l3_id: null,
+    scope_l4_id: null,
+    scope_l5_id: null,
+    scope_policy_group_ids: null,
+    source_links: [],
+    references: [],
+    deliverable_links: [],
+    shares: [],
+    group_ids: [],
+    sync_status: 'synced',
+    record_state: 'active',
+    version: rowVersion(file?.row_version || file?.version),
+    created_at: isoTimestamp(file?.created_at || updatedAt),
+    updated_at: updatedAt,
+    pg_backend: true,
+    pg_record_type: 'file',
+    pg_workspace_id: trimText(file?.workspace_id),
+    pg_channel_id: trimText(file?.channel_id),
+    pg_storage_object_id: storageObjectId || null,
+    pg_object_route: trimText(file?.object?.route),
+    pg_created_by_actor_id: trimText(file?.created_by_actor_id),
+    pg_updated_by_actor_id: trimText(file?.updated_by_actor_id),
+  };
+}
+
+function pgAudioTargetFamily(targetType) {
+  const normalized = trimText(targetType);
+  if (normalized === 'message') return recordFamilyHash('chat_message');
+  if (normalized === 'task') return recordFamilyHash('task');
+  if (normalized === 'doc') return recordFamilyHash('document');
+  return null;
+}
+
+export function mapPgAudioNoteToLocal(audioNote, { workspaceOwnerNpub, senderNpub } = {}) {
+  const updatedAt = isoTimestamp(audioNote?.updated_at || audioNote?.created_at);
+  const targetType = trimText(audioNote?.target_type);
+  return {
+    record_id: trimText(audioNote?.id || audioNote?.record_id),
+    owner_npub: trimText(workspaceOwnerNpub),
+    target_record_id: trimText(audioNote?.target_id) || null,
+    target_record_family_hash: pgAudioTargetFamily(targetType),
+    title: trimText(audioNote?.title) || 'Voice note',
+    storage_object_id: trimText(audioNote?.storage_object_id || audioNote?.media?.object_id) || null,
+    mime_type: trimText(audioNote?.mime_type) || 'audio/webm;codecs=opus',
+    duration_seconds: Number.isFinite(Number(audioNote?.duration_seconds)) ? Number(audioNote.duration_seconds) : null,
+    size_bytes: Number.isFinite(Number(audioNote?.size_bytes)) ? Number(audioNote.size_bytes) : 0,
+    media_encryption: audioNote?.media_encryption || null,
+    waveform_preview: Array.isArray(audioNote?.waveform_preview) ? audioNote.waveform_preview : [],
+    transcript_status: trimText(audioNote?.transcript_status) || 'not_requested',
+    transcript_preview: trimText(audioNote?.transcript_preview) || null,
+    transcript: trimText(audioNote?.transcript) || null,
+    summary: trimText(audioNote?.summary) || null,
+    sender_npub: trimText(senderNpub) || trimText(workspaceOwnerNpub),
+    group_ids: [],
+    sync_status: 'synced',
+    record_state: trimText(audioNote?.record_state) || 'active',
+    version: rowVersion(audioNote?.row_version || audioNote?.version),
+    created_at: isoTimestamp(audioNote?.created_at || updatedAt),
+    updated_at: updatedAt,
+    pg_backend: true,
+    pg_record_type: 'audio_note',
+    pg_workspace_id: trimText(audioNote?.workspace_id),
+    pg_channel_id: trimText(audioNote?.channel_id),
+    pg_thread_id: trimText(audioNote?.thread_id) || null,
+    pg_media_route: trimText(audioNote?.media?.route),
+    pg_created_by_actor_id: trimText(audioNote?.created_by_actor_id),
+    pg_updated_by_actor_id: trimText(audioNote?.updated_by_actor_id),
+  };
+}
+
 export async function hydrateTowerPgScopes(store, deps = {}) {
   const context = resolveTowerPgWorkspaceContext(store);
   if (!context.workspaceId || !context.workspaceOwnerNpub || !context.baseUrl) return [];
@@ -362,4 +513,70 @@ export async function hydrateTowerPgTasks(store, deps = {}) {
   await replaceTasks(context.workspaceOwnerNpub, tasks);
   if (typeof store.applyTasks === 'function') await store.applyTasks(tasks);
   return tasks;
+}
+
+export async function hydrateTowerPgDocumentsAndFiles(store, deps = {}) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  if (!context.workspaceId || !context.workspaceOwnerNpub || !context.baseUrl) return [];
+  const readDocs = deps.getTowerPgChannelDocs || getTowerPgChannelDocs;
+  const readFiles = deps.getTowerPgChannelFiles || getTowerPgChannelFiles;
+  const replaceDocuments = deps.replaceDocumentsForOwner || replaceDocumentsForOwner;
+  let channels = Array.isArray(store.channels) ? store.channels : [];
+  if (channels.length === 0 && typeof store.refreshChannels === 'function') {
+    const refreshed = await store.refreshChannels();
+    channels = Array.isArray(refreshed) ? refreshed : (Array.isArray(store.channels) ? store.channels : []);
+  }
+
+  const documents = [];
+  for (const channel of channels.filter((entry) => entry?.record_id && entry.record_state !== 'deleted')) {
+    const [docsResult, filesResult] = await Promise.all([
+      readDocs(context.workspaceId, channel.record_id, { baseUrl: context.baseUrl, appNpub: context.appNpub }),
+      readFiles(context.workspaceId, channel.record_id, { baseUrl: context.baseUrl, appNpub: context.appNpub }),
+    ]);
+    documents.push(
+      ...(Array.isArray(docsResult?.docs) ? docsResult.docs : [])
+        .map((doc) => mapPgDocToLocal(doc, { workspaceOwnerNpub: context.workspaceOwnerNpub }))
+        .filter((doc) => doc.record_id),
+      ...(Array.isArray(filesResult?.files) ? filesResult.files : [])
+        .map((file) => mapPgFileToLocalDocument(file, { workspaceOwnerNpub: context.workspaceOwnerNpub }))
+        .filter((doc) => doc.record_id),
+    );
+  }
+
+  await replaceDocuments(context.workspaceOwnerNpub, documents);
+  if (typeof store.applyDocuments === 'function') store.applyDocuments(documents);
+  return documents;
+}
+
+export async function hydrateTowerPgAudioNotes(store, deps = {}) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  if (!context.workspaceId || !context.workspaceOwnerNpub || !context.baseUrl) return [];
+  const readAudioNotes = deps.getTowerPgChannelAudioNotes || getTowerPgChannelAudioNotes;
+  const replaceAudioNotes = deps.replaceAudioNotesForOwner || replaceAudioNotesForOwner;
+  let channels = Array.isArray(store.channels) ? store.channels : [];
+  if (channels.length === 0 && typeof store.refreshChannels === 'function') {
+    const refreshed = await store.refreshChannels();
+    channels = Array.isArray(refreshed) ? refreshed : (Array.isArray(store.channels) ? store.channels : []);
+  }
+
+  const senderNpub = trimText(store.session?.npub) || context.workspaceOwnerNpub;
+  const audioNotes = [];
+  for (const channel of channels.filter((entry) => entry?.record_id && entry.record_state !== 'deleted')) {
+    const result = await readAudioNotes(context.workspaceId, channel.record_id, {
+      baseUrl: context.baseUrl,
+      appNpub: context.appNpub,
+    });
+    audioNotes.push(
+      ...(Array.isArray(result?.audio_notes) ? result.audio_notes : [])
+        .map((audioNote) => mapPgAudioNoteToLocal(audioNote, {
+          workspaceOwnerNpub: context.workspaceOwnerNpub,
+          senderNpub,
+        }))
+        .filter((audioNote) => audioNote.record_id),
+    );
+  }
+
+  await replaceAudioNotes(context.workspaceOwnerNpub, audioNotes);
+  if (typeof store.applyAudioNotes === 'function') await store.applyAudioNotes(audioNotes);
+  return audioNotes;
 }

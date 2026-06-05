@@ -989,6 +989,8 @@ export const workspaceManagerMixin = {
         await this.refreshScopes?.();
         await this.refreshChannels?.();
         await this.refreshTasks?.();
+        await this.refreshDocuments?.();
+        await this.refreshAudioNotes?.();
       }
       this.syncWorkspaceProfileDraft({ force: true });
     } finally {

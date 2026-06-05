@@ -443,6 +443,19 @@ export async function upsertDocument(document) {
   return wsDb().documents.put(sanitizeForStorage(document));
 }
 
+export async function replaceDocumentsForOwner(ownerNpub, documents = []) {
+  if (!ownerNpub) return 0;
+  const rows = (Array.isArray(documents) ? documents : [])
+    .map((document) => sanitizeForStorage(document))
+    .filter((document) => document?.record_id);
+  const db = wsDb();
+  return db.transaction('rw', db.documents, async () => {
+    await db.documents.where('owner_npub').equals(ownerNpub).delete();
+    if (rows.length > 0) await db.documents.bulkPut(rows);
+    return rows.length;
+  });
+}
+
 export async function getDocumentById(recordId) {
   return wsDb().documents.get(recordId);
 }
@@ -972,6 +985,19 @@ export async function getAudioNotesByOwner(ownerNpub) {
 
 export async function upsertAudioNote(audioNote) {
   return wsDb().audio_notes.put(sanitizeForStorage(audioNote));
+}
+
+export async function replaceAudioNotesForOwner(ownerNpub, audioNotes = []) {
+  if (!ownerNpub) return 0;
+  const rows = (Array.isArray(audioNotes) ? audioNotes : [])
+    .map((audioNote) => sanitizeForStorage(audioNote))
+    .filter((audioNote) => audioNote?.record_id);
+  const db = wsDb();
+  return db.transaction('rw', db.audio_notes, async () => {
+    await db.audio_notes.where('owner_npub').equals(ownerNpub).delete();
+    if (rows.length > 0) await db.audio_notes.bulkPut(rows);
+    return rows.length;
+  });
 }
 
 export async function getAudioNoteById(recordId) {

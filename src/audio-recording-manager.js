@@ -23,6 +23,8 @@ import {
 } from './storage-payloads.js';
 import { decryptAudioBytes, encryptAudioBlob, measureAudioDuration } from './audio-notes.js';
 import { sameListBySignature } from './utils/state-helpers.js';
+import { isTowerPgBackendMode } from './backend-mode.js';
+import { hydrateTowerPgAudioNotes } from './pg-read-hydrator.js';
 import {
   getEncryptableRecordGroupRefsForStore,
   getRecordGroupKeyState,
@@ -385,9 +387,14 @@ export const audioRecordingManagerMixin = {
   },
 
   async refreshAudioNotes() {
+    if (isTowerPgBackendMode()) {
+      return hydrateTowerPgAudioNotes(this);
+    }
     const ownerNpub = this.workspaceOwnerNpub;
     if (!ownerNpub) return;
-    await this.applyAudioNotes(await getAudioNotesByOwner(ownerNpub));
+    const audioNotes = await getAudioNotesByOwner(ownerNpub);
+    await this.applyAudioNotes(audioNotes);
+    return audioNotes;
   },
 
   getAudioRecorderStorageGroupIds(context = this.audioRecorderContext) {

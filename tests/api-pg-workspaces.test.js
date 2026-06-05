@@ -94,6 +94,9 @@ describe('Tower PG API helpers', () => {
     await api.getTowerPgChannelMessages('workspace-1', 'channel-1', { appNpub: 'flightdeck_pg', limit: 40 });
     await api.getTowerPgChannelTasks('workspace-1', 'channel-1', { appNpub: 'flightdeck_pg', limit: 50 });
     await api.getTowerPgScopeTasks('workspace-1', 'scope-1', { appNpub: 'flightdeck_pg', limit: 60 });
+    await api.getTowerPgChannelDocs('workspace-1', 'channel-1', { appNpub: 'flightdeck_pg', limit: 70 });
+    await api.getTowerPgChannelFiles('workspace-1', 'channel-1', { appNpub: 'flightdeck_pg', limit: 80 });
+    await api.getTowerPgChannelAudioNotes('workspace-1', 'channel-1', { appNpub: 'flightdeck_pg', limit: 90 });
 
     expect(globalThis.fetch).toHaveBeenNthCalledWith(
       1,
@@ -161,7 +164,40 @@ describe('Tower PG API helpers', () => {
         }),
       }),
     );
-    expect(createNip98AuthHeader).toHaveBeenCalledTimes(6);
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      7,
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/channels/channel-1/docs?limit=70',
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({
+          Authorization: 'NIP98 GET https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/channels/channel-1/docs?limit=70',
+          'x-flightdeck-pg-app-npub': 'flightdeck_pg',
+        }),
+      }),
+    );
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      8,
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/channels/channel-1/files?limit=80',
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({
+          Authorization: 'NIP98 GET https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/channels/channel-1/files?limit=80',
+          'x-flightdeck-pg-app-npub': 'flightdeck_pg',
+        }),
+      }),
+    );
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      9,
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/channels/channel-1/audio-notes?limit=90',
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({
+          Authorization: 'NIP98 GET https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/channels/channel-1/audio-notes?limit=90',
+          'x-flightdeck-pg-app-npub': 'flightdeck_pg',
+        }),
+      }),
+    );
+    expect(createNip98AuthHeader).toHaveBeenCalledTimes(9);
     expect(createNip98AuthHeaderForSecret).not.toHaveBeenCalled();
   });
 });

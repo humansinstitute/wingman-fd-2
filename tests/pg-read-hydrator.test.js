@@ -1,9 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   hydrateTowerPgChannels,
+  hydrateTowerPgAudioNotes,
+  hydrateTowerPgDocumentsAndFiles,
   hydrateTowerPgScopes,
   hydrateTowerPgTasks,
   mapPgChannelToLocal,
+  mapPgAudioNoteToLocal,
+  mapPgDocToLocal,
+  mapPgFileToLocalDocument,
   mapPgMessageToLocal,
   mapPgScopeToLocal,
   mapPgTaskToLocal,
@@ -38,6 +43,12 @@ function store(seed = {}) {
     }),
     applyTasks: vi.fn(async (tasks) => {
       seed.tasks = tasks;
+    }),
+    applyDocuments: vi.fn((documents) => {
+      seed.documents = documents;
+    }),
+    applyAudioNotes: vi.fn(async (audioNotes) => {
+      seed.audioNotes = audioNotes;
     }),
     refreshMessages: vi.fn(),
     ...seed,
@@ -189,6 +200,78 @@ describe('PG read hydrator', () => {
     });
   });
 
+  it('maps PG docs and files into classic document rows for docs/files views', () => {
+    expect(mapPgDocToLocal({
+      id: 'doc-1',
+      workspace_id: 'workspace-1',
+      scope_id: 'scope-1',
+      channel_id: 'channel-1',
+      storage_object_id: 'object-doc',
+      title: 'Design note',
+      summary: 'Doc summary',
+      body: { object_id: 'object-doc', route: '/body' },
+      row_version: 3,
+    }, { workspaceOwnerNpub: 'npub1owner' })).toMatchObject({
+      record_id: 'doc-1',
+      owner_npub: 'npub1owner',
+      title: 'Design note',
+      content: 'Doc summary',
+      content_storage_object_id: 'object-doc',
+      scope_id: 'scope-1',
+      scope_l1_id: 'scope-1',
+      pg_record_type: 'doc',
+      pg_channel_id: 'channel-1',
+    });
+
+    expect(mapPgFileToLocalDocument({
+      id: 'file-1',
+      workspace_id: 'workspace-1',
+      scope_id: 'scope-1',
+      channel_id: 'channel-1',
+      storage_object_id: 'object-file',
+      display_name: 'Brief.pdf',
+      row_version: 4,
+    }, { workspaceOwnerNpub: 'npub1owner' })).toMatchObject({
+      record_id: 'file-1',
+      owner_npub: 'npub1owner',
+      title: 'Brief.pdf',
+      content: '[Brief.pdf](storage://object-file)',
+      content_storage_object_id: null,
+      scope_id: 'scope-1',
+      pg_record_type: 'file',
+      pg_storage_object_id: 'object-file',
+    });
+  });
+
+  it('maps PG audio notes into classic audio note rows', () => {
+    expect(mapPgAudioNoteToLocal({
+      id: 'audio-1',
+      workspace_id: 'workspace-1',
+      scope_id: 'scope-1',
+      channel_id: 'channel-1',
+      thread_id: 'thread-1',
+      target_type: 'message',
+      target_id: 'message-1',
+      storage_object_id: 'object-audio',
+      title: 'Voice note',
+      mime_type: 'audio/webm',
+      transcript_status: 'complete',
+      transcript_preview: 'Hello',
+      row_version: 2,
+    }, { workspaceOwnerNpub: 'npub1owner', senderNpub: 'npub1pete' })).toMatchObject({
+      record_id: 'audio-1',
+      owner_npub: 'npub1owner',
+      target_record_id: 'message-1',
+      title: 'Voice note',
+      storage_object_id: 'object-audio',
+      sender_npub: 'npub1pete',
+      transcript_status: 'complete',
+      pg_record_type: 'audio_note',
+      pg_channel_id: 'channel-1',
+      pg_thread_id: 'thread-1',
+    });
+  });
+
   it('hydrates PG scopes through Tower API and overwrites local scope rows', async () => {
     const target = store();
     const getTowerPgWorkspaceScopes = vi.fn(async () => ({
@@ -304,5 +387,52 @@ describe('PG read hydrator', () => {
     });
     expect(replaceTasksForOwner).toHaveBeenCalledWith('npub1owner', tasks);
     expect(target.applyTasks).toHaveBeenCalledWith(tasks);
+  });
+
+  it('hydrates PG docs and files from accessible channels', async () => {
+    const target = store({
+      channels: [{ record_id: 'channel-1', record_state: 'active' }],
+    });
+    const getTowerPgChannelDocs = vi.fn(async () => ({
+      docs: [{ id: 'doc-1', scope_id: 'scope-1', channel_id: 'channel-1', storage_object_id: 'object-doc', title: 'Doc' }],
+    }));
+    const getTowerPgChannelFiles = vi.fn(async () => ({
+      files: [{ id: 'file-1', scope_id: 'scope-1', channel_id: 'channel-1', storage_object_id: 'object-file', display_name: 'File.pdf' }],
+    }));
+    const replaceDocumentsForOwner = vi.fn(async () => 2);
+
+    const documents = await hydrateTowerPgDocumentsAndFiles(target, {
+      getTowerPgChannelDocs,
+      getTowerPgChannelFiles,
+      replaceDocumentsForOwner,
+    });
+
+    expect(documents).toEqual([
+      expect.objectContaining({ record_id: 'doc-1', pg_record_type: 'doc' }),
+      expect.objectContaining({ record_id: 'file-1', pg_record_type: 'file' }),
+    ]);
+    expect(replaceDocumentsForOwner).toHaveBeenCalledWith('npub1owner', documents);
+    expect(target.applyDocuments).toHaveBeenCalledWith(documents);
+  });
+
+  it('hydrates PG audio notes from accessible channels', async () => {
+    const target = store({
+      channels: [{ record_id: 'channel-1', record_state: 'active' }],
+    });
+    const getTowerPgChannelAudioNotes = vi.fn(async () => ({
+      audio_notes: [{ id: 'audio-1', channel_id: 'channel-1', storage_object_id: 'object-audio', title: 'Voice note' }],
+    }));
+    const replaceAudioNotesForOwner = vi.fn(async () => 1);
+
+    const audioNotes = await hydrateTowerPgAudioNotes(target, {
+      getTowerPgChannelAudioNotes,
+      replaceAudioNotesForOwner,
+    });
+
+    expect(audioNotes).toEqual([
+      expect.objectContaining({ record_id: 'audio-1', pg_record_type: 'audio_note' }),
+    ]);
+    expect(replaceAudioNotesForOwner).toHaveBeenCalledWith('npub1owner', audioNotes);
+    expect(target.applyAudioNotes).toHaveBeenCalledWith(audioNotes);
   });
 });
