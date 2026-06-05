@@ -119,18 +119,34 @@ export function pgWorkspaceIdentityKey(descriptor) {
   const normalized = descriptor?.towerServiceNpub
     ? descriptor
     : parsePgWorkspaceDescriptor(descriptor);
+  const session = trimText(normalized.pgSessionNpub || normalized.sessionNpub);
   const tower = trimText(normalized.towerServiceNpub);
   const workspace = trimText(normalized.workspaceServiceNpub);
   const app = trimText(normalized.appNpub || APP_NPUB || 'flightdeck_pg');
   if (!tower || !workspace || !app) return '';
-  return `pg:${tower}::workspace:${workspace}::app:${app}`;
+  const identity = `tower:${tower}::workspace:${workspace}::app:${app}`;
+  return session ? `pg:${session}::${identity}` : `pg:${identity}`;
+}
+
+export function pgWorkspaceSessionNpubFromMe(me, fallback = '') {
+  return trimText(
+    me?.actor?.npub
+    || me?.user?.npub
+    || me?.membership?.npub
+    || fallback
+  );
 }
 
 export function pgWorkspaceEntryFromDescriptor(input, options = {}) {
   const descriptor = input?.towerServiceNpub
     ? input
     : parsePgWorkspaceDescriptor(input);
-  const workspaceKey = pgWorkspaceIdentityKey(descriptor);
+  const pgSessionNpub = trimText(options.sessionNpub)
+    || pgWorkspaceSessionNpubFromMe(options.me);
+  const workspaceKey = pgWorkspaceIdentityKey({
+    ...descriptor,
+    pgSessionNpub,
+  });
   return {
     workspaceKey,
     workspaceOwnerNpub: descriptor.workspaceOwnerNpub,
@@ -144,6 +160,7 @@ export function pgWorkspaceEntryFromDescriptor(input, options = {}) {
     workspaceServiceNpub: descriptor.workspaceServiceNpub,
     workspaceId: descriptor.workspaceId,
     appNpub: descriptor.appNpub,
+    pgSessionNpub,
     pgBackendMode: true,
     pgDescriptor: descriptor.raw || input,
     pgDescriptorVerifiedAt: options.verifiedAt || null,

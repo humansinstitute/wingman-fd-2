@@ -2,7 +2,7 @@
 
 ## Current Status
 
-Planning restored and app-card baseline available. `wm-fd-2` is a clean copy of `wingman-fd` with migration docs, installed dependencies, built static assets, and a running Autopilot app-card instance. PH1-01 established the app-side backend-mode boundary, PH1-02 connects that boundary to Tower PG workspace descriptors through the classic Flight Deck connection flow, and PH1-03 disables encrypted-record sync startup in Tower PG mode.
+Planning restored and app-card baseline available. `wm-fd-2` is a clean copy of `wingman-fd` with migration docs, installed dependencies, built static assets, and a running Autopilot app-card instance. Phase 1 is complete: backend mode selection, PG workspace descriptor connection, encrypted-record sync disablement, and Wingmen PG workspace bootstrap are in place.
 
 ## Decisions
 
@@ -31,8 +31,13 @@ Planning restored and app-card baseline available. `wm-fd-2` is a clean copy of 
 - Recovered PH1-02 from stalled pipeline run `b1854b43-088e-4eae-9c34-905c7d9d74f6`; retained the useful partial patch, completed tests/build locally, and will continue with one ticket per pipeline where the runner remains healthy.
 - Recovered PH1-03 from stalled pipeline run `9f2da542-48b1-4500-936a-111e21eb37b9`; completed the sync gating locally because the assigned worker session stopped making observable progress.
 - Added PH1-03 PG-mode sync guard: when `tower-pg` backend mode is active, the classic encrypted-record worker sync, worker flush timer, background tick, access prune, status refresh, and SSE stream startup are intentionally disabled while the existing encrypted-records mode remains unchanged.
+- Hardened PH1-03 repair paths so Tower PG mode also no-ops encrypted-record family restore, quarantine retry, pending-write Tower repair, task-family backfill, and direct family pulls before they clear Dexie sync state or enqueue encrypted worker pulls.
 - Added visible disabled sync status text/badge styling for Tower PG mode so the classic avatar menu does not imply encrypted-record sync is running.
 - Renamed completed PH1-01 through PH1-03 work packages with the `COMPLETED-` prefix to prevent accidental redispatch.
+- Completed PH1-04 Tower/CLI bootstrap: Tower setup now seeds the Wingmen workspace defaults, group permissions include task/chat/doc/file/audio surfaces, the direct setup script defaults to Pete + wm21, and `flightdeck-cli` has a one-command `smoke task` create/read/list verification.
+- Seeded local Wingmen PG workspace in the local Tower DB: workspace `52ed5143-9c7b-4d93-aa8a-e6fdabec7e2d`, scope `Wingman Suite`, channels `Flight Deck PG`, `Tower PG`, and `Implementation`; descriptor saved at `/tmp/wingmen-flightdeck-pg-descriptor.json` for local import testing.
+- Fixed Tower migration runner bootstrap ordering so `CREATE SEQUENCE IF NOT EXISTS` statements run before tables with sequence-backed defaults.
+- Renamed completed PH1-04 work package with the `COMPLETED-` prefix.
 
 ## Outputs
 
@@ -41,3 +46,4 @@ Planning restored and app-card baseline available. `wm-fd-2` is a clean copy of 
 - PG migration product code now has a mode boundary plus descriptor-based Tower PG workspace connection in the existing Flight Deck UI.
 - PH1-02 validation: `bun run test -- tests/backend-mode.test.js tests/api-pg-workspaces.test.js tests/pg-workspace-descriptor.test.js tests/workspaces.test.js tests/connect-settings-manager.test.js tests/pg-connect-settings-manager.test.js tests/pg-workspace-manager.test.js`; `bun run build`.
 - PH1-03 validation: `bun run test -- tests/backend-mode.test.js tests/sse-sync-lifecycle.test.js tests/sync-manager.test.js`; `bun run build`.
+- PH1-04 validation: Tower `DB_USER=postgres DB_PASSWORD=postgres bun test tests/flightdeck-pg-setup.test.ts`; Tower `bun --check src/services/flightdeck-pg-setup.ts src/scripts/setup-flightdeck-pg-workspace.ts src/routes/admin.ts src/schema/run-migrations.ts`; CLI `npm test`; live CLI smoke through temporary Tower on `localhost:3199` created/read/listed task `78435418-f4a8-4aa4-b301-3c7755dad201`.
