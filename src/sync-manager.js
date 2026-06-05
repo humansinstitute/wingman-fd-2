@@ -75,6 +75,7 @@ import { resolveFlightDeckRecordCheckoutPolicy } from './record-checkout-policy.
 import { isTowerPgBackendMode } from './backend-mode.js';
 
 const PG_RECORD_SYNC_DISABLED_MESSAGE = 'Tower PG mode active; encrypted record sync is disabled.';
+const PG_RECORD_REPAIR_DISABLED_MESSAGE = 'Tower PG mode active; encrypted record repair is not available because encrypted record sync is disabled.';
 
 // ---------------------------------------------------------------------------
 // Mixin — methods and getters that use `this` (the Alpine store)
@@ -103,6 +104,14 @@ export const syncManagerMixin = {
       error: null,
       heartbeat: false,
     });
+  },
+
+  encryptedRecordRepairDisabledResult(extra = {}) {
+    return {
+      disabled: true,
+      message: PG_RECORD_REPAIR_DISABLED_MESSAGE,
+      ...extra,
+    };
   },
 
   // --- access pruning on login ---
@@ -1416,6 +1425,10 @@ export const syncManagerMixin = {
       const result = await this.repairPendingWriteTargetsFromTower([
         { familyId, recordId, label: targetLabel },
       ], { pendingWrites, requirePendingRows: false });
+      if (result?.disabled) {
+        this.recordStatusError = result.message || PG_RECORD_REPAIR_DISABLED_MESSAGE;
+        return;
+      }
       await this.checkRecordStatusOnTower();
       if (!this.recordStatusError) {
         const clearedSuffix = result.cleared > 0
@@ -1596,6 +1609,10 @@ export const syncManagerMixin = {
       this.pendingWritesError = 'Configure workspace sync first.';
       return;
     }
+    if (this.isEncryptedRecordSyncDisabled) {
+      this.pendingWritesError = PG_RECORD_REPAIR_DISABLED_MESSAGE;
+      return;
+    }
 
     const confirmed = typeof window === 'undefined'
       ? true
@@ -1614,6 +1631,10 @@ export const syncManagerMixin = {
       }
 
       const result = await this.repairPendingWriteTargetsFromTower(targets, { pendingWrites });
+      if (result?.disabled) {
+        this.pendingWritesError = result.message || PG_RECORD_REPAIR_DISABLED_MESSAGE;
+        return;
+      }
 
       await this.refreshPendingWriteDiagnostics();
       await this.refreshSyncStatus({ refreshUnread: false });
@@ -1637,6 +1658,17 @@ export const syncManagerMixin = {
   },
 
   async repairPendingWriteTargetsFromTower(targets = [], options = {}) {
+    if (this.isEncryptedRecordSyncDisabled) {
+      this.pendingWritesError = PG_RECORD_REPAIR_DISABLED_MESSAGE;
+      return this.encryptedRecordRepairDisabledResult({
+        repaired: 0,
+        cleared: 0,
+        attempted: 0,
+        skippedMissing: 0,
+        failures: [],
+      });
+    }
+
     const pendingWrites = Array.isArray(options.pendingWrites)
       ? options.pendingWrites
       : await this.getRecordStatusPendingWrites();
@@ -2688,6 +2720,7 @@ export const syncManagerMixin = {
 
   async ensureTaskFamilyBackfill() {
     if (this.hasForcedTaskFamilyBackfill) return false;
+    if (this.isEncryptedRecordSyncDisabled) return false;
     if (!this.session?.npub || !this.backendUrl || !this.workspaceOwnerNpub) return false;
     if (this.tasks.length > 0) return false;
     if (this.groups.length === 0) return false;
@@ -2720,6 +2753,13 @@ export const syncManagerMixin = {
     if (dedupedFamilyIds.length === 0) {
       throw new Error('Select at least one record family.');
     }
+    if (this.isEncryptedRecordSyncDisabled) {
+      this.repairError = PG_RECORD_REPAIR_DISABLED_MESSAGE;
+      return this.encryptedRecordRepairDisabledResult({
+        cancelled: true,
+        restored: 0,
+      });
+    }
 
     const pending = await getPendingWritesByFamilies(dedupedFamilyIds);
     if (pending.length > 0) {
@@ -2747,6 +2787,9 @@ export const syncManagerMixin = {
   },
 
   async pullFamiliesFromBackend(familyIds, options = {}) {
+    if (this.isEncryptedRecordSyncDisabled) {
+      return this.encryptedRecordRepairDisabledResult({ pulled: 0 });
+    }
     if (!this.session?.npub || !this.backendUrl || !this.workspaceOwnerNpub) {
       throw new Error('Configure setup first');
     }
@@ -2843,6 +2886,10 @@ export const syncManagerMixin = {
     const familyId = getSyncFamily(entry?.family_id || entry?.family_hash)?.id;
     if (!familyId) {
       this.syncQuarantineError = 'Unknown sync family for this quarantine issue.';
+      return;
+    }
+    if (this.isEncryptedRecordSyncDisabled) {
+      this.syncQuarantineError = PG_RECORD_REPAIR_DISABLED_MESSAGE;
       return;
     }
 

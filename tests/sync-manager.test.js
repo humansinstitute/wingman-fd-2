@@ -1,8 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fetchRecordHistory, syncRecords } from '../src/api.js';
 import {
+  clearRuntimeFamilies,
+  clearSyncQuarantineForFamilies,
+  clearSyncStateForFamilies,
   deleteRuntimeRecordByFamily,
   getPendingWrites,
+  getPendingWritesByFamilies,
   getTaskById,
   removePendingWrite,
   updatePendingWrite,
@@ -1856,6 +1860,129 @@ describe('restoreSelectedFamiliesFromSuperBased', () => {
     });
     await fn();
     expect(store.repairError).toBe('Select at least one record family.');
+  });
+});
+
+describe('PG mode encrypted-record repair guard', () => {
+  it('does not clear local family state or pull encrypted records from restoreSelectedFamiliesFromSuperBased in Tower PG mode', async () => {
+    isTowerPgBackendMode.mockReturnValue(true);
+    const { fn, store } = bindMethod('restoreSelectedFamiliesFromSuperBased', {
+      repairSelectedFamilyIds: ['task'],
+      session: { npub: 'npub1me' },
+      backendUrl: 'https://tower.example.com',
+    });
+
+    await fn();
+
+    expect(getPendingWritesByFamilies).not.toHaveBeenCalled();
+    expect(clearRuntimeFamilies).not.toHaveBeenCalled();
+    expect(clearSyncStateForFamilies).not.toHaveBeenCalled();
+    expect(clearSyncQuarantineForFamilies).not.toHaveBeenCalled();
+    expect(pullRecordsForFamilies).not.toHaveBeenCalled();
+    expect(store.repairError).toContain('Tower PG mode active');
+    expect(store.repairBusy).toBe(false);
+  });
+
+  it('leaves encrypted-record family restore unchanged in default mode', async () => {
+    pullRecordsForFamilies.mockResolvedValueOnce({ pulled: 1 });
+    const store = createStore({
+      session: { npub: 'npub1me' },
+      backendUrl: 'https://tower.example.com',
+      refreshStateForFamilies: vi.fn().mockResolvedValue(undefined),
+      refreshSyncQuarantine: vi.fn().mockResolvedValue(undefined),
+    });
+
+    const result = await store.restoreFamiliesFromSuperBased(['task'], { confirm: false });
+
+    expect(result).toEqual({ cancelled: false, restored: 1 });
+    expect(getPendingWritesByFamilies).toHaveBeenCalledWith(['task']);
+    expect(clearRuntimeFamilies).toHaveBeenCalledWith(['task']);
+    expect(clearSyncStateForFamilies).toHaveBeenCalledWith(['task']);
+    expect(clearSyncQuarantineForFamilies).toHaveBeenCalledWith(['task']);
+    expect(pullRecordsForFamilies).toHaveBeenCalledWith(
+      'npub1owner',
+      'npub1me',
+      [getSyncFamilyHash('task')],
+      expect.objectContaining({ forceFull: true, backendUrl: 'https://tower.example.com' }),
+    );
+  });
+
+  it('does not clear or pull encrypted records from retrySyncQuarantineIssue in Tower PG mode', async () => {
+    isTowerPgBackendMode.mockReturnValue(true);
+    const { fn, store } = bindMethod('retrySyncQuarantineIssue', {
+      session: { npub: 'npub1me' },
+      backendUrl: 'https://tower.example.com',
+    });
+
+    await fn({ family_id: 'task', record_id: 'task-1' });
+
+    expect(clearRuntimeFamilies).not.toHaveBeenCalled();
+    expect(clearSyncStateForFamilies).not.toHaveBeenCalled();
+    expect(clearSyncQuarantineForFamilies).not.toHaveBeenCalled();
+    expect(pullRecordsForFamilies).not.toHaveBeenCalled();
+    expect(store.syncQuarantineError).toContain('Tower PG mode active');
+    expect(store.syncQuarantineBusy).toBe(false);
+  });
+
+  it('does not remove pending writes or pull encrypted records from repairPendingWriteTargetsFromTower in Tower PG mode', async () => {
+    isTowerPgBackendMode.mockReturnValue(true);
+    const getRecordStatusPendingWrites = vi.fn().mockResolvedValue([
+      {
+        row_id: 91,
+        record_id: 'task-1',
+        record_family_hash: getSyncFamilyHash('task'),
+      },
+    ]);
+    const store = createStore({
+      session: { npub: 'npub1me' },
+      backendUrl: 'https://tower.example.com',
+      getRecordStatusPendingWrites,
+    });
+
+    const result = await store.repairPendingWriteTargetsFromTower([
+      { familyId: 'task', recordId: 'task-1', label: 'Task One' },
+    ]);
+
+    expect(result).toMatchObject({ disabled: true, repaired: 0, cleared: 0, attempted: 0 });
+    expect(getRecordStatusPendingWrites).not.toHaveBeenCalled();
+    expect(fetchRecordHistory).not.toHaveBeenCalled();
+    expect(removePendingWrite).not.toHaveBeenCalled();
+    expect(pullRecordsForFamilies).not.toHaveBeenCalled();
+    expect(store.pendingWritesError).toContain('Tower PG mode active');
+  });
+
+  it('does not enqueue encrypted record pulls from pullFamiliesFromBackend in Tower PG mode', async () => {
+    isTowerPgBackendMode.mockReturnValue(true);
+    const store = createStore({
+      session: { npub: 'npub1me' },
+      backendUrl: 'https://tower.example.com',
+    });
+
+    const result = await store.pullFamiliesFromBackend(['task'], { forceFull: true });
+
+    expect(result).toMatchObject({ disabled: true, pulled: 0 });
+    expect(pullRecordsForFamilies).not.toHaveBeenCalled();
+  });
+
+  it('still enqueues encrypted record pulls from pullFamiliesFromBackend in default mode', async () => {
+    pullRecordsForFamilies.mockResolvedValueOnce({ pulled: 1 });
+    const store = createStore({
+      session: { npub: 'npub1me', method: 'nsec' },
+      backendUrl: 'https://tower.example.com',
+    });
+
+    await store.pullFamiliesFromBackend(['task'], { forceFull: true });
+
+    expect(pullRecordsForFamilies).toHaveBeenCalledWith(
+      'npub1owner',
+      'npub1me',
+      [getSyncFamilyHash('task')],
+      expect.objectContaining({
+        authMethod: 'nsec',
+        backendUrl: 'https://tower.example.com',
+        forceFull: true,
+      }),
+    );
   });
 });
 
