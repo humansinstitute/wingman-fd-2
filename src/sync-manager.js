@@ -283,6 +283,11 @@ export const syncManagerMixin = {
 
   async openPendingWritesModal() {
     this.showAvatarMenu = false;
+    if (this.isEncryptedRecordSyncDisabled) {
+      this.pendingWritesModalOpen = false;
+      this.error = PG_RECORD_SYNC_DISABLED_MESSAGE;
+      return;
+    }
     this.pendingWritesModalOpen = true;
     await this.refreshPendingWriteDiagnostics();
   },
@@ -1103,6 +1108,11 @@ export const syncManagerMixin = {
   },
 
   async openRecordStatusModal(target = {}) {
+    if (this.isEncryptedRecordSyncDisabled) {
+      this.recordStatusModalOpen = false;
+      this.error = PG_RECORD_REPAIR_DISABLED_MESSAGE;
+      return;
+    }
     const familyId = String(target?.familyId || '').trim();
     const recordId = String(target?.recordId || '').trim();
     const label = String(target?.label || '').trim();

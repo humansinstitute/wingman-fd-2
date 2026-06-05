@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-DtIxy0hp.js"></script>
+  <script type="module" crossorigin src="/assets/index-CFcMAiJV.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-BeVtjkt9.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
@@ -29,7 +29,7 @@
   </template>
   <div
     class="sync-progress-modal-overlay"
-    x-show="$store.chat.showSyncProgressModal"
+    x-show="$store.chat.showSyncProgressModal && !$store.chat.isTowerPgMode"
     x-cloak
     @click.self="$store.chat.closeSyncProgressModal()"
   >
@@ -68,7 +68,7 @@
   </div>
   <div
     class="sync-progress-modal-overlay"
-    x-show="$store.chat.showScopeRepairModal"
+    x-show="$store.chat.showScopeRepairModal && !$store.chat.isTowerPgMode"
     x-cloak
     @click.self="$store.chat.closeScopeRepairModal()"
   >
@@ -218,7 +218,7 @@
           }"
           type="button"
           @click="$store.chat.showAvatarMenu = !$store.chat.showAvatarMenu"
-          :title="({synced:'Synced',unsynced:'Local changes pending',stale:'Updates available',syncing:'Syncing...',quarantined:'Quarantine needs review',error:'Sync error',disabled:'PG mode: encrypted record sync disabled'})[$store.chat.syncStatus] || 'Unknown'"
+          :title="$store.chat.isTowerPgMode ? 'Postgres workspace active' : (({synced:'Synced',unsynced:'Local changes pending',stale:'Updates available',syncing:'Syncing...',quarantined:'Quarantine needs review',error:'Sync error',disabled:'Sync disabled'})[$store.chat.syncStatus] || 'Unknown')"
         >
           <template x-if="$store.chat.avatarUrl">
             <img class="chat-post-avatar" :src="$store.chat.avatarUrl" alt="Your profile picture" />
@@ -232,10 +232,10 @@
             <span class="avatar-menu-name" x-text="$store.chat.displayName"></span>
           </div>
           <div class="avatar-menu-section sync-status-panel">
-            <span class="avatar-menu-label">Sync Status</span>
+            <span class="avatar-menu-label" x-text="$store.chat.isTowerPgMode ? 'Backend' : 'Sync Status'"></span>
             <div class="sync-status-row">
               <span class="sync-status-dot" :class="'sync-dot-' + $store.chat.syncStatus"></span>
-              <span class="sync-status-label" x-text="({synced:'Synced',unsynced:'Pending',stale:'Stale',syncing:'Syncing',quarantined:'Quarantined',error:'Error',disabled:'PG mode'})[$store.chat.syncStatus] || $store.chat.syncStatus"></span>
+              <span class="sync-status-label" x-text="$store.chat.isTowerPgMode ? 'Postgres' : (({synced:'Synced',unsynced:'Pending',stale:'Stale',syncing:'Syncing',quarantined:'Quarantined',error:'Error',disabled:'Disabled'})[$store.chat.syncStatus] || $store.chat.syncStatus)"></span>
               <span class="sync-status-time" x-text="$store.chat.lastSyncTimeLabel()"></span>
             </div>
             <div class="sync-build-row">
@@ -256,8 +256,8 @@
           </div>
           <button type="button" @click="$store.chat.showAgentConnect()">Agent Connect</button>
           <button type="button" @click="$store.chat.copyId()">Copy ID</button>
-          <button type="button" @click="$store.chat.syncNow()">Sync Now</button>
-          <button type="button" @click="$store.chat.openPendingWritesModal()">Pending Writes</button>
+          <button type="button" x-show="!$store.chat.isTowerPgMode" @click="$store.chat.syncNow()">Sync Now</button>
+          <button type="button" x-show="!$store.chat.isTowerPgMode" @click="$store.chat.openPendingWritesModal()">Pending Writes</button>
           <button type="button" @click="$store.chat.navigateTo('settings')">Setup</button>
           <button type="button" @click="$store.chat.logout()">Log out</button>
         </div>
@@ -1719,10 +1719,11 @@
                       </svg>
                     </button>
                     <div class="doc-actions-popover" x-show="open" x-cloak x-transition>
-                      <button
-                        type="button"
-                        @click="if ($store.chat.editingTask?.record_id) $store.chat.openRecordStatusModal({ familyId: 'task', recordId: $store.chat.editingTask.record_id, label: $store.chat.editingTask.title || 'Task' }); open = false"
-                      >Versioning</button>
+	                      <button
+	                        type="button"
+	                        x-show="!$store.chat.isTowerPgMode"
+	                        @click="if ($store.chat.editingTask?.record_id) $store.chat.openRecordStatusModal({ familyId: 'task', recordId: $store.chat.editingTask.record_id, label: $store.chat.editingTask.title || 'Task' }); open = false"
+	                      >Check status</button>
                       <button type="button" class="doc-actions-delete" @click="if($store.chat.editingTask?.record_id && confirm('Delete this task?')) $store.chat.deleteTask($store.chat.editingTask.record_id); open = false">Delete task</button>
                     </div>
                   </div>
@@ -2368,13 +2369,13 @@
                       </button>
                       <div class="chat-msg-actions-popover" x-show="$store.chat.isMessageActionsMenuOpen(msg.record_id)" x-cloak x-transition>
                         <button type="button" :data-record-id="msg.record_id" data-source-surface="main_feed" data-chat-get-it-done="true">Get it done</button>
-                        <button type="button" @click.stop.prevent="$store.chat.inspectMessageSyncStatus(msg.record_id)">Check sync status</button>
+                        <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop.prevent="$store.chat.inspectMessageSyncStatus(msg.record_id)">Check sync status</button>
                       </div>
                     </div>
                     <span
                       class="chat-status-dot"
                       :class="msg.sync_status === 'synced' ? 'chat-status-dot-synced' : msg.sync_status === 'failed' ? 'chat-status-dot-failed' : 'chat-status-dot-pending'"
-                      :title="msg.sync_status === 'synced' ? 'Synced' : msg.sync_status === 'failed' ? 'Sync failed' : 'Pending sync'"
+                      :title="$store.chat.isTowerPgMode ? (msg.pg_backend ? 'Postgres row' : 'Local row') : (msg.sync_status === 'synced' ? 'Synced' : msg.sync_status === 'failed' ? 'Sync failed' : 'Pending sync')"
                     ></span>
                     <div class="chat-post-header">
                       <button type="button" class="identity-avatar-button" @click.stop="$store.chat.openIdentityCard($event, msg.sender_npub)" :title="$store.chat.getSenderName(msg.sender_npub)">
@@ -2549,13 +2550,13 @@
                       </button>
                       <div class="chat-msg-actions-popover" x-show="$store.chat.isMessageActionsMenuOpen($store.chat.getThreadParentMessage()?.record_id)" x-cloak x-transition>
                         <button type="button" :data-record-id="$store.chat.getThreadParentMessage()?.record_id || ''" data-source-surface="thread_parent" data-chat-get-it-done="true">Get it done</button>
-                        <button type="button" @click.stop.prevent="$store.chat.inspectMessageSyncStatus($store.chat.getThreadParentMessage()?.record_id)">Check sync status</button>
+                        <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop.prevent="$store.chat.inspectMessageSyncStatus($store.chat.getThreadParentMessage()?.record_id)">Check sync status</button>
                       </div>
                     </div>
                     <span
                       class="thread-status-dot"
                       :class="$store.chat.getThreadParentMessage()?.sync_status === 'synced' ? 'thread-status-dot-synced' : $store.chat.getThreadParentMessage()?.sync_status === 'failed' ? 'thread-status-dot-failed' : 'thread-status-dot-pending'"
-                      :title="$store.chat.getThreadParentMessage()?.sync_status === 'synced' ? 'Synced' : $store.chat.getThreadParentMessage()?.sync_status === 'failed' ? 'Sync failed' : 'Pending sync'"
+                      :title="$store.chat.isTowerPgMode ? ($store.chat.getThreadParentMessage()?.pg_backend ? 'Postgres row' : 'Local row') : ($store.chat.getThreadParentMessage()?.sync_status === 'synced' ? 'Synced' : $store.chat.getThreadParentMessage()?.sync_status === 'failed' ? 'Sync failed' : 'Pending sync')"
                     ></span>
                     <button type="button" class="identity-avatar-button" @click.stop="$store.chat.openIdentityCard($event, $store.chat.getThreadParentMessage()?.sender_npub)" :title="$store.chat.getSenderName($store.chat.getThreadParentMessage()?.sender_npub)">
                       <template x-if="$store.chat.getSenderAvatar($store.chat.getThreadParentMessage()?.sender_npub)">
@@ -2620,13 +2621,13 @@
                       </button>
                       <div class="chat-msg-actions-popover" x-show="$store.chat.isMessageActionsMenuOpen(reply.record_id)" x-cloak x-transition>
                         <button type="button" :data-record-id="reply.record_id" data-source-surface="thread_reply" data-chat-get-it-done="true">Get it done</button>
-                        <button type="button" @click.stop.prevent="$store.chat.inspectMessageSyncStatus(reply.record_id)">Check sync status</button>
+                        <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop.prevent="$store.chat.inspectMessageSyncStatus(reply.record_id)">Check sync status</button>
                       </div>
                     </div>
                     <span
                       class="thread-status-dot"
                       :class="reply.sync_status === 'synced' ? 'thread-status-dot-synced' : reply.sync_status === 'failed' ? 'thread-status-dot-failed' : 'thread-status-dot-pending'"
-                      :title="reply.sync_status === 'synced' ? 'Synced' : reply.sync_status === 'failed' ? 'Sync failed' : 'Pending sync'"
+                      :title="$store.chat.isTowerPgMode ? (reply.pg_backend ? 'Postgres row' : 'Local row') : (reply.sync_status === 'synced' ? 'Synced' : reply.sync_status === 'failed' ? 'Sync failed' : 'Pending sync')"
                     ></span>
                     <button type="button" class="identity-avatar-button" @click.stop="$store.chat.openIdentityCard($event, reply.sender_npub)" :title="$store.chat.getSenderName(reply.sender_npub)">
                       <template x-if="$store.chat.getSenderAvatar(reply.sender_npub)">
@@ -2788,10 +2789,11 @@
                 </button>
                 <div class="doc-actions-popover" x-show="open" x-cloak x-transition>
                   <button type="button" @click="$store.chat.openDocScopeModal('current-folder'); open = false">Scope</button>
-                  <button
-                    type="button"
-                    @click="$store.chat.openRecordStatusModal({ familyId: 'directory', recordId: $store.chat.currentFolder.record_id, label: $store.chat.currentFolder.title || 'Folder' }); open = false"
-                  >Check status</button>
+	                  <button
+	                    type="button"
+	                    x-show="!$store.chat.isTowerPgMode"
+	                    @click="$store.chat.openRecordStatusModal({ familyId: 'directory', recordId: $store.chat.currentFolder.record_id, label: $store.chat.currentFolder.title || 'Folder' }); open = false"
+	                  >Check status</button>
                   <button type="button" class="doc-actions-delete" @click="$store.chat.deleteCurrentDirectory(); open = false">Delete folder</button>
                 </div>
               </div>
@@ -3027,10 +3029,11 @@
                         >
                           <span x-text="$store.chat.docEditorMode === 'source' ? 'Block editor' : 'Source editor'"></span>
                         </button>
-                        <button
-                          type="button"
-                          @click="$store.chat.openRecordStatusModal({ familyId: 'document', recordId: $store.chat.selectedDocId, label: $store.chat.docEditorTitle || 'Document' }); open = false"
-                        >Check status</button>
+	                        <button
+	                          type="button"
+	                          x-show="!$store.chat.isTowerPgMode"
+	                          @click="$store.chat.openRecordStatusModal({ familyId: 'document', recordId: $store.chat.selectedDocId, label: $store.chat.docEditorTitle || 'Document' }); open = false"
+	                        >Check status</button>
                         <button type="button" @click="$store.chat.toggleDocCommentsVisible(); open = false">
                           <span x-text="$store.chat.docCommentsVisible ? 'Hide comments' : 'Show comments'"></span>
                         </button>
@@ -4741,7 +4744,7 @@
                               <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="12" cy="19" r="1.8"></circle></svg>
                             </summary>
                             <div class="people-record-menu-popover">
-                              <button type="button" @click="$store.chat.openRecordStatusModal({ familyId: 'person', recordId: person.record_id, label: person.title || 'Person' }); $event.target.closest('details').open = false">Check sync status</button>
+                              <button type="button" x-show="!$store.chat.isTowerPgMode" @click="$store.chat.openRecordStatusModal({ familyId: 'person', recordId: person.record_id, label: person.title || 'Person' }); $event.target.closest('details').open = false">Check sync status</button>
                               <button type="button" @click="$store.chat.openRecordVersionHistory({ familyId: 'person', recordId: person.record_id, label: person.title || 'Person' }); $event.target.closest('details').open = false">Version history</button>
                             </div>
                           </details>
@@ -5160,7 +5163,7 @@
                             </summary>
                             <div class="people-record-menu-popover">
                               <button type="button" @click="$store.chat.forkOpportunity(opportunity.record_id); $event.target.closest('details').open = false">Fork</button>
-                              <button type="button" @click="$store.chat.openRecordStatusModal({ familyId: 'opportunity', recordId: opportunity.record_id, label: opportunity.title || 'Opportunity' }); $event.target.closest('details').open = false">Check sync status</button>
+                              <button type="button" x-show="!$store.chat.isTowerPgMode" @click="$store.chat.openRecordStatusModal({ familyId: 'opportunity', recordId: opportunity.record_id, label: opportunity.title || 'Opportunity' }); $event.target.closest('details').open = false">Check sync status</button>
                               <button type="button" @click="$store.chat.openRecordVersionHistory({ familyId: 'opportunity', recordId: opportunity.record_id, label: opportunity.title || 'Opportunity' }); $event.target.closest('details').open = false">Version history</button>
                               <button type="button" @click="if (confirm('Delete this opportunity?')) $store.chat.deleteOpportunity(opportunity.record_id); $event.target.closest('details').open = false">Delete</button>
                             </div>
@@ -5218,7 +5221,7 @@
                       </summary>
                       <div class="people-record-menu-popover">
                         <button type="button" @click="$store.chat.forkOpportunityFromCurrent(); $event.target.closest('details').open = false">Fork</button>
-                        <button type="button" @click="$store.chat.openRecordStatusModal({ familyId: 'opportunity', recordId: $store.chat.editingOpportunity.record_id, label: $store.chat.editingOpportunity.title || 'Opportunity' }); $event.target.closest('details').open = false">Check sync status</button>
+                        <button type="button" x-show="!$store.chat.isTowerPgMode" @click="$store.chat.openRecordStatusModal({ familyId: 'opportunity', recordId: $store.chat.editingOpportunity.record_id, label: $store.chat.editingOpportunity.title || 'Opportunity' }); $event.target.closest('details').open = false">Check sync status</button>
                         <button type="button" @click="$store.chat.openRecordVersionHistory({ familyId: 'opportunity', recordId: $store.chat.editingOpportunity.record_id, label: $store.chat.editingOpportunity.title || 'Opportunity' }); $event.target.closest('details').open = false">Version history</button>
                         <button type="button" @click="if (confirm('Delete this opportunity?')) $store.chat.deleteOpportunity($store.chat.editingOpportunity.record_id); $event.target.closest('details').open = false">Delete</button>
                       </div>
@@ -5969,10 +5972,10 @@
                           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/></svg>
                         </button>
                         <div class="doc-actions-popover" x-show="actionsOpen" x-cloak x-transition>
-                          <button x-show="parseInt(s1.level.slice(1)) < 5" type="button" @click.stop="$store.chat.startNewScope('l' + (parseInt(s1.level.slice(1)) + 1), s1.record_id); actionsOpen = false">Add child scope</button>
-                          <button type="button" @click.stop="$store.chat.startEditScope(s1.record_id); actionsOpen = false">Edit scope</button>
-                          <button type="button" @click.stop="$store.chat.openRecordStatusModal({ familyId: 'scope', recordId: s1.record_id, label: s1.title || 'Untitled scope' }); actionsOpen = false">Check status</button>
-                          <button type="button" @click.stop="$store.chat.reapplyScopeGroupCrypto(s1.record_id); actionsOpen = false" :disabled="$store.chat.scopePolicyRepairBusy">Reapply group crypto</button>
+	                          <button x-show="!$store.chat.isTowerPgMode && parseInt(s1.level.slice(1)) < 5" type="button" @click.stop="$store.chat.startNewScope('l' + (parseInt(s1.level.slice(1)) + 1), s1.record_id); actionsOpen = false">Add child scope</button>
+	                          <button type="button" @click.stop="$store.chat.startEditScope(s1.record_id); actionsOpen = false">Edit scope</button>
+	                          <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop="$store.chat.openRecordStatusModal({ familyId: 'scope', recordId: s1.record_id, label: s1.title || 'Untitled scope' }); actionsOpen = false">Check status</button>
+	                          <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop="$store.chat.reapplyScopeGroupCrypto(s1.record_id); actionsOpen = false" :disabled="$store.chat.scopePolicyRepairBusy">Reapply group crypto</button>
                           <button type="button" class="doc-actions-delete" @click.stop="if(confirm('Delete this scope and its children?')) $store.chat.deleteScope(s1.record_id); actionsOpen = false">Delete scope</button>
                         </div>
                       </div>
@@ -6003,10 +6006,10 @@
                                 <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/></svg>
                               </button>
                               <div class="doc-actions-popover" x-show="actionsOpen" x-cloak x-transition>
-                                <button x-show="parseInt(s2.level.slice(1)) < 5" type="button" @click.stop="$store.chat.startNewScope('l' + (parseInt(s2.level.slice(1)) + 1), s2.record_id); actionsOpen = false">Add child scope</button>
-                                <button type="button" @click.stop="$store.chat.startEditScope(s2.record_id); actionsOpen = false">Edit scope</button>
-                                <button type="button" @click.stop="$store.chat.openRecordStatusModal({ familyId: 'scope', recordId: s2.record_id, label: s2.title || 'Untitled scope' }); actionsOpen = false">Check status</button>
-                                <button type="button" @click.stop="$store.chat.reapplyScopeGroupCrypto(s2.record_id); actionsOpen = false" :disabled="$store.chat.scopePolicyRepairBusy">Reapply group crypto</button>
+	                                <button x-show="!$store.chat.isTowerPgMode && parseInt(s2.level.slice(1)) < 5" type="button" @click.stop="$store.chat.startNewScope('l' + (parseInt(s2.level.slice(1)) + 1), s2.record_id); actionsOpen = false">Add child scope</button>
+	                                <button type="button" @click.stop="$store.chat.startEditScope(s2.record_id); actionsOpen = false">Edit scope</button>
+	                                <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop="$store.chat.openRecordStatusModal({ familyId: 'scope', recordId: s2.record_id, label: s2.title || 'Untitled scope' }); actionsOpen = false">Check status</button>
+	                                <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop="$store.chat.reapplyScopeGroupCrypto(s2.record_id); actionsOpen = false" :disabled="$store.chat.scopePolicyRepairBusy">Reapply group crypto</button>
                                 <button type="button" class="doc-actions-delete" @click.stop="if(confirm('Delete this scope and its children?')) $store.chat.deleteScope(s2.record_id); actionsOpen = false">Delete scope</button>
                               </div>
                             </div>
@@ -6037,10 +6040,10 @@
                                       <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/></svg>
                                     </button>
                                     <div class="doc-actions-popover" x-show="actionsOpen" x-cloak x-transition>
-                                      <button x-show="parseInt(s3.level.slice(1)) < 5" type="button" @click.stop="$store.chat.startNewScope('l' + (parseInt(s3.level.slice(1)) + 1), s3.record_id); actionsOpen = false">Add child scope</button>
-                                      <button type="button" @click.stop="$store.chat.startEditScope(s3.record_id); actionsOpen = false">Edit scope</button>
-                                      <button type="button" @click.stop="$store.chat.openRecordStatusModal({ familyId: 'scope', recordId: s3.record_id, label: s3.title || 'Untitled scope' }); actionsOpen = false">Check status</button>
-                                      <button type="button" @click.stop="$store.chat.reapplyScopeGroupCrypto(s3.record_id); actionsOpen = false" :disabled="$store.chat.scopePolicyRepairBusy">Reapply group crypto</button>
+	                                      <button x-show="!$store.chat.isTowerPgMode && parseInt(s3.level.slice(1)) < 5" type="button" @click.stop="$store.chat.startNewScope('l' + (parseInt(s3.level.slice(1)) + 1), s3.record_id); actionsOpen = false">Add child scope</button>
+	                                      <button type="button" @click.stop="$store.chat.startEditScope(s3.record_id); actionsOpen = false">Edit scope</button>
+	                                      <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop="$store.chat.openRecordStatusModal({ familyId: 'scope', recordId: s3.record_id, label: s3.title || 'Untitled scope' }); actionsOpen = false">Check status</button>
+	                                      <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop="$store.chat.reapplyScopeGroupCrypto(s3.record_id); actionsOpen = false" :disabled="$store.chat.scopePolicyRepairBusy">Reapply group crypto</button>
                                       <button type="button" class="doc-actions-delete" @click.stop="if(confirm('Delete this scope and its children?')) $store.chat.deleteScope(s3.record_id); actionsOpen = false">Delete scope</button>
                                     </div>
                                   </div>
@@ -6071,10 +6074,10 @@
                                             <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/></svg>
                                           </button>
                                           <div class="doc-actions-popover" x-show="actionsOpen" x-cloak x-transition>
-                                            <button x-show="parseInt(s4.level.slice(1)) < 5" type="button" @click.stop="$store.chat.startNewScope('l' + (parseInt(s4.level.slice(1)) + 1), s4.record_id); actionsOpen = false">Add child scope</button>
-                                            <button type="button" @click.stop="$store.chat.startEditScope(s4.record_id); actionsOpen = false">Edit scope</button>
-                                            <button type="button" @click.stop="$store.chat.openRecordStatusModal({ familyId: 'scope', recordId: s4.record_id, label: s4.title || 'Untitled scope' }); actionsOpen = false">Check status</button>
-                                            <button type="button" @click.stop="$store.chat.reapplyScopeGroupCrypto(s4.record_id); actionsOpen = false" :disabled="$store.chat.scopePolicyRepairBusy">Reapply group crypto</button>
+	                                            <button x-show="!$store.chat.isTowerPgMode && parseInt(s4.level.slice(1)) < 5" type="button" @click.stop="$store.chat.startNewScope('l' + (parseInt(s4.level.slice(1)) + 1), s4.record_id); actionsOpen = false">Add child scope</button>
+	                                            <button type="button" @click.stop="$store.chat.startEditScope(s4.record_id); actionsOpen = false">Edit scope</button>
+	                                            <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop="$store.chat.openRecordStatusModal({ familyId: 'scope', recordId: s4.record_id, label: s4.title || 'Untitled scope' }); actionsOpen = false">Check status</button>
+	                                            <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop="$store.chat.reapplyScopeGroupCrypto(s4.record_id); actionsOpen = false" :disabled="$store.chat.scopePolicyRepairBusy">Reapply group crypto</button>
                                             <button type="button" class="doc-actions-delete" @click.stop="if(confirm('Delete this scope and its children?')) $store.chat.deleteScope(s4.record_id); actionsOpen = false">Delete scope</button>
                                           </div>
                                         </div>
@@ -6105,9 +6108,9 @@
                                                   <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/></svg>
                                                 </button>
                                                 <div class="doc-actions-popover" x-show="actionsOpen" x-cloak x-transition>
-                                                  <button type="button" @click.stop="$store.chat.startEditScope(s5.record_id); actionsOpen = false">Edit scope</button>
-                                                  <button type="button" @click.stop="$store.chat.openRecordStatusModal({ familyId: 'scope', recordId: s5.record_id, label: s5.title || 'Untitled scope' }); actionsOpen = false">Check status</button>
-                                                  <button type="button" @click.stop="$store.chat.reapplyScopeGroupCrypto(s5.record_id); actionsOpen = false" :disabled="$store.chat.scopePolicyRepairBusy">Reapply group crypto</button>
+	                                                  <button type="button" @click.stop="$store.chat.startEditScope(s5.record_id); actionsOpen = false">Edit scope</button>
+	                                                  <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop="$store.chat.openRecordStatusModal({ familyId: 'scope', recordId: s5.record_id, label: s5.title || 'Untitled scope' }); actionsOpen = false">Check status</button>
+	                                                  <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop="$store.chat.reapplyScopeGroupCrypto(s5.record_id); actionsOpen = false" :disabled="$store.chat.scopePolicyRepairBusy">Reapply group crypto</button>
                                                   <button type="button" class="doc-actions-delete" @click.stop="if(confirm('Delete this scope?')) $store.chat.deleteScope(s5.record_id); actionsOpen = false">Delete scope</button>
                                                 </div>
                                               </div>
@@ -6469,7 +6472,7 @@
                           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/></svg>
                         </button>
                         <div class="doc-actions-popover" x-show="open" x-cloak x-transition>
-                          <button type="button" @click.stop="$store.chat.openRecordStatusModal({ familyId: 'flow', recordId: flow.record_id, label: flow.title || 'Untitled flow' }); open = false">Check status</button>
+	                          <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop="$store.chat.openRecordStatusModal({ familyId: 'flow', recordId: flow.record_id, label: flow.title || 'Untitled flow' }); open = false">Check status</button>
                           <button type="button" class="doc-actions-delete" @click.stop="if (confirm('Delete this flow?')) $store.chat.deleteFlow(flow.record_id); open = false">Delete flow</button>
                         </div>
                       </div>
@@ -7651,6 +7654,7 @@
               <button
                 type="button"
                 class="btn-secondary"
+                x-show="!$store.chat.isTowerPgMode"
                 @click="$store.chat.openRecordStatusModal({ familyId: 'channel', recordId: $store.chat.selectedChannelId, label: $store.chat.getChannelLabel($store.chat.selectedChannel) || 'Channel' })"
               >Check sync status</button>
               <button
@@ -8006,7 +8010,7 @@
           </div>
         </div>
 
-        <div class="doc-modal-backdrop record-status-modal-backdrop" x-show="$store.chat.recordStatusModalOpen" x-cloak @click.self="$store.chat.closeRecordStatusModal()">
+        <div class="doc-modal-backdrop record-status-modal-backdrop" x-show="$store.chat.recordStatusModalOpen && !$store.chat.isTowerPgMode" x-cloak @click.self="$store.chat.closeRecordStatusModal()">
           <div class="doc-modal-card record-status-modal">
             <div class="record-status-header">
               <div>
@@ -8097,7 +8101,7 @@
           </div>
         </div>
 
-        <div class="doc-modal-backdrop record-status-modal-backdrop" x-show="$store.chat.pendingWritesModalOpen" x-cloak @click.self="$store.chat.closePendingWritesModal()">
+        <div class="doc-modal-backdrop record-status-modal-backdrop" x-show="$store.chat.pendingWritesModalOpen && !$store.chat.isTowerPgMode" x-cloak @click.self="$store.chat.closePendingWritesModal()">
           <div class="doc-modal-card record-status-modal pending-writes-modal">
             <div class="record-status-header">
               <div>
@@ -8136,7 +8140,7 @@
                       <p class="pending-write-blocker" x-show="row.syncBlocker" x-text="row.syncBlocker"></p>
                     </div>
                     <div class="pending-write-actions">
-                      <button type="button" class="btn-cancel" @click="$store.chat.closePendingWritesModal(); $store.chat.openRecordStatusModal({ familyId: row.familyId, recordId: row.recordId, label: row.title || row.recordId })">Inspect</button>
+	                    <button type="button" class="btn-cancel" x-show="!$store.chat.isTowerPgMode" @click="$store.chat.closePendingWritesModal(); $store.chat.openRecordStatusModal({ familyId: row.familyId, recordId: row.recordId, label: row.title || row.recordId })">Inspect</button>
                       <button type="button" class="btn-danger" @click="$store.chat.discardPendingWrite(row.rowId)" :disabled="row.rowId == null">Discard queued write</button>
                     </div>
                   </div>

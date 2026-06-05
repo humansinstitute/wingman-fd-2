@@ -8,6 +8,8 @@ Phase 2 is complete. PG mode can hydrate Tower PG scopes, accessible channels, c
 
 Phase 3 has started with an online-only task/chat write adapter slice. This is not yet the full PH3 queue contract: offline PG writes, task scope/channel moves, attachments, and doc/file/audio writes still need the remaining tickets.
 
+Scope/group/channel alignment is now treated as a Phase 3 blocker rather than later polish. The current app uses PG tables and API adapters, but the product admin model is incomplete until PG mode has workspace members, groups, nested groups, channel grants, and channel/thread-scoped record context.
+
 ## Decisions
 
 - Preserve the existing Flight Deck UI.
@@ -63,3 +65,5 @@ Phase 3 has started with an online-only task/chat write adapter slice. This is n
 - PH2-02 validation: `bun run test -- tests/pg-read-hydrator.test.js tests/api-pg-workspaces.test.js tests/backend-mode.test.js tests/pg-workspace-manager.test.js tests/shell-state.test.js`; `bun run build`.
 - PH2-03 validation: `bun run test -- tests/pg-read-hydrator.test.js tests/api-pg-workspaces.test.js tests/backend-mode.test.js tests/pg-workspace-manager.test.js tests/shell-state.test.js`; `bun run build`.
 - Phase 3 online write slice validation: `bun run test -- tests/pg-write-adapter.test.js tests/pg-read-hydrator.test.js tests/api-pg-workspaces.test.js tests/backend-mode.test.js tests/pg-workspace-manager.test.js tests/shell-state.test.js`; `bun run build`.
+- PG mode crypto surface cleanup validation: `npm run build`.
+- Tower PG AIAgents permission tightening validation: `DB_USER=postgres DB_PASSWORD=postgres bun test tests/flightdeck-pg-setup.test.ts`.

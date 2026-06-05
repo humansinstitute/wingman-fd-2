@@ -16,6 +16,7 @@ This plan migrates the existing Flight Deck UI to Tower Postgres without rebuild
 ## Supporting Docs
 
 - `docs/pg-migration/architecture.md`
+- `docs/pg-migration/scope-group-channel-gap-review.md`
 - `docs/pg-migration/wingmen-community-bootstrap.md`
 - `/Users/mini/code/wingmanbefree/flightdeck-pg`
 - `/Users/mini/code/wingmanbefree/wingman-tower/src/routes/flightdeck-pg.ts`
@@ -49,15 +50,19 @@ Human test at end: Pete can browse scope/channel/thread hierarchy, read seeded c
 
 ## Phase 3: Write Adapters
 
-Goal: route existing UI actions through Tower PG while preserving the current UI behavior.
+Goal: route existing UI actions through Tower PG while preserving the current UI behavior, and align PG mode with the agreed scope/group/channel access model.
 
 Tickets:
 
 - `work-packages/PH3-01-pg-pending-write-queue.md`
 - `work-packages/PH3-02-task-write-adapter.md`
 - `work-packages/PH3-03-chat-write-adapter.md`
+- `work-packages/PH3-04-pg-scope-group-channel-model.md`
+- `work-packages/PH3-05-pg-workspace-admin-groups.md`
+- `work-packages/PH3-06-pg-channel-grants-ui.md`
+- `work-packages/PH3-07-pg-scope-channel-thread-record-context.md`
 
-Human test at end: Pete can create chat threads/messages and task-board records in the Wingmen PG workspace.
+Human test at end: Pete can create chat threads/messages and task-board records in the Wingmen PG workspace, manage members/groups, grant a user or group to a channel, and verify that the user sees the parent scope plus granted channel but not sibling channels.
 
 ## Phase 4: Collaboration Records
 
