@@ -285,6 +285,10 @@ button:disabled {
   box-shadow: 0 0 0 3px #f59e0b, var(--shadow-soft);
 }
 
+.avatar-chip.sync-status-disabled {
+  box-shadow: 0 0 0 3px #64748b, var(--shadow-soft);
+}
+
 .avatar-fallback {
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -546,6 +550,7 @@ button:disabled {
 .sync-dot-syncing { background: #3b82f6; animation: sync-pulse 1.2s ease-in-out infinite; }
 .sync-dot-quarantined,
 .sync-dot-error { background: #dc2626; }
+.sync-dot-disabled { background: #64748b; }
 
 @keyframes sync-pulse {
   0%, 100% { opacity: 1; }

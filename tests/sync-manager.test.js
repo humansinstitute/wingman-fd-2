@@ -13,12 +13,18 @@ import {
   pullRecordsForFamilies,
   pruneOnLogin,
   runSync,
+  startWorkerFlushTimer,
   connectSSE,
 } from '../src/sync-worker-client.js';
 import { syncManagerMixin } from '../src/sync-manager.js';
 import { getSyncFamilyHash } from '../src/sync-families.js';
 import { createNip98AuthHeader, createNip98AuthHeaderForSecret } from '../src/auth/nostr.js';
 import { getActiveWorkspaceKeySecretForAuth } from '../src/crypto/workspace-keys.js';
+import { isTowerPgBackendMode } from '../src/backend-mode.js';
+
+vi.mock('../src/backend-mode.js', () => ({
+  isTowerPgBackendMode: vi.fn(() => false),
+}));
 
 vi.mock('../src/crypto/group-keys.js', () => ({
   hasGroupKey: vi.fn(() => true),
@@ -88,6 +94,7 @@ vi.mock('../src/crypto/workspace-keys.js', () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  isTowerPgBackendMode.mockReturnValue(false);
 });
 
 vi.mock('../src/translators/chat.js', () => ({
@@ -1441,12 +1448,72 @@ describe('lastSyncTimeLabel', () => {
     store.syncSession.lastSuccessAt = Date.now() - 180000; // 3 minutes
     expect(fn()).toBe('3m ago');
   });
+
+  it('returns encrypted sync off when record sync is disabled', () => {
+    const { fn, store } = bindMethod('lastSyncTimeLabel', {
+      syncStatus: 'disabled',
+    });
+    expect(fn()).toBe('Encrypted sync off');
+  });
+});
+
+describe('runAccessPruneOnLogin', () => {
+  it('leaves encrypted-record mode access pruning unchanged', async () => {
+    const { fn, store } = bindMethod('runAccessPruneOnLogin', {
+      session: { npub: 'npub1viewer' },
+      workspaceOwnerNpub: 'npub1owner',
+    });
+
+    await fn();
+
+    expect(pruneOnLogin).toHaveBeenCalledWith(
+      'npub1viewer',
+      'npub1owner',
+      expect.objectContaining({
+        workspaceDbKey: store.workspaceDbKey,
+      }),
+    );
+  });
+
+  it('does not prune encrypted-record access state in Tower PG mode', async () => {
+    isTowerPgBackendMode.mockReturnValue(true);
+    const { fn } = bindMethod('runAccessPruneOnLogin', {
+      session: { npub: 'npub1viewer' },
+      workspaceOwnerNpub: 'npub1owner',
+    });
+
+    await fn();
+
+    expect(pruneOnLogin).not.toHaveBeenCalled();
+  });
 });
 
 // ---------------------------------------------------------------------------
 // performSync
 // ---------------------------------------------------------------------------
 describe('performSync', () => {
+  it('does not start encrypted record sync when Tower PG mode is active', async () => {
+    isTowerPgBackendMode.mockReturnValue(true);
+    const refreshGroups = vi.fn().mockResolvedValue(undefined);
+    const prepareCheckoutRequiredPendingWrites = vi.fn().mockResolvedValue({ prepared: 0, blocked: 0, skipped: 0 });
+    const { fn, store } = bindMethod('performSync', {
+      session: { npub: 'npub1me', method: 'extension' },
+      backendUrl: 'https://backend.example.com',
+      refreshGroups,
+      prepareCheckoutRequiredPendingWrites,
+    });
+
+    const result = await fn({ silent: false, forceFull: true, manual: true });
+
+    expect(result).toEqual({ pushed: 0, pulled: 0, pruned: 0, disabled: true });
+    expect(runSync).not.toHaveBeenCalled();
+    expect(refreshGroups).not.toHaveBeenCalled();
+    expect(prepareCheckoutRequiredPendingWrites).not.toHaveBeenCalled();
+    expect(store.syncStatus).toBe('disabled');
+    expect(store.syncSession.state).toBe('disabled');
+    expect(store.lastSyncTimeLabel()).toBe('Encrypted sync off');
+  });
+
   it('keeps silent no-op syncs on the cheap path', async () => {
     runSync.mockResolvedValueOnce({ pushed: 0, pulled: 0, pruned: 0 });
     const refreshSyncStatus = vi.fn().mockResolvedValue(undefined);
@@ -1599,6 +1666,127 @@ describe('performSync', () => {
         forceFull: true,
       }),
     );
+  });
+});
+
+describe('PG mode encrypted record sync startup guard', () => {
+  it('leaves encrypted-record mode access pruning untouched', async () => {
+    const { fn } = bindMethod('runAccessPruneOnLogin', {
+      session: { npub: 'npub1me' },
+      workspaceOwnerNpub: 'npub1owner',
+      currentWorkspaceKey: 'workspace:npub1owner',
+    });
+
+    await fn();
+
+    expect(pruneOnLogin).toHaveBeenCalledWith('npub1me', 'npub1owner', {
+      workspaceDbKey: 'workspace:npub1owner',
+    });
+  });
+
+  it('does not run encrypted-record access pruning in Tower PG mode', async () => {
+    isTowerPgBackendMode.mockReturnValue(true);
+    const { fn } = bindMethod('runAccessPruneOnLogin', {
+      session: { npub: 'npub1me' },
+      workspaceOwnerNpub: 'npub1owner',
+      currentWorkspaceKey: 'workspace:npub1owner',
+    });
+
+    await fn();
+
+    expect(pruneOnLogin).not.toHaveBeenCalled();
+  });
+
+  it('does not inspect encrypted pending writes or quarantine when refreshing PG-mode sync status', async () => {
+    isTowerPgBackendMode.mockReturnValue(true);
+    const refreshUnreadFlags = vi.fn().mockResolvedValue(undefined);
+    const refreshSyncQuarantine = vi.fn().mockResolvedValue([{ row_id: 1 }]);
+    const { fn, store } = bindMethod('refreshSyncStatus', {
+      syncStatus: 'synced',
+      refreshUnreadFlags,
+      refreshSyncQuarantine,
+    });
+
+    await fn();
+
+    expect(getPendingWrites).not.toHaveBeenCalled();
+    expect(refreshSyncQuarantine).not.toHaveBeenCalled();
+    expect(refreshUnreadFlags).toHaveBeenCalledTimes(1);
+    expect(store.syncStatus).toBe('disabled');
+    expect(store.syncSession.state).toBe('disabled');
+  });
+
+  it('leaves encrypted-record mode sync status refresh untouched', async () => {
+    getPendingWrites.mockResolvedValueOnce([{ row_id: 1, record_id: 'task-1' }]);
+    const refreshUnreadFlags = vi.fn().mockResolvedValue(undefined);
+    const refreshSyncQuarantine = vi.fn().mockResolvedValue([]);
+    const { fn, store } = bindMethod('refreshSyncStatus', {
+      syncStatus: 'synced',
+      refreshUnreadFlags,
+      refreshSyncQuarantine,
+    });
+
+    await fn();
+
+    expect(getPendingWrites).toHaveBeenCalledTimes(1);
+    expect(refreshSyncQuarantine).toHaveBeenCalledTimes(1);
+    expect(refreshUnreadFlags).toHaveBeenCalledTimes(1);
+    expect(store.syncStatus).toBe('unsynced');
+  });
+
+  it('leaves encrypted-record mode background startup untouched', () => {
+    const { fn, store } = bindMethod('ensureBackgroundSync', {
+      session: { npub: 'npub1me' },
+      backendUrl: 'https://backend.example.com',
+      workspaceOwnerNpub: 'npub1owner',
+      connectSSEStream: vi.fn(),
+    });
+
+    fn();
+
+    expect(startWorkerFlushTimer).toHaveBeenCalledWith(
+      'npub1owner',
+      'https://backend.example.com',
+      store.workspaceDbKey,
+      expect.objectContaining({
+        checkoutPolicyConfig: store.recordCheckoutPolicyConfig,
+      }),
+    );
+    expect(store.connectSSEStream).toHaveBeenCalledWith({ reason: 'ensure-background-sync' });
+  });
+
+  it('does not start the encrypted worker timer or SSE in Tower PG mode', () => {
+    isTowerPgBackendMode.mockReturnValue(true);
+    const { fn, store } = bindMethod('ensureBackgroundSync', {
+      session: { npub: 'npub1me' },
+      backendUrl: 'https://backend.example.com',
+      workspaceOwnerNpub: 'npub1owner',
+      connectSSEStream: vi.fn(),
+    });
+
+    fn();
+
+    expect(startWorkerFlushTimer).not.toHaveBeenCalled();
+    expect(store.connectSSEStream).not.toHaveBeenCalled();
+    expect(store.backgroundSyncTimer).toBeNull();
+    expect(store.syncStatus).toBe('disabled');
+    expect(store.syncSession.state).toBe('disabled');
+  });
+
+  it('does not open the encrypted SSE stream in Tower PG mode', async () => {
+    isTowerPgBackendMode.mockReturnValue(true);
+    const { fn, store } = bindMethod('connectSSEStream', {
+      session: { npub: 'npub1viewer' },
+      backendUrl: 'https://tower.example',
+      workspaceOwnerNpub: 'npub1owner',
+    });
+
+    const result = await fn();
+
+    expect(result).toBe(false);
+    expect(connectSSE).not.toHaveBeenCalled();
+    expect(store.syncStatus).toBe('disabled');
+    expect(store.sseStatus).toBe('disabled');
   });
 });
 

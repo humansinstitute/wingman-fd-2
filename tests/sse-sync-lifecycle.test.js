@@ -2,12 +2,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   connectSSE,
   disconnectSSE,
+  flushOnly,
   setSSEStatusCallback,
+  runSync,
   startWorkerFlushTimer,
   stopWorkerFlushTimer,
 } from '../src/sync-worker-client.js';
 import { syncManagerMixin } from '../src/sync-manager.js';
 import { createNip98AuthHeader } from '../src/auth/nostr.js';
+import { isTowerPgBackendMode } from '../src/backend-mode.js';
 
 vi.mock('../src/api.js', () => ({
   downloadStorageObject: vi.fn(),
@@ -65,6 +68,10 @@ vi.mock('../src/auth/nostr.js', () => ({
   createNip98AuthHeaderForSecret: vi.fn(async () => 'Nostr eyJzZWNyZXQiOnRydWV9'),
 }));
 
+vi.mock('../src/backend-mode.js', () => ({
+  isTowerPgBackendMode: vi.fn(() => false),
+}));
+
 vi.mock('../src/crypto/workspace-keys.js', () => ({
   getActiveWorkspaceKeySecretForAuth: vi.fn(() => null),
   isWorkspaceKeyRegistered: vi.fn(() => false),
@@ -83,6 +90,7 @@ vi.mock('../src/translators/settings.js', () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  isTowerPgBackendMode.mockReturnValue(false);
 });
 
 async function flushMicrotasks() {
@@ -324,6 +332,58 @@ describe('connectSSEStream', () => {
 
     expect(connectSSE).toHaveBeenCalledTimes(1);
   });
+
+  it('does not connect encrypted-record SSE in Tower PG mode', async () => {
+    isTowerPgBackendMode.mockReturnValue(true);
+    const { fn, store } = bindMethod('connectSSEStream', {
+      session: { npub: 'npub1viewer' },
+      backendUrl: 'https://tower.example.com',
+      workspaceOwnerNpub: 'npub1owner',
+      sseStatus: 'connected',
+    });
+
+    const connected = await fn({ force: true });
+
+    expect(connected).toBe(false);
+    expect(connectSSE).not.toHaveBeenCalled();
+    expect(disconnectSSE).toHaveBeenCalledTimes(1);
+    expect(store.syncStatus).toBe('disabled');
+    expect(store.sseStatus).toBe('disabled');
+    expect(store.syncSession.state).toBe('disabled');
+  });
+});
+
+describe('getSSEConnectionContext', () => {
+  it('returns the encrypted-record SSE context in default mode', () => {
+    const checkoutPolicyConfig = { familySuffixes: { task: 'checkout_required' } };
+    const { fn } = bindMethod('getSSEConnectionContext', {
+      session: { npub: 'npub1viewer' },
+      backendUrl: 'https://tower.example.com',
+      workspaceOwnerNpub: 'npub1owner',
+      currentWorkspaceKey: 'workspace:npub1owner',
+      recordCheckoutPolicyConfig: checkoutPolicyConfig,
+    });
+
+    expect(fn()).toEqual({
+      ownerNpub: 'npub1owner',
+      viewerNpub: 'npub1viewer',
+      backendUrl: 'https://tower.example.com',
+      workspaceDbKey: 'workspace:npub1owner',
+      checkoutPolicyConfig,
+    });
+  });
+
+  it('returns null in Tower PG mode', () => {
+    isTowerPgBackendMode.mockReturnValue(true);
+    const { fn } = bindMethod('getSSEConnectionContext', {
+      session: { npub: 'npub1viewer' },
+      backendUrl: 'https://tower.example.com',
+      workspaceOwnerNpub: 'npub1owner',
+      currentWorkspaceKey: 'workspace:npub1owner',
+    });
+
+    expect(fn()).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -442,6 +502,18 @@ describe('getSyncCadenceMs with SSE', () => {
     });
     expect(fn()).toBe(15000);
   });
+
+  it('returns null in Tower PG mode', () => {
+    isTowerPgBackendMode.mockReturnValue(true);
+    const { fn } = bindMethod('getSyncCadenceMs', {
+      session: { npub: 'npub1me' },
+      backendUrl: 'https://backend.example.com',
+      navSection: 'chat',
+      selectedChannelId: 'ch1',
+      sseStatus: 'connected',
+    });
+    expect(fn()).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -553,6 +625,67 @@ describe('ensureBackgroundSync wires SSE', () => {
       'npub1owner',
       { checkoutPolicyConfig },
     );
+  });
+
+  it('does not start encrypted-record timers or SSE in Tower PG mode', () => {
+    isTowerPgBackendMode.mockReturnValue(true);
+    const { fn, store } = bindMethod('ensureBackgroundSync', {
+      session: { npub: 'npub1viewer' },
+      backendUrl: 'https://tower.example.com',
+      workspaceOwnerNpub: 'npub1owner',
+      backgroundSyncTimer: setTimeout(() => {}, 1000),
+      sseStatus: 'connected',
+      catchUpSyncActive: true,
+      backgroundSyncInFlight: true,
+    });
+
+    fn(true);
+
+    expect(stopWorkerFlushTimer).toHaveBeenCalledTimes(1);
+    expect(disconnectSSE).toHaveBeenCalledTimes(1);
+    expect(startWorkerFlushTimer).not.toHaveBeenCalled();
+    expect(connectSSE).not.toHaveBeenCalled();
+    expect(store.backgroundSyncTimer).toBeNull();
+    expect(store.syncing).toBe(false);
+    expect(store.backgroundSyncInFlight).toBe(false);
+    expect(store.catchUpSyncActive).toBe(false);
+    expect(store.syncStatus).toBe('disabled');
+    expect(store.sseStatus).toBe('disabled');
+    expect(store.syncSession.state).toBe('disabled');
+  });
+});
+
+describe('Tower PG sync lifecycle guard', () => {
+  it('skips performSync before encrypted-record worker sync can run', async () => {
+    isTowerPgBackendMode.mockReturnValue(true);
+    const { fn, store } = bindMethod('performSync', {
+      session: { npub: 'npub1viewer' },
+      backendUrl: 'https://tower.example.com',
+      workspaceOwnerNpub: 'npub1owner',
+    });
+
+    const result = await fn({ manual: true });
+
+    expect(result).toMatchObject({ pushed: 0, pulled: 0, pruned: 0, disabled: true });
+    expect(runSync).not.toHaveBeenCalled();
+    expect(store.syncStatus).toBe('disabled');
+    expect(store.syncSession.state).toBe('disabled');
+  });
+
+  it('skips flushAndBackgroundSync before encrypted-record flush can run', async () => {
+    isTowerPgBackendMode.mockReturnValue(true);
+    const { fn, store } = bindMethod('flushAndBackgroundSync', {
+      session: { npub: 'npub1viewer' },
+      backendUrl: 'https://tower.example.com',
+      workspaceOwnerNpub: 'npub1owner',
+    });
+
+    const result = await fn();
+
+    expect(result).toMatchObject({ pushed: 0, disabled: true });
+    expect(flushOnly).not.toHaveBeenCalled();
+    expect(store.syncStatus).toBe('disabled');
+    expect(store.syncSession.state).toBe('disabled');
   });
 });
 

@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-DxwZxaw3.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-l9nFF-Br.css">
+  <script type="module" crossorigin src="/assets/index-Cm0ezhZG.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-BeVtjkt9.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -213,11 +213,12 @@
             'sync-status-stale': $store.chat.syncStatus === 'stale',
             'sync-status-syncing': $store.chat.syncStatus === 'syncing',
             'sync-status-quarantined': $store.chat.syncStatus === 'quarantined',
-            'sync-status-error': $store.chat.syncStatus === 'error'
+            'sync-status-error': $store.chat.syncStatus === 'error',
+            'sync-status-disabled': $store.chat.syncStatus === 'disabled'
           }"
           type="button"
           @click="$store.chat.showAvatarMenu = !$store.chat.showAvatarMenu"
-          :title="({synced:'Synced',unsynced:'Local changes pending',stale:'Updates available',syncing:'Syncing...',quarantined:'Quarantine needs review',error:'Sync error'})[$store.chat.syncStatus] || 'Unknown'"
+          :title="({synced:'Synced',unsynced:'Local changes pending',stale:'Updates available',syncing:'Syncing...',quarantined:'Quarantine needs review',error:'Sync error',disabled:'PG mode: encrypted record sync disabled'})[$store.chat.syncStatus] || 'Unknown'"
         >
           <template x-if="$store.chat.avatarUrl">
             <img class="chat-post-avatar" :src="$store.chat.avatarUrl" alt="Your profile picture" />
@@ -234,7 +235,7 @@
             <span class="avatar-menu-label">Sync Status</span>
             <div class="sync-status-row">
               <span class="sync-status-dot" :class="'sync-dot-' + $store.chat.syncStatus"></span>
-              <span class="sync-status-label" x-text="({synced:'Synced',unsynced:'Pending',stale:'Stale',syncing:'Syncing',quarantined:'Quarantined',error:'Error'})[$store.chat.syncStatus] || $store.chat.syncStatus"></span>
+              <span class="sync-status-label" x-text="({synced:'Synced',unsynced:'Pending',stale:'Stale',syncing:'Syncing',quarantined:'Quarantined',error:'Error',disabled:'PG mode'})[$store.chat.syncStatus] || $store.chat.syncStatus"></span>
               <span class="sync-status-time" x-text="$store.chat.lastSyncTimeLabel()"></span>
             </div>
             <div class="sync-build-row">

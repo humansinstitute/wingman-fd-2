@@ -72,6 +72,9 @@ import {
   getPreferredRecordWriteGroupForStore,
 } from './preferred-write-group.js';
 import { resolveFlightDeckRecordCheckoutPolicy } from './record-checkout-policy.js';
+import { isTowerPgBackendMode } from './backend-mode.js';
+
+const PG_RECORD_SYNC_DISABLED_MESSAGE = 'Tower PG mode active; encrypted record sync is disabled.';
 
 // ---------------------------------------------------------------------------
 // Mixin — methods and getters that use `this` (the Alpine store)
@@ -83,9 +86,29 @@ export const syncManagerMixin = {
     return this.currentWorkspaceKey || this.workspaceOwnerNpub || '';
   },
 
+  get isEncryptedRecordSyncDisabled() {
+    return isTowerPgBackendMode();
+  },
+
+  markEncryptedRecordSyncDisabled() {
+    this.syncing = false;
+    this.backgroundSyncInFlight = false;
+    this.catchUpSyncActive = false;
+    this.syncStatus = 'disabled';
+    this.sseStatus = 'disabled';
+    this.updateSyncSession?.({
+      state: 'disabled',
+      phase: 'idle',
+      finishedAt: Date.now(),
+      error: null,
+      heartbeat: false,
+    });
+  },
+
   // --- access pruning on login ---
 
   async runAccessPruneOnLogin() {
+    if (this.isEncryptedRecordSyncDisabled) return;
     if (!this.session?.npub || !this.workspaceOwnerNpub) return;
     await pruneOnLogin(this.session.npub, this.workspaceOwnerNpub, {
       workspaceDbKey: this.workspaceDbKey,
@@ -1873,6 +1896,7 @@ export const syncManagerMixin = {
   },
 
   getSSEConnectionContext() {
+    if (this.isEncryptedRecordSyncDisabled) return null;
     if (!this.session?.npub || !this.backendUrl || !this.workspaceOwnerNpub) return null;
     return {
       ownerNpub: this.workspaceOwnerNpub,
@@ -1942,6 +1966,12 @@ export const syncManagerMixin = {
   },
 
   async connectSSEStream(options = {}) {
+    if (this.isEncryptedRecordSyncDisabled) {
+      this.disconnectSSEStream('pg-mode-record-sync-disabled');
+      this.markEncryptedRecordSyncDisabled();
+      return false;
+    }
+
     const context = this.getSSEConnectionContext();
     if (!context) return false;
 
@@ -2091,6 +2121,7 @@ export const syncManagerMixin = {
   // --- sync lifecycle ---
 
   getSyncCadenceMs() {
+    if (this.isEncryptedRecordSyncDisabled) return null;
     if (!this.session?.npub || !this.backendUrl) return null;
     if (typeof document !== 'undefined' && document.hidden) return null;
     // When SSE is connected, widen heartbeat polling — SSE handles live refresh
@@ -2131,6 +2162,11 @@ export const syncManagerMixin = {
   },
 
   ensureBackgroundSync(runSoon = false) {
+    if (this.isEncryptedRecordSyncDisabled) {
+      this.stopBackgroundSync();
+      this.markEncryptedRecordSyncDisabled();
+      return;
+    }
     if (!this.visibilityHandler && typeof document !== 'undefined') {
       this.visibilityHandler = () => this.ensureBackgroundSync(true);
       document.addEventListener('visibilitychange', this.visibilityHandler);
@@ -2163,6 +2199,11 @@ export const syncManagerMixin = {
   },
 
   async backgroundSyncTick() {
+    if (this.isEncryptedRecordSyncDisabled) {
+      this.markEncryptedRecordSyncDisabled();
+      return;
+    }
+
     const cadence = this.getSyncCadenceMs();
     if (!cadence) {
       this.catchUpSyncActive = false;
@@ -2302,6 +2343,7 @@ export const syncManagerMixin = {
   },
 
   lastSyncTimeLabel() {
+    if (this.syncSession.state === 'disabled' || this.syncStatus === 'disabled') return 'Encrypted sync off';
     const t = this.syncSession.lastSuccessAt;
     if (!t) return 'Never';
     const diff = Date.now() - t;
@@ -2412,6 +2454,18 @@ export const syncManagerMixin = {
     if (!this.session?.npub || !this.backendUrl) {
       if (!silent) this.error = 'Configure setup first';
       return { pushed: 0, pulled: 0 };
+    }
+
+    if (this.isEncryptedRecordSyncDisabled) {
+      if (!silent) this.error = null;
+      this.markEncryptedRecordSyncDisabled();
+      flightDeckLog('info', 'sync', PG_RECORD_SYNC_DISABLED_MESSAGE, {
+        backendUrl: this.backendUrl,
+        ownerNpub: this.workspaceOwnerNpub || null,
+        viewerNpub: this.session?.npub || null,
+        manual,
+      });
+      return { pushed: 0, pulled: 0, pruned: 0, disabled: true };
     }
 
     if (!silent) this.error = null;
@@ -2560,6 +2614,10 @@ export const syncManagerMixin = {
    */
   async flushAndBackgroundSync() {
     if (!this.session?.npub || !this.backendUrl) return { pushed: 0 };
+    if (this.isEncryptedRecordSyncDisabled) {
+      this.markEncryptedRecordSyncDisabled();
+      return { pushed: 0, disabled: true };
+    }
     try {
       await this.prepareCheckoutRequiredPendingWrites({ reportError: false });
       const result = await flushOnly(this.workspaceOwnerNpub, null, {
@@ -2586,6 +2644,13 @@ export const syncManagerMixin = {
 
   async refreshSyncStatus(options = {}) {
     const refreshUnread = options.refreshUnread !== false;
+    if (this.isEncryptedRecordSyncDisabled) {
+      this.markEncryptedRecordSyncDisabled();
+      if (refreshUnread && typeof this.refreshUnreadFlags === 'function') {
+        await this.refreshUnreadFlags();
+      }
+      return;
+    }
     if (this.syncing) {
       this.syncStatus = 'syncing';
       return;
@@ -2613,7 +2678,7 @@ export const syncManagerMixin = {
     }
     // Refresh unread indicators after sync status settles
     if (refreshUnread && typeof this.refreshUnreadFlags === 'function') {
-      this.refreshUnreadFlags();
+      await this.refreshUnreadFlags();
     }
   },
 

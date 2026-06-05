@@ -2,7 +2,7 @@
 
 ## Current Status
 
-Planning restored and app-card baseline available. `wm-fd-2` is a clean copy of `wingman-fd` with migration docs, installed dependencies, built static assets, and a running Autopilot app-card instance. PH1-01 established the app-side backend-mode boundary, and PH1-02 now connects that boundary to Tower PG workspace descriptors through the classic Flight Deck connection flow.
+Planning restored and app-card baseline available. `wm-fd-2` is a clean copy of `wingman-fd` with migration docs, installed dependencies, built static assets, and a running Autopilot app-card instance. PH1-01 established the app-side backend-mode boundary, PH1-02 connects that boundary to Tower PG workspace descriptors through the classic Flight Deck connection flow, and PH1-03 disables encrypted-record sync startup in Tower PG mode.
 
 ## Decisions
 
@@ -29,6 +29,10 @@ Planning restored and app-card baseline available. `wm-fd-2` is a clean copy of 
 - Added PH1-02 focused coverage for PG descriptor parsing, credential rejection, PG workspace materialization, PG workspace identity merging, and descriptor persistence through the existing connection manager.
 - Fixed PG workspace normalization so descriptor-backed workspaces do not generate or persist SuperBased connection tokens.
 - Recovered PH1-02 from stalled pipeline run `b1854b43-088e-4eae-9c34-905c7d9d74f6`; retained the useful partial patch, completed tests/build locally, and will continue with one ticket per pipeline where the runner remains healthy.
+- Recovered PH1-03 from stalled pipeline run `9f2da542-48b1-4500-936a-111e21eb37b9`; completed the sync gating locally because the assigned worker session stopped making observable progress.
+- Added PH1-03 PG-mode sync guard: when `tower-pg` backend mode is active, the classic encrypted-record worker sync, worker flush timer, background tick, access prune, status refresh, and SSE stream startup are intentionally disabled while the existing encrypted-records mode remains unchanged.
+- Added visible disabled sync status text/badge styling for Tower PG mode so the classic avatar menu does not imply encrypted-record sync is running.
+- Renamed completed PH1-01 through PH1-03 work packages with the `COMPLETED-` prefix to prevent accidental redispatch.
 
 ## Outputs
 
@@ -36,3 +40,4 @@ Planning restored and app-card baseline available. `wm-fd-2` is a clean copy of 
 - App-card baseline is available for pipeline work.
 - PG migration product code now has a mode boundary plus descriptor-based Tower PG workspace connection in the existing Flight Deck UI.
 - PH1-02 validation: `bun run test -- tests/backend-mode.test.js tests/api-pg-workspaces.test.js tests/pg-workspace-descriptor.test.js tests/workspaces.test.js tests/connect-settings-manager.test.js tests/pg-connect-settings-manager.test.js tests/pg-workspace-manager.test.js`; `bun run build`.
+- PH1-03 validation: `bun run test -- tests/backend-mode.test.js tests/sse-sync-lifecycle.test.js tests/sync-manager.test.js`; `bun run build`.
