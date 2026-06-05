@@ -1,6 +1,43 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
+
+vi.mock('../src/backend-mode.js', () => ({
+  isTowerPgBackendMode: vi.fn(() => true),
+}));
+
+vi.mock('../src/api.js', async () => {
+  const actual = await vi.importActual('../src/api.js');
+  return {
+    ...actual,
+    createTowerPgChannelGrant: vi.fn(),
+    getTowerPgChannelGrants: vi.fn(),
+  };
+});
+
+vi.mock('../src/pg-read-hydrator.js', async () => {
+  const actual = await vi.importActual('../src/pg-read-hydrator.js');
+  return {
+    ...actual,
+    hydrateTowerPgAudioNotes: vi.fn(),
+    hydrateTowerPgChannels: vi.fn(),
+    hydrateTowerPgDocumentsAndFiles: vi.fn(),
+    hydrateTowerPgScopes: vi.fn(),
+    hydrateTowerPgTasks: vi.fn(),
+  };
+});
+
+import {
+  createTowerPgChannelGrant,
+  getTowerPgChannelGrants,
+} from '../src/api.js';
+import {
+  hydrateTowerPgAudioNotes,
+  hydrateTowerPgChannels,
+  hydrateTowerPgDocumentsAndFiles,
+  hydrateTowerPgScopes,
+  hydrateTowerPgTasks,
+} from '../src/pg-read-hydrator.js';
 import {
   mapGroupEntry,
   mapCreatedGroup,
@@ -10,6 +47,7 @@ import {
   parseGroupMemberQueryNpubs,
   filterChannelsForViewer,
   aggregatePgChannelGrants,
+  canManagePgChannelGrantsFromRows,
   channelsManagerMixin,
   capacityForPgChannelPermissions,
   permissionsForPgChannelCapacity,
@@ -19,6 +57,67 @@ const channelsManagerSource = fs.readFileSync(
   path.resolve(import.meta.dirname, '..', 'src', 'channels-manager.js'),
   'utf-8',
 );
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  createTowerPgChannelGrant.mockResolvedValue({ grant: { id: 'created-grant' } });
+  getTowerPgChannelGrants.mockResolvedValue({ grants: [] });
+  hydrateTowerPgAudioNotes.mockResolvedValue(undefined);
+  hydrateTowerPgChannels.mockResolvedValue(undefined);
+  hydrateTowerPgDocumentsAndFiles.mockResolvedValue(undefined);
+  hydrateTowerPgScopes.mockResolvedValue(undefined);
+  hydrateTowerPgTasks.mockResolvedValue(undefined);
+});
+
+function applyChannelMixin(store) {
+  for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(channelsManagerMixin))) {
+    if (Object.prototype.hasOwnProperty.call(store, key)) continue;
+    Object.defineProperty(store, key, descriptor);
+  }
+  return store;
+}
+
+function createPgGrantStore(overrides = {}) {
+  const currentWorkspace = overrides.currentWorkspace || {
+    workspaceId: 'workspace-1',
+    workspaceOwnerNpub: 'npub1workspace',
+    directHttpsUrl: 'https://tower.example',
+    appNpub: 'flightdeck-app',
+    pgBackendMode: true,
+    pgMe: {
+      actor: { actor_id: 'actor-manager', npub: 'npub1manager' },
+      permissions: ['workspace.read', 'channel.grants.read', 'channel.grants.manage'],
+    },
+  };
+  return applyChannelMixin({
+    currentWorkspace,
+    workspaceOwnerNpub: currentWorkspace.workspaceOwnerNpub,
+    backendUrl: currentWorkspace.directHttpsUrl,
+    session: { npub: currentWorkspace.pgMe?.actor?.npub || 'npub1manager' },
+    selectedChannelId: 'channel-1',
+    channelGrants: [
+      {
+        principal_type: 'actor',
+        principal_id: 'actor-manager',
+        permissions: ['channel.read', 'channel.grants.read', 'channel.grants.manage'],
+      },
+    ],
+    channelGrantsLoading: false,
+    channelGrantsSaving: false,
+    channelGrantsError: null,
+    channelGrantsNotice: '',
+    channelGrantPrincipalType: 'actor',
+    channelGrantActorId: 'actor-target',
+    channelGrantGroupId: '',
+    channelGrantCapacity: 'viewer',
+    groups: [],
+    currentWorkspaceGroups: [],
+    canAdminWorkspace: false,
+    refreshGroups: vi.fn(),
+    rememberPeople: vi.fn(),
+    ...overrides,
+  });
+}
 
 describe('channels-manager pure utilities', () => {
   it('does not call retired trigger diagnostics during ordinary group refresh', () => {
@@ -650,6 +749,149 @@ describe('channels-manager pure utilities', () => {
         capacity: 'custom',
         permissions: ['channel.read'],
       }));
+    });
+
+    it('detects selected-channel grant management for direct actor and effective group grants', () => {
+      expect(canManagePgChannelGrantsFromRows({
+        grants: [{
+          principal_type: 'actor',
+          principal_id: 'actor-manager',
+          permissions: ['channel.grants.manage'],
+        }],
+        actorId: 'actor-manager',
+        viewerNpub: 'npub1manager',
+        groups: [],
+      })).toBe(true);
+
+      expect(canManagePgChannelGrantsFromRows({
+        grants: [{
+          principal_type: 'group',
+          principal_id: 'group-managers',
+          permissions: ['channel.grants.manage'],
+        }],
+        actorId: 'actor-member',
+        viewerNpub: 'npub1nested',
+        groups: [{
+          group_id: 'group-managers',
+          member_npubs: [],
+          effective_member_npubs: ['npub1nested'],
+        }],
+      })).toBe(true);
+    });
+
+    it('does not treat viewer, contributor, or agent capacity as grant management', () => {
+      for (const capacity of ['viewer', 'contributor', 'agent']) {
+        expect(canManagePgChannelGrantsFromRows({
+          grants: [{
+            principal_type: 'actor',
+            principal_id: 'actor-user',
+            permissions: permissionsForPgChannelCapacity(capacity),
+          }],
+          actorId: 'actor-user',
+          viewerNpub: 'npub1user',
+          groups: [],
+        })).toBe(false);
+      }
+    });
+
+    it('allows workspace admins to submit a typed actor grant payload', async () => {
+      const store = createPgGrantStore({
+        canAdminWorkspace: true,
+        channelGrants: [],
+        channelGrantCapacity: 'contributor',
+      });
+
+      await store.createChannelGrant();
+
+      expect(createTowerPgChannelGrant).toHaveBeenCalledWith('workspace-1', 'channel-1', {
+        principal_type: 'actor',
+        principal_id: 'actor-target',
+        permissions: permissionsForPgChannelCapacity('contributor'),
+      }, {
+        baseUrl: 'https://tower.example',
+        appNpub: 'flightdeck-app',
+      });
+    });
+
+    it('allows selected-channel managers to submit group grants', async () => {
+      const store = createPgGrantStore({
+        channelGrantPrincipalType: 'group',
+        channelGrantActorId: '',
+        channelGrantGroupId: 'group-target',
+        channelGrantCapacity: 'manager',
+        channelGrants: [{
+          principal_type: 'actor',
+          principal_id: 'actor-manager',
+          permissions: ['channel.read', 'channel.grants.read', 'channel.grants.manage'],
+        }],
+      });
+
+      await store.createChannelGrant();
+
+      expect(createTowerPgChannelGrant).toHaveBeenCalledWith('workspace-1', 'channel-1', {
+        principal_type: 'group',
+        principal_id: 'group-target',
+        permissions: permissionsForPgChannelCapacity('manager'),
+      }, {
+        baseUrl: 'https://tower.example',
+        appNpub: 'flightdeck-app',
+      });
+      expect(store.channelGrantsNotice).toBe('Channel access updated.');
+    });
+
+    it('blocks viewers from submitting channel grants', async () => {
+      const store = createPgGrantStore({
+        currentWorkspace: {
+          workspaceId: 'workspace-1',
+          workspaceOwnerNpub: 'npub1workspace',
+          directHttpsUrl: 'https://tower.example',
+          appNpub: 'flightdeck-app',
+          pgBackendMode: true,
+          pgMe: {
+            actor: { actor_id: 'actor-viewer', npub: 'npub1viewer' },
+            permissions: ['workspace.read', 'channel.read'],
+          },
+        },
+        session: { npub: 'npub1viewer' },
+        channelGrants: [{
+          principal_type: 'actor',
+          principal_id: 'actor-viewer',
+          permissions: permissionsForPgChannelCapacity('viewer'),
+        }],
+      });
+
+      await store.createChannelGrant();
+
+      expect(createTowerPgChannelGrant).not.toHaveBeenCalled();
+      expect(store.channelGrantsError).toBe('You do not have permission to manage grants for this channel.');
+    });
+
+    it('refreshes grants and PG materialization after a successful grant', async () => {
+      getTowerPgChannelGrants.mockResolvedValueOnce({
+        grants: [{
+          principal_type: 'actor',
+          principal_id: 'actor-target',
+          permissions: permissionsForPgChannelCapacity('viewer'),
+        }],
+      });
+      const store = createPgGrantStore({ canAdminWorkspace: true, channelGrants: [] });
+
+      await store.createChannelGrant();
+
+      expect(getTowerPgChannelGrants).toHaveBeenCalledWith('workspace-1', 'channel-1', {
+        baseUrl: 'https://tower.example',
+        appNpub: 'flightdeck-app',
+      });
+      expect(store.channelGrants).toEqual([{
+        principal_type: 'actor',
+        principal_id: 'actor-target',
+        permissions: permissionsForPgChannelCapacity('viewer'),
+      }]);
+      expect(hydrateTowerPgScopes).toHaveBeenCalledWith(store);
+      expect(hydrateTowerPgChannels).toHaveBeenCalledWith(store);
+      expect(hydrateTowerPgTasks).toHaveBeenCalledWith(store);
+      expect(hydrateTowerPgDocumentsAndFiles).toHaveBeenCalledWith(store);
+      expect(hydrateTowerPgAudioNotes).toHaveBeenCalledWith(store);
     });
   });
 });

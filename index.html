@@ -7724,10 +7724,12 @@
             <section class="channel-access-panel" x-show="$store.chat.isTowerPgMode">
               <div class="channel-access-header">
                 <h4>Channel access</h4>
-                <button type="button" class="btn-secondary btn-compact" @click="$store.chat.refreshChannelGrants()" :disabled="$store.chat.channelGrantsLoading">Refresh</button>
+                <button type="button" class="btn-secondary btn-compact" @click="$store.chat.refreshChannelGrants()" :disabled="$store.chat.channelGrantsLoading || !$store.chat.canAttemptSelectedPgChannelGrantRead">Refresh</button>
               </div>
 
-              <div class="channel-grant-form">
+              <p class="groups-subtitle" x-show="!$store.chat.canManageSelectedPgChannelGrants">You do not have permission to manage grants for this channel.</p>
+
+              <div class="channel-grant-form" x-show="$store.chat.canManageSelectedPgChannelGrants">
                 <label class="task-field-label">Grant to</label>
                 <div class="channel-grant-grid">
                   <select class="new-group-input" x-model="$store.chat.channelGrantPrincipalType" :disabled="$store.chat.channelGrantsSaving">
@@ -7759,7 +7761,7 @@
                     type="button"
                     class="btn-confirm"
                     @click="$store.chat.createChannelGrant()"
-                    :disabled="$store.chat.channelGrantsSaving || !$store.chat.resolveChannelGrantPrincipalId()"
+                    :disabled="$store.chat.channelGrantsSaving || !$store.chat.canManageSelectedPgChannelGrants || !$store.chat.resolveChannelGrantPrincipalId()"
                     x-text="$store.chat.channelGrantsSaving ? 'Granting...' : 'Grant access'"
                   ></button>
                 </div>

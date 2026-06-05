@@ -373,6 +373,75 @@ export function aggregatePgChannelGrants(grants = []) {
   }));
 }
 
+function pgChannelGrantPermissionNames(grant) {
+  const permissions = Array.isArray(grant?.permissions)
+    ? grant.permissions
+    : [grant?.permission];
+  return permissions.map((permission) => String(permission || '').trim()).filter(Boolean);
+}
+
+function groupHasEffectiveMember(group, viewerNpub) {
+  if (!group || !viewerNpub) return false;
+  const memberNpubs = [
+    ...(Array.isArray(group.effective_member_npubs) ? group.effective_member_npubs : []),
+    ...(Array.isArray(group.member_npubs) ? group.member_npubs : []),
+  ].map((member) => String(member || '').trim()).filter(Boolean);
+  return memberNpubs.includes(viewerNpub);
+}
+
+export function canManagePgChannelGrantsFromRows({
+  grants = [],
+  actorId = '',
+  viewerNpub = '',
+  groups = [],
+  canAdminWorkspace = false,
+} = {}) {
+  if (canAdminWorkspace) return true;
+  const normalizedActorId = String(actorId || '').trim();
+  const normalizedViewerNpub = String(viewerNpub || '').trim();
+  const groupById = new Map(
+    (Array.isArray(groups) ? groups : [])
+      .filter((group) => group?.group_id || group?.id)
+      .map((group) => [String(group.group_id || group.id), group])
+  );
+
+  return (Array.isArray(grants) ? grants : []).some((grant) => {
+    if (!pgChannelGrantPermissionNames(grant).includes('channel.grants.manage')) return false;
+    const principalType = String(grant?.principal_type || '').trim();
+    const principalId = String(grant?.principal_id || '').trim();
+    if (principalType === 'actor') {
+      return Boolean(normalizedActorId && principalId === normalizedActorId);
+    }
+    if (principalType === 'group') {
+      return groupHasEffectiveMember(groupById.get(principalId), normalizedViewerNpub);
+    }
+    return false;
+  });
+}
+
+function pgMePermissionNames(workspace = {}) {
+  return (Array.isArray(workspace?.pgMe?.permissions) ? workspace.pgMe.permissions : [])
+    .map((permission) => String(permission || '').trim())
+    .filter(Boolean);
+}
+
+function pgMeActorId(workspace = {}) {
+  return String(
+    workspace?.pgMe?.actor?.actor_id
+    || workspace?.pgMe?.actor?.id
+    || workspace?.pgMe?.actor_id
+    || ''
+  ).trim();
+}
+
+function pgMeActorNpub(workspace = {}) {
+  return String(
+    workspace?.pgMe?.actor?.npub
+    || workspace?.pgSessionNpub
+    || ''
+  ).trim();
+}
+
 // ---------------------------------------------------------------------------
 // Mixin — methods that use `this` (the Alpine store)
 // ---------------------------------------------------------------------------
@@ -456,6 +525,27 @@ export const channelsManagerMixin = {
     return aggregatePgChannelGrants(this.channelGrants || []);
   },
 
+  get canManageSelectedPgChannelGrants() {
+    if (!isTowerPgBackendMode()) return Boolean(this.canAdminWorkspace);
+    const workspace = this.currentWorkspace || {};
+    return canManagePgChannelGrantsFromRows({
+      grants: this.channelGrants || [],
+      actorId: pgMeActorId(workspace),
+      viewerNpub: pgMeActorNpub(workspace) || this.session?.npub || '',
+      groups: Array.isArray(this.currentWorkspaceGroups) && this.currentWorkspaceGroups.length > 0
+        ? this.currentWorkspaceGroups
+        : this.groups,
+      canAdminWorkspace: Boolean(this.canAdminWorkspace),
+    });
+  },
+
+  get canAttemptSelectedPgChannelGrantRead() {
+    if (!isTowerPgBackendMode()) return false;
+    if (this.canAdminWorkspace) return true;
+    const permissions = pgMePermissionNames(this.currentWorkspace || {});
+    return permissions.includes('channel.grants.read') || permissions.includes('channel.grants.manage');
+  },
+
   resetChannelGrantDraft() {
     this.channelGrantPrincipalType = 'actor';
     this.channelGrantActorId = this.pgChannelGrantActorOptions[0]?.actorId || '';
@@ -487,7 +577,11 @@ export const channelsManagerMixin = {
     try {
       await this.refreshGroups({ force: true, minIntervalMs: 0 });
       this.resetChannelGrantDraft();
-      await this.refreshChannelGrants();
+      if (this.canAttemptSelectedPgChannelGrantRead) {
+        await this.refreshChannelGrants();
+      } else {
+        this.channelGrants = [];
+      }
     } catch (error) {
       this.channelGrantsError = error?.message || 'Failed to load channel access';
     }
@@ -552,8 +646,11 @@ export const channelsManagerMixin = {
 
   async createChannelGrant() {
     if (!isTowerPgBackendMode()) return;
-    if (!this.canAdminWorkspace) {
-      this.channelGrantsError = 'Only workspace admins can grant channel access.';
+    if (!this.canManageSelectedPgChannelGrants && this.canAttemptSelectedPgChannelGrantRead) {
+      await this.refreshChannelGrants();
+    }
+    if (!this.canManageSelectedPgChannelGrants) {
+      this.channelGrantsError = 'You do not have permission to manage grants for this channel.';
       return;
     }
     const channelId = String(this.selectedChannelId || '').trim();
