@@ -1,0 +1,40 @@
+export const FLIGHT_DECK_APP_TITLE = 'Wingman: Flight Deck';
+
+function buildSectionTitle(label) {
+  return `${label} - ${FLIGHT_DECK_APP_TITLE}`;
+}
+
+export function buildFlightDeckDocumentTitle({
+  section = 'chat',
+  channelLabel = '',
+  folderLabel = '',
+  docTitle = '',
+} = {}) {
+  const nextSection = String(section || 'chat').trim().toLowerCase();
+  const nextChannelLabel = String(channelLabel || '').trim();
+  const nextFolderLabel = String(folderLabel || '').trim();
+  const nextDocTitle = String(docTitle || '').trim();
+
+  switch (nextSection) {
+    case 'status':
+      return buildSectionTitle('Flight Deck');
+    case 'tasks':
+      return buildSectionTitle('Tasks');
+    case 'docs':
+      if (nextDocTitle) return buildSectionTitle(`Docs | ${nextDocTitle}`);
+      if (nextFolderLabel) return buildSectionTitle(`Docs | ${nextFolderLabel}`);
+      return buildSectionTitle('Docs');
+    case 'files':
+      return buildSectionTitle('Files');
+    case 'opportunities':
+      return buildSectionTitle('Opportunities');
+    case 'people':
+      return buildSectionTitle('People');
+    case 'settings':
+      return buildSectionTitle('Setup');
+    case 'chat':
+    default:
+      if (nextChannelLabel) return buildSectionTitle(`Chat | ${nextChannelLabel}`);
+      return buildSectionTitle('Chat');
+  }
+}

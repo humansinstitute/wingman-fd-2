@@ -1,0 +1,419 @@
+/**
+ * Unread indicators mixin for the Alpine chat store.
+ *
+ * Tracks read cursors per nav section and per chat channel.
+ * Shows red dots on nav items when a section has unseen updates.
+ *
+ * Cursor key patterns:
+ *   chat:nav          - nav-level cursor for the Chat section
+ *   chat:channel:<id> - per-channel cursor
+ *   tasks:nav         - nav-level cursor for the Tasks section
+ *   docs:nav          - nav-level cursor for the Docs section
+ *
+ * record_id is deterministic: hex(sha256(viewer_npub + cursor_key))
+ */
+
+import {
+  upsertReadCursor,
+  getWorkspaceDb,
+  getChannelsByOwner,
+  getReadCursorsByKeys,
+  getReadCursorsByPrefix,
+  getTasksByOwner,
+  getSyncState,
+} from './db.js';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+async function sha256Hex(input) {
+  const data = new TextEncoder().encode(input);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+async function cursorRecordId(viewerNpub, cursorKey) {
+  return sha256Hex(viewerNpub + cursorKey);
+}
+
+async function loadUnreadCursorMap(viewerNpub) {
+  const [navRows, channelRows, taskRows] = await Promise.all([
+    getReadCursorsByKeys(viewerNpub, ['chat:nav', 'tasks:nav', 'docs:nav']),
+    getReadCursorsByPrefix(viewerNpub, 'chat:channel:'),
+    getReadCursorsByPrefix(viewerNpub, 'tasks:item:'),
+  ]);
+
+  const cursorMap = {};
+  for (const row of [...navRows, ...channelRows, ...taskRows]) {
+    cursorMap[row.cursor_key] = row.read_until;
+  }
+  return cursorMap;
+}
+
+export function pickEffectiveReadUntil(navReadUntil = null, itemReadUntil = null) {
+  if (itemReadUntil && (!navReadUntil || itemReadUntil > navReadUntil)) {
+    return itemReadUntil;
+  }
+  return navReadUntil || null;
+}
+
+export function isMessageUnreadAtCutoff(message, cutoff, options = {}) {
+  if (!message || !cutoff) return false;
+  if ((message.record_state || 'active') === 'deleted') return false;
+  const selectedChannelId = String(options.channelId || '').trim();
+  if (selectedChannelId && message.channel_id !== selectedChannelId) return false;
+  const viewerNpub = String(options.viewerNpub || '').trim();
+  if (viewerNpub && message.sender_npub === viewerNpub) return false;
+  const updatedAt = String(message.updated_at || '').trim();
+  if (!updatedAt) return false;
+  return updatedAt > cutoff;
+}
+
+// ---------------------------------------------------------------------------
+// Pure helpers (testable without Alpine/Dexie)
+// ---------------------------------------------------------------------------
+
+/**
+ * Given a list of tasks and a cursor map, return an object mapping record_id → true
+ * for every task that has unread updates.
+ *
+ * A task is unread when its updated_at exceeds the more recent of:
+ *   - its per-task cursor  (tasks:item:<id>)
+ *   - the section cursor   (tasks:nav)
+ *
+ * If no tasks:nav cursor exists yet the user has never visited the section,
+ * so nothing can be unread (avoids a wall of red on first load).
+ */
+export function computeUnreadTaskMap(tasks, cursorMap, viewerNpub) {
+  const navReadUntil = cursorMap['tasks:nav'] || null;
+  if (!navReadUntil) return {};
+
+  const result = {};
+  for (const task of tasks) {
+    if (task.record_state === 'deleted') continue;
+    const taskKey = `tasks:item:${task.record_id}`;
+    const taskReadUntil = cursorMap[taskKey] || null;
+    let effectiveReadUntil = pickEffectiveReadUntil(navReadUntil, taskReadUntil);
+
+    // Self-created tasks are implicitly "read" at creation time.
+    // The creator already knows about the task they made, so treat
+    // created_at as a floor for the read cursor.  If someone else
+    // later updates the task (updated_at > created_at), it will
+    // surface as unread again.
+    if (
+      viewerNpub &&
+      task.owner_npub === viewerNpub &&
+      task.created_at &&
+      task.created_at > effectiveReadUntil
+    ) {
+      effectiveReadUntil = task.created_at;
+    }
+
+    if (task.updated_at > effectiveReadUntil) {
+      result[task.record_id] = true;
+    }
+  }
+  return result;
+}
+
+/**
+ * Derive whether the tasks nav dot should show from the per-task unread map.
+ * Returns true if at least one task is unread.
+ */
+export function hasUnreadTasks(unreadTaskItems) {
+  return Object.values(unreadTaskItems).some((v) => v);
+}
+
+/**
+ * Determine whether the tasks:nav cursor should be auto-seeded.
+ * Returns true when tasks exist in the DB but no cursor has been set yet
+ * (e.g. after cache clear + hard refresh).
+ */
+export function shouldSeedTasksNavCursor(tasks, cursorMap) {
+  if (cursorMap['tasks:nav']) return false;
+  return tasks.some((t) => t.record_state !== 'deleted');
+}
+
+// ---------------------------------------------------------------------------
+// Mixin
+// ---------------------------------------------------------------------------
+
+export const unreadStoreMixin = {
+  // Reactive unread flags — these drive the red dots in the nav
+  _unreadChat: false,
+  _unreadTasks: false,
+  _unreadDocs: false,
+  // Per-channel unread map: { channelId: boolean }
+  _unreadChannels: {},
+  // Per-task unread map: { taskRecordId: boolean }
+  _unreadTaskItems: {},
+
+  get unreadChat() { return this._unreadChat; },
+  get unreadTasks() { return this._unreadTasks; },
+  get unreadDocs() { return this._unreadDocs; },
+
+  async captureSelectedChannelUnreadSnapshot(channelId) {
+    const viewerNpub = this.session?.npub;
+    if (!viewerNpub || !channelId) return null;
+    const cursorMap = await loadUnreadCursorMap(viewerNpub);
+    return pickEffectiveReadUntil(
+      cursorMap.chat_nav || cursorMap['chat:nav'] || null,
+      cursorMap[`chat:channel:${channelId}`] || null,
+    );
+  },
+
+  isMessageUnread(message) {
+    return isMessageUnreadAtCutoff(message, this.selectedChannelUnreadCutoff, {
+      channelId: this.selectedChannelUnreadChannelId,
+      viewerNpub: this.session?.npub,
+    });
+  },
+
+  isChannelUnread(channelId) {
+    return this._unreadChannels[channelId] === true;
+  },
+
+  isTaskUnread(taskId) {
+    return this._unreadTaskItems[taskId] === true;
+  },
+
+  /**
+   * Boot unread tracking — call after workspace DB is open and session.npub is available.
+   */
+  async initUnreadTracking() {
+    await this.refreshUnreadFlags();
+  },
+
+  teardownUnreadTracking() {
+    // No-op for now. Unread state is refreshed on sync completion and explicit read actions.
+  },
+
+  /**
+   * Re-compute all unread flags.
+   * Prefers worker-computed summary from sync_state when available
+   * (avoids expensive DB scans on the main thread). Falls back to
+   * direct computation for per-task unread maps and cursor seeding.
+   */
+  async refreshUnreadFlags() {
+    const viewerNpub = this.session?.npub;
+    if (!viewerNpub) return;
+
+    try {
+      // Try reading the worker-computed summary first
+      const summary = await getSyncState('unread_summary');
+      if (summary && typeof summary === 'object' && summary.computedAt) {
+        this._unreadChat = Boolean(summary.chatUnread);
+        this._unreadDocs = Boolean(summary.docsUnread);
+        this._unreadChannels = summary.channelUnread || {};
+
+        // Per-task unread still needs the full task list for the map
+        // (drives per-task red borders), but use the summary for the nav dot
+        if (summary.tasksUnread != null) {
+          this._unreadTasks = Boolean(summary.tasksUnread);
+        }
+
+        // Compute per-task map only if tasks section is active (needed for borders)
+        if (this.navSection === 'tasks') {
+          const db = getWorkspaceDb();
+          const cursorMap = await loadUnreadCursorMap(viewerNpub);
+          const allTasks = Array.isArray(this.tasks) && this.tasks.length > 0
+            ? this.tasks
+            : this.workspaceOwnerNpub
+              ? await getTasksByOwner(this.workspaceOwnerNpub)
+              : await db.tasks.toArray();
+
+          if (shouldSeedTasksNavCursor(allTasks, cursorMap)) {
+            const activeTasks = allTasks.filter((t) => t.record_state !== 'deleted');
+            const oldest = activeTasks.reduce(
+              (min, t) => (t.updated_at < min ? t.updated_at : min),
+              activeTasks[0]?.updated_at || new Date().toISOString(),
+            );
+            const seedTime = new Date(new Date(oldest).getTime() - 1).toISOString();
+            const cursorKey = 'tasks:nav';
+            const recordId = await cursorRecordId(viewerNpub, cursorKey);
+            await upsertReadCursor({
+              record_id: recordId,
+              cursor_key: cursorKey,
+              viewer_npub: viewerNpub,
+              read_until: seedTime,
+            });
+            cursorMap[cursorKey] = seedTime;
+          }
+
+          this._unreadTaskItems = computeUnreadTaskMap(allTasks, cursorMap, viewerNpub);
+          this._unreadTasks = hasUnreadTasks(this._unreadTaskItems);
+        }
+        return;
+      }
+
+      // Fallback: no worker summary available, compute directly
+      const db = getWorkspaceDb();
+      const cursorMap = await loadUnreadCursorMap(viewerNpub);
+
+      // --- Chat nav ---
+      const chatReadUntil = cursorMap['chat:nav'] || '1970-01-01T00:00:00.000Z';
+      const allMessages = await db.chat_messages.where('updated_at').above(chatReadUntil).first();
+      this._unreadChat = allMessages != null && allMessages.record_state !== 'deleted';
+
+      // --- Docs nav ---
+      const docsReadUntil = cursorMap['docs:nav'] || '1970-01-01T00:00:00.000Z';
+      const latestDoc = await db.documents.where('updated_at').above(docsReadUntil).first();
+      this._unreadDocs = latestDoc != null && latestDoc.record_state !== 'deleted';
+
+      // --- Per-channel unread (batched) ---
+      const channels = Array.isArray(this.channels)
+        ? this.channels
+        : this.workspaceOwnerNpub
+          ? await getChannelsByOwner(this.workspaceOwnerNpub)
+          : [];
+      const newChannelMap = {};
+      if (channels.length > 0) {
+        let earliestCursor = chatReadUntil || '1970-01-01T00:00:00.000Z';
+        const channelCursors = {};
+        for (const ch of channels) {
+          const key = `chat:channel:${ch.record_id}`;
+          const chReadUntil = cursorMap[key] || null;
+          const effective = pickEffectiveReadUntil(chatReadUntil, chReadUntil)
+            || '1970-01-01T00:00:00.000Z';
+          channelCursors[ch.record_id] = effective;
+          if (effective < earliestCursor) earliestCursor = effective;
+        }
+        const recentMessages = await db.chat_messages
+          .where('updated_at').above(earliestCursor)
+          .toArray();
+        for (const ch of channels) {
+          const cursor = channelCursors[ch.record_id];
+          newChannelMap[ch.record_id] = recentMessages.some(
+            (m) => m.channel_id === ch.record_id
+              && m.updated_at > cursor
+              && m.record_state !== 'deleted'
+          );
+        }
+      }
+      this._unreadChannels = newChannelMap;
+
+      // --- Per-task unread ---
+      const allTasks = Array.isArray(this.tasks)
+        ? this.tasks
+        : this.workspaceOwnerNpub
+          ? await getTasksByOwner(this.workspaceOwnerNpub)
+          : await db.tasks.toArray();
+
+      if (shouldSeedTasksNavCursor(allTasks, cursorMap)) {
+        const activeTasks = allTasks.filter((t) => t.record_state !== 'deleted');
+        const oldest = activeTasks.reduce(
+          (min, t) => (t.updated_at < min ? t.updated_at : min),
+          activeTasks[0]?.updated_at || new Date().toISOString(),
+        );
+        const seedTime = new Date(new Date(oldest).getTime() - 1).toISOString();
+        const cursorKey = 'tasks:nav';
+        const recordId = await cursorRecordId(viewerNpub, cursorKey);
+        await upsertReadCursor({
+          record_id: recordId,
+          cursor_key: cursorKey,
+          viewer_npub: viewerNpub,
+          read_until: seedTime,
+        });
+        cursorMap[cursorKey] = seedTime;
+      }
+
+      this._unreadTaskItems = computeUnreadTaskMap(allTasks, cursorMap, viewerNpub);
+      this._unreadTasks = hasUnreadTasks(this._unreadTaskItems);
+    } catch (e) {
+      // Swallow errors — unread flags are non-critical
+      console.warn('[unread] refresh failed:', e?.message || e);
+    }
+  },
+
+  /**
+   * Mark a nav section as read (updates cursor to now).
+   */
+  async markSectionRead(section) {
+    const viewerNpub = this.session?.npub;
+    if (!viewerNpub) return;
+
+    const keyMap = {
+      chat: 'chat:nav',
+      tasks: 'tasks:nav',
+      docs: 'docs:nav',
+    };
+    const cursorKey = keyMap[section];
+    if (!cursorKey) return;
+
+    const recordId = await cursorRecordId(viewerNpub, cursorKey);
+    const now = new Date().toISOString();
+    await upsertReadCursor({
+      record_id: recordId,
+      cursor_key: cursorKey,
+      viewer_npub: viewerNpub,
+      read_until: now,
+    });
+
+    // Immediately clear the flag
+    if (section === 'chat') this._unreadChat = false;
+    if (section === 'tasks') this._unreadTasks = false;
+    if (section === 'docs') this._unreadDocs = false;
+  },
+
+  /**
+   * Mark a specific chat channel as read.
+   */
+  async markChannelRead(channelId) {
+    const viewerNpub = this.session?.npub;
+    if (!viewerNpub || !channelId) return;
+
+    const cursorKey = `chat:channel:${channelId}`;
+    const recordId = await cursorRecordId(viewerNpub, cursorKey);
+    const now = new Date().toISOString();
+    await upsertReadCursor({
+      record_id: recordId,
+      cursor_key: cursorKey,
+      viewer_npub: viewerNpub,
+      read_until: now,
+    });
+
+    // Also update nav-level chat cursor
+    await this.markSectionRead('chat');
+
+    // Immediately clear the channel flag
+    this._unreadChannels = { ...this._unreadChannels, [channelId]: false };
+  },
+
+  /**
+   * Mark a specific task as read.
+   */
+  async markTaskRead(taskId) {
+    const viewerNpub = this.session?.npub;
+    if (!viewerNpub || !taskId) return;
+
+    const cursorKey = `tasks:item:${taskId}`;
+    const recordId = await cursorRecordId(viewerNpub, cursorKey);
+    const now = new Date().toISOString();
+    await upsertReadCursor({
+      record_id: recordId,
+      cursor_key: cursorKey,
+      viewer_npub: viewerNpub,
+      read_until: now,
+    });
+
+    // Immediately clear the task flag and re-derive nav dot
+    this._unreadTaskItems = { ...this._unreadTaskItems, [taskId]: false };
+    this._unreadTasks = hasUnreadTasks(this._unreadTaskItems);
+  },
+
+  /**
+   * Mark all tasks as read — advances tasks:nav cursor to now,
+   * which clears every per-task unread indicator at once.
+   */
+  async markAllTasksRead() {
+    const viewerNpub = this.session?.npub;
+    if (!viewerNpub) return;
+
+    await this.markSectionRead('tasks');
+    this._unreadTaskItems = {};
+    this._unreadTasks = false;
+  },
+};

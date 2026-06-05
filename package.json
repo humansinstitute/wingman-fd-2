@@ -1,0 +1,33 @@
+{
+  "name": "wm-fd-2",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Flight Deck classic UI migrated toward the Tower Postgres backend.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "start": "sh -c 'bunx vite preview --host 0.0.0.0 --port ${PORT:-8093} --strictPort'",
+    "schemas:bundle": "node scripts/generate-flightdeck-schema-bundle.mjs",
+    "build": "node scripts/generate-flightdeck-schema-bundle.mjs && bunx vite build && node scripts/verify-dist-assets.mjs",
+    "preview": "vite preview",
+    "verify:dist": "node scripts/verify-dist-assets.mjs",
+    "test": "vitest run",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@nostr-superbased/browser": "0.1.0",
+    "@nostr-superbased/core": "0.1.0",
+    "alpinejs": "^3.14.8",
+    "dexie": "^4.0.10",
+    "diff": "^8.0.4",
+    "marked": "^17.0.4",
+    "nostr-tools": "^2.17.0"
+  },
+  "devDependencies": {
+    "fake-indexeddb": "^6.0.0",
+    "jsdom": "^29.0.1",
+    "playwright": "1.51.1",
+    "vite": "^6.2.0",
+    "vitest": "^3.0.0"
+  }
+}

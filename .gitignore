@@ -1,0 +1,78 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/*
+!dist/
+!dist/assets/
+!dist/assets/**
+!dist/*.html
+!dist/*.json
+!dist/*.js
+!dist/*.md
+!dist/*.txt
+!dist/*.png
+build/
+coverage/
+.vite/
+.cache/
+.turbo/
+*.tsbuildinfo
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+!.env.local.example
+.envrc
+.direnv/
+.npmrc
+.yarnrc.yml
+.pnpmfile.cjs
+*.local
+*.secret
+*.secrets
+*.key
+*.pem
+*.crt
+*.cer
+*.p12
+*.pfx
+
+# Runtime data
+data/
+tmp/
+temp/
+.wingman-yoke/
+ecosystem.config.cjs
+
+# Logs
+logs/
+*.log
+apps/logs/
+apps/*.db
+apps/*.sqlite
+apps/*.sqlite3
+
+# Design logs (scratch, not version controlled)
+docs/log/
+
+# Generated reports
+playwright-report/
+test-results/
+
+# Tooling caches
+.eslintcache
+.stylelintcache
+.parcel-cache/
+
+# Editor and OS files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~

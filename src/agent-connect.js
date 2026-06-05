@@ -1,0 +1,92 @@
+import { nip19 } from 'nostr-tools';
+import { APP_NPUB, DEFAULT_SUPERBASED_URL } from './app-identity.js';
+import { buildSuperBasedConnectionToken, parseSuperBasedToken } from './superbased-token.js';
+
+function trimUrl(value) {
+  return String(value || '').trim().replace(/\/+$/, '');
+}
+
+function withPath(base, path) {
+  const root = trimUrl(base);
+  return root ? `${root}${path}` : '';
+}
+
+function appPubkeyHexFromNpub(appNpub) {
+  if (!appNpub) return null;
+  try {
+    const decoded = nip19.decode(String(appNpub).trim());
+    return decoded.type === 'npub' ? decoded.data : null;
+  } catch {
+    return null;
+  }
+}
+
+export function buildAgentConnectPackage({
+  windowOrigin = '',
+  backendUrl = '',
+  session = null,
+  token = '',
+  towerName = '',
+  towerDescription = '',
+} = {}) {
+  const origin = trimUrl(windowOrigin);
+  const currentBackendUrl = trimUrl(backendUrl || DEFAULT_SUPERBASED_URL);
+  const parsed = token ? parseSuperBasedToken(token) : { isValid: false };
+  const workspaceOwnerNpub = parsed.workspaceOwnerNpub || session?.npub || '';
+  const appNpub = parsed.appNpub || APP_NPUB;
+  const serviceNpub = parsed.serviceNpub || '';
+  const relayUrls = parsed.relayUrls || [];
+  const effectiveToken = token && parsed.isValid
+      ? token
+      : buildSuperBasedConnectionToken({
+        directHttpsUrl: currentBackendUrl,
+        serviceNpub,
+        towerName: parsed.towerName || towerName,
+        towerDescription: parsed.towerDescription || towerDescription,
+        workspaceOwnerNpub,
+        appNpub,
+        relayUrls,
+      });
+
+  return {
+    kind: 'coworker_agent_connect',
+    version: 5,
+    generated_at: new Date().toISOString(),
+    llms_url: withPath(origin, '/llms.txt'),
+    robots_url: withPath(origin, '/robots.txt'),
+    service: {
+      direct_https_url: currentBackendUrl,
+      openapi_url: withPath(currentBackendUrl, '/openapi.json'),
+      docs_url: withPath(currentBackendUrl, '/docs'),
+      health_url: withPath(currentBackendUrl, '/health'),
+      service_npub: serviceNpub || null,
+      relay_urls: relayUrls,
+    },
+    workspace: {
+      owner_npub: workspaceOwnerNpub || null,
+      owner_pubkey: session?.pubkey || null,
+    },
+    app: {
+      app_npub: appNpub || null,
+      app_pubkey: appPubkeyHexFromNpub(appNpub),
+    },
+    record_link_model: {
+      version: 1,
+      types: {
+        source: 'Explicit origin: this record was created because of the linked record.',
+        reference: 'Related context that may be useful.',
+        deliverable: 'Output produced by this record.',
+      },
+      agent_context_priority: ['record', 'source_links', 'deliverable_links', 'references'],
+      routeable_types: ['task', 'doc', 'scope', 'flow', 'opportunity', 'person'],
+    },
+    connection_token: effectiveToken,
+    notes: [
+      'Read llms_url first for agent instructions and workspace semantics.',
+      'For record context, treat source_links and deliverable_links as higher-signal than generic references.',
+      'Use Wingman Yoke when it is available in the target environment.',
+      'Use the service.open_api/docs URLs to inspect the live SuperBased v4 API.',
+      'Use the connection_token to configure another Coworker/agent session against this workspace.',
+    ],
+  };
+}

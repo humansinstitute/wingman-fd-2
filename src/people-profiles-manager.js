@@ -1,0 +1,578 @@
+/**
+ * People / profile resolution and address-book methods extracted from app.js.
+ *
+ * The peopleProfilesManagerMixin object contains methods and getters that use `this`
+ * (the Alpine store) and should be spread into the store definition via applyMixins.
+ */
+
+import {
+  getAddressBookPeople,
+  upsertAddressBookPerson,
+} from './db.js';
+import { fetchProfileByNpub } from './profiles.js';
+import { fetchWorkspaceKeyMappings } from './api.js';
+
+const EMPTY_ARRAY = Object.freeze([]);
+const addressBookPeopleMapCache = new WeakMap();
+const REMEMBER_PEOPLE_TOUCH_MS = 15 * 60 * 1000;
+const PROFILE_CARD_WIDTH = 320;
+const PROFILE_CARD_HEIGHT = 300;
+const PROFILE_CARD_MARGIN = 12;
+
+function getAddressBookPeopleMap(store) {
+  const people = Array.isArray(store?.addressBookPeople) ? store.addressBookPeople : EMPTY_ARRAY;
+  let cached = addressBookPeopleMapCache.get(people);
+  if (cached) return cached;
+  cached = new Map();
+  for (const person of people) cached.set(person.npub, person);
+  addressBookPeopleMapCache.set(people, cached);
+  return cached;
+}
+
+// ---------------------------------------------------------------------------
+// Mixin — methods and getters that use `this` (the Alpine store)
+// ---------------------------------------------------------------------------
+
+export const peopleProfilesManagerMixin = {
+
+  // --- workspace key → user npub resolution ---
+
+  // Map of ws_key_npub → real user_npub for display resolution
+  _wsKeyDisplayMap: {},
+
+  /**
+   * Fetch workspace key mappings from Tower and populate the display map.
+   * Called during workspace bootstrap.
+   */
+  async refreshWorkspaceKeyMappings() {
+    if (!this.workspaceOwnerNpub) return;
+    try {
+      const result = await fetchWorkspaceKeyMappings(this.workspaceOwnerNpub);
+      const map = {};
+      for (const entry of (result.mappings || [])) {
+        const workspaceUserKeyNpub = String(
+          entry.workspace_user_key_npub
+          || entry.ws_key_npub
+          || ''
+        ).trim();
+        const userNpub = String(entry.user_npub || '').trim();
+        if (!workspaceUserKeyNpub || !userNpub) continue;
+        map[workspaceUserKeyNpub] = userNpub;
+      }
+      this._wsKeyDisplayMap = map;
+    } catch {
+      // Non-critical — display will fall back to ws_key npub
+    }
+  },
+
+  /**
+   * Resolve an npub for display purposes.
+   * If the npub is a workspace session key, returns the real user npub.
+   * Otherwise returns the input unchanged.
+   */
+  resolveDisplayNpub(npub) {
+    if (!npub) return npub;
+    return this._wsKeyDisplayMap[npub] || npub;
+  },
+
+  // --- profile resolution ---
+
+  resolveChatProfile(rawNpub) {
+    // Resolve ws_key_npub → real user npub for profile lookup
+    const npub = this.resolveDisplayNpub(rawNpub);
+    if (!npub || this.chatProfiles[npub]?.loading) return;
+    if (this.chatProfiles[npub]?.name || this.chatProfiles[npub]?.picture) return;
+    const cached = this.getCachedPerson(npub);
+
+    // Cap chatProfiles at 200 entries — evict oldest when full
+    const MAX_CHAT_PROFILES = 200;
+    const keys = Object.keys(this.chatProfiles);
+    if (keys.length >= MAX_CHAT_PROFILES) {
+      const trimmed = {};
+      // Keep the most recent half
+      const keep = keys.slice(keys.length - Math.floor(MAX_CHAT_PROFILES / 2));
+      for (const k of keep) trimmed[k] = this.chatProfiles[k];
+      this.chatProfiles = trimmed;
+    }
+
+    this.chatProfiles = {
+      ...this.chatProfiles,
+      [npub]: {
+        name: cached?.label || null,
+        picture: cached?.avatar_url || null,
+        nip05: cached?.nip05 || null,
+        about: cached?.bio || null,
+        loading: true,
+      },
+    };
+
+    fetchProfileByNpub(npub)
+      .then((profile) => {
+        this.chatProfiles = {
+          ...this.chatProfiles,
+          [npub]: {
+            name: profile?.display_name || profile?.name || null,
+            picture: profile?.picture || null,
+            nip05: profile?.nip05 || null,
+            about: profile?.about || profile?.bio || null,
+            loading: false,
+          },
+        };
+        upsertAddressBookPerson({
+          npub,
+          label: profile?.display_name || profile?.name || null,
+          avatar_url: profile?.picture || null,
+          bio: profile?.about || profile?.bio || null,
+          nip05: profile?.nip05 || null,
+          source: 'profile',
+          last_used_at: new Date().toISOString(),
+        }).catch(() => {});
+      })
+      .catch(() => {
+        this.chatProfiles = {
+          ...this.chatProfiles,
+          [npub]: {
+            name: cached?.label || null,
+            picture: cached?.avatar_url || null,
+            nip05: cached?.nip05 || null,
+            about: cached?.bio || null,
+            loading: false,
+          },
+        };
+      });
+  },
+
+  getCachedPerson(npub) {
+    if (!npub) return null;
+    return getAddressBookPeopleMap(this).get(npub) ?? null;
+  },
+
+  getSenderName(rawNpub) {
+    if (!rawNpub) return 'Unknown';
+    const npub = this.resolveDisplayNpub(rawNpub);
+    const cached = this.getCachedPerson(npub);
+    return this.chatProfiles[npub]?.name || cached?.label || this.getShortNpub(npub);
+  },
+
+  getSenderIdentity(rawNpub) {
+    if (!rawNpub) return '';
+    const npub = this.resolveDisplayNpub(rawNpub);
+    const cached = this.getCachedPerson(npub);
+    if (this.chatProfiles[npub]?.nip05) return this.chatProfiles[npub].nip05;
+    if (cached?.nip05) return cached.nip05;
+    if (this.chatProfiles[npub]?.name || cached?.label) return this.getShortNpub(npub);
+    return '';
+  },
+
+  getSenderAvatar(rawNpub) {
+    if (!rawNpub) return null;
+    const npub = this.resolveDisplayNpub(rawNpub);
+    const cached = this.getCachedPerson(npub);
+    return this.chatProfiles[npub]?.picture || cached?.avatar_url || null;
+  },
+
+  getSenderBio(rawNpub) {
+    if (!rawNpub) return '';
+    const npub = this.resolveDisplayNpub(rawNpub);
+    const cached = this.getCachedPerson(npub);
+    return this.chatProfiles[npub]?.about || this.chatProfiles[npub]?.bio || cached?.bio || '';
+  },
+
+  getSenderProfile(rawNpub) {
+    const npub = this.resolveDisplayNpub(rawNpub);
+    if (!npub) return null;
+    return {
+      npub,
+      name: this.getSenderName(npub),
+      identity: this.getSenderIdentity(npub),
+      avatarUrl: this.getSenderAvatar(npub),
+      bio: this.getSenderBio(npub),
+      shortNpub: this.getProfileCardShortNpub(npub),
+    };
+  },
+
+  getProfileCardShortNpub(npub) {
+    const value = String(npub || '');
+    if (value.length <= 14) return value;
+    return `${value.slice(0, 6)}...${value.slice(-4)}`;
+  },
+
+  get identityCardProfile() {
+    return this.getSenderProfile(this.identityCard?.npub);
+  },
+
+  openIdentityCard(event, rawNpub) {
+    const npub = this.resolveDisplayNpub(rawNpub);
+    if (!npub) return;
+    this.resolveChatProfile(npub);
+    const rect = event?.currentTarget?.getBoundingClientRect?.();
+    const viewportWidth = window.innerWidth || 1024;
+    const viewportHeight = window.innerHeight || 768;
+    const rawLeft = rect ? rect.left : event?.clientX || PROFILE_CARD_MARGIN;
+    const rawTop = rect ? rect.bottom + 8 : event?.clientY || PROFILE_CARD_MARGIN;
+    const maxLeft = Math.max(PROFILE_CARD_MARGIN, viewportWidth - PROFILE_CARD_WIDTH - PROFILE_CARD_MARGIN);
+    const maxTop = Math.max(PROFILE_CARD_MARGIN, viewportHeight - PROFILE_CARD_HEIGHT - PROFILE_CARD_MARGIN);
+    this.identityCard = {
+      open: true,
+      npub,
+      x: Math.max(PROFILE_CARD_MARGIN, Math.min(rawLeft, maxLeft)),
+      y: Math.max(PROFILE_CARD_MARGIN, Math.min(rawTop, maxTop)),
+      copied: false,
+    };
+  },
+
+  closeIdentityCard() {
+    if (!this.identityCard) return;
+    this.identityCard = { ...this.identityCard, open: false, copied: false };
+  },
+
+  async copyIdentityCardNpub() {
+    const npub = this.identityCardProfile?.npub;
+    if (!npub) return;
+    try {
+      await navigator.clipboard.writeText(npub);
+    } catch {
+      const textarea = document.createElement('textarea');
+      textarea.value = npub;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+    }
+    this.identityCard = { ...this.identityCard, copied: true };
+    window.setTimeout(() => {
+      if (this.identityCard?.npub === npub) {
+        this.identityCard = { ...this.identityCard, copied: false };
+      }
+    }, 1400);
+  },
+
+  // --- address book ---
+
+  async rememberPeople(npubs = [], source = 'unknown') {
+    // Filter out workspace key npubs — only real identities go in the address book
+    const wsKeyNpubs = this._wsKeyDisplayMap || {};
+    const uniqueNpubs = [...new Set(npubs.filter((n) => n && !wsKeyNpubs[n]))];
+    if (uniqueNpubs.length === 0) return;
+
+    const existingPeople = getAddressBookPeopleMap(this);
+    const now = Date.now();
+    const nowIso = new Date(now).toISOString();
+    let wroteAny = false;
+
+    for (const npub of uniqueNpubs) {
+      const existing = existingPeople.get(npub) ?? null;
+      const nextLabel = this.chatProfiles[npub]?.name ?? null;
+      const nextAvatar = this.chatProfiles[npub]?.picture ?? null;
+      const nextBio = this.chatProfiles[npub]?.about ?? this.chatProfiles[npub]?.bio ?? null;
+      const nextNip05 = this.chatProfiles[npub]?.nip05 ?? null;
+      const existingLastUsedAt = Date.parse(existing?.last_used_at || '');
+      const shouldTouchTimestamp = !Number.isFinite(existingLastUsedAt)
+        || (now - existingLastUsedAt) >= REMEMBER_PEOPLE_TOUCH_MS;
+      const shouldWrite = !existing
+        || (existing.label ?? null) !== nextLabel
+        || (existing.avatar_url ?? null) !== nextAvatar
+        || (existing.bio ?? null) !== nextBio
+        || (existing.nip05 ?? null) !== nextNip05
+        || shouldTouchTimestamp;
+
+      if (shouldWrite) {
+        await upsertAddressBookPerson({
+          npub,
+          label: nextLabel,
+          avatar_url: nextAvatar,
+          bio: nextBio,
+          nip05: nextNip05,
+          source: existing?.source || source,
+          last_used_at: nowIso,
+        });
+        wroteAny = true;
+      }
+      this.resolveChatProfile(npub);
+    }
+
+    if (wroteAny) {
+      this.addressBookPeople = await getAddressBookPeople();
+    }
+  },
+
+  // --- people search / suggestions ---
+
+  findPeopleSuggestions(query, excludeNpubs = [], candidateNpubs = null) {
+    const needle = String(query || '').trim().toLowerCase();
+    if (!needle) return [];
+
+    // Build set of ws_key_npubs so we can exclude them from results
+    const wsKeyNpubs = new Set(Object.keys(this._wsKeyDisplayMap || {}));
+
+    const existing = new Set((excludeNpubs || []).map((value) => String(value || '').trim()).filter(Boolean));
+    const allowed = candidateNpubs?.length
+      ? new Set(candidateNpubs.map((value) => String(value || '').trim()).filter(Boolean))
+      : null;
+    return this.addressBookPeople
+      .filter((person) => !wsKeyNpubs.has(person.npub))
+      .filter((person) => !allowed || allowed.has(person.npub))
+      .filter((person) => !existing.has(person.npub))
+      .filter((person) =>
+        String(person.npub || '').toLowerCase().includes(needle)
+        || String(this.getSenderName(person.npub) || '').toLowerCase().includes(needle)
+        || String(person.label || '').toLowerCase().includes(needle)
+      )
+      .slice(0, 8)
+      .map((person) => ({
+        npub: person.npub,
+        label: this.getSenderName(person.npub),
+        subtitle: person.npub,
+        avatarUrl: this.getSenderAvatar(person.npub),
+      }));
+  },
+
+  findGroupMemberSuggestions(query, selectedMembers = []) {
+    const needle = String(query || '').trim().toLowerCase();
+    if (!needle) return [];
+
+    const wsKeyNpubs = new Set(Object.keys(this._wsKeyDisplayMap || {}));
+    const existing = new Set((selectedMembers || []).map((member) => member.npub));
+    return this.addressBookPeople
+      .filter((person) => !wsKeyNpubs.has(person.npub))
+      .filter((person) => !existing.has(person.npub))
+      .filter((person) =>
+        String(person.npub || '').toLowerCase().includes(needle)
+        || String(this.getSenderName(person.npub) || '').toLowerCase().includes(needle)
+        || String(person.label || '').toLowerCase().includes(needle)
+      )
+      .slice(0, 8)
+      .map((person) => ({
+        npub: person.npub,
+        label: this.getSenderName(person.npub),
+        avatarUrl: this.getSenderAvatar(person.npub),
+      }));
+  },
+
+  findFlowApproverSuggestions(query, selectedApprovers = []) {
+    const needle = String(query || '').trim().toLowerCase();
+    if (!needle) return [];
+
+    const existing = new Set(
+      (selectedApprovers || []).map((value) => String(value || '').trim()).filter(Boolean),
+    );
+    const wsKeyNpubs = new Set(Object.keys(this._wsKeyDisplayMap || {}));
+
+    const people = this.addressBookPeople
+      .filter((person) => !wsKeyNpubs.has(person.npub))
+      .filter((person) => !existing.has(person.npub))
+      .filter((person) =>
+        String(person.npub || '').toLowerCase().includes(needle)
+        || String(this.getSenderName(person.npub) || '').toLowerCase().includes(needle)
+        || String(person.label || '').toLowerCase().includes(needle)
+      )
+      .slice(0, 6)
+      .map((person) => ({
+        type: 'person',
+        key: `person:${person.npub}`,
+        token: person.npub,
+        label: this.getSenderName(person.npub),
+        subtitle: person.npub,
+        avatarUrl: this.getSenderAvatar(person.npub),
+      }));
+
+    const groups = this.groups
+      .map((group) => {
+        const groupRef = String(group.group_id || group.group_npub || '').trim();
+        return {
+          group,
+          groupRef,
+          token: groupRef ? `group:${groupRef}` : '',
+        };
+      })
+      .filter(({ token }) => token && !existing.has(token))
+      .filter(({ group, groupRef, token }) =>
+        String(group.name || '').toLowerCase().includes(needle)
+        || String(groupRef || '').toLowerCase().includes(needle)
+        || token.toLowerCase().includes(needle)
+        || (group.member_npubs || []).some((member) => String(member || '').toLowerCase().includes(needle))
+      )
+      .slice(0, 6)
+      .map(({ group, token }) => ({
+        type: 'group',
+        key: token,
+        token,
+        label: group.name || token.slice(6),
+        subtitle: `${(group.member_npubs || []).length} members`,
+      }));
+
+    return [...people, ...groups].slice(0, 8);
+  },
+
+  getFlowApproverLabel(token) {
+    const value = String(token || '').trim();
+    if (!value) return '';
+    if (value.startsWith('npub1')) {
+      return this.getSenderName(value);
+    }
+    if (value.startsWith('group:')) {
+      const groupRef = value.slice(6);
+      const group = this.groups.find((candidate) =>
+        String(candidate.group_id || '').trim() === groupRef
+        || String(candidate.group_npub || '').trim() === groupRef
+      );
+      return group?.name || groupRef;
+    }
+    return value;
+  },
+
+  getFlowApproverSubtitle(token) {
+    const value = String(token || '').trim();
+    if (!value) return '';
+    if (value.startsWith('npub1')) return value;
+    if (value.startsWith('group:')) {
+      const groupRef = value.slice(6);
+      const group = this.groups.find((candidate) =>
+        String(candidate.group_id || '').trim() === groupRef
+        || String(candidate.group_npub || '').trim() === groupRef
+      );
+      return group ? `${(group.member_npubs || []).length} members` : value;
+    }
+    return value;
+  },
+
+  mapGroupDraftMembers(memberNpubs = []) {
+    return [...new Set((memberNpubs || []).map((value) => String(value || '').trim()).filter(Boolean))]
+      .map((npub) => {
+        this.resolveChatProfile(npub);
+        return {
+          npub,
+          label: this.getSenderName(npub),
+          avatarUrl: this.getSenderAvatar(npub),
+        };
+      });
+  },
+
+  consumeGroupMemberQuery(query, currentMembers = []) {
+    const raw = String(query || '').trim();
+    if (!raw) {
+      return {
+        added: false,
+        members: [...currentMembers],
+      };
+    }
+
+    const parts = raw.split(',').map((value) => value.trim()).filter(Boolean);
+    const nextMembers = [...currentMembers];
+    const existing = new Set(nextMembers.map((member) => member.npub));
+    let added = false;
+
+    for (const part of parts) {
+      if (part.startsWith('npub1') && part.length >= 60 && !existing.has(part)) {
+        this.resolveChatProfile(part);
+        nextMembers.push({
+          npub: part,
+          label: this.getSenderName(part),
+          avatarUrl: this.getSenderAvatar(part),
+        });
+        existing.add(part);
+        added = true;
+      }
+    }
+
+    if (added) {
+      return {
+        added: true,
+        members: nextMembers,
+      };
+    }
+
+    const suggestions = this.findGroupMemberSuggestions(raw, currentMembers);
+    if (suggestions.length > 0) {
+      return {
+        added: true,
+        members: [...currentMembers, suggestions[0]],
+      };
+    }
+
+    return {
+      added: false,
+      members: [...currentMembers],
+    };
+  },
+
+  // --- computed getters ---
+
+  get docShareSuggestions() {
+    const needle = String(this.docShareQuery || '').trim().toLowerCase();
+    if (!needle) return [];
+
+    const sharedPeople = new Set(
+      this.docEditorShares
+        .filter((share) => share.type === 'person')
+        .map((share) => share.person_npub)
+    );
+    const sharedGroups = new Set(
+      this.docEditorShares
+        .filter((share) => share.type === 'group')
+        .map((share) => share.group_id || share.group_npub)
+    );
+
+    const people = this.addressBookPeople
+      .filter((person) => !sharedPeople.has(person.npub))
+      .filter((person) =>
+        String(person.npub || '').toLowerCase().includes(needle)
+        || String(this.getSenderName(person.npub) || '').toLowerCase().includes(needle)
+        || String(person.label || '').toLowerCase().includes(needle)
+      )
+      .slice(0, 6)
+      .map((person) => ({
+        type: 'person',
+        key: `person:${person.npub}`,
+        npub: person.npub,
+        label: this.getSenderName(person.npub),
+        subtitle: person.npub,
+        avatarUrl: this.getSenderAvatar(person.npub),
+      }));
+
+    const groups = this.groups
+      .filter((group) => !sharedGroups.has(group.group_id || group.group_npub))
+      .filter((group) =>
+        String(group.name || '').toLowerCase().includes(needle)
+        || (group.member_npubs || []).some((member) => member.toLowerCase().includes(needle))
+      )
+      .slice(0, 6)
+      .map((group) => ({
+        type: 'group',
+        key: `group:${group.group_id || group.group_npub}`,
+        group_npub: group.group_id || group.group_npub,
+        label: group.name,
+        subtitle: `${(group.member_npubs || []).length} members`,
+      }));
+
+    return [...people, ...groups];
+  },
+
+  get groupMemberSuggestions() {
+    return this.findGroupMemberSuggestions(this.newGroupMemberQuery, this.newGroupMembers);
+  },
+
+  get editGroupMemberSuggestions() {
+    return this.findGroupMemberSuggestions(this.editGroupMemberQuery, this.editGroupMembers);
+  },
+
+  get taskAssigneeSuggestions() {
+    return this.findPeopleSuggestions(this.taskAssigneeQuery, [this.editingTask?.assigned_to_npub]);
+  },
+
+  get defaultAgentSuggestions() {
+    return this.findPeopleSuggestions(this.defaultAgentQuery, [this.defaultAgentNpub]);
+  },
+
+  get defaultAgentLabel() {
+    return this.defaultAgentNpub ? this.getSenderName(this.defaultAgentNpub) : '';
+  },
+
+  get canDoTaskWithDefaultAgent() {
+    const editable = typeof this.isTaskDetailEditing === 'function' ? this.isTaskDetailEditing() : true;
+    return Boolean(this.defaultAgentNpub && this.editingTask && editable);
+  },
+};

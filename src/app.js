@@ -1,0 +1,6114 @@
+/**
+ * Alpine.js app store — the single source of reactive UI state.
+ * All data comes from Dexie; network goes through the sync worker.
+ */
+
+import Alpine from 'alpinejs';
+import { liveQuery } from 'dexie';
+import { commentBelongsToDocBlock } from './doc-comment-anchors.js';
+import { docsManagerMixin } from './docs-manager.js';
+import { scopesManagerMixin } from './scopes-manager.js';
+import { channelsManagerMixin } from './channels-manager.js';
+import { audioRecordingManagerMixin } from './audio-recording-manager.js';
+import { storageImageManagerMixin } from './storage-image-manager.js';
+import { triggersManagerMixin } from './triggers-manager.js';
+import { jobsManagerMixin } from './jobs-manager.js';
+import { workspaceManagerMixin, guessDefaultBackendUrl } from './workspace-manager.js';
+import { chatMessageManagerMixin } from './chat-message-manager.js';
+import { reactionsManagerMixin } from './reactions-manager.js';
+import { syncManagerMixin } from './sync-manager.js';
+import { peopleProfilesManagerMixin } from './people-profiles-manager.js';
+import { connectSettingsManagerMixin } from './connect-settings-manager.js';
+import { unreadStoreMixin } from './unread-store.js';
+import { flowsManagerMixin } from './flows-manager.js';
+import { personsManagerMixin } from './persons-manager.js';
+import { opportunitiesManagerMixin } from './opportunities-manager.js';
+import { wappsManagerMixin } from './wapps-manager.js';
+import { reportsManagerMixin } from './reports-manager.js';
+import { filesManagerMixin } from './files-manager.js';
+import { createShellState } from './shell-state.js';
+import {
+  checkoutErrorMessage,
+  describeCheckoutHolder,
+  formatLeaseRemaining,
+  isCheckoutHeld,
+} from './lock-managed-records.js';
+import { FLIGHT_DECK_RECORD_CHECKOUT_POLICY_CONFIG } from './record-checkout-policy.js';
+import {
+  getTaskFlowInfo,
+  buildAttachFlowPatch,
+  buildDetachFlowPatch,
+  findTaskForFlowRunStep,
+} from './task-flow-helpers.js';
+import {
+  buildPredecessorTaskSuggestions,
+  describePredecessorRelationship,
+  getTaskPredecessorReferenceRows,
+  normalizePredecessorTaskIds,
+} from './task-predecessor-helpers.js';
+import {
+  taskBoardStateMixin,
+  calculateTaskBoardOrderForInsertion,
+  getTaskDropRecordId,
+  buildTaskBoardReorderPatches,
+  dedupeTasksByRecordId,
+  UNSCOPED_TASK_BOARD_ID,
+  WEEKDAY_OPTIONS,
+} from './task-board-state.js';
+import { renderMarkdownToHtml } from './markdown.js';
+import { resolveChannelLabel } from './channel-labels.js';
+import { buildFlightDeckDocumentTitle } from './page-title.js';
+import { getRunningBuildId } from './version-check.js';
+import { filterDocItemsByScope } from './docs-scope-filter.js';
+import { sectionLiveQueryMixin } from './section-live-queries.js';
+import { applySelectedDocumentUpdate } from './document-selection.js';
+import { createChatThreadFlowDispatchState } from './chat-thread-flow-dispatch.js';
+import { createChatGetItDoneState } from './chat-get-it-done.js';
+import { commandPaletteMixin, createCommandPaletteState } from './command-palette.js';
+import { buildAttentionFeed, buildTimingFeed, summarizeAttentionFeed } from './attention-feed.js';
+import {
+  toRaw,
+  normalizeBackendUrl,
+  workspaceSettingsRecordId,
+  storageObjectIdFromRef,
+  storageImageCacheKey,
+  defaultRecordSignature,
+  sameListBySignature,
+  parseMarkdownBlocks,
+  assembleMarkdownBlocks,
+  normalizeDocumentBlocks,
+} from './utils/state-helpers.js';
+import { getShortNpub, getInitials } from './utils/naming.js';
+import {
+  hasWorkspaceDb,
+  migrateFromLegacyDb,
+  getSettings,
+  saveSettings,
+  getWorkspaceSettings,
+  upsertWorkspaceSettings,
+  getCachedStorageImage,
+  cacheStorageImage,
+  getChannelsByOwner,
+  getMessagesByChannel,
+  getRecentChatMessagesSince,
+  getRecentDocumentChangesSince,
+  getRecentDirectoryChangesSince,
+  getRecentReportChangesSince,
+  getRecentTaskChangesSince,
+  getRecentScheduleChangesSince,
+  getRecentCommentsSince,
+  getRecentScopeChangesSince,
+  getRecentFlowChangesSince,
+  upsertChannel,
+  getAudioNotesByOwner,
+  getDocumentsByOwner,
+  getReportsByOwner,
+  getReportById,
+  upsertDocument,
+  getDocumentById,
+  getDirectoriesByOwner,
+  upsertDirectory,
+  getDirectoryById,
+  getTasksByOwner,
+  upsertTask,
+  getTaskById,
+  getSchedulesByOwner,
+  upsertSchedule,
+  getScheduleById,
+  getCommentsByTarget,
+  upsertComment,
+  getScopesByOwner,
+  addPendingWrite,
+  getPendingWrites,
+  removePendingWrite,
+  getChannelById,
+  getAddressBookPeople,
+  clearRuntimeData,
+} from './db.js';
+import {
+  registerWorkspaceKey,
+  setBaseUrl,
+  prepareStorageObject,
+  uploadStorageObject,
+  completeStorageObject,
+} from './api.js';
+import {
+  outboundChannel,
+  recordFamilyHash,
+} from './translators/chat.js';
+import {
+  outboundDocument,
+  outboundDirectory,
+} from './translators/docs.js';
+import {
+  outboundTask,
+} from './translators/tasks.js';
+import { outboundSchedule } from './translators/schedules.js';
+import { outboundComment } from './translators/comments.js';
+import {
+  recordFamilyHash as taskFamilyHash,
+  parseReferencesFromDescription,
+  resolveFlowDispatchAssignee,
+  resolveFlowLinkage,
+} from './translators/tasks.js';
+import {
+  isTaskUnscoped,
+  matchesTaskBoardScope,
+} from './task-board-scopes.js';
+import {
+  buildRecordLinkPayload,
+  mergeRecordLinkLists,
+  normalizeRecordLinkType,
+} from './record-links.js';
+import {
+  buildCascadedSubtaskUpdate,
+} from './task-scope-cascade.js';
+import {
+  getPendingRecordBaseVersion,
+  getPendingRecordWrites,
+  hasPendingRecordWrite,
+  isTaskBlockedByPendingSave,
+  markTaskEditSyncedAfterAcceptedFlush,
+} from './task-save-helpers.js';
+import {
+  filterSelectableTaskIds,
+  getSelectableColumnTaskIds,
+  toggleColumnTaskSelection,
+} from './task-selection-helpers.js';
+import { parseSuperBasedToken } from './superbased-token.js';
+import {
+  signLoginEvent,
+  getPubkeyFromEvent,
+  pubkeyToNpub,
+  tryAutoLoginFromStorage,
+  clearAutoLogin,
+  setAutoLogin,
+  hasExtensionSigner,
+  waitForExtensionSigner,
+} from './auth/nostr.js';
+import {
+  bootstrapWrappedGroupKeys,
+  clearCryptoContext,
+  setActiveSessionNpub,
+  wrapKnownGroupKeyForMember,
+} from './crypto/group-keys.js';
+import {
+  getEncryptableRecordGroupRefsForStore,
+  getRecordWriteFieldsForStore,
+} from './preferred-write-group.js';
+import {
+  bootstrapWorkspaceSessionKey,
+  getActiveWorkspaceKeyNpub,
+  markCachedWorkspaceKeyRegistered,
+  markWorkspaceKeyRegistered,
+} from './crypto/workspace-keys.js';
+import { findWorkspaceByKey, mergeWorkspaceEntries, workspaceFromToken, findWorkspaceBySlug } from './workspaces.js';
+import { buildSectionUrl, parseRouteLocation } from './route-helpers.js';
+import { extractInviteToken } from './invite-link.js';
+import {
+  buildStoragePrepareBody,
+} from './storage-payloads.js';
+import { flightDeckLog } from './logging.js';
+import {
+  hasPreviewId,
+  prunePreviewState,
+  schedulePreviewMeasurement,
+  togglePreviewId,
+} from './preview-truncation.js';
+
+// Constants UNSCOPED_TASK_BOARD_ID, WEEKDAY_OPTIONS imported from task-board-state.js
+
+
+/**
+ * Merge mixin objects into a target, preserving getters/setters as accessors
+ * instead of evaluating them (which plain object spread does).
+ */
+function applyMixins(target, ...mixins) {
+  for (const mixin of mixins) {
+    const descriptors = Object.getOwnPropertyDescriptors(mixin);
+    Object.defineProperties(target, descriptors);
+  }
+  return target;
+}
+
+const NUMBER_FORMATTER = new Intl.NumberFormat();
+const MAX_STATUS_RECENT_CHANGES = 50;
+const STATUS_RECORD_TYPE_LABELS = Object.freeze({
+  chat: 'Chat',
+  task: 'Task',
+  comment: 'Comment',
+  doc: 'Doc',
+  folder: 'Folder',
+  report: 'Report',
+  schedule: 'Schedule',
+  scope: 'Scope',
+  flow: 'Flow',
+});
+const STATUS_RECORD_TYPE_ORDER = Object.freeze([
+  'task',
+  'chat',
+  'comment',
+  'doc',
+  'scope',
+  'flow',
+  'folder',
+  'report',
+  'schedule',
+]);
+const scopedReportsCache = new WeakMap();
+const reportTimeseriesCache = new WeakMap();
+const reportTableColumnsCache = new WeakMap();
+
+function getScopedReportsCacheEntry(store) {
+  const existing = scopedReportsCache.get(store);
+  if (existing) return existing;
+  const created = {
+    reports: null,
+    selectedBoardId: '',
+    selectedBoardScopeId: '',
+    value: [],
+  };
+  scopedReportsCache.set(store, created);
+  return created;
+}
+
+function getReportDerivedCache(cacheStore, store) {
+  const existing = cacheStore.get(store);
+  if (existing) return existing;
+  const created = new Map();
+  cacheStore.set(store, created);
+  return created;
+}
+
+function mergeTaskIntoList(tasks = [], nextTask) {
+  const recordId = String(nextTask?.record_id || '').trim();
+  if (!recordId) return Array.isArray(tasks) ? [...tasks] : [];
+  const current = Array.isArray(tasks) ? tasks : [];
+  const existingIndex = current.findIndex((task) => task?.record_id === recordId);
+  if (existingIndex === -1) return [...current, nextTask];
+  const merged = [...current];
+  merged[existingIndex] = nextTask;
+  return merged;
+}
+
+export function initApp() {
+  const initialRoute = typeof window === 'undefined'
+    ? { section: 'status' }
+    : parseRouteLocation();
+  const storeObj = {
+    FAST_SYNC_MS: 15000,
+    IDLE_SYNC_MS: 30000,
+    SSE_HEARTBEAT_CADENCE_MS: 120000,
+    BACKGROUND_GROUP_REFRESH_MS: 5 * 60 * 1000,
+    GROUP_KEY_REFRESH_MAX_AGE_MS: 24 * 60 * 60 * 1000,
+    MAIN_FEED_PAGE_SIZE: 80,
+    MESSAGE_PREVIEW_MAX_LINES: 15,
+    TASK_COMMENT_PREVIEW_MAX_LINES: 12,
+    COMPOSER_MAX_LINES: 5,
+    THREAD_REPLY_PAGE_SIZE: 6,
+
+    // settings
+    appBuildId: getRunningBuildId(),
+    backendUrl: '',
+    ownerNpub: '',
+    botNpub: '',
+    session: null,
+    get signingNpub() {
+      return getActiveWorkspaceKeyNpub() || this.session?.npub || null;
+    },
+    settingsTab: 'connection',
+    navSection: initialRoute.section,
+    navCollapsed: true,
+    mobileNavOpen: false,
+    routeSyncPaused: false,
+    popstateHandler: null,
+    showAvatarMenu: false,
+    showChannelSettingsModal: false,
+    channelDeleteConfirmArmed: false,
+    presetConnecting: false,
+    // Connect modal (two-step)
+    showConnectModal: false,
+    connectStep: 1,
+    connectHostUrl: '',
+    connectHostLabel: '',
+    connectHostServiceNpub: '',
+    connectHostTowerName: '',
+    connectHostTowerDescription: '',
+    connectHostError: null,
+    connectHostBusy: false,
+    connectManualUrl: '',
+    connectWorkspaces: [],
+    connectWorkspacesBusy: false,
+    connectWorkspacesError: null,
+    connectNewWorkspaceName: '',
+    connectNewWorkspaceDescription: '',
+    connectCreatingWorkspace: false,
+    connectTokenInput: '',
+    connectShowTokenFallback: false,
+    knownHosts: [],
+    showAgentConnectModal: false,
+    syncStatus: 'synced',
+    syncSession: {
+      state: 'synced',
+      phase: 'idle',
+      startedAt: null,
+      finishedAt: null,
+      lastSuccessAt: null,
+      manual: false,
+      currentFamily: null,
+      currentFamilyHash: null,
+      completedFamilies: 0,
+      totalFamilies: 0,
+      pushed: 0,
+      pushTotal: 0,
+      pulled: 0,
+      heartbeat: false,
+      error: null,
+    },
+    syncFamilyProgress: [],
+    showSyncProgressModal: false,
+    hasForcedInitialBackfill: false,
+    hasForcedTaskFamilyBackfill: false,
+    backgroundSyncTimer: null,
+    backgroundSyncInFlight: false,
+    syncBackoffMs: 0,
+    sseStatus: 'disconnected',
+    catchUpSyncActive: false,
+    hasBootstrappedUnreadTracking: false,
+    visibilityHandler: null,
+    lastGroupsRefreshAt: 0,
+    docConnectorFrame: null,
+    docConnectorScrollHandler: null,
+    docConnectorResizeHandler: null,
+    chatFeedScrollFrame: null,
+    threadRepliesScrollFrame: null,
+    chatPreviewMeasureFrame: null,
+    taskCommentPreviewMeasureFrame: null,
+    docCommentBackfillAttemptsByDocId: {},
+    pendingChatScrollToLatest: false,
+    pendingThreadScrollToLatest: false,
+
+    // data
+    channels: [],
+    channelOrder: [],
+    channelDragSourceId: '',
+    selectedChannelId: null,
+    messages: [],
+    reactionRows: [],
+    reactionPickerTargetKey: '',
+    audioNotes: [],
+    groups: [],
+    documents: [],
+    directories: [],
+    fileMessages: [],
+    fileComments: [],
+    fileSearch: '',
+    fileTypeFilter: 'all',
+    fileSourceFilter: 'all',
+    fileScopeFilter: 'all',
+    fileChannelFilter: 'all',
+    reports: [],
+    addressBookPeople: [],
+    activeThreadId: null,
+    threadInput: '',
+    threadAudioDrafts: [],
+    threadImageUploadCount: 0,
+    threadVisibleReplyCount: 6,
+    threadSize: 'default',
+    focusMessageId: null,
+    expandedChatMessageIds: [],
+    truncatedChatMessageIds: [],
+    messageActionsMenuId: null,
+    chatProfiles: {},
+    identityCard: {
+      open: false,
+      npub: '',
+      x: 0,
+      y: 0,
+      copied: false,
+    },
+    statusTimeRange: '1h',
+    statusRecordTypeFilter: 'all',
+    statusRecentChanges: [],
+    reportModalReport: null,
+    selectedReportId: null,
+    reportActionsMenuId: '',
+    reportDeleteConfirmReport: null,
+    reportDeleteSubmitting: false,
+    reportDeleteError: '',
+    selectedDocType: null,
+    selectedDocId: null,
+    selectedDocCommentId: null,
+    chatDocModalOpen: false,
+    chatDocModalTitle: '',
+    chatDocModalFullScreen: false,
+    docVersioningOpen: false,
+    docVersionHistory: [],
+    docVersioningLoading: false,
+    docVersioningError: null,
+    docVersioningSelectedIndex: -1,
+    docVersioningPreviewHtml: '',
+    flows: [],
+    approvals: [],
+    editingFlowId: null,
+    showFlowEditor: false,
+    flowDetailMode: 'view',
+    flowEditOriginal: null,
+    flowCheckoutPending: false,
+    showFlowStartConfirm: false,
+    flowStartTarget: null,
+    flowStartContext: '',
+    ...createChatThreadFlowDispatchState(),
+    ...createChatGetItDoneState(),
+    showFlowPicker: false,
+    showApprovalDetail: false,
+    activeApprovalId: null,
+    approvalDecisionNote: '',
+    showApprovalHistory: false,
+    approvalHistoryFilter: '',
+    approvalHistoryScope: 'all',
+    approvalLinkedNames: {},
+    approvalPreviewIndex: 0,
+    approvalPreviewType: null,
+    approvalPreviewRecord: null,
+    approvalPreviewComments: [],
+    approvalPreviewCommentBody: '',
+    approvalPreviewAnchorLine: null,
+    approvalPreviewExpanded: false,
+    ...createCommandPaletteState(),
+    recordVersionModalOpen: false,
+    recordVersionFamilyId: '',
+    recordVersionRecordId: '',
+    recordVersionLabel: '',
+    recordVersionHistory: [],
+    recordVersionLoading: false,
+    recordVersionError: null,
+    recordVersionSelectedIndex: -1,
+    persons: [],
+    organisations: [],
+    opportunities: [],
+    wapps: [],
+    peopleSubTab: 'people',
+    editingPersonId: null,
+    editingOrgId: null,
+    showPersonEditor: false,
+    showOrgEditor: false,
+    personFilter: '',
+    orgFilter: '',
+    personFormTitle: '',
+    personFormDescription: '',
+    personFormTags: '',
+    personFormContacts: [],
+    personFormScopeId: null,
+    orgFormTitle: '',
+    orgFormDescription: '',
+    orgFormPositioning: '',
+    orgFormTags: '',
+    orgFormContacts: [],
+    orgFormScopeId: null,
+    activeOpportunityId: null,
+    opportunityComments: [],
+    opportunityFilter: '',
+    showOpportunityEditor: false,
+    opportunitySaving: false,
+    opportunityCheckoutPending: false,
+    opportunityDetailMode: 'view',
+    opportunityEditOriginal: null,
+    editingOpportunity: null,
+    newOpportunityCommentBody: '',
+    opportunityPersonQuery: '',
+    opportunityOrganisationQuery: '',
+    opportunityTaskQuery: '',
+    opportunityResponsibleQuery: '',
+    linkPickerOpen: false,
+    linkPickerTarget: null,
+    linkPickerRole: '',
+    activeTaskId: null,
+    chatTaskModalOpen: false,
+    chatTaskModalTitle: '',
+    chatTaskModalFullScreen: false,
+    tasks: [],
+    schedules: [],
+    taskComments: [],
+    taskCommentsPanelExpanded: false,
+    taskCommentAudioDrafts: [],
+    expandedTaskCommentIds: [],
+    truncatedTaskCommentIds: [],
+    taskFilter: '',
+    taskFilterTags: [],
+    taskFilterAssignee: null,
+    taskTagCloudOpen: false,
+    selectedTaskIds: [],
+    bulkTaskBusy: false,
+    selectedBoardId: null,
+    showBoardPicker: false,
+    boardPickerQuery: '',
+    showBoardDescendantTasks: false,
+    taskViewMode: 'kanban',
+    collapsedSections: {},
+    taskBoardScopeSetupInFlight: false,
+    newTaskTitle: '',
+    newSubtaskTitle: '',
+    newTaskCommentBody: '',
+    copiedTaskLinkId: null,
+    editingTask: null,
+    taskDetailMode: 'view',
+    taskEditOriginal: null,
+    taskDetailSaving: false,
+    taskDetailCheckoutPending: false,
+    taskAssigneeQuery: '',
+    predecessorTaskQuery: '',
+    showPredecessorTaskPicker: false,
+    taskScopeCascadePending: false,
+    taskScopeCascadeMessage: '',
+    showNewScheduleModal: false,
+    newScheduleTitle: '',
+    newScheduleDescription: '',
+    newScheduleStart: '09:00',
+    newScheduleEnd: '10:00',
+    newScheduleDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
+    newScheduleTimezone: 'Australia/Perth',
+    newScheduleRepeat: 'daily',
+    newScheduleAssignedGroupId: null,
+    newScheduleGroupQuery: '',
+    editingScheduleId: null,
+    editingScheduleDraft: null,
+    editingScheduleGroupQuery: '',
+    showTaskDetail: false,
+    taskDescriptionEditing: false,
+    _dragTaskId: null,
+    _taskWasDragged: false,
+    _dragDocBrowserItem: null,
+    _docBrowserWasDragged: false,
+    docBrowserDropTarget: '',
+
+    // scopes
+    scopes: [],
+    scopesLoaded: false,
+    scopePickerQuery: '',
+    showScopePicker: false,
+    showChannelScopePicker: false,
+    scopePickerTarget: null, // 'task' or record family being scoped
+    newScopeTitle: '',
+    newScopeDescription: '',
+    newScopeLevel: 'product',
+    newScopeParentId: null,
+    newScopeAssignedGroupIds: [],
+    newScopeGroupQuery: '',
+    showNewScopeForm: false,
+    scopeNavFocus: null,
+    editingScopeId: null,
+    editingScopeTitle: '',
+    editingScopeDescription: '',
+    editingScopeAssignedGroupIds: [],
+    editingScopeGroupQuery: '',
+    scopePolicyRepairBusy: false,
+    scopePolicyRepairSummary: '',
+    legacyDocScopeRepairScopeId: null,
+    legacyDocScopeRepairBusy: false,
+    legacyDocScopeRepairNotice: '',
+    legacyDocScopeRepairError: '',
+    scopeRepairSession: {
+      phase: 'idle',
+      startedAt: null,
+      finishedAt: null,
+      currentFamily: null,
+      completedFamilies: 0,
+      totalFamilies: 0,
+      processedRecords: 0,
+      rewrittenRecords: 0,
+      totalRecords: 0,
+      error: null,
+    },
+    scopeRepairProgress: [],
+    showScopeRepairModal: false,
+    // @mentions
+    mentionActive: false,
+    mentionQuery: '',
+    mentionResults: [],
+    mentionSelectedIndex: 0,
+    _mentionTargetEl: null,
+    _mentionStartPos: -1,
+
+    currentFolderId: null,
+    docFilter: '',
+    docSelectionMode: false,
+    selectedDocIds: [],
+    bulkDocBusy: false,
+    docEditorTitle: '',
+    docEditorContent: '',
+    docEditorShares: [],
+    docShareQuery: '',
+    docEditorMode: 'preview',
+    docEditorSharesDirty: false,
+    docShareTargetType: '',
+    docShareTargetId: '',
+    showDocScopeModal: false,
+    docScopeTargetType: '',
+    docScopeTargetId: '',
+    docScopeTargetIds: [],
+    docScopeModalSelectedId: null,
+    docScopeModalSubmitting: false,
+    docEditorBlocks: [],
+    docEditingBlockIndex: -1,
+    docBlockBuffer: '',
+    docEditingTitle: false,
+    docComments: [],
+    docCommentsVisible: false,
+    showDocCommentModal: false,
+    docSelectedBlockId: null,
+    docCommentAnchorLine: null,
+    docCommentAnchorBlockId: null,
+    docCommentConnector: { visible: false, path: '' },
+    newDocCommentBody: '',
+    docCommentAudioDrafts: [],
+    newDocCommentReplyBody: '',
+    docCommentReplyAudioDrafts: [],
+    docAutosaveTimer: null,
+    docAutosaveState: 'saved',
+    recordCheckoutPolicyConfig: FLIGHT_DECK_RECORD_CHECKOUT_POLICY_CONFIG,
+    lockManagedCheckoutSessions: {},
+    showDocShareModal: false,
+    docMoveScopePrompt: null,
+    showDocMoveModal: false,
+    docMoveRecordIds: [],
+    docMoveDirectoryQuery: '',
+    docMoveModalSubmitting: false,
+    newDocModalType: null,
+    newDocModalTitle: '',
+    newDocModalScopeId: null,
+    newDocModalSubmitting: false,
+    showNewGroupModal: false,
+    newGroupName: '',
+    newGroupMemberQuery: '',
+    newGroupMembers: [],
+    showEditGroupModal: false,
+    editGroupId: '',
+    editGroupName: '',
+    editGroupMemberQuery: '',
+    editGroupMembers: [],
+    groupCreatePending: false,
+    groupEditPending: false,
+    groupDeletePendingId: null,
+    shareInviteNpub: '',
+    shareInviteGroupId: '',
+    shareInviteUrl: '',
+    shareInvitePending: false,
+    shareInviteError: null,
+    shareInviteCopied: false,
+    showNewChannelModal: false,
+    newChannelMode: 'dm',
+    newChannelDmNpub: '',
+    newChannelName: '',
+    newChannelDescription: '',
+    newChannelGroupId: '',
+    superbasedTokenInput: '',
+    superbasedError: null,
+    knownWorkspaces: [],
+    workspaceProfileRowsByKey: {},
+    selectedWorkspaceKey: '',
+    currentWorkspaceOwnerNpub: '',
+    showWorkspaceSwitcherMenu: false,
+    workspaceSwitchPendingKey: '',
+    workspaceSwitchPendingNpub: '',
+    removingWorkspace: false,
+    workspaceSettingsRecordId: '',
+    workspaceSettingsVersion: 0,
+    workspaceSettingsGroupIds: [],
+    workspaceHarnessUrl: '',
+    workspaceProfileNameInput: '',
+    workspaceProfileSlugInput: '',
+    workspaceProfileDescriptionInput: '',
+    workspaceProfileAvatarInput: '',
+    workspaceProfileAvatarPreviewUrl: '',
+    workspaceProfilePendingAvatarFile: null,
+    workspaceProfilePendingAvatarObjectUrl: '',
+    workspaceProfileDirty: false,
+    workspaceProfileSaving: false,
+    workspaceProfileError: null,
+    defaultAgentNpub: '',
+    defaultAgentQuery: '',
+    wingmanHarnessInput: '',
+    wingmanHarnessError: null,
+    wingmanHarnessDirty: false,
+    repairSelectedFamilyIds: ['comment', 'audio_note'],
+    repairBusy: false,
+    repairError: null,
+    repairNotice: '',
+    repairTaskIdInput: '',
+    repairTaskProbeBusy: false,
+    recordStatusModalOpen: false,
+    recordStatusFamilyId: '',
+    recordStatusTargetId: '',
+    recordStatusTargetLabel: '',
+    recordStatusBusy: false,
+    recordStatusSyncBusy: false,
+    recordStatusError: null,
+    recordStatusNotice: '',
+    recordStatusTowerVersionCount: 0,
+    recordStatusTowerLatestVersion: 0,
+    recordStatusTowerUpdatedAt: '',
+    recordStatusLocalPresent: false,
+    recordStatusLocalVersion: 0,
+    recordStatusLocalSyncStatus: '',
+    recordStatusPendingWriteCount: 0,
+    recordStatusWriteGroupRef: '',
+    recordStatusWriteGroupLabel: '',
+    recordStatusWriteGroupKeyLoaded: false,
+    recordStatusDeliveryGroupSummary: '',
+    recordStatusDeliveryGroupKeySummary: '',
+    pendingWritesModalOpen: false,
+    pendingWritesBusy: false,
+    pendingWritesError: null,
+    pendingWritesNotice: '',
+    pendingWriteDiagnostics: [],
+    syncQuarantine: [],
+    syncQuarantineBusy: false,
+    syncQuarantineError: null,
+    syncQuarantineNotice: '',
+
+    // triggers
+    workspaceTriggers: [],
+    newTriggerType: 'manual',
+    newTriggerName: '',
+    newTriggerId: '',
+    newTriggerChannelId: '',
+    newTriggerBotNpub: '',
+    newTriggerBotQuery: '',
+    triggerMessage: {},
+    triggerFiring: {},
+    triggerError: null,
+    triggerSuccess: null,
+
+    // jobs
+    jobDefinitions: [],
+    jobRuns: [],
+    jobsLoading: false,
+    jobRunsLoading: false,
+    jobsError: null,
+    jobsSuccess: null,
+    _jobsTab: 'definitions',
+    showNewJobModal: false,
+    newJobId: '',
+    newJobName: '',
+    newJobWorkerPrompt: '',
+    newJobManagerPrompt: '',
+    newJobManagerGoal: '',
+    newJobManagerDir: '',
+    newJobCheckInterval: '300',
+    showEditJobModal: false,
+    editingJobId: null,
+    editJobName: '',
+    editJobWorkerPrompt: '',
+    editJobManagerPrompt: '',
+    editJobManagerGoal: '',
+    editJobManagerDir: '',
+    editJobCheckInterval: '300',
+    showDispatchModal: false,
+    dispatchJobId: null,
+    dispatchGoal: '',
+    jobRunsFilterJobId: '',
+    jobRunsFilterStatus: '',
+
+    showWorkspaceBootstrapModal: false,
+    newWorkspaceName: '',
+    newWorkspaceDescription: '',
+    workspaceBootstrapSubmitting: false,
+    agentConnectJson: '',
+    agentConfigCopied: false,
+    pendingInviteToken: null,
+    useCvmSync: localStorage.getItem('use_cvm_sync') === 'true',
+    extensionSignerAvailable: false,
+    extensionSignerPollTimer: null,
+
+    // ui
+    messageInput: '',
+    messageAudioDrafts: [],
+    messageImageUploadCount: 0,
+    mainFeedVisibleCount: 80,
+    chatFeedNearTop: false,
+    selectedChannelUnreadCutoff: null,
+    selectedChannelUnreadChannelId: null,
+    syncing: false,
+    isLoggingIn: false,
+    error: null,
+    showAudioRecorderModal: false,
+    audioRecorderContext: null,
+    audioRecorderState: 'idle',
+    audioRecorderError: null,
+    audioRecorderDurationSeconds: 0,
+    audioRecorderPreviewUrl: '',
+    audioRecorderTitle: 'Voice note',
+    audioRecorderStatusLabel: '',
+    loginError: null,
+    storageImageUrlCache: {},
+    storageImageLoadPromises: {},
+    storageImageFailureCache: {},
+    workspaceProfileHydrationPromises: {},
+    _storageImageHydrateScheduled: false,
+
+    get isLoggedIn() {
+      return Boolean(this.session?.npub);
+    },
+
+    get displayName() {
+      if (!this.session?.npub) return 'Anonymous';
+      return this.getSenderName(this.session.npub) || 'Anonymous';
+    },
+
+    get greetingName() {
+      if (!this.session?.npub) return 'there';
+      return this.getSenderName(this.session.npub) || getShortNpub(this.session.npub) || 'there';
+    },
+
+    get scopedReports() {
+      const cache = getScopedReportsCacheEntry(this);
+      const selectedBoardId = String(this.selectedBoardId || '');
+      const selectedBoardScopeId = String(this.selectedBoardScope?.record_id || '');
+      if (
+        cache.reports === this.reports
+        && cache.selectedBoardId === selectedBoardId
+        && cache.selectedBoardScopeId === selectedBoardScopeId
+      ) {
+        return cache.value;
+      }
+
+      const visible = this.reports.filter((report) => {
+        if (!report || report.record_state === 'deleted') return false;
+        const surface = String(report.surface || report.metadata?.surface || '').trim().toLowerCase();
+        if (surface && surface !== 'flightdeck') return false;
+        if (this.selectedBoardId === UNSCOPED_TASK_BOARD_ID) return isTaskUnscoped(report, this.scopesMap);
+        if (this.selectedBoardScope) {
+          return matchesTaskBoardScope(report, this.selectedBoardScope, this.scopesMap, {
+            includeDescendants: true,
+          });
+        }
+        return true;
+      });
+
+      const sorted = visible.sort((left, right) => {
+        const leftTs = Date.parse(left.generated_at || left.updated_at || 0) || 0;
+        const rightTs = Date.parse(right.generated_at || right.updated_at || 0) || 0;
+        return rightTs - leftTs;
+      });
+      cache.reports = this.reports;
+      cache.selectedBoardId = selectedBoardId;
+      cache.selectedBoardScopeId = selectedBoardScopeId;
+      cache.value = sorted;
+      return sorted;
+    },
+
+    get flightDeckReports() {
+      return this.scopedReports;
+    },
+
+    get statusRecordTypeOptions() {
+      const presentTypes = new Set(this.statusRecentChanges.map((item) => item.recordTypeKey).filter(Boolean));
+      return STATUS_RECORD_TYPE_ORDER
+        .filter((value) => presentTypes.has(value))
+        .map((value) => ({ value, label: STATUS_RECORD_TYPE_LABELS[value] || value }));
+    },
+
+    get filteredStatusRecentChanges() {
+      if (!this.statusRecordTypeFilter || this.statusRecordTypeFilter === 'all') {
+        return this.statusRecentChanges;
+      }
+      return this.statusRecentChanges.filter((item) => item.recordTypeKey === this.statusRecordTypeFilter);
+    },
+
+    get attentionFeedGroups() {
+      return buildAttentionFeed({
+        session: this.session,
+        defaultAgentNpub: this.defaultAgentNpub,
+        botNpub: this.botNpub,
+        tasks: this.tasks,
+        boardScopedTasks: this.boardScopedTasks,
+        statusRecentChanges: this.statusRecentChanges,
+        pendingApprovals: this.pendingApprovalsByScope,
+      });
+    },
+
+    get attentionFeedSummary() {
+      return summarizeAttentionFeed(this.attentionFeedGroups);
+    },
+
+    get attentionFeedItemCount() {
+      return this.attentionFeedGroups.reduce((sum, group) => sum + group.items.length, 0);
+    },
+
+    get statusTimingFeed() {
+      return buildTimingFeed({
+        schedules: this.schedules,
+        tasks: this.boardScopedTasks,
+      });
+    },
+
+    get statusTimingItemCount() {
+      const feed = this.statusTimingFeed;
+      return feed.upcoming.length + feed.justGone.length;
+    },
+
+    get selectedReport() {
+      if (!this.scopedReports.length) return null;
+      return this.scopedReports.find((report) => report.record_id === this.selectedReportId) || this.scopedReports[0];
+    },
+
+    get avatarUrl() {
+      return this.session?.npub ? this.getSenderAvatar(this.session.npub) : null;
+    },
+
+    get avatarFallback() {
+      const source = this.displayName || this.session?.npub || 'cw';
+      return this.getInitials(source);
+    },
+
+    get superbasedConnectionConfig() {
+      if (!this.superbasedTokenInput) return null;
+      const parsed = parseSuperBasedToken(this.superbasedTokenInput);
+      return parsed.isValid ? parsed : null;
+    },
+
+    // workspace computed getters applied via workspaceManagerMixin (applyMixins)
+
+    get superbasedTransportLabel() {
+      if (this.useCvmSync && this.superbasedConnectionConfig?.relayUrl) return 'CVM relay';
+      return this.backendUrl || 'Not configured';
+    },
+
+    get hasHarnessLink() {
+      return Boolean(this.workspaceHarnessUrl);
+    },
+
+    // chat message getters applied via chatMessageManagerMixin (applyMixins)
+
+    get selectedDocument() {
+      if (this.selectedDocType !== 'document' || !this.selectedDocId) return null;
+      return this.documents.find((item) => item.record_id === this.selectedDocId) ?? null;
+    },
+
+    get docsEditorOpen() {
+      return this.selectedDocType === 'document' && Boolean(this.selectedDocument);
+    },
+
+    get selectedDocComment() {
+      if (!this.selectedDocCommentId) return null;
+      return this.docComments.find((comment) => comment.record_id === this.selectedDocCommentId) ?? null;
+    },
+
+    get selectedDocCommentReplies() {
+      const rootId = this.selectedDocComment?.record_id;
+      if (!rootId) return [];
+      return this.docComments
+        .filter((comment) => comment.parent_comment_id === rootId && comment.record_state !== 'deleted')
+        .sort((a, b) => String(a.updated_at || '').localeCompare(String(b.updated_at || '')));
+    },
+
+    get hasDocCommentConnector() {
+      return Boolean(this.docCommentConnector?.visible && this.docCommentsVisible && this.selectedDocComment);
+    },
+
+    get selectedDirectory() {
+      if (this.selectedDocType !== 'directory' || !this.selectedDocId) return null;
+      return this.directories.find((item) => item.record_id === this.selectedDocId) ?? null;
+    },
+
+    get currentFolder() {
+      if (!this.currentFolderId) return null;
+      return this.directories.find((item) => item.record_id === this.currentFolderId) ?? null;
+    },
+
+    get currentFolderParentId() {
+      return this.currentFolder?.parent_directory_id ?? null;
+    },
+
+    get currentFolderParentLabel() {
+      if (!this.currentFolder) return '';
+      const parent = this.directories.find((item) => item.record_id === this.currentFolderParentId);
+      return parent?.title || 'Docs';
+    },
+
+    get selectedDocItem() {
+      return this.selectedDocument ?? this.selectedDirectory ?? null;
+    },
+
+    get activeDocShareTarget() {
+      if (this.docShareTargetType === 'document') return this.selectedDocument;
+      if (this.docShareTargetType === 'directory') {
+        return this.directories.find((item) => item.record_id === this.docShareTargetId) ?? null;
+      }
+      return this.selectedDocument ?? this.currentFolder ?? null;
+    },
+
+    get activeDocShareTargetTypeLabel() {
+      return this.docShareTargetType === 'directory' ? 'Folder' : 'Document';
+    },
+
+    get activeDocShareTargetName() {
+      const target = this.activeDocShareTarget;
+      if (!target) return '';
+      return target.title || (this.docShareTargetType === 'directory' ? 'Untitled folder' : 'Untitled document');
+    },
+
+    get isDirectoryShareTarget() {
+      return this.docShareTargetType === 'directory';
+    },
+
+    get currentFolderBreadcrumbs() {
+      const breadcrumbs = [];
+      let folderId = this.currentFolderId;
+      while (folderId) {
+        const folder = this.directories.find((item) => item.record_id === folderId && item.record_state !== 'deleted');
+        if (!folder) break;
+        breadcrumbs.unshift(folder);
+        folderId = folder.parent_directory_id || null;
+      }
+      return breadcrumbs;
+    },
+
+    get currentFolderTitleLabel() {
+      if (this.currentFolderBreadcrumbs.length === 0) return '';
+      return this.currentFolderBreadcrumbs
+        .map((folder) => folder.title || 'Untitled folder')
+        .join(' / ');
+    },
+
+    get currentDocumentTitle() {
+      return buildFlightDeckDocumentTitle({
+        section: this.navSection,
+        channelLabel: this.navSection === 'chat' && this.selectedChannel
+          ? this.getChannelLabel(this.selectedChannel)
+          : '',
+        folderLabel: this.navSection === 'docs' ? this.currentFolderTitleLabel : '',
+        docTitle: this.navSection === 'docs'
+          ? (this.selectedDocument?.title || this.selectedDirectory?.title || '')
+          : '',
+      });
+    },
+
+    get scopeFilteredDocs() {
+      return filterDocItemsByScope(
+        this.documents, this.directories,
+        this.selectedBoardId, this.selectedBoardScope, this.scopesMap,
+      );
+    },
+
+    get currentFolderContents() {
+      const folderId = this.currentFolderId ?? null;
+      const { documents, directories } = this.scopeFilteredDocs;
+      const dirs = directories
+        .filter((item) => (item.parent_directory_id ?? null) === folderId)
+        .map((item) => ({ type: 'directory', item }))
+        .sort((a, b) => String(a.item.title || '').localeCompare(String(b.item.title || '')));
+      const docs = documents
+        .filter((item) => (item.parent_directory_id ?? null) === folderId)
+        .map((item) => ({ type: 'document', item }))
+        .sort((a, b) => String(a.item.title || '').localeCompare(String(b.item.title || '')));
+      return [...dirs, ...docs];
+    },
+
+    get filteredDocBrowserItems() {
+      const query = String(this.docFilter || '').trim().toLowerCase();
+      if (!query) return this.currentFolderContents;
+
+      const { documents: activeDocuments, directories: activeDirectories } = this.scopeFilteredDocs;
+      const childDirsByParent = new Map();
+      const childDocsByParent = new Map();
+
+      for (const directory of activeDirectories) {
+        const key = directory.parent_directory_id ?? '__root__';
+        const list = childDirsByParent.get(key) ?? [];
+        list.push(directory);
+        childDirsByParent.set(key, list);
+      }
+      for (const document of activeDocuments) {
+        const key = document.parent_directory_id ?? '__root__';
+        const list = childDocsByParent.get(key) ?? [];
+        list.push(document);
+        childDocsByParent.set(key, list);
+      }
+
+      const matchesDirectory = (directory) =>
+        String(directory.title || '').toLowerCase().includes(query);
+      const matchesDocument = (document) =>
+        String(document.title || '').toLowerCase().includes(query)
+        || String(document.content || '').toLowerCase().includes(query);
+
+      const directoryHasMatch = (directoryId) => {
+        const childDirs = childDirsByParent.get(directoryId) ?? [];
+        const childDocs = childDocsByParent.get(directoryId) ?? [];
+        return childDirs.some((dir) => matchesDirectory(dir) || directoryHasMatch(dir.record_id))
+          || childDocs.some((doc) => matchesDocument(doc));
+      };
+
+      const rows = [];
+      const walk = (parentId = null) => {
+        const dirKey = parentId ?? '__root__';
+        const directories = (childDirsByParent.get(dirKey) ?? [])
+          .slice()
+          .sort((a, b) => String(a.title || '').localeCompare(String(b.title || '')));
+        const documents = (childDocsByParent.get(dirKey) ?? [])
+          .slice()
+          .sort((a, b) => String(a.title || '').localeCompare(String(b.title || '')));
+
+        for (const directory of directories) {
+          if (!matchesDirectory(directory) && !directoryHasMatch(directory.record_id)) continue;
+          rows.push({ type: 'directory', item: directory });
+          walk(directory.record_id);
+        }
+        for (const document of documents) {
+          if (!matchesDocument(document)) continue;
+          rows.push({ type: 'document', item: document });
+        }
+      };
+
+      walk(this.currentFolderId ?? null);
+      return rows;
+    },
+
+    get visibleDocBrowserIds() {
+      return this.filteredDocBrowserItems
+        .filter((row) => row.type === 'document')
+        .map((row) => row.item.record_id);
+    },
+
+    get selectedDocCount() {
+      return this.selectedDocIds.length;
+    },
+
+    get activeDocMoveItems() {
+      const selectedIds = new Set(this.docMoveRecordIds);
+      return this.documents
+        .filter((item) => selectedIds.has(item.record_id) && item.record_state !== 'deleted');
+    },
+
+    get docMoveSourceParentIds() {
+      return [...new Set(this.activeDocMoveItems.map((item) => item.parent_directory_id ?? null))];
+    },
+
+    get docMoveDirectoryOptions() {
+      const query = String(this.docMoveDirectoryQuery || '').trim().toLowerCase();
+      const activeDirectories = this.directories.filter((item) => item.record_state !== 'deleted');
+      const childDirsByParent = new Map();
+      for (const directory of activeDirectories) {
+        const key = directory.parent_directory_id ?? '__root__';
+        const list = childDirsByParent.get(key) ?? [];
+        list.push(directory);
+        childDirsByParent.set(key, list);
+      }
+
+      const options = [{ record_id: null, title: 'Docs', breadcrumb: 'Root', depth: 0 }];
+      const walk = (parentId = null, depth = 1) => {
+        const key = parentId ?? '__root__';
+        const directories = (childDirsByParent.get(key) ?? [])
+          .slice()
+          .sort((a, b) => String(a.title || '').localeCompare(String(b.title || '')));
+        for (const directory of directories) {
+          options.push({
+            record_id: directory.record_id,
+            title: directory.title || 'Untitled folder',
+            breadcrumb: this.getDirectoryMoveOptionBreadcrumb(directory.record_id),
+            depth,
+          });
+          walk(directory.record_id, depth + 1);
+        }
+      };
+      walk();
+      if (!query) return options;
+      return options.filter((option) => {
+        const title = String(option.title || '').toLowerCase();
+        const breadcrumb = String(option.breadcrumb || '').toLowerCase();
+        return title.includes(query) || breadcrumb.includes(query);
+      });
+    },
+
+    // --- task board computed (extracted to task-board-state.js) ---
+    // taskBoardStateMixin applied via applyMixins (has getters)
+
+    // workspaceManagerMixin applied via applyMixins (display, switcher, settings)
+
+    get renderedDocPreview() {
+      return this.renderMarkdown(this.docEditorContent || '');
+    },
+
+    get docEditorHasBlocks() {
+      return this.docEditorBlocks.length > 0;
+    },
+
+    get docSyncStatusClass() {
+      if (this.docAutosaveState === 'error') return 'doc-sync-dot-unsynced';
+      if (this.docAutosaveState === 'pending') return 'doc-sync-dot-unsynced';
+      if (this.docAutosaveState === 'saving') return 'doc-sync-dot-syncing';
+      return 'doc-sync-dot-synced';
+    },
+
+    get docSyncStatusLabel() {
+      if (this.docAutosaveState === 'error') return 'Autosave failed';
+      if (this.docAutosaveState === 'pending') return 'Autosave pending';
+      if (this.docAutosaveState === 'saving') return 'Saving';
+      return 'Saved';
+    },
+
+    get selectedDocRequiresCheckout() {
+      return this.selectedDocType === 'document'
+        && (
+          typeof this.isCheckoutRequiredRecordFamily === 'function'
+            ? this.isCheckoutRequiredRecordFamily(recordFamilyHash('document'), this.selectedDocument)
+            : false
+        );
+    },
+
+    get selectedDocIsLockManaged() {
+      return this.selectedDocRequiresCheckout;
+    },
+
+    get selectedDocCheckoutSessionState() {
+      const session = typeof this.getSelectedDocCheckoutSession === 'function'
+        ? this.getSelectedDocCheckoutSession()
+        : null;
+      const submittedVersion = Number(session?.submittedVersion ?? 0) || 0;
+      const localVersion = Number(this.selectedDocument?.version ?? 0) || 0;
+      if (
+        session
+        && isCheckoutHeld(session.checkout)
+        && submittedVersion > 0
+        && String(this.selectedDocument?.sync_status || '').trim() === 'synced'
+        && localVersion >= submittedVersion
+      ) {
+        return null;
+      }
+      return session;
+    },
+
+    get canCurrentActorEditSelectedLockManagedRecord() {
+      if (!this.selectedDocRequiresCheckout) return true;
+      return typeof this.canCurrentActorAcquireCheckoutRequiredRecord === 'function'
+        ? this.canCurrentActorAcquireCheckoutRequiredRecord()
+        : false;
+    },
+
+    get hasSelectedDocCheckout() {
+      return isCheckoutHeld(this.selectedDocCheckoutSessionState?.checkout);
+    },
+
+    get selectedDocCheckoutHolderLabel() {
+      const holder = describeCheckoutHolder(this.selectedDocCheckoutSessionState?.checkout);
+      return holder.userNpub || '';
+    },
+
+    get selectedDocCheckoutLeaseLabel() {
+      return formatLeaseRemaining(this.selectedDocCheckoutSessionState?.checkout);
+    },
+
+    get selectedDocPhaseOneStateTone() {
+      if (!this.selectedDocRequiresCheckout) return 'info';
+      if (!this.canCurrentActorEditSelectedLockManagedRecord) return 'blocked';
+      const classification = String(this.selectedDocCheckoutSessionState?.classification || '').trim();
+      if (classification) return 'blocked';
+      if (this.hasSelectedDocCheckout) return 'held';
+      return 'info';
+    },
+
+    get selectedDocPhaseOneStateLabel() {
+      if (!this.selectedDocRequiresCheckout) return '';
+      if (!this.canCurrentActorEditSelectedLockManagedRecord) {
+        return checkoutErrorMessage('identity_alias_mismatch');
+      }
+      const session = this.selectedDocCheckoutSessionState;
+      if (session?.message) return session.message;
+      if (this.hasSelectedDocCheckout) {
+        const lease = this.selectedDocCheckoutLeaseLabel;
+        return lease ? `Checkout held. ${lease}.` : 'Checkout held. You can edit this document.';
+      }
+      return 'Read mode. Acquire checkout to enter edit mode.';
+    },
+
+    // peopleProfilesManagerMixin applied via applyMixins (suggestions, profile resolution)
+
+    get groupActionsLocked() {
+      return this.groupCreatePending || this.groupEditPending || !!this.groupDeletePendingId;
+    },
+
+    get filteredDocRows() {
+      const activeDirectories = this.directories.filter((item) => item.record_state !== 'deleted');
+      const activeDocuments = this.documents.filter((item) => item.record_state !== 'deleted');
+      const query = String(this.docFilter || '').trim().toLowerCase();
+
+      const childDirsByParent = new Map();
+      const childDocsByParent = new Map();
+      for (const directory of activeDirectories) {
+        const key = directory.parent_directory_id ?? '__root__';
+        const list = childDirsByParent.get(key) ?? [];
+        list.push(directory);
+        childDirsByParent.set(key, list);
+      }
+      for (const document of activeDocuments) {
+        const key = document.parent_directory_id ?? '__root__';
+        const list = childDocsByParent.get(key) ?? [];
+        list.push(document);
+        childDocsByParent.set(key, list);
+      }
+
+      const matchesDirectory = (directory) =>
+        !query || String(directory.title || '').toLowerCase().includes(query);
+      const matchesDocument = (document) =>
+        !query
+        || String(document.title || '').toLowerCase().includes(query)
+        || String(document.content || '').toLowerCase().includes(query);
+
+      const directoryHasMatch = (directoryId) => {
+        const childDirs = childDirsByParent.get(directoryId) ?? [];
+        const childDocs = childDocsByParent.get(directoryId) ?? [];
+        return childDirs.some((dir) => matchesDirectory(dir) || directoryHasMatch(dir.record_id))
+          || childDocs.some((doc) => matchesDocument(doc));
+      };
+
+      const rows = [];
+      const walk = (parentId = null, depth = 0) => {
+        const dirKey = parentId ?? '__root__';
+        const directories = (childDirsByParent.get(dirKey) ?? [])
+          .slice()
+          .sort((a, b) => String(a.title || '').localeCompare(String(b.title || '')));
+        const documents = (childDocsByParent.get(dirKey) ?? [])
+          .slice()
+          .sort((a, b) => String(a.title || '').localeCompare(String(b.title || '')));
+
+        for (const directory of directories) {
+          if (query && !matchesDirectory(directory) && !directoryHasMatch(directory.record_id)) continue;
+          rows.push({ type: 'directory', depth, item: directory });
+          walk(directory.record_id, depth + 1);
+        }
+        for (const document of documents) {
+          if (!matchesDocument(document)) continue;
+          rows.push({ type: 'document', depth, item: document });
+        }
+      };
+
+      walk(null, 0);
+      return rows;
+    },
+
+    // workspace list, profile editing, settings, CRUD — extracted to workspace-manager.js
+
+    // syncManagerMixin applied via applyMixins (repair UI, quarantine, sync lifecycle)
+    // connectSettingsManagerMixin applied via applyMixins (connection, settings, agent connect)
+
+    // --- lifecycle ---
+
+    async init() {
+      this.startExtensionSignerWatch();
+      this.initCommandPaletteShortcuts();
+      this.initRouteSync();
+      this.routeSyncPaused = true; // pause until applyRouteFromLocation restores the URL
+      this.initDocCommentConnector();
+      await migrateFromLegacyDb();
+      this.startSharedLiveQueries();
+      const settings = await getSettings();
+      if (settings) {
+        this.backendUrl = normalizeBackendUrl(settings.backendUrl ?? '');
+        this.ownerNpub = settings.ownerNpub ?? '';
+        this.botNpub = settings.botNpub ?? '';
+        this.defaultAgentNpub = settings.defaultAgentNpub ?? '';
+        this.superbasedTokenInput = settings.connectionToken ?? '';
+        this.useCvmSync = settings.useCvmSync ?? this.useCvmSync;
+        this.selectedWorkspaceKey = settings.currentWorkspaceKey ?? '';
+        this.currentWorkspaceOwnerNpub = settings.currentWorkspaceOwnerNpub ?? '';
+        this.knownWorkspaces = mergeWorkspaceEntries([], settings.knownWorkspaces ?? []);
+        this.knownHosts = Array.isArray(settings.knownHosts) ? settings.knownHosts : [];
+      }
+      // Extract ?token= from URL (e.g. invite/share link) and bootstrap workspace
+      if (typeof window !== 'undefined') {
+        const invite = extractInviteToken(window.location.href);
+        if (invite) {
+          this.pendingInviteToken = invite;
+          this.superbasedTokenInput = invite.token;
+          this.backendUrl = invite.backendUrl;
+          this.mergeKnownWorkspaces([invite.workspace]);
+          if (invite.workspaceOwnerNpub) {
+            // Force-select the invited workspace — overrides any previously saved selection
+            this.selectedWorkspaceKey = invite.workspace.workspaceKey || '';
+            this.currentWorkspaceOwnerNpub = invite.workspaceOwnerNpub;
+            this.ownerNpub = invite.workspaceOwnerNpub;
+          }
+          window.history.replaceState(null, '', invite.cleanUrl);
+        }
+      }
+      if (!this.pendingInviteToken && this.superbasedTokenInput) {
+        const config = parseSuperBasedToken(this.superbasedTokenInput);
+        if (config.isValid && config.directHttpsUrl) {
+          this.backendUrl = normalizeBackendUrl(config.directHttpsUrl);
+          const tokenWorkspace = workspaceFromToken(this.superbasedTokenInput);
+          if (tokenWorkspace) {
+            this.mergeKnownWorkspaces([tokenWorkspace]);
+            this.selectedWorkspaceKey = this.selectedWorkspaceKey || tokenWorkspace.workspaceKey || '';
+          }
+          if (config.workspaceOwnerNpub) {
+            this.currentWorkspaceOwnerNpub = this.currentWorkspaceOwnerNpub || config.workspaceOwnerNpub;
+            this.ownerNpub = config.workspaceOwnerNpub;
+          }
+        }
+      }
+      if (!this.backendUrl) this.backendUrl = guessDefaultBackendUrl();
+      if (this.backendUrl) setBaseUrl(this.backendUrl);
+      await this.hydrateKnownWorkspaceProfiles();
+      this.ensureBackgroundSync();
+      await this.maybeAutoLogin();
+      this.updateWorkspaceBootstrapPrompt();
+      await this.loadRemoteWorkspaces();
+      if (this.knownWorkspaces.length === 0 && this.superbasedConnectionConfig?.workspaceOwnerNpub && this.session?.npub) {
+        await this.tryRecoverWorkspace();
+      }
+      if (!this.selectedWorkspaceKey && this.currentWorkspaceOwnerNpub) {
+        const legacyMatch = this.knownWorkspaces.find((workspace) => workspace.workspaceOwnerNpub === this.currentWorkspaceOwnerNpub) || null;
+        if (legacyMatch) this.selectedWorkspaceKey = legacyMatch.workspaceKey || '';
+      }
+      if (!this.selectedWorkspaceKey && this.knownWorkspaces.length > 0) {
+        this.selectedWorkspaceKey = this.knownWorkspaces[0].workspaceKey || '';
+        this.currentWorkspaceOwnerNpub = this.knownWorkspaces[0].workspaceOwnerNpub;
+      }
+      if (this.selectedWorkspaceKey || this.currentWorkspaceOwnerNpub) {
+        await this.selectWorkspace(this.selectedWorkspaceKey || this.currentWorkspaceOwnerNpub, { refresh: false });
+      }
+      this.updateWorkspaceBootstrapPrompt();
+      if (this.session?.npub && (!this.backendUrl || (!this.selectedWorkspaceKey && !this.showWorkspaceBootstrapModal))) {
+        this.openConnectModal();
+      }
+      if (this.selectedWorkspaceKey) {
+        await this.bootstrapSelectedWorkspace({ runAccessPrune: true });
+      }
+      this.pendingInviteToken = null; // invite bootstrap complete
+      this.routeSyncPaused = false; // unpause route sync after init (no-op if applyRouteFromLocation already unpaused)
+    },
+
+    async ensureWorkspaceSessionKey() {
+      const workspaceOwnerNpub = this.workspaceOwnerNpub
+        || this.currentWorkspaceOwnerNpub
+        || this.ownerNpub
+        || '';
+      const userNpub = this.session?.npub || '';
+      if (!workspaceOwnerNpub || !userNpub || !this.backendUrl) return null;
+
+      try {
+        return await bootstrapWorkspaceSessionKey({
+          workspaceOwnerNpub,
+          userNpub,
+          onRegister: async (blob, key) => {
+            const wsKeyNpub = key?.npub || blob?.ws_key_npub || '';
+            if (!wsKeyNpub) throw new Error('Workspace key bootstrap did not produce ws_key_npub');
+            await registerWorkspaceKey({
+              workspace_owner_npub: workspaceOwnerNpub,
+              ws_key_npub: wsKeyNpub,
+            });
+            markWorkspaceKeyRegistered();
+            await markCachedWorkspaceKeyRegistered(workspaceOwnerNpub);
+          },
+        });
+      } catch (error) {
+        flightDeckLog('warn', 'workspace-key', 'workspace session key bootstrap failed', {
+          workspaceOwnerNpub,
+          userNpub,
+          error: error?.message || String(error),
+        });
+        return null;
+      }
+    },
+
+    async bootstrapSelectedWorkspace(options = {}) {
+      if (!this.selectedWorkspaceKey && !this.currentWorkspaceOwnerNpub) return;
+      await this.ensureWorkspaceSessionKey();
+      await this.refreshGroups({ maxAgeMs: this.GROUP_KEY_REFRESH_MAX_AGE_MS });
+      // Flows are loaded eagerly so flow linkage resolution works from any section
+      this.refreshFlows().catch(() => {});
+      // Fetch ws_key → user_npub mappings for display identity resolution
+      this.refreshWorkspaceKeyMappings().catch(() => {});
+      if (options.runAccessPrune === true) {
+        this.runAccessPruneOnLogin().catch(() => {});
+      }
+      this.selectedBoardId = this.readStoredTaskBoardId();
+      this.collapsedSections = this.readStoredCollapsedSections();
+      this.validateSelectedBoardId();
+      await this.applyRouteFromLocation();
+      await this.refreshSyncStatus();
+      if (this.navSection === 'status') {
+        await this.refreshStatusRecentChanges({ force: true });
+      }
+      if (this.navSection === 'chat' && this.selectedChannelId) {
+        this.scheduleChatFeedScrollToBottom();
+      }
+      if (this.defaultAgentNpub) this.resolveChatProfile(this.defaultAgentNpub);
+    },
+
+    createLiveSubscription(query, onNext) {
+      let pending = null;
+      let rafId = null;
+      return liveQuery(query).subscribe({
+        next: (value) => {
+          // Coalesce rapid-fire Dexie notifications into one callback per frame
+          pending = value;
+          if (rafId != null) return;
+          rafId = requestAnimationFrame(() => {
+            rafId = null;
+            const current = pending;
+            pending = null;
+            Promise.resolve(onNext(current)).catch((error) => {
+              console.error('Live query update failed:', error?.message || error);
+            });
+          });
+        },
+        error: (error) => {
+          console.error('Live query failed:', error?.message || error);
+        },
+      });
+    },
+
+    stopLiveSubscription(subscription) {
+      if (!subscription) return;
+      try {
+        subscription.unsubscribe();
+      } catch {
+        /* ignore */
+      }
+    },
+
+    initRouteSync() {
+      if (typeof window === 'undefined' || this.popstateHandler) return;
+      this.popstateHandler = () => {
+        this.applyRouteFromLocation();
+      };
+      window.addEventListener('popstate', this.popstateHandler);
+    },
+
+    updatePageTitle() {
+      if (typeof document === 'undefined') return;
+      document.title = this.currentDocumentTitle;
+    },
+
+    initDocCommentConnector() {
+      if (typeof window === 'undefined' || this.docConnectorScrollHandler || this.docConnectorResizeHandler) return;
+      this.docConnectorScrollHandler = () => this.scheduleDocCommentConnectorUpdate();
+      this.docConnectorResizeHandler = () => this.scheduleDocCommentConnectorUpdate();
+      window.addEventListener('scroll', this.docConnectorScrollHandler, { passive: true });
+      window.addEventListener('resize', this.docConnectorResizeHandler, { passive: true });
+
+      document.addEventListener('click', (e) => {
+        const storageFileCard = e.target.closest('.md-storage-file-card[data-storage-object-id]');
+        if (storageFileCard) {
+          e.preventDefault();
+          const objectId = storageFileCard.dataset.storageObjectId;
+          const fileName = storageFileCard.dataset.storageFileName;
+          this.downloadStorageObjectAsFile(objectId, fileName);
+          return;
+        }
+
+        const routeLink = e.target.closest('a[href]');
+        if (routeLink && this.navSection === 'chat') {
+          const routeUrl = new URL(routeLink.href, window.location.href);
+          const route = routeUrl.origin === window.location.origin
+            ? parseRouteLocation(routeUrl.href)
+            : null;
+          if (route?.section === 'docs' && route.params?.docid) {
+            e.preventDefault();
+            this.openChatDocModal(route.params.docid, {
+              commentId: route.params.commentid || null,
+              title: routeLink.textContent?.trim() || 'Flight Deck document',
+            });
+            return;
+          }
+          if (route?.section === 'tasks' && route.params?.taskid) {
+            e.preventDefault();
+            this.openChatTaskModal(route.params.taskid, {
+              title: routeLink.textContent?.trim() || 'Flight Deck task',
+            });
+            return;
+          }
+        }
+
+        const link = e.target.closest('.mention-link');
+        if (!link) return;
+        e.preventDefault();
+        const type = link.dataset.mentionType;
+        const id = link.dataset.mentionId;
+        if (type && id) this.handleMentionNavigate(type, id);
+      });
+    },
+
+    clearDocCommentConnector() {
+      this.docCommentConnector = { visible: false, path: '' };
+    },
+
+    scheduleDocCommentConnectorUpdate() {
+      if (typeof window === 'undefined') return;
+      if (this.docConnectorFrame) window.cancelAnimationFrame(this.docConnectorFrame);
+      this.docConnectorFrame = window.requestAnimationFrame(() => {
+        this.docConnectorFrame = null;
+        this.updateDocCommentConnector();
+      });
+    },
+
+    updateDocCommentConnector() {
+      if (typeof document === 'undefined') {
+        this.clearDocCommentConnector();
+        return;
+      }
+      if (!this.docCommentsVisible || !this.selectedDocComment) {
+        this.clearDocCommentConnector();
+        return;
+      }
+
+      const layout = document.querySelector('[data-doc-content-layout]');
+      const panel = document.querySelector('[data-doc-thread-panel]');
+      const anchorBlockId = String(this.selectedDocComment?.anchor_block_id || '').trim();
+      const anchorLine = this.selectedDocComment?.anchor_line_number || 1;
+      const escapedBlockId = anchorBlockId && window.CSS?.escape
+        ? window.CSS.escape(anchorBlockId)
+        : anchorBlockId.replace(/"/g, '\\"');
+      const marker = escapedBlockId
+        ? document.querySelector(`[data-doc-anchor-block-id="${escapedBlockId}"]`)
+        : document.querySelector(`[data-doc-anchor-line="${anchorLine}"]`);
+
+      if (!layout || !panel || !marker) {
+        this.clearDocCommentConnector();
+        return;
+      }
+
+      const layoutRect = layout.getBoundingClientRect();
+      const panelRect = panel.getBoundingClientRect();
+      const markerRect = marker.getBoundingClientRect();
+
+      const markerX = markerRect.left + (markerRect.width / 2) - layoutRect.left;
+      const markerY = markerRect.top + (markerRect.height / 2) - layoutRect.top;
+      const panelX = panelRect.left - layoutRect.left;
+      const panelY = panelRect.top + 56 - layoutRect.top;
+      const elbowX = Math.max(markerX + 24, panelX - 28);
+
+      this.docCommentConnector = {
+        visible: true,
+        path: `M ${panelX} ${panelY} H ${elbowX} V ${markerY} H ${markerX}`,
+      };
+    },
+
+    // currentWorkspaceSlug getter in workspaceManagerMixin
+
+    getRoutePath(section = this.navSection) {
+      const slug = this.currentWorkspaceSlug;
+      const page = (() => {
+        switch (section) {
+          case 'status': return 'flight-deck';
+          case 'tasks': return 'tasks';
+          case 'chat': return 'chat';
+          case 'docs': return 'docs';
+          case 'files': return 'files';
+          case 'reports': return 'reports';
+          case 'opportunities': return 'opportunities';
+          case 'people': return 'people';
+          case 'settings': return 'settings';
+          default: return 'flight-deck';
+        }
+      })();
+      return `/${slug}/${page}`;
+    },
+
+    buildRouteUrl() {
+      if (typeof window === 'undefined') return '';
+      const url = new URL(window.location.href);
+      url.pathname = this.getRoutePath();
+      url.search = '';
+      if (this.currentWorkspaceKey) url.searchParams.set('workspacekey', this.currentWorkspaceKey);
+
+      // Always preserve scopeid across all sections so browser history
+      // retains the active scope when navigating between tasks/chat/docs/etc.
+      if (this.selectedBoardId) url.searchParams.set('scopeid', this.selectedBoardId);
+
+      if (this.navSection === 'chat') {
+        if (this.selectedChannelId) url.searchParams.set('channelid', this.selectedChannelId);
+        if (this.activeThreadId) url.searchParams.set('threadid', this.activeThreadId);
+      } else if (this.navSection === 'docs') {
+        if (this.currentFolderId) url.searchParams.set('folderid', this.currentFolderId);
+        if (this.selectedDocType === 'document' && this.selectedDocId) {
+          url.searchParams.set('docid', this.selectedDocId);
+        }
+        if (this.docVersioningOpen) url.searchParams.set('versioning', '1');
+        if (this.selectedDocCommentId) url.searchParams.set('commentid', this.selectedDocCommentId);
+      } else if (this.navSection === 'reports') {
+        if (this.selectedReport?.record_id) url.searchParams.set('reportid', this.selectedReport.record_id);
+      } else if (this.navSection === 'opportunities') {
+        if (this.activeOpportunityId) url.searchParams.set('opportunityid', this.activeOpportunityId);
+      } else if (this.navSection === 'tasks') {
+        if (this.showBoardDescendantTasks) url.searchParams.set('descendants', '1');
+        if (this.navSection === 'tasks' && this.activeTaskId) url.searchParams.set('taskid', this.activeTaskId);
+        if (this.navSection === 'tasks' && this.taskViewMode === 'list') url.searchParams.set('view', 'list');
+      }
+
+      return `${url.pathname}${url.search}`;
+    },
+
+    syncRoute(replace = false) {
+      this.updatePageTitle();
+      if (this.routeSyncPaused || typeof window === 'undefined') return;
+      const nextUrl = this.buildRouteUrl();
+      const currentUrl = `${window.location.pathname}${window.location.search}`;
+      if (nextUrl === currentUrl) return;
+      const state = { section: this.navSection };
+      if (replace) window.history.replaceState(state, '', nextUrl);
+      else window.history.pushState(state, '', nextUrl);
+    },
+
+    async applyRouteFromLocation() {
+      const route = parseRouteLocation();
+      this.routeSyncPaused = true;
+      try {
+        if (route.params.workspacekey) {
+          const targetByKey = findWorkspaceByKey(this.knownWorkspaces, route.params.workspacekey);
+          if (targetByKey && targetByKey.workspaceKey !== this.currentWorkspaceKey) {
+            this.routeSyncPaused = false;
+            await this.handleWorkspaceSwitcherSelect(targetByKey.workspaceKey);
+            return;
+          }
+        }
+
+        // Handle workspace slug from URL
+        if (route.workspaceSlug) {
+          const target = findWorkspaceBySlug(this.knownWorkspaces, route.workspaceSlug);
+          if (target && target.workspaceKey !== this.currentWorkspaceKey) {
+            // Different workspace slug — switch workspace
+            this.routeSyncPaused = false;
+            await this.handleWorkspaceSwitcherSelect(target.workspaceKey || target.workspaceOwnerNpub);
+            return;
+          }
+        } else if (!route.workspaceSlug && this.selectedWorkspaceKey) {
+          // Bare /<page> URL (no slug) — redirect to /<slug>/<page>
+          // This is handled by syncRoute(true) at the bottom
+        }
+
+        this.navSection = route.section;
+        this.mobileNavOpen = false;
+
+        // Restore scopeid from URL for all sections so browser history
+        // preserves the active scope across tasks/chat/docs/reports.
+        if (route.params.scopeid || route.params.groupid) {
+          this.selectedBoardId = route.params.scopeid
+            || route.params.groupid
+            || this.readStoredTaskBoardId()
+            || this.preferredTaskBoardId;
+          this.validateSelectedBoardId();
+          this.persistSelectedBoardId(this.selectedBoardId);
+        }
+
+        if (route.section === 'chat') {
+          const channelId = route.params.channelid || this.selectedChannelId || this.channels[0]?.record_id || null;
+          if (channelId) {
+            await this.selectChannel(channelId, { syncRoute: false });
+            if (route.params.threadid) this.openThread(route.params.threadid, { syncRoute: false });
+            else this.closeThread({ syncRoute: false });
+          } else {
+            this.selectedChannelId = null;
+            this.closeThread({ syncRoute: false });
+          }
+        } else if (route.section === 'docs') {
+          this.selectedDocCommentId = route.params.commentid || null;
+          if (route.params.docid) {
+            this.openDoc(route.params.docid, { syncRoute: false, commentId: route.params.commentid || null });
+            if (route.params.versioning) this.openDocVersioning();
+          } else if (route.params.folderid) {
+            this.navigateToFolder(route.params.folderid, { syncRoute: false });
+          } else {
+            this.selectedDocType = null;
+            this.selectedDocId = null;
+            this.currentFolderId = null;
+            this.loadDocEditorFromSelection();
+          }
+        } else if (route.section === 'reports') {
+          this.selectedReportId = route.params.reportid || this.selectedReport?.record_id || null;
+        } else if (route.section === 'opportunities') {
+          if (route.params.opportunityid) {
+            this.openOpportunityDetail(route.params.opportunityid);
+          } else {
+            this.closeOpportunityDetail({ syncRoute: false });
+          }
+        } else if (route.section === 'tasks') {
+          // Scope already restored above; apply task-specific params
+          if (!route.params.scopeid && !route.params.groupid) {
+            this.selectedBoardId = this.readStoredTaskBoardId() || this.preferredTaskBoardId;
+            this.validateSelectedBoardId();
+            this.persistSelectedBoardId(this.selectedBoardId);
+          }
+          this.showBoardDescendantTasks = route.params.descendants === '1';
+          if (route.params.view === 'list') this.taskViewMode = 'list';
+          else this.taskViewMode = 'kanban';
+          this.normalizeTaskFilterTags();
+          if (route.params.taskid) {
+            this.openTaskDetail(route.params.taskid);
+          } else {
+            this.closeTaskDetail({ syncRoute: false });
+          }
+        }
+      } finally {
+        this.routeSyncPaused = false;
+      }
+      this.startWorkspaceLiveQueries();
+      this.syncRoute(true);
+    },
+
+    startExtensionSignerWatch() {
+      // Remove any previously registered listeners to avoid duplicates
+      this.stopExtensionSignerWatch();
+
+      this.refreshExtensionSignerAvailability();
+      if (typeof window === 'undefined' || typeof document === 'undefined') return;
+      if (this.extensionSignerPollTimer) clearInterval(this.extensionSignerPollTimer);
+      this.extensionSignerPollTimer = window.setInterval(() => {
+        this.refreshExtensionSignerAvailability();
+      }, 1000);
+      window.setTimeout(() => {
+        if (this.extensionSignerPollTimer) {
+          clearInterval(this.extensionSignerPollTimer);
+          this.extensionSignerPollTimer = null;
+        }
+      }, 15000);
+
+      const refresh = () => this.refreshExtensionSignerAvailability();
+      this._extensionSignerRefresh = refresh;
+      window.addEventListener('focus', refresh, { passive: true });
+      window.addEventListener('pageshow', refresh, { passive: true });
+      document.addEventListener('visibilitychange', refresh, { passive: true });
+    },
+
+    stopExtensionSignerWatch() {
+      if (this.extensionSignerPollTimer) {
+        clearInterval(this.extensionSignerPollTimer);
+        this.extensionSignerPollTimer = null;
+      }
+      if (this._extensionSignerRefresh) {
+        window.removeEventListener('focus', this._extensionSignerRefresh);
+        window.removeEventListener('pageshow', this._extensionSignerRefresh);
+        document.removeEventListener('visibilitychange', this._extensionSignerRefresh);
+        this._extensionSignerRefresh = null;
+      }
+    },
+
+    async refreshExtensionSignerAvailability() {
+      this.extensionSignerAvailable = hasExtensionSigner();
+      if (!this.extensionSignerAvailable) {
+        this.extensionSignerAvailable = await waitForExtensionSigner(900, 120);
+      }
+      return this.extensionSignerAvailable;
+    },
+
+    async maybeAutoLogin() {
+      try {
+        const storedAuth = await tryAutoLoginFromStorage();
+        if (!storedAuth) return;
+
+        if (storedAuth.needsReconnect && storedAuth.method === 'bunker') {
+          await this.login('bunker', storedAuth.bunkerUri);
+          return;
+        }
+
+        const npub = await pubkeyToNpub(storedAuth.pubkey);
+        this.session = {
+          pubkey: storedAuth.pubkey,
+          npub,
+          method: storedAuth.method,
+        };
+        setActiveSessionNpub(npub);
+        this.ownerNpub = this.currentWorkspaceOwnerNpub || this.superbasedConnectionConfig?.workspaceOwnerNpub || npub;
+        this.resolveChatProfile(npub);
+        await this.rememberPeople([npub], 'self');
+        await this.loadRemoteWorkspaces();
+        if (!this.selectedWorkspaceKey && this.currentWorkspaceOwnerNpub) {
+          const legacyMatch = this.knownWorkspaces.find((workspace) => workspace.workspaceOwnerNpub === this.currentWorkspaceOwnerNpub) || null;
+          if (legacyMatch) this.selectedWorkspaceKey = legacyMatch.workspaceKey || '';
+        }
+        if (!this.selectedWorkspaceKey && this.knownWorkspaces.length > 0) {
+          this.selectedWorkspaceKey = this.knownWorkspaces[0].workspaceKey || '';
+          this.currentWorkspaceOwnerNpub = this.knownWorkspaces[0].workspaceOwnerNpub;
+        }
+        this.updateWorkspaceBootstrapPrompt();
+        if (!this.backendUrl || (!this.selectedWorkspaceKey && !this.showWorkspaceBootstrapModal)) {
+          this.openConnectModal();
+        }
+      } catch (error) {
+        this.loginError = error.message;
+      }
+    },
+
+    // --- auth ---
+
+    async login(method, supplemental = null) {
+      this.isLoggingIn = true;
+      this.loginError = null;
+      try {
+        const signedEvent = await signLoginEvent(method, supplemental);
+        const pubkey = getPubkeyFromEvent(signedEvent);
+        const npub = await pubkeyToNpub(pubkey);
+
+        this.session = { pubkey, npub, method };
+        setActiveSessionNpub(npub);
+        this.ownerNpub = this.currentWorkspaceOwnerNpub || this.superbasedConnectionConfig?.workspaceOwnerNpub || npub;
+        setAutoLogin(method, pubkey);
+        this.resolveChatProfile(npub);
+        await this.rememberPeople([npub], 'self');
+        this.updateWorkspaceBootstrapPrompt();
+
+        await this.loadRemoteWorkspaces();
+        if (!this.selectedWorkspaceKey && this.currentWorkspaceOwnerNpub) {
+          const legacyMatch = this.knownWorkspaces.find((workspace) => workspace.workspaceOwnerNpub === this.currentWorkspaceOwnerNpub) || null;
+          if (legacyMatch) this.selectedWorkspaceKey = legacyMatch.workspaceKey || '';
+        }
+        if (!this.selectedWorkspaceKey && this.knownWorkspaces.length > 0) {
+          this.selectedWorkspaceKey = this.knownWorkspaces[0].workspaceKey || '';
+          this.currentWorkspaceOwnerNpub = this.knownWorkspaces[0].workspaceOwnerNpub;
+        }
+        if (this.selectedWorkspaceKey || this.currentWorkspaceOwnerNpub) {
+          await this.selectWorkspace(this.selectedWorkspaceKey || this.currentWorkspaceOwnerNpub, { refresh: false });
+        }
+
+        await this.persistWorkspaceSettings();
+
+        if (this.selectedWorkspaceKey) {
+          await this.bootstrapSelectedWorkspace({ runAccessPrune: true });
+        }
+        this.updateWorkspaceBootstrapPrompt();
+        if (!this.backendUrl || (!this.selectedWorkspaceKey && !this.showWorkspaceBootstrapModal)) {
+          this.openConnectModal();
+        }
+        this.ensureBackgroundSync(true);
+      } catch (error) {
+        console.error('Login failed:', error);
+        this.loginError = error.message || 'Login failed.';
+      } finally {
+        this.isLoggingIn = false;
+      }
+    },
+
+    async logout() {
+      this.stopBackgroundSync();
+      this.stopAllLiveQueries();
+      this.stopExtensionSignerWatch();
+      this.clearDocCommentConnector();
+      this.revokeStorageImageObjectUrls();
+      await clearAutoLogin();
+      if (hasWorkspaceDb()) await clearRuntimeData();
+      clearCryptoContext();
+      this.session = null;
+      this.ownerNpub = '';
+      this.channels = [];
+      this.messages = [];
+      this.groups = [];
+      this.documents = [];
+      this.directories = [];
+      this.fileMessages = [];
+      this.fileComments = [];
+      this.addressBookPeople = [];
+      this.jobDefinitions = [];
+      this.jobRuns = [];
+      this.jobsError = null;
+      this.jobsSuccess = null;
+      this.selectedChannelId = null;
+      this.activeThreadId = null;
+      this.selectedDocId = null;
+      this.selectedDocType = null;
+      this.closeChatDocModal();
+      await this.closeChatTaskModal();
+      this.messageInput = '';
+      this.threadInput = '';
+      this.docEditorTitle = '';
+      this.docEditorContent = '';
+      this.docEditorShares = [];
+      this.docShareQuery = '';
+      this.newGroupName = '';
+      this.newGroupMemberQuery = '';
+      this.newGroupMembers = [];
+      this.chatProfiles = {};
+      this.workspaceProfileRowsByKey = {};
+      this.selectedWorkspaceKey = '';
+      this.currentWorkspaceOwnerNpub = '';
+      this.workspaceSwitchPendingKey = '';
+      this.workspaceSwitchPendingNpub = '';
+      this.workspaceSettingsRecordId = '';
+      this.workspaceSettingsVersion = 0;
+      this.workspaceSettingsGroupIds = [];
+      this.workspaceHarnessUrl = '';
+      this.revokeWorkspaceAvatarPreviewObjectUrl();
+      this.hasBootstrappedUnreadTracking = false;
+      this.workspaceProfileNameInput = '';
+      this.workspaceProfileSlugInput = '';
+      this.workspaceProfileDescriptionInput = '';
+      this.workspaceProfileAvatarInput = '';
+      this.workspaceProfileAvatarPreviewUrl = '';
+      this.workspaceProfilePendingAvatarFile = null;
+      this.workspaceProfileDirty = false;
+      this.workspaceProfileSaving = false;
+      this.workspaceProfileError = null;
+      this.defaultAgentQuery = '';
+      this.hasForcedTaskFamilyBackfill = false;
+      this.wingmanHarnessInput = '';
+      this.wingmanHarnessError = null;
+      this.wingmanHarnessDirty = false;
+      this.hasForcedInitialBackfill = false;
+      this.docCommentBackfillAttemptsByDocId = {};
+      this.loginError = null;
+      this.error = null;
+      this.showAvatarMenu = false;
+      this.syncRoute(true);
+      await this.refreshSyncStatus();
+    },
+
+    hasExtensionSigner() {
+      return this.extensionSignerAvailable;
+    },
+
+    // uploadWorkspaceAvatarFile, saveWorkspaceProfile, saveHarnessSettings — in workspaceManagerMixin
+
+    openHarnessLink() {
+      if (!this.workspaceHarnessUrl || typeof window === 'undefined') return;
+      window.open(this.workspaceHarnessUrl, '_blank', 'noopener,noreferrer');
+    },
+
+    // --- Triggers (extracted to triggers-manager.js) ---
+    // triggersManagerMixin applied via applyMixins (has getters)
+
+    togglePrimaryNav() {
+      if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+        this.mobileNavOpen = !this.mobileNavOpen;
+        return;
+      }
+      this.navCollapsed = !this.navCollapsed;
+    },
+
+    openChannelSettings() {
+      if (!this.selectedChannel) return;
+      this.closeScopePicker();
+      this.closeChannelScopePicker();
+      this.channelDeleteConfirmArmed = false;
+      this.showChannelSettingsModal = true;
+    },
+
+    closeChannelSettings() {
+      this.closeChannelScopePicker();
+      this.channelDeleteConfirmArmed = false;
+      this.showChannelSettingsModal = false;
+    },
+
+    // Release domain arrays for sections the user is leaving.
+    // Keeps memory stable by not accumulating all sections simultaneously.
+    // Data is re-fetched via liveQuery when navigating back.
+    clearInactiveSectionData(activeSection) {
+      if (activeSection !== 'chat') {
+        this.messages = [];
+        this.audioNotes = [];
+      }
+      if (activeSection !== 'tasks') {
+        this.tasks = [];
+        this.taskComments = [];
+        this.taskCommentsPanelExpanded = false;
+        this.showTaskDetail = false;
+        this.editingTask = null;
+      }
+      if (activeSection !== 'docs') {
+        this.documents = [];
+        this.directories = [];
+        this.docComments = [];
+      }
+      if (activeSection !== 'files') {
+        this.fileMessages = [];
+        this.fileComments = [];
+      }
+      if (activeSection !== 'reports' && activeSection !== 'status') {
+        this.reports = [];
+      }
+      if (activeSection !== 'settings') {
+        this.schedules = [];
+      }
+      if (activeSection !== 'status') {
+        this.statusRecentChanges = [];
+      }
+      if (activeSection !== 'opportunities') {
+        this.opportunityComments = [];
+        this.showOpportunityEditor = false;
+        this.editingOpportunity = null;
+        this.activeOpportunityId = null;
+      }
+    },
+
+    navigateTo(section, options = {}) {
+      this.clearInactiveSectionData(section);
+      this.navSection = section;
+      this.mobileNavOpen = false;
+      this.showWorkspaceSwitcherMenu = false;
+      // Mark section as read when user navigates to it.
+      // Tasks section is excluded: per-task borders must persist until
+      // the user opens each task individually. The tasks nav dot is
+      // derived from per-task unread state instead.
+      if (section === 'chat' || section === 'docs') {
+        this.markSectionRead(section);
+      }
+      if (section === 'tasks' || section === 'reports' || section === 'files') {
+        this.validateSelectedBoardId();
+        this.normalizeTaskFilterTags();
+      }
+      if (section !== 'settings') {
+        this.showNewScheduleModal = false;
+        this.cancelEditSchedule();
+      }
+      if (section !== 'docs') {
+        this.selectedDocCommentId = null;
+      }
+      if (section === 'chat') {
+        if (!this.selectedChannelId && this.channels.length > 0) {
+          this.selectChannel(this.channels[0].record_id);
+        } else if (this.selectedChannelId) {
+          this.pendingChatScrollToLatest = true;
+          this.scheduleChatFeedScrollToBottom();
+        }
+      }
+      if (section === 'status') {
+        this.refreshStatusRecentChanges({ force: true });
+      }
+      if (section === 'reports' && !this.selectedReportId) {
+        this.selectedReportId = this.selectedReport?.record_id || null;
+      }
+      if (section === 'settings') {
+        this.normalizeSettingsTab?.();
+        if (this.settingsTab === 'schedules') this.refreshSchedules();
+        if (this.settingsTab === 'apps') this.refreshWapps?.();
+        if (this.settingsTab === 'scopes') this.refreshScopes();
+        if (this.settingsTab === 'flows') {
+          this.refreshFlows();
+          this.refreshApprovals();
+        }
+      }
+      if (options.syncRoute !== false) this.syncRoute();
+      this.startWorkspaceLiveQueries();
+      this.ensureBackgroundSync(true);
+    },
+
+    // channelsManagerMixin applied via applyMixins
+
+    // chatMessageManagerMixin applied via applyMixins (scroll, composer, messages, threads)
+
+    // audioRecordingManagerMixin applied via applyMixins (has getters)
+    // storageImageManagerMixin applied via applyMixins
+
+    applyDirectories(directories = []) {
+      const nextDirectories = Array.isArray(directories)
+        ? directories.map((item) => this.normalizeDirectoryRowGroupRefs ? this.normalizeDirectoryRowGroupRefs(item) : item)
+        : [];
+      if (!sameListBySignature(this.directories, nextDirectories)) {
+        this.directories = nextDirectories;
+      }
+      this.updatePageTitle();
+    },
+
+    async refreshDirectories() {
+      const ownerNpub = this.workspaceOwnerNpub;
+      if (!ownerNpub) return;
+      this.applyDirectories(await getDirectoriesByOwner(ownerNpub));
+    },
+
+    applyDocuments(documents = []) {
+      const nextDocuments = Array.isArray(documents)
+        ? documents.map((item) => this.normalizeDocumentRowGroupRefs ? this.normalizeDocumentRowGroupRefs(item) : item)
+        : [];
+      if (!sameListBySignature(this.documents, nextDocuments)) {
+        this.documents = nextDocuments;
+      }
+      this.refreshOpenDocFromLatestDocument({ force: false });
+      this.updatePageTitle();
+    },
+
+    async refreshDocuments() {
+      const ownerNpub = this.workspaceOwnerNpub;
+      if (!ownerNpub) return;
+      this.applyDocuments(await getDocumentsByOwner(ownerNpub));
+    },
+
+    applySelectedDocument(document = null) {
+      applySelectedDocumentUpdate(this, document);
+    },
+
+    async applyReports(reports = []) {
+      const nextReports = Array.isArray(reports) ? reports : [];
+      if (!sameListBySignature(this.reports, nextReports, (report) => [
+        String(report?.record_id || ''),
+        String(report?.updated_at || ''),
+        String(report?.version ?? ''),
+        String(report?.record_state || ''),
+        String(report?.declaration_type || ''),
+      ].join('|'))) {
+        this.reports = nextReports;
+      }
+      if (this.selectedReportId && !this.reports.some((report) => report?.record_id === this.selectedReportId)) {
+        this.selectedReportId = null;
+      }
+    },
+
+    async applySelectedReport(report = null) {
+      const recordId = String(this.selectedReportId || '').trim();
+      if (!recordId) return;
+      const nextReports = this.reports.filter((item) => item?.record_id !== recordId);
+      if (report && report.record_state !== 'deleted') {
+        nextReports.push(report);
+      }
+      await this.applyReports(nextReports);
+    },
+
+    async refreshReports() {
+      const ownerNpub = this.workspaceOwnerNpub;
+      if (!ownerNpub) return;
+      await this.applyReports(await getReportsByOwner(ownerNpub));
+    },
+
+    patchDirectoryLocal(nextDirectory) {
+      const normalizedDirectory = this.normalizeDirectoryRowGroupRefs
+        ? this.normalizeDirectoryRowGroupRefs(nextDirectory)
+        : nextDirectory;
+      const index = this.directories.findIndex((item) => item.record_id === nextDirectory.record_id);
+      if (index >= 0) {
+        this.directories.splice(index, 1, { ...this.directories[index], ...normalizedDirectory });
+      } else {
+        this.directories = [...this.directories, normalizedDirectory];
+      }
+    },
+
+    patchDocumentLocal(nextDocument) {
+      const normalizedDocument = this.normalizeDocumentRowGroupRefs
+        ? this.normalizeDocumentRowGroupRefs(nextDocument)
+        : nextDocument;
+      const index = this.documents.findIndex((item) => item.record_id === nextDocument.record_id);
+      if (index >= 0) {
+        this.documents.splice(index, 1, { ...this.documents[index], ...normalizedDocument });
+      } else {
+        this.documents = [...this.documents, normalizedDocument];
+      }
+      this.refreshOpenDocFromLatestDocument({ force: false });
+    },
+
+    canRefreshOpenDocFromLatestDocument() {
+      if (!this.docsEditorOpen || this.selectedDocType !== 'document' || !this.selectedDocId) return false;
+      if (this.docEditorMode !== 'preview') return false;
+      if (this.docEditingTitle || this.docEditingBlockIndex >= 0) return false;
+      if (this.docAutosaveState === 'pending' || this.docAutosaveState === 'saving') return false;
+      return true;
+    },
+
+    refreshOpenDocFromLatestDocument(options = {}) {
+      const force = options.force === true;
+      if (!force && !this.canRefreshOpenDocFromLatestDocument()) return;
+      const item = this.selectedDocument;
+      if (!item) return;
+      this.docEditorTitle = item.title ?? '';
+      this.docEditorContent = item.content ?? '';
+      const contentBlocks = normalizeDocumentBlocks(item.content_blocks, this.docEditorContent);
+      this.docEditorShares = this.getEffectiveDocShares(item)
+        .map((share) => ({ ...share }));
+      this.docEditorSharesDirty = false;
+      this.docEditorBlocks = contentBlocks;
+      this.docEditorContent = assembleMarkdownBlocks(contentBlocks);
+      this.docEditingBlockIndex = -1;
+      this.docSelectedBlockId = null;
+      this.docBlockBuffer = '';
+      this.docEditingTitle = false;
+      this.docAutosaveState = 'saved';
+      this.scheduleDocCommentConnectorUpdate();
+      this.scheduleStorageImageHydration();
+    },
+
+    getStatusRangeMs() {
+      switch (this.statusTimeRange) {
+        case '2h':
+          return 2 * 60 * 60 * 1000;
+        case '4h':
+          return 4 * 60 * 60 * 1000;
+        case '24h':
+          return 24 * 60 * 60 * 1000;
+        case '1h':
+        default:
+          return 60 * 60 * 1000;
+      }
+    },
+
+    getFlightDeckReportTypeLabel(report) {
+      switch (String(report?.declaration_type || '').trim().toLowerCase()) {
+        case 'metric':
+          return 'Metric';
+        case 'timeseries':
+          return 'Timeseries';
+        case 'table':
+          return 'Table';
+        case 'text':
+          return 'Text';
+        default:
+          return 'Report';
+      }
+    },
+
+    getFlightDeckReportCardClass(report) {
+      const type = String(report?.declaration_type || '').trim().toLowerCase();
+      return {
+        'flightdeck-report-card-metric': type === 'metric',
+        'flightdeck-report-card-timeseries': type === 'timeseries',
+        'flightdeck-report-card-table': type === 'table',
+        'flightdeck-report-card-text': type === 'text',
+        'flightdeck-report-card-wide': type === 'timeseries' || type === 'table',
+        'flightdeck-report-card-unsupported': !['metric', 'timeseries', 'table', 'text'].includes(type),
+      };
+    },
+
+    getReportScopeLabel(report) {
+      if (!report) return '';
+      if (isTaskUnscoped(report, this.scopesMap)) return 'Unscoped';
+      const scopeRef = report.scope_id
+        ?? report.scope_l5_id
+        ?? report.scope_l4_id
+        ?? report.scope_l3_id
+        ?? report.scope_l2_id
+        ?? report.scope_l1_id
+        ?? null;
+      if (!scopeRef) return '';
+      return this.getTaskBoardLabel(scopeRef);
+    },
+
+    getReportMetricPayload(report) {
+      if (report?.declaration_type !== 'metric') return null;
+      const payload = report.payload;
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+      return payload;
+    },
+
+    getReportMetricLabel(report) {
+      return this.getReportMetricPayload(report)?.label || 'Metric';
+    },
+
+    formatReportMetricValue(report) {
+      const value = this.getReportMetricPayload(report)?.value;
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return NUMBER_FORMATTER.format(value);
+      }
+      return String(value ?? '—');
+    },
+
+    getReportMetricUnit(report) {
+      return String(this.getReportMetricPayload(report)?.unit || '').trim();
+    },
+
+    getReportMetricTrend(report) {
+      const trend = this.getReportMetricPayload(report)?.trend;
+      if (!trend || typeof trend !== 'object' || Array.isArray(trend)) return null;
+      return {
+        direction: ['up', 'down', 'flat'].includes(trend.direction) ? trend.direction : 'flat',
+        value: trend.value,
+        label: String(trend.label || '').trim(),
+      };
+    },
+
+    formatReportMetricTrend(report) {
+      const trend = this.getReportMetricTrend(report);
+      if (!trend) return '';
+      if (typeof trend.value === 'number' && Number.isFinite(trend.value)) {
+        const prefix = trend.value > 0 ? '+' : '';
+        return `${prefix}${NUMBER_FORMATTER.format(trend.value)}`;
+      }
+      return String(trend.value ?? '');
+    },
+
+    getReportTextBody(report) {
+      if (report?.declaration_type !== 'text') return '';
+      return String(report?.payload?.body || '').trim();
+    },
+
+    getReportTimeseriesSeries(report) {
+      if (report?.declaration_type !== 'timeseries') return [];
+      const cache = getReportDerivedCache(reportTimeseriesCache, this);
+      const cacheKey = `${String(report?.record_id || '')}:${String(report?.version ?? '')}:${String(report?.updated_at || '')}`;
+      const cached = cache.get(cacheKey);
+      if (cached) return cached;
+      const series = Array.isArray(report?.payload?.series) ? report.payload.series : [];
+      const computed = series
+        .filter((entry) => entry && typeof entry === 'object' && !Array.isArray(entry))
+        .map((entry, index) => {
+          const points = Array.isArray(entry.points) ? entry.points : [];
+          const numericValues = points
+            .map((point) => (typeof point?.y === 'number' && Number.isFinite(point.y) ? point.y : null))
+            .filter((value) => value != null);
+          const maxValue = numericValues.length > 0 ? Math.max(...numericValues) : 0;
+          const bars = points.map((point, pointIndex) => {
+            const rawValue = typeof point?.y === 'number' && Number.isFinite(point.y) ? point.y : null;
+            const label = String(point?.x ?? pointIndex + 1);
+            const heightPct = rawValue == null || maxValue <= 0
+              ? 8
+              : Math.max(8, Math.round((rawValue / maxValue) * 100));
+            return {
+              key: `${entry.key || index}:${pointIndex}:${label}`,
+              label,
+              value: rawValue,
+              heightPct,
+              tooltip: rawValue == null ? `${label}: no value` : `${label}: ${NUMBER_FORMATTER.format(rawValue)}`,
+            };
+          });
+          return {
+            key: String(entry.key || `series-${index}`),
+            label: String(entry.label || `Series ${index + 1}`),
+            bars,
+            firstLabel: bars[0]?.label || '',
+            lastLabel: bars[bars.length - 1]?.label || '',
+          };
+        });
+      cache.set(cacheKey, computed);
+      if (cache.size > 100) {
+        const firstKey = cache.keys().next().value;
+        if (firstKey) cache.delete(firstKey);
+      }
+      return computed;
+    },
+
+    getReportTableColumns(report) {
+      if (report?.declaration_type !== 'table') return [];
+      const cache = getReportDerivedCache(reportTableColumnsCache, this);
+      const cacheKey = `${String(report?.record_id || '')}:${String(report?.version ?? '')}:${String(report?.updated_at || '')}`;
+      const cached = cache.get(cacheKey);
+      if (cached) return cached;
+      const columns = Array.isArray(report?.payload?.columns) ? report.payload.columns : [];
+      const computed = columns
+        .filter((column) => column && typeof column === 'object' && !Array.isArray(column))
+        .map((column) => ({
+          key: String(column.key || ''),
+          label: String(column.label || column.key || ''),
+          align: ['left', 'center', 'right'].includes(column.align) ? column.align : 'left',
+        }))
+        .filter((column) => column.key);
+      cache.set(cacheKey, computed);
+      if (cache.size > 100) {
+        const firstKey = cache.keys().next().value;
+        if (firstKey) cache.delete(firstKey);
+      }
+      return computed;
+    },
+
+    getReportTableRows(report) {
+      if (report?.declaration_type !== 'table') return [];
+      return Array.isArray(report?.payload?.rows) ? report.payload.rows : [];
+    },
+
+    formatReportTableCell(value) {
+      if (value == null) return '';
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return NUMBER_FORMATTER.format(value);
+      }
+      if (typeof value === 'boolean') {
+        return value ? 'Yes' : 'No';
+      }
+      return String(value);
+    },
+
+    formatReportAbsoluteTime(iso) {
+      const ts = Date.parse(iso || '');
+      if (!Number.isFinite(ts)) return '';
+      return new Date(ts).toLocaleString();
+    },
+
+    getReportRecentChangeSubtitle(report) {
+      const scopeLabel = this.getReportScopeLabel(report);
+      const typeLabel = this.getFlightDeckReportTypeLabel(report).toLowerCase();
+      return scopeLabel ? `${typeLabel} on ${scopeLabel}` : `${typeLabel} on Flight Deck`;
+    },
+
+    selectReport(recordId, options = {}) {
+      if (!recordId) return;
+      const report = this.scopedReports.find((item) => item.record_id === recordId)
+        || this.reports.find((item) => item.record_id === recordId);
+      if (!report) return;
+      this.selectedReportId = report.record_id;
+      if (options.openModal === true) {
+        this.openReportModal(report);
+        return;
+      }
+      if (options.syncRoute !== false && this.navSection === 'reports') this.syncRoute();
+    },
+
+    openReportModal(report) {
+      if (!report) return;
+      this.selectedReportId = report.record_id;
+      this.reportModalReport = report;
+    },
+
+    openReportModalById(recordId) {
+      if (!recordId) return;
+      const report = this.reports.find((r) => r.record_id === recordId);
+      if (report) this.openReportModal(report);
+    },
+
+    closeReportModal() {
+      this.reportModalReport = null;
+    },
+
+    async refreshStatusRecentChanges(options = {}) {
+      // Skip if not on status section (unless forced)
+      if (this.navSection !== 'status' && !options.force) return;
+      // Skip if we already have cached data and no new records were pulled
+      if (this.statusRecentChanges.length > 0 && !options.force && !options.hasNewData) return;
+      const sinceIso = new Date(Date.now() - this.getStatusRangeMs()).toISOString();
+      const [messages, documents, directories, reports, tasks, schedules, comments, scopes, flows] = await Promise.all([
+        getRecentChatMessagesSince(sinceIso),
+        getRecentDocumentChangesSince(sinceIso),
+        getRecentDirectoryChangesSince(sinceIso),
+        getRecentReportChangesSince(sinceIso),
+        getRecentTaskChangesSince(sinceIso),
+        getRecentScheduleChangesSince(sinceIso),
+        getRecentCommentsSince(sinceIso),
+        getRecentScopeChangesSince(sinceIso),
+        getRecentFlowChangesSince(sinceIso),
+      ]);
+      const items = [];
+
+      // Batch-load channels for messages instead of one query per message
+      const messageChannelIds = [...new Set(messages.map((m) => m.channel_id).filter(Boolean))];
+      const channelMap = new Map();
+      await Promise.all(messageChannelIds.map(async (channelId) => {
+        const ch = await getChannelById(channelId);
+        if (ch) channelMap.set(channelId, ch);
+      }));
+
+      for (const message of messages) {
+        const channel = channelMap.get(message.channel_id);
+        if (!channel || channel.record_state === 'deleted') continue;
+
+        this.resolveChatProfile(message.sender_npub);
+
+        items.push({
+          id: message.record_id,
+          section: 'chat',
+          recordType: message.parent_message_id ? 'Thread' : 'Chat',
+          recordTypeKey: 'chat',
+          title: message.body?.trim() || '(empty message)',
+          subtitle: `${this.getSenderName(message.sender_npub)} in ${this.getChannelLabel(channel)}`,
+          updatedAt: message.updated_at,
+          updatedTs: Date.parse(message.updated_at) || 0,
+          channelId: message.channel_id,
+          threadId: message.parent_message_id || null,
+          recordId: message.record_id,
+          focusRecordId: message.record_id,
+          senderNpub: message.sender_npub,
+        });
+      }
+
+      for (const directory of directories) {
+        items.push({
+          id: `directory:${directory.record_id}`,
+          section: 'docs',
+          recordType: 'Folder',
+          recordTypeKey: 'folder',
+          title: directory.title?.trim() || 'Untitled folder',
+          subtitle: directory.parent_directory_id
+            ? `Updated in ${this.getDocItemLocationLabel(directory)}`
+            : 'Updated in Root',
+          updatedAt: directory.updated_at,
+          updatedTs: Date.parse(directory.updated_at) || 0,
+          recordId: directory.record_id,
+          docType: 'directory',
+        });
+      }
+
+      for (const document of documents) {
+        items.push({
+          id: `document:${document.record_id}`,
+          section: 'docs',
+          recordType: 'Doc',
+          recordTypeKey: 'doc',
+          title: document.title?.trim() || 'Untitled document',
+          subtitle: document.parent_directory_id
+            ? `Updated in ${this.getDocItemLocationLabel(document)}`
+            : 'Updated in Root',
+          updatedAt: document.updated_at,
+          updatedTs: Date.parse(document.updated_at) || 0,
+          recordId: document.record_id,
+          docType: 'document',
+        });
+      }
+
+      for (const report of reports) {
+        items.push({
+          id: `report:${report.record_id}:${report.version ?? 1}`,
+          section: 'status',
+          recordType: this.getFlightDeckReportTypeLabel(report),
+          recordTypeKey: 'report',
+          title: report.title?.trim() || this.getReportMetricLabel(report) || 'Untitled report',
+          subtitle: this.getReportRecentChangeSubtitle(report),
+          updatedAt: report.updated_at,
+          updatedTs: Date.parse(report.updated_at) || 0,
+          recordId: report.record_id,
+          boardScopeId: report.scope_id ?? report.scope_l5_id ?? report.scope_l4_id ?? report.scope_l3_id ?? report.scope_l2_id ?? report.scope_l1_id ?? null,
+        });
+      }
+
+      for (const task of tasks) {
+        items.push({
+          id: `task:${task.record_id}:${task.version ?? 1}`,
+          section: 'tasks',
+          recordType: 'Task',
+          recordTypeKey: 'task',
+          title: task.title?.trim() || 'Untitled task',
+          subtitle: task.scope_id
+            ? `Updated on ${this.getTaskBoardLabel(task)}`
+            : 'Updated with no scope',
+          updatedAt: task.updated_at,
+          updatedTs: Date.parse(task.updated_at) || 0,
+          recordId: task.record_id,
+          boardScopeId: task.scope_id ?? task.scope_l5_id ?? task.scope_l4_id ?? task.scope_l3_id ?? task.scope_l2_id ?? task.scope_l1_id ?? null,
+        });
+      }
+
+      for (const schedule of schedules) {
+        items.push({
+          id: `schedule:${schedule.record_id}:${schedule.version ?? 1}`,
+          section: 'schedules',
+          recordType: 'Schedule',
+          recordTypeKey: 'schedule',
+          title: schedule.title?.trim() || 'Untitled schedule',
+          subtitle: `${this.formatScheduleDays(schedule.days)} ${schedule.time_start || '??:??'}-${schedule.time_end || '??:??'}`,
+          updatedAt: schedule.updated_at,
+          updatedTs: Date.parse(schedule.updated_at) || 0,
+          recordId: schedule.record_id,
+        });
+      }
+
+      for (const scope of scopes) {
+        items.push({
+          id: `scope:${scope.record_id}:${scope.version ?? 1}`,
+          section: 'scopes',
+          recordType: 'Scope',
+          recordTypeKey: 'scope',
+          title: scope.title?.trim() || 'Untitled scope',
+          subtitle: this.getScopeBreadcrumb(scope.record_id) || this.scopeLevelLabel(scope.level),
+          updatedAt: scope.updated_at,
+          updatedTs: Date.parse(scope.updated_at) || 0,
+          recordId: scope.record_id,
+          boardScopeId: scope.record_id,
+        });
+      }
+
+      for (const flow of flows) {
+        items.push({
+          id: `flow:${flow.record_id}:${flow.version ?? 1}`,
+          section: 'flows',
+          recordType: 'Flow',
+          recordTypeKey: 'flow',
+          title: flow.title?.trim() || 'Untitled flow',
+          subtitle: flow.scope_id
+            ? `Updated in ${this.getTaskBoardLabel(flow)}`
+            : 'Updated with no scope',
+          updatedAt: flow.updated_at,
+          updatedTs: Date.parse(flow.updated_at) || 0,
+          recordId: flow.record_id,
+          boardScopeId: flow.scope_id ?? flow.scope_l5_id ?? flow.scope_l4_id ?? flow.scope_l3_id ?? flow.scope_l2_id ?? flow.scope_l1_id ?? null,
+        });
+      }
+
+      // Batch-load targets for comments instead of one query per comment
+      const taskComments = comments.filter((c) => String(c.target_record_family_hash || '').endsWith(':task'));
+      const commentTaskIds = [...new Set(taskComments.map((c) => c.target_record_id).filter(Boolean))];
+      const taskMap = new Map();
+      await Promise.all(commentTaskIds.map(async (taskId) => {
+        const t = await getTaskById(taskId);
+        if (t) taskMap.set(taskId, t);
+      }));
+      const documentComments = comments.filter((c) => String(c.target_record_family_hash || '').endsWith(':document'));
+      const commentDocumentIds = [...new Set(documentComments.map((c) => c.target_record_id).filter(Boolean))];
+      const documentMap = new Map();
+      await Promise.all(commentDocumentIds.map(async (documentId) => {
+        const doc = await getDocumentById(documentId);
+        if (doc) documentMap.set(documentId, doc);
+      }));
+
+      for (const comment of taskComments) {
+        const task = taskMap.get(comment.target_record_id);
+        if (!task || task.record_state === 'deleted') continue;
+
+        this.resolveChatProfile(comment.sender_npub);
+
+        items.push({
+          id: `task-comment:${comment.record_id}`,
+          section: 'tasks',
+          recordType: 'Comment',
+          recordTypeKey: 'comment',
+          title: comment.body?.trim() || '(empty note)',
+          subtitle: `${this.getSenderName(comment.sender_npub)} on ${task.title?.trim() || 'Untitled task'}`,
+          updatedAt: comment.updated_at,
+          updatedTs: Date.parse(comment.updated_at) || 0,
+          recordId: task.record_id,
+          focusRecordId: comment.record_id,
+          boardScopeId: task.scope_id ?? task.scope_l5_id ?? task.scope_l4_id ?? task.scope_l3_id ?? task.scope_l2_id ?? task.scope_l1_id ?? null,
+          senderNpub: comment.sender_npub,
+        });
+      }
+
+      for (const comment of documentComments) {
+        const document = documentMap.get(comment.target_record_id);
+        if (!document || document.record_state === 'deleted') continue;
+
+        this.resolveChatProfile(comment.sender_npub);
+
+        items.push({
+          id: `doc-comment:${comment.record_id}`,
+          section: 'docs',
+          recordType: 'Comment',
+          recordTypeKey: 'comment',
+          title: comment.body?.trim() || '(empty comment)',
+          subtitle: `${this.getSenderName(comment.sender_npub)} on ${document.title?.trim() || 'Untitled document'}`,
+          updatedAt: comment.updated_at,
+          updatedTs: Date.parse(comment.updated_at) || 0,
+          recordId: document.record_id,
+          focusRecordId: comment.record_id,
+          docType: 'document',
+          senderNpub: comment.sender_npub,
+        });
+      }
+
+      this.statusRecentChanges = items
+        .sort((a, b) => b.updatedTs - a.updatedTs)
+        .slice(0, MAX_STATUS_RECENT_CHANGES);
+    },
+
+    getAttentionIconSvg(icon) {
+      const icons = {
+        approval: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 4v5c0 4.5-2.8 7.8-7 9-4.2-1.2-7-4.5-7-9V7l7-4z"></path><path d="M9 12l2 2 4-5"></path></svg>',
+        mention: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"></path></svg>',
+        chat: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"></path></svg>',
+        comment: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7A8.4 8.4 0 0 1 4 11.5a8.5 8.5 0 1 1 17 0z"></path></svg>',
+        task: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>',
+        doc: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"></path><path d="M14 2v5a2 2 0 0 0 2 2h4"></path><path d="M8 13h8"></path><path d="M8 17h5"></path></svg>',
+        report: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"></path><path d="M7 16l4-5 4 3 5-8"></path></svg>',
+        flow: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="3"></circle><circle cx="18" cy="18" r="3"></circle><path d="M9 6h3a6 6 0 0 1 6 6v3"></path></svg>',
+        calendar: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 2v4"></path><path d="M16 2v4"></path><rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M3 10h18"></path><path d="M8 14h.01"></path><path d="M12 14h.01"></path><path d="M16 14h.01"></path></svg>',
+        activity: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12h-4l-3 8-6-16-3 8H2"></path></svg>',
+      };
+      return icons[icon] || icons.activity;
+    },
+
+    async openAttentionItem(item) {
+      if (!item) return;
+      if (item.section === 'approvals') {
+        this.activeApprovalId = item.recordId;
+        this.showApprovalDetail = true;
+        return;
+      }
+      await this.openStatusChange(item);
+    },
+
+    async openTimingItem(item) {
+      await this.openStatusChange(item);
+    },
+
+    formatRelativeTime(iso) {
+      if (!iso) return '';
+      const ts = Date.parse(iso);
+      if (!Number.isFinite(ts)) return '';
+      const diffSec = Math.max(1, Math.floor((Date.now() - ts) / 1000));
+      if (diffSec < 60) return `${diffSec}s ago`;
+      if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+      if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+      return `${Math.floor(diffSec / 86400)}d ago`;
+    },
+
+    async openStatusChange(item) {
+      if (!item) return;
+      if (item.section === 'status') {
+        this.navSection = 'status';
+        this.mobileNavOpen = false;
+        if (item.boardScopeId) {
+          this.selectedBoardId = item.boardScopeId;
+          this.persistSelectedBoardId(this.selectedBoardId);
+          this.validateSelectedBoardId();
+        }
+        this.startWorkspaceLiveQueries();
+        this.syncRoute();
+        if (item.recordId) this.openReportModalById(item.recordId);
+        return;
+      }
+      if (item.section === 'docs') {
+        this.navSection = 'docs';
+        this.mobileNavOpen = false;
+        if (item.docType === 'directory') {
+          this.navigateToFolder(item.recordId);
+        } else if (item.recordId) {
+          this.selectedDocCommentId = item.focusRecordId ?? null;
+          this.openDoc(item.recordId);
+        }
+        return;
+      }
+      if (item.section === 'tasks') {
+        this.navSection = 'tasks';
+        this.mobileNavOpen = false;
+        this.selectedBoardId = item.boardScopeId ?? this.preferredTaskBoardId;
+        this.persistSelectedBoardId(this.selectedBoardId);
+        this.validateSelectedBoardId();
+        this.normalizeTaskFilterTags();
+        if (item.recordId) {
+          this.openTaskDetail(item.recordId);
+        } else {
+          this.syncRoute();
+        }
+        return;
+      }
+      if (item.section === 'schedules') {
+        this.navSection = 'settings';
+        this.settingsTab = 'schedules';
+        this.mobileNavOpen = false;
+        this.startWorkspaceLiveQueries();
+        if (item.recordId) this.startEditSchedule(item.recordId);
+        else this.syncRoute();
+        return;
+      }
+      if (item.section === 'scopes') {
+        this.navSection = 'settings';
+        this.settingsTab = 'scopes';
+        this.mobileNavOpen = false;
+        this.startWorkspaceLiveQueries();
+        this.syncRoute();
+        this.$nextTick(() => {
+          this.scopeNavFocus = item.recordId;
+          document.getElementById('scope-' + item.recordId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+        return;
+      }
+      if (item.section === 'flows') {
+        this.navSection = 'settings';
+        this.settingsTab = 'flows';
+        this.mobileNavOpen = false;
+        if (item.boardScopeId) {
+          this.selectedBoardId = item.boardScopeId;
+          this.persistSelectedBoardId(this.selectedBoardId);
+          this.validateSelectedBoardId();
+        }
+        this.startWorkspaceLiveQueries();
+        await this.refreshFlows();
+        await this.refreshApprovals();
+        if (item.recordId) this.openFlowEditor(item.recordId);
+        else this.syncRoute();
+        return;
+      }
+      if (item.section !== 'chat') return;
+      this.focusMessageId = item.focusRecordId ?? item.recordId ?? null;
+      this.navSection = 'chat';
+      this.mobileNavOpen = false;
+      this.startWorkspaceLiveQueries();
+      if (item.channelId) {
+        await this.selectChannel(item.channelId);
+      }
+      if (item.threadId) {
+        this.openThread(item.threadId, { scrollToLatest: false });
+      } else {
+        this.closeThread();
+      }
+    },
+
+    isFocusedMessage(recordId) {
+      return this.focusMessageId === recordId;
+    },
+
+    // getCachedPerson, getSenderName, getSenderIdentity, getSenderAvatar — in peopleProfilesManagerMixin
+
+    getShortNpub(npub) {
+      return getShortNpub(npub);
+    },
+
+    getInitials(label) {
+      return getInitials(label);
+    },
+
+    getChannelLabel(channel) {
+      return resolveChannelLabel(channel, {
+        sessionNpub: this.session?.npub || null,
+        getParticipants: (candidate) => this.getChannelParticipants(candidate),
+        getSenderName: (npub) => this.getSenderName(npub),
+      });
+    },
+
+    getChannelParticipants(channel) {
+      if (!channel) return [];
+      const direct = Array.isArray(channel.participant_npubs)
+        ? channel.participant_npubs.filter(Boolean)
+        : [];
+      if (direct.length > 1) return [...new Set(direct)];
+
+      const derived = new Set(direct);
+      for (const groupId of channel.group_ids ?? []) {
+        const group = this.groups.find((candidate) =>
+          candidate.group_npub === groupId || candidate.group_id === groupId
+        );
+        for (const member of group?.member_npubs ?? []) {
+          derived.add(member);
+        }
+      }
+      return [...derived];
+    },
+
+    // rememberPeople, resolveChatProfile — in peopleProfilesManagerMixin
+
+    // --- tasks ---
+
+    async applyTasks(tasks = []) {
+      const pendingWrites = await getPendingWrites().catch(() => null);
+      const normalizedTasks = [];
+      for (const task of (Array.isArray(tasks) ? tasks : [])) {
+        const normalizedGroups = this.normalizeTaskRowGroupRefs(task);
+        let normalized = this.normalizeTaskRowScopeRefs(normalizedGroups);
+        if (
+          Array.isArray(pendingWrites)
+          && String(normalized?.sync_status || '').trim() === 'pending'
+          && !hasPendingRecordWrite(pendingWrites, normalized?.record_id, taskFamilyHash('task'))
+        ) {
+          normalized = markTaskEditSyncedAfterAcceptedFlush(normalized, pendingWrites, taskFamilyHash('task')) || normalized;
+        }
+        normalizedTasks.push(normalized);
+      }
+      const dedupedTasks = dedupeTasksByRecordId(normalizedTasks);
+      const hydratedTasks = typeof this.hydrateTasksWithOpportunityLinks === 'function'
+        ? this.hydrateTasksWithOpportunityLinks(dedupedTasks)
+        : dedupedTasks;
+      if (!sameListBySignature(this.tasks, hydratedTasks, (task) => [
+        String(task?.record_id || ''),
+        String(task?.updated_at || ''),
+        String(task?.version ?? ''),
+        String(task?.record_state || ''),
+        String(task?.state || ''),
+        String(task?.board_order ?? ''),
+        String(task?.sync_status || ''),
+      ].join('|'))) {
+        this.tasks = hydratedTasks;
+      }
+      // Resolve assignee profiles for display but do NOT write back to
+      // Dexie (address book) from a liveQuery handler — that creates a
+      // reactive cascade.  Profile resolution is fire-and-forget here.
+      const assignedNpubs = [...new Set(hydratedTasks.map((task) => task.assigned_to_npub).filter(Boolean))];
+      for (const npub of assignedNpubs) {
+        this.resolveChatProfile(npub);
+      }
+      this.selectedTaskIds = this.selectedTaskIds.filter((taskId) =>
+        hydratedTasks.some((task) => task.record_id === taskId && task.record_state !== 'deleted' && !this.isParentTask(taskId))
+      );
+      this.normalizeTaskFilterTags();
+      this.updatePageTitle();
+    },
+
+    async refreshTasks() {
+      const ownerNpub = this.workspaceOwnerNpub;
+      if (!ownerNpub) return;
+      await this.applyTasks(await getTasksByOwner(ownerNpub));
+    },
+
+    async applySelectedTask(task = null) {
+      const recordId = String(this.activeTaskId || '').trim();
+      if (!recordId) return;
+
+      const nextTasks = this.tasks.filter((item) => item?.record_id !== recordId);
+      if (task && task.record_state !== 'deleted') {
+        nextTasks.push(task);
+      }
+      await this.applyTasks(nextTasks);
+
+      if (this.activeTaskId !== recordId) return;
+      const selectedTask = this.tasks.find((item) => item.record_id === recordId) || null;
+      this.editingTask = selectedTask ? toRaw(selectedTask) : null;
+      if (this.editingTask) {
+        const hasStoredRefs = Array.isArray(this.editingTask.references) && this.editingTask.references.length > 0;
+        if (!hasStoredRefs && this.editingTask.description) {
+          this.editingTask.references = parseReferencesFromDescription(this.editingTask.description);
+        }
+        this.editingTask.predecessor_task_ids = normalizePredecessorTaskIds(this.editingTask.predecessor_task_ids || [], this.editingTask.record_id);
+      }
+      if (this.editingTask?.assigned_to_npub) {
+        this.resolveChatProfile(this.editingTask.assigned_to_npub);
+      }
+      this.predecessorTaskQuery = '';
+      this.showPredecessorTaskPicker = false;
+      this.showTaskDetail = Boolean(selectedTask);
+      this.taskDescriptionEditing = !this.editingTask?.description;
+    },
+
+    formatScheduleDays(days = []) {
+      const list = Array.isArray(days) ? days : [];
+      if (list.length === 0 || list.length === 7) return 'Every day';
+      return list.join(', ');
+    },
+
+    toggleNewScheduleDay(day) {
+      if (this.newScheduleDays.includes(day)) {
+        this.newScheduleDays = this.newScheduleDays.filter((value) => value !== day);
+      } else {
+        this.newScheduleDays = [...this.newScheduleDays, day];
+      }
+    },
+
+    toggleEditingScheduleDay(day) {
+      if (!this.editingScheduleDraft) return;
+      const days = Array.isArray(this.editingScheduleDraft.days) ? this.editingScheduleDraft.days : [];
+      this.editingScheduleDraft.days = days.includes(day)
+        ? days.filter((value) => value !== day)
+        : [...days, day];
+    },
+
+    resetNewScheduleForm() {
+      this.newScheduleTitle = '';
+      this.newScheduleDescription = '';
+      this.newScheduleStart = '09:00';
+      this.newScheduleEnd = '10:00';
+      this.newScheduleDays = ['mon', 'tue', 'wed', 'thu', 'fri'];
+      this.newScheduleTimezone = 'Australia/Perth';
+      this.newScheduleRepeat = 'daily';
+      this.newScheduleAssignedGroupId = this.selectedBoardWriteGroup || this.scheduleAssignableGroups[0]?.groupId || null;
+      this.newScheduleGroupQuery = '';
+    },
+
+    openNewScheduleModal() {
+      this.error = null;
+      try {
+        this.cancelEditSchedule();
+        this.resetNewScheduleForm();
+        this.showNewScheduleModal = true;
+        if (typeof window !== 'undefined') {
+          window.requestAnimationFrame(() => {
+            const input = document.querySelector('[data-new-schedule-title-input]');
+            input?.focus();
+            input?.select?.();
+          });
+        }
+      } catch (error) {
+        this.showNewScheduleModal = false;
+        this.error = error?.message || 'Failed to open the new schedule form.';
+      }
+    },
+
+    closeNewScheduleModal() {
+      this.showNewScheduleModal = false;
+      this.resetNewScheduleForm();
+    },
+
+    handleNewScheduleGroupInput(value) {
+      this.newScheduleGroupQuery = value;
+    },
+
+    assignNewScheduleGroup(groupId) {
+      const nextGroupId = this.resolveGroupId(groupId);
+      this.newScheduleAssignedGroupId = nextGroupId || null;
+      this.newScheduleGroupQuery = '';
+    },
+
+    clearNewScheduleGroup() {
+      this.newScheduleAssignedGroupId = null;
+      this.newScheduleGroupQuery = '';
+    },
+
+    handleEditingScheduleGroupInput(value) {
+      this.editingScheduleGroupQuery = value;
+    },
+
+    assignEditingScheduleGroup(groupId) {
+      if (!this.editingScheduleDraft) return;
+      const nextGroupId = this.resolveGroupId(groupId);
+      this.editingScheduleDraft.assigned_group_id = nextGroupId || null;
+      this.editingScheduleGroupQuery = '';
+    },
+
+    clearEditingScheduleGroup() {
+      if (!this.editingScheduleDraft) return;
+      this.editingScheduleDraft.assigned_group_id = null;
+      this.editingScheduleGroupQuery = '';
+    },
+
+    async applySchedules(schedules = []) {
+      const normalizedSchedules = [];
+      for (const schedule of (Array.isArray(schedules) ? schedules : [])) {
+        const normalized = this.normalizeScheduleRowGroupRefs(schedule);
+        normalizedSchedules.push(normalized);
+      }
+      if (!sameListBySignature(this.schedules, normalizedSchedules)) {
+        this.schedules = normalizedSchedules;
+      }
+      this.updatePageTitle();
+    },
+
+    async refreshSchedules() {
+      const ownerNpub = this.workspaceOwnerNpub;
+      if (!ownerNpub) return;
+      await this.applySchedules(await getSchedulesByOwner(ownerNpub));
+    },
+
+    async addSchedule() {
+      const title = String(this.newScheduleTitle || '').trim();
+      if (!title) {
+        this.error = 'Schedule title is required.';
+        return;
+      }
+      if (!this.session?.npub) {
+        this.error = 'Sign in first.';
+        return;
+      }
+      this.error = null;
+      const ownerNpub = this.workspaceOwnerNpub;
+      const defaultScheduleGroupRef = this.getPreferredRecordWriteGroup({
+        group_ids: (this.currentWorkspaceContentGroups || []).map((group) => group.group_id || group.group_npub).filter(Boolean),
+      });
+      const groupId = this.resolveGroupId(
+        this.newScheduleAssignedGroupId
+        || this.selectedBoardWriteGroup
+        || defaultScheduleGroupRef
+        || this.groups[0]?.group_id
+        || this.groups[0]?.group_npub,
+      );
+      if (!groupId) {
+        this.error = 'Select a group for the schedule.';
+        return;
+      }
+      const now = new Date().toISOString();
+      const localRow = {
+        record_id: crypto.randomUUID(),
+        owner_npub: ownerNpub,
+        title,
+        description: String(this.newScheduleDescription || '').trim(),
+        time_start: this.newScheduleStart,
+        time_end: this.newScheduleEnd,
+        days: [...this.newScheduleDays],
+        timezone: this.newScheduleTimezone || 'Australia/Perth',
+        assigned_group_id: groupId,
+        active: true,
+        last_run: null,
+        repeat: this.newScheduleRepeat || 'daily',
+        shares: groupId ? [groupId] : [],
+        group_ids: groupId ? [groupId] : [],
+        sync_status: 'pending',
+        record_state: 'active',
+        version: 1,
+        created_at: now,
+        updated_at: now,
+      };
+
+      try {
+        await upsertSchedule(localRow);
+        this.schedules = [localRow, ...this.schedules];
+
+        const writeFields = await getRecordWriteFieldsForStore(this, localRow, {
+          label: 'Schedule write',
+          writeGroupRef: groupId,
+        });
+        const envelope = await outboundSchedule({
+          ...localRow,
+          group_ids: writeFields.group_ids,
+          signature_npub: this.signingNpub,
+          write_group_ref: writeFields.write_group_ref,
+        });
+        await addPendingWrite({
+          record_id: localRow.record_id,
+          record_family_hash: envelope.record_family_hash,
+          envelope,
+        });
+        await this.flushAndBackgroundSync();
+        await this.refreshSchedules();
+        this.resetNewScheduleForm();
+        this.showNewScheduleModal = false;
+      } catch (err) {
+        this.error = `Failed to create schedule: ${err.message}`;
+      }
+    },
+
+    async startEditSchedule(scheduleId) {
+      const schedule = this.schedules.find((item) => item.record_id === scheduleId);
+      if (!schedule) return;
+      this.editingScheduleId = scheduleId;
+      this.editingScheduleDraft = toRaw(schedule);
+      this.editingScheduleGroupQuery = '';
+      this.syncRoute();
+    },
+
+    cancelEditSchedule() {
+      this.editingScheduleId = null;
+      this.editingScheduleDraft = null;
+      this.editingScheduleGroupQuery = '';
+    },
+
+    async saveEditingSchedule() {
+      if (!this.editingScheduleDraft || !this.session?.npub) return;
+      this.error = null;
+      const current = await getScheduleById(this.editingScheduleDraft.record_id);
+      if (!current) {
+        this.error = 'Schedule not found.';
+        return;
+      }
+      const updated = toRaw({
+        ...current,
+        ...this.editingScheduleDraft,
+        days: [...(this.editingScheduleDraft.days || [])],
+        assigned_group_id: this.resolveGroupId(this.editingScheduleDraft.assigned_group_id),
+        group_ids: this.resolveGroupId(this.editingScheduleDraft.assigned_group_id)
+          ? [this.resolveGroupId(this.editingScheduleDraft.assigned_group_id)]
+          : [...(current.group_ids || [])],
+        shares: this.resolveGroupId(this.editingScheduleDraft.assigned_group_id)
+          ? [this.resolveGroupId(this.editingScheduleDraft.assigned_group_id)]
+          : [...(current.shares || [])],
+        version: (current.version ?? 1) + 1,
+        sync_status: 'pending',
+        updated_at: new Date().toISOString(),
+      });
+      const writeFields = await getRecordWriteFieldsForStore(this, updated, {
+        label: 'Schedule write',
+        writeGroupRef: updated.assigned_group_id
+          || this.getPreferredRecordWriteGroup(updated)
+          || current.group_ids?.[0]
+          || null,
+      });
+      if (!writeFields.write_group_ref) {
+        this.error = 'Schedule is missing a writable group.';
+        return;
+      }
+      try {
+        await upsertSchedule(updated);
+        this.schedules = this.schedules.map((item) => item.record_id === updated.record_id ? updated : item);
+        this.editingScheduleDraft = toRaw(updated);
+
+        const envelope = await outboundSchedule({
+          ...updated,
+          group_ids: writeFields.group_ids,
+          previous_version: current.version ?? 1,
+          signature_npub: this.signingNpub,
+          write_group_ref: writeFields.write_group_ref,
+        });
+        await addPendingWrite({
+          record_id: updated.record_id,
+          record_family_hash: envelope.record_family_hash,
+          envelope,
+        });
+        await this.flushAndBackgroundSync();
+        await this.refreshSchedules();
+        this.cancelEditSchedule();
+      } catch (err) {
+        this.error = `Failed to save schedule: ${err.message}`;
+      }
+    },
+
+    async toggleSchedule(scheduleId) {
+      const schedule = this.schedules.find((item) => item.record_id === scheduleId);
+      if (!schedule) return;
+      this.editingScheduleDraft = toRaw({
+        ...schedule,
+        active: !schedule.active,
+      });
+      try {
+        await this.saveEditingSchedule();
+      } catch (err) {
+        this.error = `Failed to toggle schedule: ${err.message}`;
+      }
+      if (this.editingScheduleId !== scheduleId) this.cancelEditSchedule();
+    },
+
+    async deleteSchedule(scheduleId) {
+      const schedule = this.schedules.find((item) => item.record_id === scheduleId);
+      if (!schedule || !this.session?.npub) return;
+      const updated = toRaw({
+        ...schedule,
+        record_state: 'deleted',
+        version: (schedule.version ?? 1) + 1,
+        sync_status: 'pending',
+        updated_at: new Date().toISOString(),
+      });
+      try {
+        await upsertSchedule(updated);
+        this.schedules = this.schedules.filter((item) => item.record_id !== scheduleId);
+        if (this.editingScheduleId === scheduleId) this.cancelEditSchedule();
+
+        const writeFields = await getRecordWriteFieldsForStore(this, updated, {
+          label: 'Schedule delete',
+        });
+        const envelope = await outboundSchedule({
+          ...updated,
+          group_ids: writeFields.group_ids,
+          previous_version: schedule.version ?? 1,
+          signature_npub: this.signingNpub,
+          write_group_ref: writeFields.write_group_ref,
+        });
+        await addPendingWrite({
+          record_id: updated.record_id,
+          record_family_hash: envelope.record_family_hash,
+          envelope,
+        });
+        await this.flushAndBackgroundSync();
+      } catch (err) {
+        this.error = `Failed to delete schedule: ${err.message}`;
+      }
+    },
+
+    async addTask(options = {}) {
+      const title = String(this.newTaskTitle || '').trim();
+      if (!title || !this.session?.npub) return null;
+      const description = String(options.description || '').trim();
+      const targetScopeId = String(options.scopeId || this.selectedBoardId || '').trim();
+      if (!targetScopeId) {
+        this.error = 'Select a scope board first.';
+        return null;
+      }
+      const now = new Date().toISOString();
+      const recordId = crypto.randomUUID();
+      const ownerNpub = this.workspaceOwnerNpub;
+      const assignment = this.buildTaskBoardAssignment(targetScopeId);
+      if (targetScopeId !== UNSCOPED_TASK_BOARD_ID && !assignment.scope_id) {
+        this.error = 'Select a valid scope board first.';
+        return null;
+      }
+
+      const explicitReferences = Array.isArray(options.references) ? options.references : [];
+      const flowLinkage = resolveFlowLinkage({
+        title,
+        description,
+        references: [
+          ...parseReferencesFromDescription(description),
+          ...explicitReferences,
+        ],
+        flows: (this.flows || []).filter(f => f.record_state !== 'deleted'),
+      });
+      const dispatchAssigneeNpub = resolveFlowDispatchAssignee({
+        flowId: flowLinkage.flow_id,
+        flowRunId: flowLinkage.flow_run_id,
+        defaultAgentNpub: this.defaultAgentNpub,
+        botNpub: this.botNpub,
+      });
+      const hasExplicitAssignee = Object.prototype.hasOwnProperty.call(options, 'assignedToNpub');
+
+      const localRow = {
+        record_id: recordId,
+        owner_npub: ownerNpub,
+        title,
+        description,
+        state: String(options.state || 'new').trim() || 'new',
+        priority: String(options.priority || 'sand').trim() || 'sand',
+        board_order: Number.isFinite(Number(options.boardOrder ?? options.board_order))
+          ? Number(options.boardOrder ?? options.board_order)
+          : null,
+        parent_task_id: null,
+        ...assignment,
+        assigned_to_npub: hasExplicitAssignee ? (options.assignedToNpub || null) : dispatchAssigneeNpub,
+        scheduled_for: null,
+        tags: '',
+        predecessor_task_ids: null,
+        flow_id: flowLinkage.flow_id,
+        flow_run_id: flowLinkage.flow_run_id,
+        flow_step: flowLinkage.flow_step,
+        source_links: Array.isArray(options.sourceLinks) ? options.sourceLinks : [],
+        references: flowLinkage.references,
+        deliverable_links: Array.isArray(options.deliverableLinks) ? options.deliverableLinks : [],
+        sync_status: 'pending',
+        record_state: 'active',
+        version: 1,
+        created_at: now,
+        updated_at: now,
+      };
+
+      await upsertTask(localRow);
+      this.tasks = mergeTaskIntoList(this.tasks, localRow);
+      this.newTaskTitle = '';
+
+      const taskWriteFields = await this.getTaskWriteFieldsForWrite(localRow);
+      const envelope = await outboundTask({
+        ...localRow,
+        group_ids: taskWriteFields.group_ids,
+        signature_npub: this.signingNpub,
+        write_group_ref: taskWriteFields.write_group_ref,
+      });
+      await addPendingWrite({
+        record_id: recordId,
+        record_family_hash: envelope.record_family_hash,
+        envelope,
+      });
+      let createdTask = localRow;
+      const flushResult = await this.flushAndBackgroundSync();
+      if ((flushResult?.pushed ?? 0) > 0) {
+        const pendingWrites = await getPendingWrites();
+        const acceptedTask = markTaskEditSyncedAfterAcceptedFlush(localRow, pendingWrites, taskFamilyHash('task'));
+        if (acceptedTask) {
+          await upsertTask(acceptedTask);
+          this.tasks = this.tasks.map((task) => task.record_id === acceptedTask.record_id ? acceptedTask : task);
+          createdTask = acceptedTask;
+        }
+      }
+      await this.refreshTasks();
+      return createdTask;
+    },
+
+    getTaskDetailCheckoutPolicyConfig() {
+      const baseConfig = this.recordCheckoutPolicyConfig || {};
+      return {
+        recordFamilyHashes: {
+          ...(baseConfig.recordFamilyHashes || {}),
+        },
+        familySuffixes: {
+          ...(baseConfig.familySuffixes || {}),
+          task: 'checkout_required',
+        },
+      };
+    },
+
+    getCheckoutEditPolicyConfig(familySuffix) {
+      const suffix = String(familySuffix || '').trim();
+      const baseConfig = this.recordCheckoutPolicyConfig || {};
+      return {
+        recordFamilyHashes: {
+          ...(baseConfig.recordFamilyHashes || {}),
+        },
+        familySuffixes: {
+          ...(baseConfig.familySuffixes || {}),
+          ...(suffix ? { [suffix]: 'checkout_required' } : {}),
+        },
+      };
+    },
+
+    getTaskPatchCheckoutPolicyConfig(updatedTask, previousTask = null, options = {}) {
+      if (Object.prototype.hasOwnProperty.call(options, 'checkoutPolicyConfig') && options.checkoutPolicyConfig) {
+        return options.checkoutPolicyConfig;
+      }
+      return this.getTaskDetailCheckoutPolicyConfig();
+    },
+
+    async getEncryptableTaskGroupIdsForWrite(record = null) {
+      return getEncryptableRecordGroupRefsForStore(this, record, {
+        label: 'Task write',
+      });
+    },
+
+    async getTaskWriteFieldsForWrite(record = null, options = {}) {
+      return getRecordWriteFieldsForStore(this, record, {
+        ...options,
+        label: 'Task write',
+      });
+    },
+
+    async getTaskUpdateWriteFieldsForWrite(updatedTask, previousTask = null) {
+      const previousWriteGroupRef = previousTask?.record_id && Number(previousTask?.version ?? 0) > 0
+        ? this.getPreferredRecordWriteGroup(previousTask)
+        : null;
+      if (previousWriteGroupRef) {
+        const previousWriteFields = await this.getTaskWriteFieldsForWrite(updatedTask, {
+          writeGroupRef: previousWriteGroupRef,
+          allowedGroupIds: [previousWriteGroupRef],
+        });
+        if (previousWriteFields.write_group_ref) return previousWriteFields;
+      }
+      return this.getTaskWriteFieldsForWrite(updatedTask);
+    },
+
+    getPendingTaskWrites(pendingWrites = [], recordId) {
+      return getPendingRecordWrites(pendingWrites, recordId, taskFamilyHash('task'));
+    },
+
+    getPendingTaskBaseVersion(pendingWrites = [], recordId) {
+      return getPendingRecordBaseVersion(pendingWrites, recordId, taskFamilyHash('task'));
+    },
+
+    async replacePendingTaskWrites(recordId, pendingWrites = null) {
+      const rows = this.getPendingTaskWrites(
+        Array.isArray(pendingWrites) ? pendingWrites : await getPendingWrites(),
+        recordId,
+      );
+      await Promise.all(rows
+        .filter((row) => row?.row_id != null)
+        .map((row) => removePendingWrite(row.row_id)));
+    },
+
+    isTaskDetailEditing() {
+      return this.taskDetailMode === 'edit';
+    },
+
+    // Task creates stay optimistic. Every existing-task mutation should use
+    // this helper so checkout, write groups, and pending-write semantics stay aligned.
+    async queueTaskWrite(updatedTask, previousTask, options = {}) {
+      const checkoutPolicyConfig = Object.prototype.hasOwnProperty.call(options, 'checkoutPolicyConfig')
+        ? options.checkoutPolicyConfig
+        : this.getTaskDetailCheckoutPolicyConfig();
+      const taskWriteFields = await this.getTaskUpdateWriteFieldsForWrite(updatedTask, previousTask);
+      const envelope = await outboundTask({
+        ...updatedTask,
+        group_ids: taskWriteFields.group_ids,
+        previous_version: previousTask?.version ?? 0,
+        signature_npub: this.signingNpub,
+        write_group_ref: taskWriteFields.write_group_ref,
+      });
+      let managedEnvelope = envelope;
+      let checkoutPrepareState = checkoutPolicyConfig ? 'ready' : null;
+      let checkoutPrepareError = null;
+      if (options.existingCheckout) {
+        managedEnvelope = { ...envelope, checkout: options.existingCheckout };
+      } else if (checkoutPolicyConfig && typeof this.attachCheckoutRequiredCheckoutToEnvelope === 'function') {
+        try {
+          managedEnvelope = await this.attachCheckoutRequiredCheckoutToEnvelope(updatedTask, envelope, {
+            intent: options.intent || 'edit',
+            checkoutPolicyConfig,
+          });
+        } catch (error) {
+          checkoutPrepareState = 'blocked';
+          checkoutPrepareError = error?.classification || error?.towerCode || error?.code || error?.message || 'checkout_failed';
+        }
+      }
+      const pendingWrite = {
+        record_id: updatedTask.record_id,
+        record_family_hash: managedEnvelope.record_family_hash,
+        envelope: managedEnvelope,
+      };
+      if (checkoutPolicyConfig) {
+        pendingWrite.checkout_policy_config = checkoutPolicyConfig;
+        pendingWrite.checkout_prepare_state = checkoutPrepareState;
+        if (checkoutPrepareError) pendingWrite.checkout_prepare_error = checkoutPrepareError;
+      }
+      await addPendingWrite(pendingWrite);
+    },
+
+    async applyTaskPatch(taskId, patch = {}, options = {}) {
+      const task = this.tasks.find((entry) => entry.record_id === taskId);
+      if (!task || !this.session?.npub) return null;
+
+      const nextVersion = (task.version ?? 1) + 1;
+      const updated = toRaw({
+        ...task,
+        ...patch,
+        assigned_to_npub: patch.assigned_to_npub === undefined ? (task.assigned_to_npub ?? null) : (patch.assigned_to_npub ?? null),
+        version: nextVersion,
+        sync_status: 'pending',
+        updated_at: new Date().toISOString(),
+      });
+
+      if (updated.state === 'done' || updated.state === 'archive') {
+        updated.assigned_to_npub = null;
+      }
+
+      await upsertTask(updated);
+      this.tasks = this.tasks.map((entry) => entry.record_id === taskId ? updated : entry);
+
+      if (this.editingTask?.record_id === taskId) {
+        this.editingTask = { ...updated };
+      }
+
+      const queueOptions = {
+        checkoutPolicyConfig: this.getTaskPatchCheckoutPolicyConfig(updated, task, options),
+      };
+      if (options.intent) queueOptions.intent = options.intent;
+      await this.queueTaskWrite(updated, task, queueOptions);
+
+      const newAssignee = updated.assigned_to_npub;
+      if (newAssignee && newAssignee !== task.assigned_to_npub) {
+        await this.rememberPeople([newAssignee], 'task-assignee');
+        for (const trigger of (this.workspaceTriggers || [])) {
+          if (!trigger.enabled || !trigger.botNpub || trigger.triggerType !== 'chat_bot_tagged') continue;
+          if (newAssignee === trigger.botNpub) {
+            this._checkTriggerRules('chat_bot_tagged', trigger.botPubkeyHex,
+              `Task assigned to bot: "${updated.title}" [${updated.state}]`);
+          }
+        }
+      }
+
+      if (options.sync !== false) {
+        await this.flushAndBackgroundSync();
+      }
+      if (options.refresh) {
+        await this.refreshTasks();
+      }
+      return updated;
+    },
+
+    async cascadeTaskScopeToSubtasks(parentTask, nextParentTask) {
+      const subtasks = this.tasks.filter((task) =>
+        task.parent_task_id === parentTask.record_id
+        && task.record_state !== 'deleted'
+      );
+      if (subtasks.length === 0) return 0;
+
+      const scopeRef = nextParentTask.scope_id
+        ?? nextParentTask.scope_l5_id
+        ?? nextParentTask.scope_l4_id
+        ?? nextParentTask.scope_l3_id
+        ?? nextParentTask.scope_l2_id
+        ?? nextParentTask.scope_l1_id
+        ?? null;
+      const assignment = this.buildTaskBoardAssignment(scopeRef, nextParentTask);
+
+      this.taskScopeCascadePending = true;
+      this.taskScopeCascadeMessage = `Updating ${subtasks.length} subtask${subtasks.length === 1 ? '' : 's'}…`;
+
+      const updates = new Map();
+      try {
+        for (const subtask of subtasks) {
+          const updatedSubtask = toRaw(buildCascadedSubtaskUpdate(subtask, assignment));
+          await upsertTask(updatedSubtask);
+          updates.set(updatedSubtask.record_id, updatedSubtask);
+          await this.queueTaskWrite(updatedSubtask, subtask);
+        }
+      } finally {
+        this.taskScopeCascadePending = false;
+      }
+
+      if (updates.size > 0) {
+        this.tasks = this.tasks.map((task) => updates.get(task.record_id) || task);
+      }
+      this.taskScopeCascadeMessage = `Updated ${updates.size} subtask${updates.size === 1 ? '' : 's'}.`;
+      if (typeof window !== 'undefined') {
+        window.setTimeout(() => {
+          if (!this.taskScopeCascadePending) this.taskScopeCascadeMessage = '';
+        }, 3000);
+      }
+      return updates.size;
+    },
+
+    async addSubtask(parentId) {
+      const title = String(this.newSubtaskTitle || '').trim();
+      if (!title || !this.session?.npub) return;
+
+      const parent = this.tasks.find(t => t.record_id === parentId);
+      if (parent && parent.parent_task_id) {
+        this.error = 'Cannot nest subtasks more than one level deep.';
+        return;
+      }
+
+      const now = new Date().toISOString();
+      const recordId = crypto.randomUUID();
+      const ownerNpub = this.workspaceOwnerNpub;
+
+      const localRow = {
+        record_id: recordId,
+        owner_npub: ownerNpub,
+        title,
+        description: '',
+        state: 'new',
+        priority: 'sand',
+        parent_task_id: parentId,
+        ...this.buildTaskBoardAssignment(parent?.scope_id ?? parent?.scope_l5_id ?? parent?.scope_l4_id ?? parent?.scope_l3_id ?? parent?.scope_l2_id ?? parent?.scope_l1_id ?? null, parent),
+        assigned_to_npub: null,
+        scheduled_for: null,
+        tags: '',
+        predecessor_task_ids: null,
+        source_links: [{ type: 'task', id: parentId }],
+        references: [],
+        deliverable_links: [],
+        sync_status: 'pending',
+        record_state: 'active',
+        version: 1,
+        created_at: now,
+        updated_at: now,
+      };
+
+      await upsertTask(localRow);
+      this.tasks = mergeTaskIntoList(this.tasks, localRow);
+      this.newSubtaskTitle = '';
+
+      const taskWriteFields = await this.getTaskWriteFieldsForWrite(localRow);
+      const envelope = await outboundTask({
+        ...localRow,
+        group_ids: taskWriteFields.group_ids,
+        signature_npub: this.signingNpub,
+        write_group_ref: taskWriteFields.write_group_ref,
+      });
+      await addPendingWrite({
+        record_id: recordId,
+        record_family_hash: envelope.record_family_hash,
+        envelope,
+      });
+      await this.flushAndBackgroundSync();
+      await this.refreshTasks();
+    },
+
+    async updateTaskField(taskId, field, value) {
+      await this.applyTaskPatch(taskId, { [field]: value }, { silent: true, sync: true });
+    },
+
+    getTaskDueTodayDateKey() {
+      return new Date().toISOString().slice(0, 10);
+    },
+
+    getTaskDueThisWeekDateKey() {
+      const today = new Date();
+      const dayOfWeek = today.getDay();
+      const daysUntilFriday = dayOfWeek <= 5 ? (5 - dayOfWeek) : 6;
+      const friday = new Date(today);
+      friday.setDate(today.getDate() + (daysUntilFriday === 0 ? 7 : daysUntilFriday));
+      return friday.toISOString().slice(0, 10);
+    },
+
+    buildTaskDetailQuickActionPatch(action) {
+      switch (action) {
+        case 'done':
+          return { state: 'done', assigned_to_npub: null };
+        case 'archive':
+          return { state: 'archive', assigned_to_npub: null };
+        case 'today':
+          return { scheduled_for: this.getTaskDueTodayDateKey() };
+        case 'this_week':
+          return { scheduled_for: this.getTaskDueThisWeekDateKey() };
+        default:
+          return null;
+      }
+    },
+
+    setTaskDueToday() {
+      if (!this.editingTask || !this.isTaskDetailEditing()) return;
+      this.editingTask.scheduled_for = this.getTaskDueTodayDateKey();
+    },
+
+    setTaskDueThisWeek() {
+      if (!this.editingTask || !this.isTaskDetailEditing()) return;
+      this.editingTask.scheduled_for = this.getTaskDueThisWeekDateKey();
+    },
+
+    async quickSetTaskState(state) {
+      if (!this.editingTask || !this.isTaskDetailEditing()) return;
+      this.editingTask.state = state;
+      this.editingTask.assigned_to_npub = null;
+    },
+
+    async applyTaskDetailQuickAction(action) {
+      if (!this.editingTask?.record_id || this.taskDetailSaving) return;
+
+      if (this.isTaskDetailEditing()) {
+        if (action === 'done' || action === 'archive') this.quickSetTaskState(action);
+        else if (action === 'today') this.setTaskDueToday();
+        else if (action === 'this_week') this.setTaskDueThisWeek();
+        return;
+      }
+
+      const patch = this.buildTaskDetailQuickActionPatch(action);
+      if (!patch) return;
+
+      const taskId = this.editingTask.record_id;
+      this.taskDetailSaving = true;
+      try {
+        const updated = await this.applyTaskPatch(taskId, patch, { sync: false, intent: `quick_${action}` });
+        await this.flushAndBackgroundSync();
+        await this.refreshTasks();
+        if (this.activeTaskId === taskId) {
+          const current = this.tasks.find((task) => task.record_id === taskId) || updated;
+          if (current) {
+            this.editingTask = { ...toRaw(current) };
+            this.editingTask.predecessor_task_ids = normalizePredecessorTaskIds(this.editingTask.predecessor_task_ids || [], this.editingTask.record_id);
+          }
+        }
+      } catch (error) {
+        this.error = error?.message || 'Failed to update task.';
+      } finally {
+        this.taskDetailSaving = false;
+      }
+    },
+
+    async enterTaskDetailEditMode() {
+      if (!this.editingTask || !this.session?.npub || this.taskDetailCheckoutPending) return false;
+      const task = this.tasks.find(t => t.record_id === this.editingTask.record_id);
+      if (!task) return false;
+      const pendingWrites = await getPendingWrites();
+      if (isTaskBlockedByPendingSave(task, pendingWrites, taskFamilyHash('task'))) {
+        this.error = 'This task has a pending save. Sync before editing it again.';
+        return false;
+      }
+      const pendingTaskWrites = this.getPendingTaskWrites(pendingWrites, task.record_id);
+      const taskForEdit = String(task.sync_status || '').trim() === 'pending'
+        && pendingTaskWrites.length === 0
+        ? markTaskEditSyncedAfterAcceptedFlush(task, pendingWrites, taskFamilyHash('task')) || task
+        : task;
+      if (taskForEdit !== task) {
+        await upsertTask(taskForEdit);
+        this.tasks = this.tasks.map(t => t.record_id === taskForEdit.record_id ? taskForEdit : t);
+      }
+      const checkoutPolicyConfig = this.getTaskDetailCheckoutPolicyConfig();
+      this.taskDetailCheckoutPending = true;
+      try {
+        if (pendingTaskWrites.length === 0) {
+          await this.ensureLockManagedCheckout(taskForEdit, taskFamilyHash('task'), {
+            intent: 'edit',
+            checkoutPolicyConfig,
+          });
+        }
+        this.taskEditOriginal = toRaw(taskForEdit);
+        this.editingTask = toRaw(taskForEdit);
+        this.editingTask.predecessor_task_ids = normalizePredecessorTaskIds(this.editingTask.predecessor_task_ids || [], this.editingTask.record_id);
+        this.taskDetailMode = 'edit';
+        this.taskDescriptionEditing = true;
+        this.error = '';
+        return true;
+      } catch (error) {
+        this.taskDetailMode = 'view';
+        this.taskDescriptionEditing = false;
+        if (error?.userMessage) this.error = error.userMessage;
+        return false;
+      } finally {
+        this.taskDetailCheckoutPending = false;
+      }
+    },
+
+    async cancelTaskDetailEdit(options = {}) {
+      if (!this.editingTask) return;
+      const task = this.tasks.find(t => t.record_id === this.editingTask.record_id) || this.taskEditOriginal;
+      const checkoutPolicyConfig = this.getTaskDetailCheckoutPolicyConfig();
+      if (task?.record_id) {
+        await this.releaseLockManagedCheckout(task, taskFamilyHash('task'), {
+          reportError: options.reportError === true,
+          force: true,
+          checkoutPolicyConfig,
+        });
+      }
+      const latest = task?.record_id ? this.tasks.find(t => t.record_id === task.record_id) || task : null;
+      this.editingTask = latest ? toRaw(latest) : null;
+      if (this.editingTask) {
+        this.editingTask.predecessor_task_ids = normalizePredecessorTaskIds(this.editingTask.predecessor_task_ids || [], this.editingTask.record_id);
+      }
+      this.taskEditOriginal = null;
+      this.taskDetailMode = 'view';
+      this.taskDescriptionEditing = false;
+      this.taskAssigneeQuery = '';
+      this.predecessorTaskQuery = '';
+      this.showPredecessorTaskPicker = false;
+      this.showFlowPicker = false;
+      this.closeScopePicker();
+    },
+
+    async saveEditingTask() {
+      if (!this.editingTask || !this.session?.npub) return;
+      if (!this.isTaskDetailEditing()) {
+        this.error = 'Click Edit before changing this task.';
+        return;
+      }
+      if (this.taskDetailSaving) return;
+      if (this.containsInlineImageUploadToken(this.editingTask.description)) {
+        this.error = 'Wait for image upload to finish.';
+        return;
+      }
+      const task = this.tasks.find(t => t.record_id === this.editingTask.record_id);
+      if (!task) return;
+      const pendingWritesBeforeSave = await getPendingWrites();
+      if (isTaskBlockedByPendingSave(task, pendingWritesBeforeSave, taskFamilyHash('task'))) {
+        this.error = 'This task has a pending save. Sync before saving it again.';
+        this.taskDetailMode = 'view';
+        this.taskEditOriginal = null;
+        this.taskDescriptionEditing = false;
+        return;
+      }
+      const pendingTaskWrites = this.getPendingTaskWrites(pendingWritesBeforeSave, task.record_id);
+      const pendingBaseVersion = this.getPendingTaskBaseVersion(pendingWritesBeforeSave, task.record_id);
+      const taskForSave = String(task.sync_status || '').trim() === 'pending'
+        && pendingTaskWrites.length === 0
+        ? markTaskEditSyncedAfterAcceptedFlush(task, pendingWritesBeforeSave, taskFamilyHash('task')) || task
+        : task;
+      if (taskForSave !== task) {
+        await upsertTask(taskForSave);
+        this.tasks = this.tasks.map(t => t.record_id === taskForSave.record_id ? taskForSave : t);
+      }
+      if (this.editingTask.state === 'done' || this.editingTask.state === 'archive') {
+        this.editingTask.assigned_to_npub = null;
+      }
+
+      const nextVersion = pendingBaseVersion == null
+        ? (taskForSave.version ?? 1) + 1
+        : pendingBaseVersion + 1;
+      const descRefs = parseReferencesFromDescription(this.editingTask.description);
+      const existingRecordLinks = buildRecordLinkPayload({
+        source_links: this.editingTask.source_links ?? taskForSave.source_links ?? [],
+        references: this.editingTask.references ?? taskForSave.references ?? [],
+        deliverable_links: this.editingTask.deliverable_links ?? taskForSave.deliverable_links ?? [],
+      });
+      const baseReferences = mergeRecordLinkLists(existingRecordLinks.references, descRefs);
+      const flowLinkage = resolveFlowLinkage({
+        title: this.editingTask.title,
+        description: this.editingTask.description,
+        references: baseReferences,
+        flows: (this.flows || []).filter(f => f.record_state !== 'deleted'),
+      });
+      const predecessorTaskIds = normalizePredecessorTaskIds(this.editingTask.predecessor_task_ids || [], this.editingTask.record_id);
+      const draft = toRaw({
+        ...taskForSave,
+        title: this.editingTask.title,
+        description: this.editingTask.description,
+        state: this.editingTask.state,
+        priority: this.editingTask.priority,
+        scheduled_for: this.editingTask.scheduled_for,
+        tags: this.editingTask.tags,
+        predecessor_task_ids: predecessorTaskIds.length > 0 ? predecessorTaskIds : null,
+        assigned_to_npub: this.editingTask.assigned_to_npub ?? null,
+        scope_id: this.editingTask.scope_id ?? null,
+        scope_l1_id: this.editingTask.scope_l1_id ?? null,
+        scope_l2_id: this.editingTask.scope_l2_id ?? null,
+        scope_l3_id: this.editingTask.scope_l3_id ?? null,
+        scope_l4_id: this.editingTask.scope_l4_id ?? null,
+        scope_l5_id: this.editingTask.scope_l5_id ?? null,
+        scope_policy_group_ids: this.editingTask.scope_policy_group_ids ?? taskForSave.scope_policy_group_ids ?? null,
+        board_group_id: this.editingTask.board_group_id ?? taskForSave.board_group_id ?? null,
+        shares: toRaw(this.editingTask.shares ?? taskForSave.shares ?? []),
+        group_ids: toRaw(this.editingTask.group_ids ?? taskForSave.group_ids ?? []),
+        flow_id: flowLinkage.flow_id ?? taskForSave.flow_id ?? null,
+        flow_run_id: flowLinkage.flow_run_id ?? taskForSave.flow_run_id ?? null,
+        flow_step: flowLinkage.flow_step ?? taskForSave.flow_step ?? null,
+        source_links: existingRecordLinks.source_links,
+        references: flowLinkage.references,
+        deliverable_links: existingRecordLinks.deliverable_links,
+      });
+      const scopePolicyPatch = draft.scope_id
+        ? (() => {
+          const previousScopeGroupIds = draft.scope_id !== taskForSave.scope_id && taskForSave.scope_id
+            ? this.getResolvedScopePolicyGroupIds(taskForSave.scope_id)
+            : [];
+          if (
+            draft.scope_id !== taskForSave.scope_id
+            || this.shouldRefreshScopedPolicy(draft, draft.scope_id, { allowLegacyGroupFallback: true })
+          ) {
+            return this.buildScopedPolicyRepairPatch(draft, {
+              scopeId: draft.scope_id,
+              previousScopeGroupIds,
+              includeBoardGroupId: true,
+              fallbackPolicyGroupIds: taskForSave.group_ids || [],
+            });
+          }
+          return {
+            scope_policy_group_ids: this.getResolvedScopePolicyGroupIds(draft.scope_id),
+            board_group_id: this.getPreferredRecordWriteGroup(draft),
+          };
+        })()
+        : {
+          scope_policy_group_ids: null,
+        };
+      const updated = toRaw({
+        ...draft,
+        ...scopePolicyPatch,
+        version: nextVersion,
+        sync_status: 'pending',
+        updated_at: new Date().toISOString(),
+      });
+
+      this.taskDetailSaving = true;
+      try {
+        const hasQueuedTaskWrite = pendingTaskWrites.length > 0;
+        const queuedCheckout = pendingTaskWrites.find((row) => row?.envelope?.checkout)?.envelope?.checkout || null;
+        const queuedCheckoutPolicyConfig = pendingTaskWrites.find((row) => row?.checkout_policy_config)?.checkout_policy_config || null;
+        const checkoutPolicyConfig = hasQueuedTaskWrite
+          ? queuedCheckoutPolicyConfig
+          : this.getTaskPatchCheckoutPolicyConfig(updated, taskForSave, { intent: 'edit' });
+        await upsertTask(updated);
+        this.tasks = this.tasks.map(t => t.record_id === updated.record_id ? updated : t);
+        this.editingTask = { ...updated };
+        this.editingTask.predecessor_task_ids = normalizePredecessorTaskIds(this.editingTask.predecessor_task_ids || [], this.editingTask.record_id);
+        if (this.activeTaskId === updated.record_id) this.scheduleStorageImageHydration();
+
+        if (hasQueuedTaskWrite) {
+          await this.replacePendingTaskWrites(updated.record_id, pendingWritesBeforeSave);
+        }
+        const previousTaskForWrite = pendingBaseVersion == null
+          ? taskForSave
+          : pendingBaseVersion > 0
+            ? { ...taskForSave, version: pendingBaseVersion }
+            : null;
+        await this.queueTaskWrite(updated, previousTaskForWrite, {
+          checkoutPolicyConfig,
+          existingCheckout: queuedCheckout,
+          intent: 'edit',
+        });
+        // Task checkout edits commit one task record. Subtask scope cascades
+        // need their own explicit transaction if we bring them back here.
+        if (updated.description && updated.description !== taskForSave.description) {
+          this._fireMentionTriggers(updated.description, `task "${updated.title}"`);
+        }
+        // Fire trigger when task is assigned to a bot
+        const newAssignee = updated.assigned_to_npub;
+        if (newAssignee && newAssignee !== taskForSave.assigned_to_npub) {
+          for (const trigger of (this.workspaceTriggers || [])) {
+            if (!trigger.enabled || !trigger.botNpub || trigger.triggerType !== 'chat_bot_tagged') continue;
+            if (newAssignee === trigger.botNpub) {
+              this._checkTriggerRules('chat_bot_tagged', trigger.botPubkeyHex,
+                `Task assigned to bot: "${updated.title}" [${updated.state}]`);
+            }
+          }
+        }
+        const flushResult = await this.flushAndBackgroundSync();
+        let pendingWrites = await getPendingWrites();
+        let acceptedTask = (flushResult?.pushed ?? 0) > 0
+          ? markTaskEditSyncedAfterAcceptedFlush(updated, pendingWrites, taskFamilyHash('task'))
+          : null;
+        if (!acceptedTask && typeof this.forceSyncPendingWriteTargets === 'function') {
+          const result = await this.forceSyncPendingWriteTargets([{
+            familyId: 'task',
+            recordId: updated.record_id,
+            label: updated.title || updated.record_id,
+          }]);
+          pendingWrites = await getPendingWrites();
+          if (result.synced > 0) {
+            const currentTask = this.tasks.find(t => t.record_id === updated.record_id) || updated;
+            acceptedTask = markTaskEditSyncedAfterAcceptedFlush(currentTask, pendingWrites, taskFamilyHash('task'));
+          }
+        }
+        if (acceptedTask) {
+          await upsertTask(acceptedTask);
+          this.tasks = this.tasks.map(t => t.record_id === acceptedTask.record_id ? acceptedTask : t);
+          this.editingTask = { ...acceptedTask };
+          this.editingTask.predecessor_task_ids = normalizePredecessorTaskIds(this.editingTask.predecessor_task_ids || [], this.editingTask.record_id);
+          this.clearLockManagedCheckoutSession(updated.record_id, taskFamilyHash('task'));
+          this.taskDetailMode = 'view';
+          this.taskEditOriginal = null;
+          this.taskDescriptionEditing = false;
+        } else if (hasQueuedTaskWrite) {
+          this.error = '';
+          this.taskDetailMode = 'view';
+          this.taskEditOriginal = null;
+          this.taskDescriptionEditing = false;
+        } else {
+          this.error = 'Task save is still pending. Sync before editing it again.';
+          this.taskDetailMode = 'view';
+          this.taskEditOriginal = null;
+          this.taskDescriptionEditing = false;
+        }
+        await this.refreshTasks();
+      } catch (error) {
+        this.error = error?.message || 'Failed to save task.';
+      } finally {
+        this.taskDetailSaving = false;
+      }
+    },
+
+    async deleteTask(taskId) {
+      const task = this.tasks.find(t => t.record_id === taskId);
+      if (!task || !this.session?.npub) return;
+
+      const subtasks = this.getSubtasks(taskId);
+      let deleteSubtasks = false;
+
+      if (subtasks.length > 0) {
+        const answer = window.confirm(`This task has ${subtasks.length} subtask${subtasks.length === 1 ? '' : 's'}. Also delete subtasks?`);
+        deleteSubtasks = answer;
+      } else {
+        if (!window.confirm('Delete this task?')) return;
+      }
+
+      // Delete the parent task
+      await this._softDeleteTask(task);
+
+      // Cascade to subtasks if confirmed
+      if (deleteSubtasks) {
+        for (const sub of subtasks) {
+          await this._softDeleteTask(sub);
+        }
+      }
+
+      if (this.activeTaskId === taskId) {
+        this.closeTaskDetail();
+      }
+
+      await this.flushAndBackgroundSync();
+    },
+
+    async _softDeleteTask(task) {
+      const nextVersion = (task.version ?? 1) + 1;
+      const updated = toRaw({
+        ...task,
+        record_state: 'deleted',
+        version: nextVersion,
+        sync_status: 'pending',
+        updated_at: new Date().toISOString(),
+      });
+
+      await upsertTask(updated);
+      this.tasks = this.tasks.filter(t => t.record_id !== task.record_id);
+
+      await this.queueTaskWrite(updated, task, { intent: 'delete' });
+    },
+
+    openTaskDetail(taskId, options = {}) {
+      this.activeTaskId = taskId;
+      const task = this.tasks.find(t => t.record_id === taskId);
+      this.editingTask = task ? toRaw(task) : null;
+      this.taskEditOriginal = this.editingTask ? toRaw(this.editingTask) : null;
+      this.taskDetailMode = 'view';
+      this.taskDetailSaving = false;
+      this.taskDetailCheckoutPending = false;
+      this.taskCommentsPanelExpanded = false;
+      if (this.editingTask) {
+        // Hydrate references from description for tasks that predate the feature
+        const hasStoredRefs = Array.isArray(this.editingTask.references) && this.editingTask.references.length > 0;
+        if (!hasStoredRefs && this.editingTask.description) {
+          this.editingTask.references = parseReferencesFromDescription(this.editingTask.description);
+        }
+        this.editingTask.predecessor_task_ids = normalizePredecessorTaskIds(this.editingTask.predecessor_task_ids || [], this.editingTask.record_id);
+      }
+      if (this.editingTask?.assigned_to_npub) {
+        this.resolveChatProfile(this.editingTask.assigned_to_npub);
+      }
+      this.taskAssigneeQuery = '';
+      this.predecessorTaskQuery = '';
+      this.showPredecessorTaskPicker = false;
+      this.showTaskDetail = true;
+      this.taskDescriptionEditing = false;
+      this.newSubtaskTitle = '';
+      this.newTaskCommentBody = '';
+      this.loadTaskComments(taskId);
+      this.scheduleStorageImageHydration();
+      this.markTaskRead(taskId);
+      if (options.syncRoute !== false) this.syncRoute();
+    },
+
+    async closeTaskDetail(options = {}) {
+      if (this.isTaskDetailEditing() && options.releaseCheckout !== false) {
+        await this.cancelTaskDetailEdit({ reportError: false });
+      }
+      this.stopTaskCommentsLiveQuery();
+      this.showTaskDetail = false;
+      this.activeTaskId = null;
+      this.editingTask = null;
+      this.taskEditOriginal = null;
+      this.taskDetailMode = 'view';
+      this.taskDetailSaving = false;
+      this.taskDetailCheckoutPending = false;
+      this.taskAssigneeQuery = '';
+      this.predecessorTaskQuery = '';
+      this.showPredecessorTaskPicker = false;
+      this.taskScopeCascadePending = false;
+      this.taskScopeCascadeMessage = '';
+      this.taskComments = [];
+      this.expandedTaskCommentIds = [];
+      this.truncatedTaskCommentIds = [];
+      this.taskCommentsPanelExpanded = false;
+      this.showFlowPicker = false;
+      if (options.syncRoute !== false) this.syncRoute();
+    },
+
+    async openChatTaskModal(taskId, options = {}) {
+      const recordId = String(taskId || '').trim();
+      if (!recordId) return;
+      let task = this.tasks.find((item) => item.record_id === recordId);
+      if (!task) {
+        task = await getTaskById(recordId);
+        if (task && task.record_state !== 'deleted') {
+          await this.applyTasks([
+            ...this.tasks.filter((item) => item.record_id !== recordId),
+            task,
+          ]);
+          task = this.tasks.find((item) => item.record_id === recordId) || task;
+        }
+      }
+      if (!task || task.record_state === 'deleted') {
+        this.error = 'Task is not available locally yet.';
+        return;
+      }
+      this.chatTaskModalTitle = options.title || task.title || 'Flight Deck task';
+      this.chatTaskModalFullScreen = false;
+      this.openTaskDetail(recordId, { syncRoute: false });
+      if (!this.editingTask) {
+        this.error = 'Task is not available locally yet.';
+        return;
+      }
+      this.chatTaskModalOpen = true;
+      this.mobileNavOpen = false;
+    },
+
+    async closeChatTaskModal() {
+      if (this.chatTaskModalOpen) {
+        await this.closeTaskDetail({ syncRoute: false });
+      }
+      this.chatTaskModalOpen = false;
+      this.chatTaskModalTitle = '';
+      this.chatTaskModalFullScreen = false;
+    },
+
+    toggleChatTaskModalFullScreen() {
+      if (!this.chatTaskModalOpen) return;
+      this.chatTaskModalFullScreen = !this.chatTaskModalFullScreen;
+    },
+
+    openChatTaskFullPage() {
+      const taskId = String(this.activeTaskId || '').trim();
+      if (!taskId) return;
+      this.chatTaskModalOpen = false;
+      this.chatTaskModalTitle = '';
+      this.chatTaskModalFullScreen = false;
+      this.navSection = 'tasks';
+      this.mobileNavOpen = false;
+      this.startWorkspaceLiveQueries();
+      this.openTaskDetail(taskId);
+    },
+
+    toggleTaskCommentsPanelExpanded() {
+      this.taskCommentsPanelExpanded = !this.taskCommentsPanelExpanded;
+    },
+
+    // --- task ↔ flow linkage helpers ---
+
+    getEditingTaskFlowInfo() {
+      if (!this.editingTask) return null;
+      return getTaskFlowInfo(
+        this.editingTask,
+        (this.flows || []).filter((f) => f.record_state !== 'deleted'),
+      );
+    },
+
+    findEditingTaskFlowRunStepTask(flowRunId, stepNumber) {
+      return findTaskForFlowRunStep(this.tasks, flowRunId, stepNumber);
+    },
+
+    openEditingTaskFlowRunStepTask(flowRunId, stepNumber) {
+      const task = this.findEditingTaskFlowRunStepTask(flowRunId, stepNumber);
+      if (task?.record_id) {
+        this.openTaskDetail(task.record_id);
+      }
+    },
+
+    async attachFlowToEditingTask(flowId) {
+      if (!this.editingTask || !this.isTaskDetailEditing()) return;
+      const patch = buildAttachFlowPatch(flowId, this.editingTask.references || []);
+      Object.assign(this.editingTask, patch);
+      this.showFlowPicker = false;
+    },
+
+    async detachFlowFromEditingTask() {
+      if (!this.editingTask || !this.isTaskDetailEditing()) return;
+      const patch = buildDetachFlowPatch(this.editingTask.references || []);
+      Object.assign(this.editingTask, patch);
+    },
+
+    handleTaskAssigneeInput(value) {
+      this.taskAssigneeQuery = value;
+      if (this.taskAssigneeQuery.startsWith('npub1') && this.taskAssigneeQuery.length >= 20) {
+        this.resolveChatProfile(this.taskAssigneeQuery);
+      }
+    },
+
+    getEditingTaskPredecessorRows() {
+      return getTaskPredecessorReferenceRows(this.editingTask, this.tasks);
+    },
+
+    getPredecessorTaskScopeMeta(task) {
+      if (!task?.record_id || task.missing_predecessor) return 'Missing task';
+      const relationship = describePredecessorRelationship(this.editingTask, task, this.scopesMap);
+      const scopeId = task.scope_id
+        ?? task.scope_l5_id
+        ?? task.scope_l4_id
+        ?? task.scope_l3_id
+        ?? task.scope_l2_id
+        ?? task.scope_l1_id
+        ?? null;
+      const scopeLabel = scopeId ? this.getScopeBreadcrumb(scopeId) : 'Unscoped';
+      return `${relationship} • ${scopeLabel}`;
+    },
+
+    getTaskScopeId(task) {
+      return task?.scope_id
+        ?? task?.scope_l5_id
+        ?? task?.scope_l4_id
+        ?? task?.scope_l3_id
+        ?? task?.scope_l2_id
+        ?? task?.scope_l1_id
+        ?? null;
+    },
+
+    getTaskScopeLevel(task) {
+      const scopeId = this.getTaskScopeId(task);
+      if (!scopeId) return '';
+      return this.scopesMap.get(scopeId)?.level || '';
+    },
+
+    getTaskScopeLabel(task) {
+      const scopeId = this.getTaskScopeId(task);
+      if (!scopeId) return 'Unscoped';
+      return this.getScopeBreadcrumb(scopeId) || this.scopesMap.get(scopeId)?.title || 'Scoped';
+    },
+
+    getTaskAssigneeLabel(task) {
+      const npub = String(task?.assigned_to_npub || '').trim();
+      if (!npub) return 'Unassigned';
+      return this.getSenderName(npub) || npub;
+    },
+
+    formatTaskPriority(priority) {
+      switch (String(priority || '').toLowerCase()) {
+        case 'rock': return 'Rock';
+        case 'pebble': return 'Pebble';
+        case 'sand': return 'Sand';
+        default: return 'Sand';
+      }
+    },
+
+    formatTaskDueDate(value) {
+      const raw = String(value || '').trim();
+      if (!raw) return 'No due date';
+      const [year, month, day] = raw.split('-').map((part) => Number(part));
+      if (!year || !month || !day) return raw;
+      const date = new Date(year, month - 1, day);
+      return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    },
+
+    get predecessorTaskSuggestions() {
+      if (!this.editingTask) return [];
+      return buildPredecessorTaskSuggestions(this.tasks, this.editingTask, this.scopesMap, {
+        query: this.predecessorTaskQuery,
+        excludedIds: this.editingTask.predecessor_task_ids || [],
+        scopeLabelForTask: (task) => {
+          const scopeId = task.scope_id
+            ?? task.scope_l5_id
+            ?? task.scope_l4_id
+            ?? task.scope_l3_id
+            ?? task.scope_l2_id
+            ?? task.scope_l1_id
+            ?? null;
+          return scopeId ? this.getScopeBreadcrumb(scopeId) : 'Unscoped';
+        },
+      });
+    },
+
+    openPredecessorTaskPicker() {
+      this.showPredecessorTaskPicker = true;
+    },
+
+    closePredecessorTaskPicker() {
+      this.showPredecessorTaskPicker = false;
+      this.predecessorTaskQuery = '';
+    },
+
+    handlePredecessorTaskInput(value) {
+      this.predecessorTaskQuery = value;
+      this.showPredecessorTaskPicker = true;
+    },
+
+    async addEditingTaskPredecessor(taskId) {
+      if (!this.editingTask || !this.session?.npub || !this.isTaskDetailEditing()) return;
+      this.editingTask.predecessor_task_ids = normalizePredecessorTaskIds([
+        ...(this.editingTask.predecessor_task_ids || []),
+        taskId,
+      ], this.editingTask.record_id);
+      this.predecessorTaskQuery = '';
+      this.showPredecessorTaskPicker = false;
+    },
+
+    async removeEditingTaskPredecessor(taskId) {
+      if (!this.editingTask || !this.session?.npub || !this.isTaskDetailEditing()) return;
+      this.editingTask.predecessor_task_ids = normalizePredecessorTaskIds(
+        (this.editingTask.predecessor_task_ids || []).filter((candidate) => candidate !== taskId),
+        this.editingTask.record_id,
+      );
+    },
+
+    async assignEditingTask(npub) {
+      if (!this.editingTask || !this.session?.npub || !this.isTaskDetailEditing()) return;
+      const nextNpub = String(npub || '').trim();
+      this.editingTask.assigned_to_npub = nextNpub || null;
+      this.taskAssigneeQuery = '';
+      if (nextNpub) {
+        await this.rememberPeople([nextNpub], 'task-assignee');
+      }
+    },
+
+    async clearEditingTaskAssignee() {
+      await this.assignEditingTask(null);
+    },
+
+    async doTaskWithDefaultAgent() {
+      if (!this.editingTask || !this.defaultAgentNpub || !this.session?.npub || !this.isTaskDetailEditing()) return;
+      this.editingTask.assigned_to_npub = this.defaultAgentNpub;
+      this.editingTask.state = 'ready';
+      this.taskAssigneeQuery = '';
+      this.rememberPeople([this.defaultAgentNpub], 'task-assignee');
+    },
+
+    buildTaskUrl(taskId) {
+      if (typeof window === 'undefined') return '';
+      const task = this.tasks.find((item) => item.record_id === taskId);
+      const scopeId = task?.scope_id ?? task?.scope_l5_id ?? task?.scope_l4_id ?? task?.scope_l3_id ?? task?.scope_l2_id ?? task?.scope_l1_id ?? this.selectedBoardId ?? null;
+      const currentRoute = parseRouteLocation(window.location.href);
+      const workspaceSlug = this.currentWorkspaceSlug || currentRoute.workspaceSlug || null;
+      const workspaceKey = this.currentWorkspaceKey || currentRoute.params?.workspacekey || null;
+      const href = buildSectionUrl({
+        workspaceSlug,
+        section: 'tasks',
+        scopeid: scopeId,
+        params: {
+          taskid: taskId,
+          workspacekey: workspaceKey,
+        },
+      });
+      return new URL(href, window.location.origin).toString();
+    },
+
+    async copyTaskLink(taskId) {
+      if (!taskId || typeof window === 'undefined') return;
+      const url = this.buildTaskUrl(taskId);
+      try {
+        if (navigator?.clipboard?.writeText) {
+          await navigator.clipboard.writeText(url);
+        } else {
+          const input = document.createElement('input');
+          input.value = url;
+          document.body.appendChild(input);
+          input.select();
+          document.execCommand('copy');
+          input.remove();
+        }
+        this.copiedTaskLinkId = taskId;
+        window.setTimeout(() => {
+          if (this.copiedTaskLinkId === taskId) this.copiedTaskLinkId = null;
+        }, 1800);
+      } catch {
+        this.error = 'Could not copy task link.';
+      }
+    },
+
+    async loadTaskComments(taskId) {
+      if (!taskId) {
+        this.applyTaskComments([]);
+        return;
+      }
+      this.startTaskCommentsLiveQuery();
+      await this.applyTaskComments(await getCommentsByTarget(taskId));
+    },
+
+    isTaskCommentExpanded(recordId) {
+      return hasPreviewId(this.expandedTaskCommentIds, recordId);
+    },
+
+    isTaskCommentTruncated(recordId) {
+      return hasPreviewId(this.truncatedTaskCommentIds, recordId);
+    },
+
+    toggleTaskCommentExpanded(recordId) {
+      if (!recordId) return;
+      this.expandedTaskCommentIds = togglePreviewId(this.expandedTaskCommentIds, recordId);
+      this.scheduleTaskCommentPreviewMeasurement();
+    },
+
+    syncTaskCommentPreviewState(comments = this.taskComments) {
+      const validIds = new Set((Array.isArray(comments) ? comments : []).map((comment) => comment.record_id));
+      const nextState = prunePreviewState({
+        expandedIds: this.expandedTaskCommentIds,
+        truncatedIds: this.truncatedTaskCommentIds,
+        validIds,
+      });
+      this.expandedTaskCommentIds = nextState.expandedIds;
+      this.truncatedTaskCommentIds = nextState.truncatedIds;
+    },
+
+    scheduleTaskCommentPreviewMeasurement() {
+      schedulePreviewMeasurement({
+        getFrameId: () => this.taskCommentPreviewMeasureFrame,
+        setFrameId: (frameId) => { this.taskCommentPreviewMeasureFrame = frameId; },
+        setTruncatedIds: (ids) => { this.truncatedTaskCommentIds = ids; },
+        selector: '[data-task-comment-preview-id]',
+        idDatasetKey: 'taskCommentPreviewId',
+        maxLinesDatasetKey: 'taskCommentPreviewMaxLines',
+        defaultMaxLines: this.TASK_COMMENT_PREVIEW_MAX_LINES,
+      });
+    },
+
+    async applyTaskComments(comments = []) {
+      const nextComments = Array.isArray(comments) ? comments : [];
+      if (!sameListBySignature(this.taskComments, nextComments, (comment) => [
+        String(comment?.record_id || ''),
+        String(comment?.updated_at || ''),
+        String(comment?.version ?? ''),
+        String(comment?.record_state || ''),
+      ].join('|'))) {
+        this.taskComments = nextComments;
+      }
+
+      for (const comment of nextComments) {
+        await this.rememberPeople([comment.sender_npub], 'task-comment');
+      }
+      this.syncTaskCommentPreviewState(nextComments);
+      this.scheduleTaskCommentPreviewMeasurement();
+      this.scheduleStorageImageHydration();
+      if (typeof this.refreshReactionsForVisibleTargets === 'function') {
+        this.refreshReactionsForVisibleTargets().catch(() => {});
+      }
+    },
+
+    async addTaskComment(taskId) {
+      const body = String(this.newTaskCommentBody || '').trim();
+      const drafts = [...this.taskCommentAudioDrafts];
+      if (this.containsInlineImageUploadToken(body)) {
+        this.error = 'Wait for image upload to finish.';
+        return;
+      }
+      if ((!body && drafts.length === 0) || !taskId || !this.session?.npub) return;
+
+      const task = this.tasks.find(t => t.record_id === taskId);
+      const now = new Date().toISOString();
+      const recordId = crypto.randomUUID();
+      const ownerNpub = this.workspaceOwnerNpub;
+      const taskWriteFields = await this.getTaskWriteFieldsForWrite(task);
+      const { attachments } = await this.materializeAudioDrafts({
+        drafts,
+        target_record_id: recordId,
+        target_record_family_hash: recordFamilyHash('comment'),
+        target_group_ids: taskWriteFields.group_ids,
+        write_group_ref: taskWriteFields.write_group_ref,
+      });
+
+      const localRow = {
+        record_id: recordId,
+        owner_npub: ownerNpub,
+        target_record_id: taskId,
+        target_record_family_hash: taskFamilyHash('task'),
+        parent_comment_id: null,
+        body,
+        attachments,
+        sender_npub: this.session.npub,
+        record_state: 'active',
+        version: 1,
+        created_at: now,
+        updated_at: now,
+      };
+
+      await upsertComment(localRow);
+      this.taskComments = [localRow, ...this.taskComments];
+      this.syncTaskCommentPreviewState();
+      this.newTaskCommentBody = '';
+      this.taskCommentAudioDrafts = [];
+      this.scheduleTaskCommentPreviewMeasurement();
+      this.scheduleStorageImageHydration();
+
+      const envelope = await outboundComment({
+        ...localRow,
+        target_group_ids: taskWriteFields.group_ids,
+        signature_npub: this.signingNpub,
+        write_group_ref: taskWriteFields.write_group_ref,
+      });
+      await addPendingWrite({
+        record_id: recordId,
+        record_family_hash: envelope.record_family_hash,
+        envelope,
+      });
+      this._fireMentionTriggers(body, `task comment on "${task?.title || taskId}"`);
+      await this.flushAndBackgroundSync();
+    },
+
+    // --- Scope management (extracted to scopes-manager.js) ---
+    // scopesManagerMixin applied via applyMixins (has getters)
+
+    // task board drag-drop
+
+    handleTaskDragStart(e, taskId) {
+      if (this.isParentTask(taskId)) {
+        e.preventDefault();
+        return;
+      }
+      this._dragTaskId = taskId;
+      this._taskWasDragged = true;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', taskId);
+      e.target.classList.add('dragging');
+    },
+
+    handleTaskDragEnd(e) {
+      this._dragTaskId = null;
+      e.target.classList.remove('dragging');
+      document.querySelectorAll('.kanban-column-body.drag-over').forEach(el => el.classList.remove('drag-over'));
+      this.clearTaskCardDropClasses();
+    },
+
+    handleTaskDragOver(e, targetState) {
+      e.dataTransfer.dropEffect = 'move';
+      e.currentTarget.classList.add('drag-over');
+    },
+
+    handleTaskDragLeave(e) {
+      if (!e.currentTarget.contains(e.relatedTarget)) {
+        e.currentTarget.classList.remove('drag-over');
+      }
+    },
+
+    clearTaskCardDropClasses() {
+      if (typeof document === 'undefined') return;
+      document.querySelectorAll('.kanban-card-drop-before, .kanban-card-drop-after').forEach((el) => {
+        el.classList.remove('kanban-card-drop-before', 'kanban-card-drop-after');
+      });
+    },
+
+    getTaskCardDropPosition(event) {
+      const rect = event?.currentTarget?.getBoundingClientRect?.();
+      if (!rect) return 'after';
+      const midpoint = rect.top + (rect.height / 2);
+      return event.clientY < midpoint ? 'before' : 'after';
+    },
+
+    handleTaskCardDragOver(event, targetState) {
+      if (!this._dragTaskId || targetState === 'summary') return;
+      event.dataTransfer.dropEffect = 'move';
+      this.clearTaskCardDropClasses();
+      const position = this.getTaskCardDropPosition(event);
+      event.currentTarget.classList.add(position === 'before' ? 'kanban-card-drop-before' : 'kanban-card-drop-after');
+    },
+
+    handleTaskCardDragLeave(event) {
+      event.currentTarget.classList.remove('kanban-card-drop-before', 'kanban-card-drop-after');
+    },
+
+    getTaskColumnTasksForReorder(targetState) {
+      const column = this.boardColumns.find((candidate) => candidate.state === targetState);
+      return column?.tasks || [];
+    },
+
+    calculateTaskBoardOrderForDrop(taskId, targetState, targetTaskId = null, position = 'end') {
+      return calculateTaskBoardOrderForInsertion(this.getTaskColumnTasksForReorder(targetState), {
+        taskId,
+        targetTaskId,
+        position,
+      });
+    },
+
+    async handleTaskDrop(e, targetState, targetTaskId = null, position = 'end') {
+      e.currentTarget.classList.remove('drag-over');
+      this.clearTaskCardDropClasses();
+      if (targetState === 'summary') return;
+      const taskId = getTaskDropRecordId(e, this._dragTaskId);
+      if (!taskId) return;
+      const task = this.tasks.find(t => t.record_id === taskId);
+      if (!task) return;
+      if (this.isParentTask(taskId)) return;
+      if (taskId === targetTaskId && task.state === targetState) return;
+
+      const reorderPatches = buildTaskBoardReorderPatches(this.getTaskColumnTasksForReorder(targetState), {
+        taskId,
+        targetTaskId,
+        position,
+        targetState,
+        draggedTask: task,
+      });
+      if (reorderPatches.length === 0) return;
+      for (const { record_id, patch } of reorderPatches) {
+        await this.applyTaskPatch(record_id, patch, { silent: true, sync: false, intent: 'move' });
+      }
+      const flushResult = await this.flushAndBackgroundSync();
+      if ((flushResult?.pushed ?? 0) < reorderPatches.length && typeof this.forceSyncPendingWriteTargets === 'function') {
+        await this.forceSyncPendingWriteTargets(reorderPatches.map(({ record_id }) => {
+          const localTask = this.tasks.find((candidate) => candidate.record_id === record_id) || {};
+          return {
+            familyId: 'task',
+            recordId: record_id,
+            label: localTask.title || record_id,
+          };
+        }));
+      }
+    },
+
+    isTaskSelected(taskId) {
+      return this.selectedTaskIds.includes(taskId);
+    },
+
+    toggleTaskSelection(taskId) {
+      if (!taskId || this.isParentTask(taskId)) return;
+      if (this.isTaskSelected(taskId)) {
+        this.selectedTaskIds = this.selectedTaskIds.filter((candidate) => candidate !== taskId);
+      } else {
+        this.selectedTaskIds = [...this.selectedTaskIds, taskId];
+      }
+    },
+
+    selectVisibleTasks() {
+      const visibleTaskIds = getSelectableColumnTaskIds(this.activeTasks, (taskId) => this.isParentTask(taskId));
+      this.selectedTaskIds = [...new Set([...this.selectedTaskIds, ...visibleTaskIds])];
+    },
+
+    selectColumnTasks(columnState) {
+      const col = this.boardColumns.find((c) => c.state === columnState)
+        || this.listGroupedTasks.find((g) => g.state === columnState);
+      if (!col) return;
+      const colIds = getSelectableColumnTaskIds(col.tasks, (taskId) => this.isParentTask(taskId));
+      this.selectedTaskIds = toggleColumnTaskSelection(this.selectedTaskIds, colIds);
+    },
+
+    clearSelectedTasks() {
+      this.selectedTaskIds = [];
+    },
+
+    async applyBulkTaskAction(action) {
+      if (this.bulkTaskBusy || this.selectedTaskIds.length === 0) return;
+      const selectedIds = filterSelectableTaskIds(this.selectedTaskIds, (taskId) => this.isParentTask(taskId));
+      if (selectedIds.length !== this.selectedTaskIds.length) {
+        this.selectedTaskIds = selectedIds;
+      }
+      if (selectedIds.length === 0) {
+        this.error = 'Summary tasks cannot be bulk changed. Select the child task cards instead.';
+        return;
+      }
+      const today = new Date().toISOString().slice(0, 10);
+      const patchForAction = (taskId) => {
+        switch (action) {
+          case 'archive':
+            return { state: 'archive', assigned_to_npub: null };
+          case 'done':
+            return { state: 'done', assigned_to_npub: null };
+          case 'ready':
+            return { state: 'ready', assigned_to_npub: this.defaultAgentNpub || null };
+          case 'today':
+            return { scheduled_for: today };
+          default:
+            return null;
+        }
+      };
+
+      if (action === 'ready' && !this.defaultAgentNpub) {
+        this.error = 'Set a default agent in Setup first.';
+        return;
+      }
+
+      this.bulkTaskBusy = true;
+      try {
+        for (const taskId of selectedIds) {
+          const patch = patchForAction(taskId);
+          if (!patch) continue;
+          await this.applyTaskPatch(taskId, patch, { sync: false });
+        }
+        await this.flushAndBackgroundSync();
+        await this.refreshTasks();
+        this.clearSelectedTasks();
+      } finally {
+        this.bulkTaskBusy = false;
+      }
+    },
+
+    handleTaskCardClick(taskId) {
+      if (this._taskWasDragged) {
+        this._taskWasDragged = false;
+        return;
+      }
+      this.openTaskDetail(taskId);
+    },
+
+    getDirectoryMoveOptionBreadcrumb(directoryId = null) {
+      if (!directoryId) return 'Root';
+      const breadcrumbs = [];
+      let cursor = this.directories.find((item) => item.record_id === directoryId && item.record_state !== 'deleted') || null;
+      while (cursor) {
+        breadcrumbs.unshift(cursor.title || 'Untitled folder');
+        cursor = cursor.parent_directory_id
+          ? (this.directories.find((item) => item.record_id === cursor.parent_directory_id && item.record_state !== 'deleted') || null)
+          : null;
+      }
+      return breadcrumbs.join(' / ');
+    },
+
+    getDirectoryMoveOptionSortKey(directory) {
+      return this.getDirectoryMoveOptionBreadcrumb(directory?.record_id || null).toLowerCase();
+    },
+
+    isDocSelected(recordId) {
+      return this.selectedDocIds.includes(recordId);
+    },
+
+    setDocSelectionMode(enabled) {
+      this.docSelectionMode = enabled === true;
+      if (!this.docSelectionMode) this.selectedDocIds = [];
+    },
+
+    toggleDocSelectionMode() {
+      this.setDocSelectionMode(!this.docSelectionMode);
+    },
+
+    toggleDocSelection(recordId) {
+      if (!recordId) return;
+      if (this.isDocSelected(recordId)) {
+        this.selectedDocIds = this.selectedDocIds.filter((candidate) => candidate !== recordId);
+      } else {
+        this.selectedDocIds = [...this.selectedDocIds, recordId];
+      }
+    },
+
+    selectVisibleDocs() {
+      this.selectedDocIds = [...new Set([...this.selectedDocIds, ...this.visibleDocBrowserIds])];
+    },
+
+    clearSelectedDocs() {
+      this.selectedDocIds = [];
+    },
+
+    openBulkDocScopeModal() {
+      this.openDocScopeModal({
+        type: 'bulk-documents',
+        ids: this.selectedDocIds,
+      });
+    },
+
+    closeDocMoveModal() {
+      this.showDocMoveModal = false;
+      this.docMoveRecordIds = [];
+      this.docMoveDirectoryQuery = '';
+      this.docMoveModalSubmitting = false;
+    },
+
+    openDocMoveModal(recordIds = []) {
+      const nextIds = [...new Set((Array.isArray(recordIds) ? recordIds : []).filter(Boolean))];
+      if (nextIds.length === 0) {
+        this.error = 'Select at least one document first';
+        return;
+      }
+      this.docMoveRecordIds = nextIds;
+      this.docMoveDirectoryQuery = '';
+      this.docMoveModalSubmitting = false;
+      this.showDocMoveModal = true;
+    },
+
+    canMoveActiveDocsToFolder(targetFolderId = null) {
+      const items = this.activeDocMoveItems;
+      if (items.length === 0) return false;
+      return items.some((item) => (item.parent_directory_id ?? null) !== (targetFolderId ?? null));
+    },
+
+    async moveActiveDocsToFolder(targetFolderId = null) {
+      if (this.docMoveModalSubmitting || !this.canMoveActiveDocsToFolder(targetFolderId)) return;
+      this.docMoveModalSubmitting = true;
+      const recordIds = this.activeDocMoveItems.map((item) => item.record_id);
+      try {
+        for (const recordId of recordIds) {
+          await this.moveDocItemToFolder('document', recordId, targetFolderId, {
+            applyDefaultScope: true,
+            sync: false,
+            refresh: false,
+          });
+        }
+        this.closeDocMoveModal();
+        await this.flushAndBackgroundSync();
+        await this.refreshDirectories();
+        await this.refreshDocuments();
+        this.clearSelectedDocs();
+      } finally {
+        this.docMoveModalSubmitting = false;
+      }
+    },
+
+    async deleteDocumentsByIds(recordIds = [], options = {}) {
+      const ownerNpub = this.workspaceOwnerNpub;
+      if (!ownerNpub || !this.session?.npub) {
+        this.error = 'Select a document first';
+        return false;
+      }
+      const items = [...new Set(recordIds)]
+        .map((recordId) => this.documents.find((item) => item.record_id === recordId && item.record_state !== 'deleted'))
+        .filter(Boolean);
+      if (items.length === 0) {
+        this.error = 'Select a document first';
+        return false;
+      }
+
+      if (typeof window !== 'undefined' && options.confirmMessage) {
+        const confirmed = window.confirm(options.confirmMessage);
+        if (!confirmed) return false;
+      }
+
+      for (const item of items) {
+        this.assertCanMutateLockManagedRecord(item, recordFamilyHash('document'));
+        await this.ensureLockManagedCheckout(item, recordFamilyHash('document'), { intent: 'delete' });
+        const shares = this.getEffectiveDocShares(item);
+        const now = new Date().toISOString();
+        const nextVersion = (item.version ?? 1) + 1;
+        const updated = this.normalizeDocumentRowGroupRefs({
+          ...item,
+          shares,
+          group_ids: this.getShareGroupIds(shares),
+          record_state: 'deleted',
+          sync_status: 'pending',
+          version: nextVersion,
+          updated_at: now,
+        });
+        await upsertDocument(updated);
+        this.patchDocumentLocal(updated);
+        await addPendingWrite({
+          record_id: item.record_id,
+          record_family_hash: recordFamilyHash('document'),
+          envelope: await this.buildManagedDocumentEnvelope({
+            record_id: item.record_id,
+            owner_npub: ownerNpub,
+            title: item.title,
+            content: item.content,
+            parent_directory_id: item.parent_directory_id,
+            scope_id: item.scope_id ?? null,
+            scope_l1_id: item.scope_l1_id ?? null,
+            scope_l2_id: item.scope_l2_id ?? null,
+            scope_l3_id: item.scope_l3_id ?? null,
+            scope_l4_id: item.scope_l4_id ?? null,
+            scope_l5_id: item.scope_l5_id ?? null,
+            scope_policy_group_ids: item.scope_policy_group_ids ?? null,
+            shares,
+            group_ids: updated.group_ids,
+            version: nextVersion,
+            previous_version: item.version ?? 1,
+            record_state: 'deleted',
+            signature_npub: this.signingNpub,
+            write_group_ref: this.getPreferredRecordWriteGroup(updated),
+          }, item, { intent: 'delete' }),
+        });
+      }
+
+      if (items.some((item) => item.record_id === this.selectedDocId)) {
+        this.selectedDocId = null;
+        this.selectedDocType = null;
+      }
+      return true;
+    },
+
+    async applyBulkDocAction(action) {
+      if (this.bulkDocBusy || this.selectedDocIds.length === 0) return;
+      if (action === 'move') {
+        this.openDocMoveModal(this.selectedDocIds);
+        return;
+      }
+      if (action !== 'delete') return;
+      this.bulkDocBusy = true;
+      try {
+        const removed = await this.deleteDocumentsByIds(this.selectedDocIds, {
+          confirmMessage: `Delete ${this.selectedDocIds.length} document${this.selectedDocIds.length === 1 ? '' : 's'}?`,
+        });
+        if (!removed) return;
+        await this.flushAndBackgroundSync();
+        await this.refreshDirectories();
+        await this.refreshDocuments();
+        this.clearSelectedDocs();
+      } finally {
+        this.bulkDocBusy = false;
+      }
+    },
+
+    toggleTaskFilterTag(tag) {
+      const idx = this.taskFilterTags.indexOf(tag);
+      if (idx >= 0) {
+        this.taskFilterTags = this.taskFilterTags.filter((_, i) => i !== idx);
+      } else {
+        this.taskFilterTags = [...this.taskFilterTags, tag];
+      }
+    },
+
+    clearTaskFilters() {
+      this.taskFilter = '';
+      this.taskFilterTags = [];
+      this.taskFilterAssignee = null;
+      this.taskTagCloudOpen = false;
+    },
+
+    toggleFilterToMe() {
+      if (this.taskFilterAssignee) {
+        this.taskFilterAssignee = null;
+      } else {
+        this.taskFilterAssignee = this.session?.npub || null;
+      }
+    },
+
+    async moveTaskToBoard(taskId, boardScopeId) {
+      const task = this.tasks.find(t => t.record_id === taskId);
+      if (!task || !this.session?.npub) return;
+
+      const assignment = this.buildTaskBoardAssignment(boardScopeId, task);
+      if (!assignment.scope_id) return;
+      const nextVersion = (task.version ?? 1) + 1;
+
+      const updated = toRaw({
+        ...task,
+        ...assignment,
+        version: nextVersion,
+        sync_status: 'pending',
+        updated_at: new Date().toISOString(),
+      });
+
+      await upsertTask(updated);
+      this.tasks = this.tasks.map(t => t.record_id === taskId ? updated : t);
+
+      if (this.editingTask?.record_id === taskId) {
+        this.editingTask = { ...updated };
+      }
+
+      // Move subtasks along with parent
+      const subtasks = this.tasks.filter(t => t.parent_task_id === taskId && t.record_state !== 'deleted');
+      for (const sub of subtasks) {
+        const subVersion = (sub.version ?? 1) + 1;
+        const subUpdated = toRaw({
+          ...sub,
+          ...assignment,
+          version: subVersion,
+          sync_status: 'pending',
+          updated_at: new Date().toISOString(),
+        });
+        await upsertTask(subUpdated);
+        this.tasks = this.tasks.map(t => t.record_id === sub.record_id ? subUpdated : t);
+        await this.queueTaskWrite(subUpdated, sub, { intent: 'move' });
+      }
+
+      await this.queueTaskWrite(updated, task, { intent: 'move' });
+      await this.flushAndBackgroundSync();
+      await this.refreshTasks();
+    },
+
+    // docs browser drag-drop
+
+    handleDocBrowserRowClick(type, recordId) {
+      if (this._docBrowserWasDragged) {
+        this._docBrowserWasDragged = false;
+        return;
+      }
+      if (this.docSelectionMode && type === 'document') {
+        this.toggleDocSelection(recordId);
+        return;
+      }
+      this.selectDocItem(type, recordId);
+    },
+
+    handleDocItemDragStart(event, type, recordId) {
+      this._dragDocBrowserItem = {
+        type,
+        recordId,
+        sourceParentId: type === 'directory'
+          ? (this.directories.find((item) => item.record_id === recordId)?.parent_directory_id ?? null)
+          : (this.documents.find((item) => item.record_id === recordId)?.parent_directory_id ?? null),
+      };
+      this._docBrowserWasDragged = true;
+      this.docBrowserDropTarget = '';
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', `${type}:${recordId}`);
+      event.currentTarget.classList.add('dragging');
+    },
+
+    handleDocItemDragEnd(event) {
+      this._dragDocBrowserItem = null;
+      this.docBrowserDropTarget = '';
+      event.currentTarget.classList.remove('dragging');
+      setTimeout(() => {
+        this._docBrowserWasDragged = false;
+      }, 0);
+    },
+
+    canMoveDocItemToFolder(dragItem, targetFolderId) {
+      if (!dragItem?.recordId || (dragItem.type !== 'document' && dragItem.type !== 'directory')) return false;
+      if ((dragItem.sourceParentId ?? null) === (targetFolderId ?? null)) return false;
+      if (dragItem.type !== 'directory') return true;
+      if (dragItem.recordId === targetFolderId) return false;
+
+      let cursor = targetFolderId;
+      while (cursor) {
+        if (cursor === dragItem.recordId) return false;
+        const folder = this.directories.find((item) => item.record_id === cursor);
+        cursor = folder?.parent_directory_id || null;
+      }
+      return true;
+    },
+
+    handleDocItemDragOver(event, targetFolderId, targetKey = '') {
+      if (!this.canMoveDocItemToFolder(this._dragDocBrowserItem, targetFolderId)) return;
+      event.dataTransfer.dropEffect = 'move';
+      this.docBrowserDropTarget = targetKey;
+    },
+
+    handleDocItemDragLeave(event, targetKey = '') {
+      if (event.currentTarget.contains(event.relatedTarget)) return;
+      if (this.docBrowserDropTarget === targetKey) {
+        this.docBrowserDropTarget = '';
+      }
+    },
+
+    async handleDocItemDrop(event, targetFolderId, targetKey = '') {
+      if (this.docBrowserDropTarget === targetKey) {
+        this.docBrowserDropTarget = '';
+      }
+      const dragItem = this._dragDocBrowserItem;
+      if (!this.canMoveDocItemToFolder(dragItem, targetFolderId)) return;
+      await this.maybeMoveDocItemToFolder(dragItem.type, dragItem.recordId, targetFolderId);
+    },
+
+    async maybeMoveDocItemToFolder(type, recordId, targetFolderId = null) {
+      const targetDirectory = targetFolderId
+        ? this.directories.find((entry) => entry.record_id === targetFolderId && entry.record_state !== 'deleted')
+        : null;
+      const defaultScopeAssignment = this.getDirectoryDefaultScopeAssignment(targetDirectory);
+      const hasDefaultScope = Boolean(defaultScopeAssignment.scope_id);
+      const item = type === 'directory'
+        ? this.directories.find((entry) => entry.record_id === recordId)
+        : this.documents.find((entry) => entry.record_id === recordId);
+      if (
+        hasDefaultScope
+        && item
+        && !this.hasSameScopeAssignment(item, defaultScopeAssignment)
+      ) {
+        this.docMoveScopePrompt = {
+          type,
+          recordId,
+          targetFolderId,
+          targetFolderTitle: targetDirectory?.title || 'this folder',
+          scopeId: defaultScopeAssignment.scope_id,
+        };
+        return;
+      }
+      await this.moveDocItemToFolder(type, recordId, targetFolderId);
+    },
+
+    closeDocMoveScopePrompt() {
+      this.docMoveScopePrompt = null;
+    },
+
+    async confirmDocMoveScopePrompt(applyDefaultScope) {
+      const prompt = this.docMoveScopePrompt;
+      if (!prompt) return;
+      this.docMoveScopePrompt = null;
+      await this.moveDocItemToFolder(prompt.type, prompt.recordId, prompt.targetFolderId, {
+        applyDefaultScope: applyDefaultScope === true,
+      });
+    },
+
+    async moveDocItemToFolder(type, recordId, targetFolderId = null, options = {}) {
+      const ownerNpub = this.workspaceOwnerNpub;
+      if (!ownerNpub || !this.session?.npub) {
+        this.error = 'Sign in first';
+        return;
+      }
+
+      const isDirectory = type === 'directory';
+      const item = isDirectory
+        ? this.directories.find((entry) => entry.record_id === recordId)
+        : this.documents.find((entry) => entry.record_id === recordId);
+      if (!item) return;
+      this.assertCanMutateLockManagedRecord(item, recordFamilyHash(isDirectory ? 'directory' : 'document'));
+      await this.ensureLockManagedCheckout(item, recordFamilyHash(isDirectory ? 'directory' : 'document'), { intent: 'move' });
+
+      const explicitShares = this.getExplicitDocShares(item);
+      const inheritedShares = targetFolderId ? this.getInheritedDirectoryShares(targetFolderId) : [];
+      let shares = this.mergeDocShareLists(explicitShares, inheritedShares);
+      const nextVersion = (item.version ?? 1) + 1;
+      const scopeAssignment = options.applyDefaultScope === true
+        ? this.getDirectoryDefaultScopeAssignment(targetFolderId)
+        : this.getDirectoryDefaultScopeAssignment(item);
+      if (!scopeAssignment.scope_id) {
+        this.error = 'Select a scope before moving this item.';
+        return;
+      }
+      if (scopeAssignment.scope_id) {
+        const scope = this.scopesMap.get(scopeAssignment.scope_id);
+        if (scope) {
+          const scopeShares = this.buildScopeDefaultShares(this.getScopeShareGroupIds(scope));
+          shares = this.mergeDocShareLists(shares, scopeShares);
+        }
+      }
+      if (shares.length === 0) shares = this.getDefaultPrivateShares();
+      const groupIds = this.getShareGroupIds(shares);
+      const baseUpdated = {
+        ...item,
+        parent_directory_id: targetFolderId,
+        ...scopeAssignment,
+        shares,
+        group_ids: groupIds,
+        scope_policy_group_ids: scopeAssignment.scope_id
+          ? this.getResolvedScopePolicyGroupIds(scopeAssignment.scope_id)
+          : null,
+        sync_status: 'pending',
+        version: nextVersion,
+        updated_at: new Date().toISOString(),
+      };
+      const updated = isDirectory
+        ? this.normalizeDirectoryRowGroupRefs(baseUpdated)
+        : this.normalizeDocumentRowGroupRefs(baseUpdated);
+
+      if (isDirectory) {
+        await upsertDirectory(updated);
+        this.patchDirectoryLocal(updated);
+      } else {
+        await upsertDocument(updated);
+        this.patchDocumentLocal(updated);
+        if (this.selectedDocId === recordId) {
+          this.currentFolderId = targetFolderId ?? null;
+        }
+      }
+
+      const envelope = isDirectory
+        ? await this.buildManagedDirectoryEnvelope({
+          record_id: updated.record_id,
+          owner_npub: ownerNpub,
+          title: updated.title,
+          parent_directory_id: updated.parent_directory_id,
+          scope_id: updated.scope_id ?? null,
+          scope_l1_id: updated.scope_l1_id ?? null,
+          scope_l2_id: updated.scope_l2_id ?? null,
+          scope_l3_id: updated.scope_l3_id ?? null,
+          scope_l4_id: updated.scope_l4_id ?? null,
+          scope_l5_id: updated.scope_l5_id ?? null,
+          scope_policy_group_ids: updated.scope_policy_group_ids ?? null,
+          shares: updated.shares,
+          group_ids: updated.group_ids,
+          version: nextVersion,
+          previous_version: item.version ?? 1,
+          signature_npub: this.signingNpub,
+          write_group_ref: this.getPreferredRecordWriteGroup(updated),
+        }, item, { intent: 'move' })
+        : await this.buildManagedDocumentEnvelope({
+          record_id: updated.record_id,
+          owner_npub: ownerNpub,
+          title: updated.title,
+          content: updated.content,
+          parent_directory_id: updated.parent_directory_id,
+          scope_id: updated.scope_id ?? null,
+          scope_l1_id: updated.scope_l1_id ?? null,
+          scope_l2_id: updated.scope_l2_id ?? null,
+          scope_l3_id: updated.scope_l3_id ?? null,
+          scope_l4_id: updated.scope_l4_id ?? null,
+          scope_l5_id: updated.scope_l5_id ?? null,
+          scope_policy_group_ids: updated.scope_policy_group_ids ?? null,
+          shares: updated.shares,
+          group_ids: updated.group_ids,
+          version: nextVersion,
+          previous_version: item.version ?? 1,
+          signature_npub: this.signingNpub,
+          write_group_ref: this.getPreferredRecordWriteGroup(updated),
+        }, item, { intent: 'move' });
+
+      await addPendingWrite({
+        record_id: updated.record_id,
+        record_family_hash: envelope.record_family_hash,
+        envelope,
+      });
+
+      if (options.sync !== false) {
+        await this.flushAndBackgroundSync();
+      }
+      if (options.refresh !== false) {
+        await this.refreshDirectories();
+        await this.refreshDocuments();
+      }
+    },
+
+    // --- docs ---
+
+    selectDocItem(type, recordId) {
+      if (type === 'document') this.setDocSelectionMode(false);
+      if (type === 'directory') {
+        this.navigateToFolder(recordId);
+        return;
+      }
+      this.openDoc(recordId);
+    },
+
+    navigateToFolder(folderId = null, options = {}) {
+      this.stopDocCommentsLiveQuery();
+      this.closeDocScopeModal();
+      this.closeDocMoveScopePrompt();
+      this.closeDocMoveModal();
+      this.setDocSelectionMode(false);
+      this.currentFolderId = folderId || null;
+      this.selectedDocType = null;
+      this.selectedDocId = null;
+      this.selectedDocCommentId = null;
+      this.navSection = 'docs';
+      this.mobileNavOpen = false;
+      this.startWorkspaceLiveQueries();
+      this.loadDocEditorFromSelection();
+      if (options.syncRoute !== false) this.syncRoute();
+    },
+
+    navigateUpFolder() {
+      if (!this.currentFolderId) return;
+      const currentFolder = this.directories.find((item) => item.record_id === this.currentFolderId);
+      this.navigateToFolder(currentFolder?.parent_directory_id || null);
+    },
+
+    // --- Document management (extracted to docs-manager.js) ---
+    // docsManagerMixin applied via applyMixins
+
+    // --- @mentions ---
+
+    searchMentions(rawQuery) {
+      if (!rawQuery) return [];
+
+      // Parse type prefix: @scope:, @task:, @doc:
+      let typeFilter = null;
+      let query = rawQuery;
+      const prefixMatch = rawQuery.match(/^(scope|task|doc|person|flow|opportunity):/i);
+      if (prefixMatch) {
+        typeFilter = prefixMatch[1].toLowerCase();
+        query = rawQuery.slice(prefixMatch[0].length);
+      }
+
+      const needle = query.toLowerCase();
+      const results = [];
+      const limit = 10;
+
+      // People from groups
+      if (!typeFilter || typeFilter === 'person') {
+        const seenNpubs = new Set();
+        for (const group of this.currentWorkspaceGroups) {
+          for (const npub of (group.member_npubs || [])) {
+            if (seenNpubs.has(npub)) continue;
+            seenNpubs.add(npub);
+            const name = this.getSenderName(npub);
+            if (!needle || name.toLowerCase().includes(needle) || npub.toLowerCase().includes(needle)) {
+              results.push({ type: 'person', id: npub, label: name, sublabel: '' });
+            }
+          }
+        }
+      }
+
+      // Documents
+      if (!typeFilter || typeFilter === 'doc') {
+        for (const doc of this.documents) {
+          if (doc.record_state === 'deleted') continue;
+          if (!needle || (doc.title || '').toLowerCase().includes(needle)) {
+            results.push({ type: 'doc', id: doc.record_id, label: doc.title || 'Untitled', sublabel: 'Doc' });
+          }
+        }
+      }
+
+      // Tasks
+      if (!typeFilter || typeFilter === 'task') {
+        for (const task of this.tasks) {
+          if (task.record_state === 'deleted') continue;
+          if (!needle || (task.title || '').toLowerCase().includes(needle)) {
+            results.push({ type: 'task', id: task.record_id, label: task.title || 'Untitled', sublabel: 'Task' });
+          }
+        }
+      }
+
+      // Scopes (products, projects, deliverables)
+      if (!typeFilter || typeFilter === 'scope') {
+        for (const scope of this.scopes) {
+          if (scope.record_state === 'deleted') continue;
+          if (!needle || (scope.title || '').toLowerCase().includes(needle)) {
+            const levelLabel = scope.level === 'product' ? 'Product' : scope.level === 'project' ? 'Project' : 'Deliverable';
+            results.push({ type: 'scope', id: scope.record_id, label: scope.title || 'Untitled', sublabel: levelLabel });
+          }
+        }
+      }
+
+      // Flows
+      if (!typeFilter || typeFilter === 'flow') {
+        for (const flow of this.flows) {
+          if (flow.record_state === 'deleted') continue;
+          if (!needle || (flow.title || '').toLowerCase().includes(needle)) {
+            results.push({ type: 'flow', id: flow.record_id, label: flow.title || 'Untitled', sublabel: 'Flow' });
+          }
+        }
+      }
+
+      if (!typeFilter || typeFilter === 'opportunity') {
+        for (const opportunity of this.opportunities) {
+          if (opportunity.record_state === 'deleted') continue;
+          if (
+            !needle
+            || String(opportunity.title || '').toLowerCase().includes(needle)
+            || String(opportunity.opportunity_type || '').toLowerCase().includes(needle)
+          ) {
+            results.push({
+              type: 'opportunity',
+              id: opportunity.record_id,
+              label: opportunity.title || 'Untitled',
+              sublabel: 'Opportunity',
+            });
+          }
+        }
+      }
+
+      return results.slice(0, limit);
+    },
+
+    getDefaultMentionResults(limit = 8) {
+      const results = [];
+      const seen = new Set();
+      const add = (result) => {
+        const key = `${result?.type || ''}:${result?.id || ''}`;
+        if (!result?.id || seen.has(key) || results.length >= limit) return;
+        seen.add(key);
+        results.push(result);
+      };
+
+      for (const group of this.currentWorkspaceGroups) {
+        for (const npub of (group.member_npubs || [])) {
+          add({ type: 'person', id: npub, label: this.getSenderName(npub), sublabel: '' });
+          if (results.length >= 2) break;
+        }
+        if (results.length >= 2) break;
+      }
+
+      const recentDocs = [...(this.documents || [])]
+        .filter((doc) => doc.record_state !== 'deleted')
+        .sort((left, right) => (Date.parse(right.updated_at || '') || 0) - (Date.parse(left.updated_at || '') || 0));
+      for (const doc of recentDocs.slice(0, 3)) {
+        add({ type: 'doc', id: doc.record_id, label: doc.title || 'Untitled', sublabel: 'Doc' });
+      }
+
+      const recentTasks = [...(this.tasks || [])]
+        .filter((task) => task.record_state !== 'deleted')
+        .sort((left, right) => (Date.parse(right.updated_at || '') || 0) - (Date.parse(left.updated_at || '') || 0));
+      for (const task of recentTasks.slice(0, 2)) {
+        add({ type: 'task', id: task.record_id, label: task.title || 'Untitled', sublabel: 'Task' });
+      }
+
+      for (const scope of (this.scopes || []).filter((scope) => scope.record_state !== 'deleted').slice(0, 2)) {
+        const levelLabel = scope.level === 'product' ? 'Product' : scope.level === 'project' ? 'Project' : 'Deliverable';
+        add({ type: 'scope', id: scope.record_id, label: scope.title || 'Untitled', sublabel: levelLabel });
+      }
+
+      if (results.length < limit) {
+        for (const flow of (this.flows || []).filter((flow) => flow.record_state !== 'deleted').slice(0, 2)) {
+          add({ type: 'flow', id: flow.record_id, label: flow.title || 'Untitled', sublabel: 'Flow' });
+        }
+      }
+
+      return results;
+    },
+
+    handleMentionInput(el) {
+      const value = el.value;
+      const cursorPos = el.selectionStart;
+
+      // Find the @ that starts the current mention (allow spaces in query, break on newline)
+      let atPos = -1;
+      for (let i = cursorPos - 1; i >= 0; i--) {
+        const ch = value[i];
+        if (ch === '\n' || ch === '\r') break;
+        if (ch === '@') {
+          // Only trigger if @ is at start of input or preceded by whitespace
+          if (i === 0 || /\s/.test(value[i - 1])) {
+            atPos = i;
+          }
+          break;
+        }
+      }
+
+      if (atPos === -1) {
+        this.closeMentionPopover();
+        return;
+      }
+
+      const query = value.slice(atPos + 1, cursorPos);
+      if (query.length === 0) {
+        // Show all results on bare @
+        this.mentionActive = true;
+        this._mentionTargetEl = el;
+        this._mentionStartPos = atPos;
+        this.mentionQuery = '';
+        this.mentionResults = this.getDefaultMentionResults(8);
+        this.mentionSelectedIndex = 0;
+        return;
+      }
+
+      this.mentionActive = true;
+      this._mentionTargetEl = el;
+      this._mentionStartPos = atPos;
+      this.mentionQuery = query;
+      this.mentionResults = this.searchMentions(query);
+      this.mentionSelectedIndex = 0;
+    },
+
+    handleMentionKeydown(event) {
+      if (!this.mentionActive) return;
+
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        this.mentionSelectedIndex = Math.min(this.mentionSelectedIndex + 1, this.mentionResults.length - 1);
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        this.mentionSelectedIndex = Math.max(this.mentionSelectedIndex - 1, 0);
+      } else if (event.key === 'Enter' && this.mentionResults.length > 0) {
+        event.preventDefault();
+        this.selectMention(this.mentionResults[this.mentionSelectedIndex]);
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        this.closeMentionPopover();
+      }
+    },
+
+    handleComposerKeydown(event, sendAction) {
+      this.handleMentionKeydown(event);
+      if (event.key === 'Enter' && !event.shiftKey && !event.defaultPrevented) {
+        event.preventDefault();
+        sendAction();
+      }
+    },
+
+    selectMention(result) {
+      const el = this._mentionTargetEl;
+      if (!el || this._mentionStartPos < 0) return;
+
+      const value = el.value;
+      const cursorPos = el.selectionStart;
+      const before = value.slice(0, this._mentionStartPos);
+      const after = value.slice(cursorPos);
+      const tag = `@[${result.label}](mention:${result.type}:${result.id}) `;
+      const newValue = before + tag + after;
+
+      // Update the textarea value through Alpine's model
+      el.value = newValue;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+
+      const newCursorPos = before.length + tag.length;
+      el.setSelectionRange(newCursorPos, newCursorPos);
+      el.focus();
+
+      this.closeMentionPopover();
+    },
+
+    closeMentionPopover() {
+      this.mentionActive = false;
+      this.mentionQuery = '';
+      this.mentionResults = [];
+      this.mentionSelectedIndex = 0;
+      this._mentionTargetEl = null;
+      this._mentionStartPos = -1;
+    },
+
+    handleMentionNavigate(type, id) {
+      const linkType = normalizeRecordLinkType(type);
+      if (linkType === 'doc') {
+        if (this.navSection === 'chat') {
+          this.openChatDocModal(id);
+        } else {
+          this.openDoc(id);
+        }
+      } else if (linkType === 'task') {
+        if (this.navSection === 'chat') {
+          this.openChatTaskModal(id);
+        } else {
+          this.navSection = 'tasks';
+          this.mobileNavOpen = false;
+          this.startWorkspaceLiveQueries();
+          this.$nextTick(() => this.openTaskDetail(id));
+        }
+      } else if (linkType === 'scope') {
+        this.navSection = 'settings';
+        this.settingsTab = 'scopes';
+        this.mobileNavOpen = false;
+        this.startWorkspaceLiveQueries();
+        this.syncRoute();
+        this.$nextTick(() => {
+          this.scopeNavFocus = id;
+          document.getElementById('scope-' + id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+      } else if (linkType === 'flow') {
+        this.navSection = 'settings';
+        this.settingsTab = 'flows';
+        this.mobileNavOpen = false;
+        this.startWorkspaceLiveQueries();
+        this.refreshFlows();
+        this.refreshApprovals();
+        this.syncRoute();
+        this.$nextTick(() => {
+          this.editingFlowId = id;
+          this.showFlowEditor = true;
+        });
+      } else if (linkType === 'opportunity') {
+        this.navSection = 'opportunities';
+        this.mobileNavOpen = false;
+        this.startWorkspaceLiveQueries();
+        this.$nextTick(() => this.openOpportunityDetail(id));
+      } else if (linkType === 'person') {
+        this.navSection = 'people';
+        this.mobileNavOpen = false;
+        this.startWorkspaceLiveQueries();
+      }
+    },
+
+    async openChatDocModal(recordId, options = {}) {
+      const docId = String(recordId || '').trim();
+      if (!docId) return;
+      let doc = this.documents.find((item) => item.record_id === docId);
+      if (!doc) {
+        doc = await getDocumentById(docId);
+        if (doc && doc.record_state !== 'deleted') {
+          this.applyDocuments([
+            ...this.documents.filter((item) => item.record_id !== docId),
+            doc,
+          ]);
+        }
+      }
+      if (!doc || doc.record_state === 'deleted') {
+        this.error = 'Document is not available locally yet.';
+        return;
+      }
+      this.chatDocModalTitle = options.title || doc?.title || 'Flight Deck document';
+      this.chatDocModalFullScreen = false;
+      this.chatDocModalOpen = true;
+      this.openDoc(docId, {
+        syncRoute: false,
+        navigate: false,
+        ensureSync: false,
+        allowCommentBackfill: false,
+        showComments: true,
+        commentId: options.commentId || null,
+      });
+      this.mobileNavOpen = false;
+    },
+
+    closeChatDocModal() {
+      if (this.chatDocModalOpen) {
+        this.closeDocEditor({ syncRoute: false });
+      }
+      this.chatDocModalOpen = false;
+      this.chatDocModalTitle = '';
+      this.chatDocModalFullScreen = false;
+    },
+
+    toggleChatDocModalFullScreen() {
+      if (!this.chatDocModalOpen) return;
+      this.chatDocModalFullScreen = !this.chatDocModalFullScreen;
+    },
+
+    async deleteCurrentDirectory() {
+      const dir = this.currentFolder;
+      const ownerNpub = this.workspaceOwnerNpub;
+      if (!dir || !ownerNpub || !this.session?.npub) {
+        this.error = 'No folder selected';
+        return;
+      }
+
+      const confirmed = window.confirm(`Delete folder "${dir.title}" and all its contents? This cannot be undone.`);
+      if (!confirmed) return;
+      this.assertCanMutateLockManagedRecord(dir, recordFamilyHash('directory'));
+      await this.ensureLockManagedCheckout(dir, recordFamilyHash('directory'), { intent: 'delete' });
+
+      // Collect all descendant directory IDs recursively
+      const allDirIds = new Set([dir.record_id]);
+      let added = true;
+      while (added) {
+        added = false;
+        for (const d of this.directories) {
+          if (d.record_state === 'deleted') continue;
+          if (d.parent_directory_id && allDirIds.has(d.parent_directory_id) && !allDirIds.has(d.record_id)) {
+            allDirIds.add(d.record_id);
+            added = true;
+          }
+        }
+      }
+
+      // Soft-delete all directories in the set
+      for (const dirId of allDirIds) {
+        const directory = this.directories.find((d) => d.record_id === dirId);
+        if (!directory || directory.record_state === 'deleted') continue;
+        const nextVersion = (directory.version ?? 1) + 1;
+        const now = new Date().toISOString();
+        const shares = this.getEffectiveDocShares(directory);
+        const updated = this.normalizeDirectoryRowGroupRefs({
+          ...directory,
+          shares,
+          group_ids: this.getShareGroupIds(shares),
+          record_state: 'deleted',
+          sync_status: 'pending',
+          version: nextVersion,
+          updated_at: now,
+        });
+
+        await upsertDirectory(updated);
+        this.patchDirectoryLocal(updated);
+        await addPendingWrite({
+          record_id: dirId,
+          record_family_hash: recordFamilyHash('directory'),
+          envelope: await this.buildManagedDirectoryEnvelope({
+            ...updated,
+            previous_version: directory.version ?? 1,
+            signature_npub: this.signingNpub,
+            shares,
+            group_ids: updated.group_ids,
+            write_group_ref: this.getPreferredRecordWriteGroup(updated),
+          }, directory, { intent: 'delete' }),
+        });
+      }
+
+      // Soft-delete all documents inside those directories
+      for (const doc of this.documents) {
+        if (doc.record_state === 'deleted') continue;
+        if (!allDirIds.has(doc.parent_directory_id)) continue;
+        const nextVersion = (doc.version ?? 1) + 1;
+        const now = new Date().toISOString();
+        const shares = this.getEffectiveDocShares(doc);
+        const updated = this.normalizeDocumentRowGroupRefs({
+          ...doc,
+          shares,
+          group_ids: this.getShareGroupIds(shares),
+          record_state: 'deleted',
+          sync_status: 'pending',
+          version: nextVersion,
+          updated_at: now,
+        });
+
+        await upsertDocument(updated);
+        this.patchDocumentLocal(updated);
+        await addPendingWrite({
+          record_id: doc.record_id,
+          record_family_hash: recordFamilyHash('document'),
+          envelope: await this.buildManagedDocumentEnvelope({
+            ...updated,
+            previous_version: doc.version ?? 1,
+            signature_npub: this.signingNpub,
+            shares,
+            group_ids: updated.group_ids,
+            write_group_ref: this.getPreferredRecordWriteGroup(updated),
+          }, doc, { intent: 'delete' }),
+        });
+      }
+
+      // Navigate up to parent
+      this.navigateToFolder(dir.parent_directory_id || null);
+      await this.flushAndBackgroundSync();
+      await this.refreshDirectories();
+      await this.refreshDocuments();
+    },
+
+    async deleteSelectedDocItem() {
+      this.cancelDocAutosave();
+      this.error = null;
+      const item = this.selectedDocument;
+      if (!item) {
+        this.error = 'Select a document first';
+        return;
+      }
+      const removed = await this.deleteDocumentsByIds([item.record_id], {
+        confirmMessage: 'Delete this document?',
+      });
+      if (!removed) return;
+      await this.flushAndBackgroundSync();
+      await this.refreshDirectories();
+      await this.refreshDocuments();
+      const [first] = this.filteredDocRows;
+      if (first) this.selectDocItem(first.type, first.item.record_id);
+    },
+
+    getInlineUploadCount(context) {
+      return context === 'thread' ? this.threadImageUploadCount : this.messageImageUploadCount;
+    },
+
+    setInlineUploadCount(context, nextValue) {
+      const normalized = Math.max(0, Number(nextValue) || 0);
+      if (context === 'thread') this.threadImageUploadCount = normalized;
+      else this.messageImageUploadCount = normalized;
+    },
+
+    incrementInlineUploadCount(context) {
+      this.setInlineUploadCount(context, this.getInlineUploadCount(context) + 1);
+    },
+
+    decrementInlineUploadCount(context) {
+      this.setInlineUploadCount(context, this.getInlineUploadCount(context) - 1);
+    },
+
+    defaultPastedImageName(file, context = 'chat') {
+      const now = new Date();
+      const stamp = now.toISOString().replace(/[:]/g, '-').replace(/\..+$/, '');
+      const mime = String(file?.type || '').toLowerCase();
+      const ext = mime.includes('png')
+        ? 'png'
+        : mime.includes('jpeg') || mime.includes('jpg')
+          ? 'jpg'
+          : mime.includes('gif')
+            ? 'gif'
+            : mime.includes('webp')
+              ? 'webp'
+              : 'bin';
+      return `${context}-image-${stamp}.${ext}`;
+    },
+
+    createStorageMarkdown(objectId, altText = 'Image') {
+      const safeAlt = String(altText || 'Image').replace(/[\[\]]/g, '').trim() || 'Image';
+      return `![${safeAlt}](storage://${objectId})`;
+    },
+
+    createStorageFileMarkdown(objectId, fileName = 'Uploaded file') {
+      const safeLabel = String(fileName || 'Uploaded file')
+        .replace(/\\/g, '\\\\')
+        .replace(/([\[\]])/g, '\\$1')
+        .trim() || 'Uploaded file';
+      return `[${safeLabel}](storage://${objectId})`;
+    },
+
+    containsInlineImageUploadToken(value) {
+      const text = String(value || '');
+      return text.includes('[ Uploading image... ]') || text.includes('[ Uploading file... ]');
+    },
+
+    getModelValue(modelPath) {
+      const parts = String(modelPath || '').split('.').filter(Boolean);
+      return parts.reduce((acc, key) => (acc == null ? acc : acc[key]), this);
+    },
+
+    setModelValue(modelPath, value) {
+      const parts = String(modelPath || '').split('.').filter(Boolean);
+      if (parts.length === 0) return;
+      if (parts.length === 1) {
+        this[parts[0]] = value;
+        return;
+      }
+      const parent = parts.slice(0, -1).reduce((acc, key) => (acc == null ? acc : acc[key]), this);
+      if (parent && typeof parent === 'object') {
+        parent[parts[parts.length - 1]] = value;
+      }
+    },
+
+    insertTextIntoModel(modelKey, textarea, text) {
+      const current = String(this.getModelValue(modelKey) || '');
+      const start = typeof textarea?.selectionStart === 'number' ? textarea.selectionStart : current.length;
+      const end = typeof textarea?.selectionEnd === 'number' ? textarea.selectionEnd : current.length;
+      const next = `${current.slice(0, start)}${text}${current.slice(end)}`;
+      this.setModelValue(modelKey, next);
+      const caret = start + text.length;
+      if (textarea) {
+        textarea.value = next;
+        textarea.selectionStart = caret;
+        textarea.selectionEnd = caret;
+      }
+      return { start, end, insertedText: text };
+    },
+
+    replaceTokenInModel(modelKey, token, replacement, textarea = null) {
+      const current = String(this.getModelValue(modelKey) || '');
+      const index = current.indexOf(token);
+      if (index === -1) return false;
+      const next = `${current.slice(0, index)}${replacement}${current.slice(index + token.length)}`;
+      this.setModelValue(modelKey, next);
+      if (textarea) {
+        const caret = index + replacement.length;
+        textarea.value = next;
+        textarea.selectionStart = caret;
+        textarea.selectionEnd = caret;
+      }
+      return true;
+    },
+
+    async sha256HexForBytes(bytes) {
+      const digest = await crypto.subtle.digest('SHA-256', bytes);
+      return Array.from(new Uint8Array(digest))
+        .map((byte) => byte.toString(16).padStart(2, '0'))
+        .join('');
+    },
+
+    async handleInlineImagePaste(event, options = {}) {
+      const clipboardItems = [...(event?.clipboardData?.items || [])];
+      const imageItem = clipboardItems.find((item) => String(item?.type || '').startsWith('image/'));
+      if (!imageItem) return false;
+
+      event.preventDefault();
+
+      const file = imageItem.getAsFile?.();
+      if (!file) {
+        this.error = 'Could not read pasted image.';
+        return true;
+      }
+
+      const modelKey = String(options.modelKey || '').trim();
+      if (!modelKey) return true;
+      const ownerNpub = String(options.ownerNpub || '').trim();
+      if (!ownerNpub) {
+        this.error = 'Missing storage owner for pasted image.';
+        return true;
+      }
+
+      const token = '[ Uploading image... ]';
+      this.insertTextIntoModel(modelKey, event.target, token);
+      if (options.uploadCounterContext) this.incrementInlineUploadCount(options.uploadCounterContext);
+
+      try {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const fileName = this.defaultPastedImageName(file, options.fileLabel || 'inline');
+        const prepared = await prepareStorageObject(buildStoragePrepareBody({
+          ownerNpub,
+          ownerGroupId: options.ownerGroupId,
+          accessGroupIds: options.accessGroupIds ?? options.accessGroupNpubs ?? [],
+          contentType: file.type || 'image/png',
+          sizeBytes: file.size || bytes.byteLength,
+          fileName,
+        }));
+        await uploadStorageObject(prepared, bytes, file.type || 'image/png');
+        await completeStorageObject(prepared.object_id, {
+          size_bytes: bytes.byteLength,
+          sha256_hex: await this.sha256HexForBytes(bytes),
+        });
+        this.replaceTokenInModel(modelKey, token, this.createStorageMarkdown(prepared.object_id, fileName), event.target);
+        this.scheduleStorageImageHydration();
+      } catch (error) {
+        this.replaceTokenInModel(modelKey, token, '[ Upload failed ]', event.target);
+        this.error = error?.message || 'Could not upload pasted image.';
+      } finally {
+        if (options.uploadCounterContext) this.decrementInlineUploadCount(options.uploadCounterContext);
+      }
+      return true;
+    },
+
+    async uploadFileIntoModel(file, event, options = {}) {
+      if (!file) return false;
+      const modelKey = String(options.modelKey || '').trim();
+      if (!modelKey) return false;
+      const ownerNpub = String(options.ownerNpub || '').trim();
+      if (!ownerNpub) {
+        this.error = 'Missing storage owner for uploaded file.';
+        return true;
+      }
+
+      const token = '[ Uploading file... ]';
+      this.insertTextIntoModel(modelKey, event?.target, token);
+      if (options.uploadCounterContext) this.incrementInlineUploadCount(options.uploadCounterContext);
+
+      try {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const fileName = String(file.name || '').trim() || this.defaultPastedImageName(file, options.fileLabel || 'file');
+        const prepared = await prepareStorageObject(buildStoragePrepareBody({
+          ownerNpub,
+          ownerGroupId: options.ownerGroupId,
+          accessGroupIds: options.accessGroupIds ?? options.accessGroupNpubs ?? [],
+          contentType: file.type || 'application/octet-stream',
+          sizeBytes: file.size || bytes.byteLength,
+          fileName,
+        }));
+        await uploadStorageObject(prepared, bytes, file.type || 'application/octet-stream');
+        await completeStorageObject(prepared.object_id, {
+          size_bytes: bytes.byteLength,
+          sha256_hex: await this.sha256HexForBytes(bytes),
+        });
+        this.replaceTokenInModel(modelKey, token, this.createStorageFileMarkdown(prepared.object_id, fileName), event?.target);
+      } catch (error) {
+        this.replaceTokenInModel(modelKey, token, '[ Upload failed ]', event?.target);
+        this.error = error?.message || 'Could not upload file.';
+      } finally {
+        if (options.uploadCounterContext) this.decrementInlineUploadCount(options.uploadCounterContext);
+      }
+      return true;
+    },
+
+    async handleChatFileDrop(event, context = 'message') {
+      const files = [...(event?.dataTransfer?.files || [])].filter(Boolean);
+      if (files.length === 0) return false;
+      event.preventDefault();
+      event.stopPropagation();
+
+      const channel = this.selectedChannel;
+      if (!channel) {
+        this.error = 'Select a channel first';
+        return true;
+      }
+
+      const options = {
+        modelKey: context === 'thread' ? 'threadInput' : 'messageInput',
+        ownerNpub: channel.owner_npub || this.workspaceOwnerNpub || this.session?.npub,
+        accessGroupIds: channel.group_ids ?? [],
+        fileLabel: context === 'thread' ? 'thread-file' : 'chat-file',
+        uploadCounterContext: context,
+      };
+
+      for (const file of files) {
+        await this.uploadFileIntoModel(file, event, options);
+      }
+      this.scheduleComposerAutosize(context);
+      return true;
+    },
+
+    async handleChatPaste(event, context = 'message') {
+      const channel = this.selectedChannel;
+      if (!channel) {
+        this.error = 'Select a channel first';
+        return;
+      }
+
+      await this.handleInlineImagePaste(event, {
+        modelKey: context === 'thread' ? 'threadInput' : 'messageInput',
+        ownerNpub: channel.owner_npub || this.workspaceOwnerNpub || this.session?.npub,
+        accessGroupIds: channel.group_ids ?? [],
+        fileLabel: context === 'thread' ? 'thread' : 'chat',
+        uploadCounterContext: context,
+      });
+    },
+
+    async handleTaskDescriptionPaste(event) {
+      if (!this.editingTask) return;
+      await this.handleInlineImagePaste(event, {
+        modelKey: 'editingTask.description',
+        ownerNpub: this.editingTask.owner_npub || this.workspaceOwnerNpub || this.session?.npub,
+        accessGroupIds: this.editingTask.group_ids ?? [],
+        fileLabel: 'task',
+      });
+    },
+
+    async handleTaskCommentPaste(event) {
+      if (!this.editingTask) return;
+      await this.handleInlineImagePaste(event, {
+        modelKey: 'newTaskCommentBody',
+        ownerNpub: this.editingTask.owner_npub || this.workspaceOwnerNpub || this.session?.npub,
+        accessGroupIds: this.editingTask.group_ids ?? [],
+        fileLabel: 'task-comment',
+      });
+    },
+
+    async handleDocSourcePaste(event) {
+      const doc = this.selectedDocument;
+      if (!doc) return;
+      const handled = await this.handleInlineImagePaste(event, {
+        modelKey: 'docEditorContent',
+        ownerNpub: doc.owner_npub || this.workspaceOwnerNpub || this.session?.npub,
+        accessGroupIds: doc.group_ids ?? [],
+        fileLabel: 'doc',
+      });
+      if (handled) this.handleDocSourceInput(this.docEditorContent);
+    },
+
+    async handleDocBlockPaste(event) {
+      const doc = this.selectedDocument;
+      if (!doc) return;
+      const handled = await this.handleInlineImagePaste(event, {
+        modelKey: 'docBlockBuffer',
+        ownerNpub: doc.owner_npub || this.workspaceOwnerNpub || this.session?.npub,
+        accessGroupIds: doc.group_ids ?? [],
+        fileLabel: 'doc-block',
+      });
+      if (handled) this.updateDocBlockBuffer(this.docBlockBuffer);
+    },
+
+    async handleDocCommentPaste(event) {
+      const doc = this.selectedDocument;
+      if (!doc) return;
+      await this.handleInlineImagePaste(event, {
+        modelKey: 'newDocCommentBody',
+        ownerNpub: doc.owner_npub || this.workspaceOwnerNpub || this.session?.npub,
+        accessGroupIds: doc.group_ids ?? [],
+        fileLabel: 'doc-comment',
+      });
+    },
+
+    async handleDocCommentReplyPaste(event) {
+      const doc = this.selectedDocument;
+      if (!doc) return;
+      await this.handleInlineImagePaste(event, {
+        modelKey: 'newDocCommentReplyBody',
+        ownerNpub: doc.owner_npub || this.workspaceOwnerNpub || this.session?.npub,
+        accessGroupIds: doc.group_ids ?? [],
+        fileLabel: 'doc-reply',
+      });
+    },
+
+    renderMarkdown(md) {
+      return renderMarkdownToHtml(md, {
+        inlineReferences: (this.documents || [])
+          .filter((doc) => doc?.record_state !== 'deleted')
+          .map((doc) => ({
+            type: 'doc',
+            id: doc.record_id,
+            label: doc.title || 'Untitled',
+          })),
+      });
+    },
+
+    // createBotDm, deleteSelectedChannel, sendMessage, sendThreadReply, deleteActiveThread — in chatMessageManagerMixin
+
+    // syncNow — in syncManagerMixin
+  };
+
+  // Shell state is applied first — it defines the canonical shell boundary
+  // (identity, session, nav, route, sync status, connect modal, lifecycle methods).
+  // The inline storeObj declarations still exist as fallback defaults;
+  // see src/shell-state.js for the authoritative shell state definition.
+  const shellState = createShellState({ initialSection: initialRoute.section });
+
+  applyMixins(
+    storeObj,
+    shellState,
+    taskBoardStateMixin,
+    workspaceManagerMixin,
+    chatMessageManagerMixin,
+    reactionsManagerMixin,
+    syncManagerMixin,
+    peopleProfilesManagerMixin,
+    connectSettingsManagerMixin,
+    channelsManagerMixin,
+    scopesManagerMixin,
+    docsManagerMixin,
+    triggersManagerMixin,
+    jobsManagerMixin,
+    audioRecordingManagerMixin,
+    storageImageManagerMixin,
+    filesManagerMixin,
+    sectionLiveQueryMixin,
+    unreadStoreMixin,
+    flowsManagerMixin,
+    personsManagerMixin,
+    opportunitiesManagerMixin,
+    wappsManagerMixin,
+    reportsManagerMixin,
+    commandPaletteMixin,
+  );
+
+  Alpine.store('chat', storeObj);
+  Alpine.start();
+}

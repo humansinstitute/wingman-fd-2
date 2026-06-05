@@ -1,0 +1,357 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('../src/translators/record-crypto.js', () => ({
+  decryptRecordPayload: vi.fn(async (record) => JSON.parse(record.owner_payload.ciphertext)),
+  encryptOwnerPayload: vi.fn(async (_ownerNpub, payload) => ({ ciphertext: JSON.stringify(payload) })),
+  buildGroupPayloads: vi.fn(async (groupNpubs, payload, canWriteByGroup) =>
+    groupNpubs.map((group_npub) => ({
+      group_npub,
+      ciphertext: JSON.stringify(payload),
+      write: canWriteByGroup instanceof Map ? canWriteByGroup.get(group_npub) === true : true,
+    }))),
+}));
+
+import { APP_NPUB } from '../src/app-identity.js';
+import { FLIGHT_DECK_SCHEMA_BUNDLE } from '../src/generated/flightdeck-schema-bundle.js';
+import { SYNC_FAMILY_OPTIONS } from '../src/sync-families.js';
+import { outboundApproval } from '../src/translators/approvals.js';
+import { outboundAudioNote } from '../src/translators/audio-notes.js';
+import { outboundChannel, outboundChatMessage } from '../src/translators/chat.js';
+import { outboundComment } from '../src/translators/comments.js';
+import { outboundDirectory, outboundDocument } from '../src/translators/docs.js';
+import { outboundFlow } from '../src/translators/flows.js';
+import { outboundOrganisation } from '../src/translators/organisations.js';
+import { outboundOpportunity } from '../src/translators/opportunities.js';
+import { outboundPerson } from '../src/translators/persons.js';
+import { outboundReaction } from '../src/translators/reactions.js';
+import { outboundReport } from '../src/translators/reports.js';
+import { outboundSchedule } from '../src/translators/schedules.js';
+import { outboundScope } from '../src/translators/scopes.js';
+import { outboundWorkspaceSettings } from '../src/translators/settings.js';
+import { outboundTask } from '../src/translators/tasks.js';
+import { outboundWapp } from '../src/translators/wapps.js';
+import { validateAgainstSchema } from '../../sb-publisher/src/schema-validate.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const schemaDir = path.resolve(__dirname, '../../sb-publisher/schemas/flightdeck');
+const retiredFamilies = new Set(['agent' + '_chat_trigger']);
+
+const expectedFamilies = [
+  'approval',
+  'audio_note',
+  'channel',
+  'chat_message',
+  'comment',
+  'directory',
+  'document',
+  'flow',
+  'opportunity',
+  'organisation',
+  'person',
+  'reaction',
+  'report',
+  'schedule',
+  'scope',
+  'settings',
+  'task',
+  'wapp',
+];
+
+function readManifest(family) {
+  return JSON.parse(fs.readFileSync(path.join(schemaDir, `${family}-v1.json`), 'utf8'));
+}
+
+function assertMatchesPublishedSchema(family, payload) {
+  const manifest = readManifest(family);
+  const result = validateAgainstSchema(manifest.payload_schema, payload);
+  expect(result.valid, `${family}: ${result.errors.join('; ')}`).toBe(true);
+}
+
+describe('published Flight Deck schema manifests', () => {
+  it('cover every current Flight Deck record family', () => {
+    const families = fs.readdirSync(schemaDir)
+      .filter((file) => file.endsWith('-v1.json'))
+      .map((file) => file.replace(/-v1\.json$/, ''))
+      .filter((family) => !retiredFamilies.has(family))
+      .sort();
+
+    expect(families).toEqual(expectedFamilies);
+  });
+
+  it('sync-family registry matches published schema set', () => {
+    const registryIds = SYNC_FAMILY_OPTIONS.map((f) => f.id).sort();
+    expect(registryIds).toEqual(expectedFamilies);
+  });
+
+  it('app schema bundle includes every published schema manifest for Tower discovery', () => {
+    const manifestFamilies = fs.readdirSync(schemaDir)
+      .filter((file) => file.endsWith('-v1.json'))
+      .map((file) => file.replace(/-v1\.json$/, ''))
+      .sort();
+    const bundleFamilies = FLIGHT_DECK_SCHEMA_BUNDLE.schemas
+      .map((schema) => schema.collection_space)
+      .sort();
+
+    expect(FLIGHT_DECK_SCHEMA_BUNDLE.schema_hash).toMatch(/^[a-f0-9]{64}$/);
+    expect(bundleFamilies).toEqual(manifestFamilies);
+  });
+
+  it('validate real outbound Flight Deck payloads', async () => {
+    const payloads = {
+      approval: JSON.parse((await outboundApproval({
+        record_id: 'approval-1',
+        owner_npub: 'npub_owner',
+        title: 'Gate review',
+        flow_id: 'flow-1',
+        flow_run_id: 'run-1',
+        flow_step: 2,
+        task_ids: ['task-1'],
+        status: 'pending',
+        approval_mode: 'manual',
+        brief: 'Looks good',
+        scope_id: 'deliverable-1',
+        scope_l1_id: 'product-1',
+        scope_l2_id: 'project-1',
+        scope_l3_id: 'deliverable-1',
+        scope_l4_id: null,
+        scope_l5_id: null,
+        shares: [],
+        group_ids: ['group-1'],
+      })).owner_payload.ciphertext),
+      audio_note: JSON.parse((await outboundAudioNote({
+        record_id: 'audio-1',
+        owner_npub: 'npub_owner',
+        target_record_id: 'comment-1',
+        target_record_family_hash: `${APP_NPUB}:comment`,
+        storage_object_id: 'storage-1',
+        target_group_ids: ['group-1'],
+      })).owner_payload.ciphertext),
+      channel: JSON.parse((await outboundChannel({
+        record_id: 'channel-1',
+        owner_npub: 'npub_owner',
+        title: 'Ops',
+        group_ids: ['group-1'],
+        participant_npubs: ['npub_owner'],
+      })).owner_payload.ciphertext),
+      chat_message: JSON.parse((await outboundChatMessage({
+        record_id: 'msg-1',
+        owner_npub: 'npub_owner',
+        channel_id: 'channel-1',
+        body: 'Hello',
+        channel_group_ids: ['group-1'],
+      })).owner_payload.ciphertext),
+      comment: JSON.parse((await outboundComment({
+        record_id: 'comment-1',
+        owner_npub: 'npub_owner',
+        target_record_id: 'task-1',
+        target_record_family_hash: `${APP_NPUB}:task`,
+        body: 'Looks good',
+        target_group_ids: ['group-1'],
+      })).owner_payload.ciphertext),
+      directory: JSON.parse((await outboundDirectory({
+        record_id: 'dir-1',
+        owner_npub: 'npub_owner',
+        title: 'Projects',
+        scope_id: 'product-1',
+        scope_l1_id: 'product-1',
+        scope_l2_id: null,
+        scope_l3_id: null,
+        scope_l4_id: null,
+        scope_l5_id: null,
+        shares: [],
+      })).owner_payload.ciphertext),
+      document: JSON.parse((await outboundDocument({
+        record_id: 'doc-1',
+        owner_npub: 'npub_owner',
+        title: 'Spec',
+        content: 'hello world',
+        scope_id: 'scope-1',
+        scope_l1_id: 'product-1',
+        scope_l2_id: 'project-1',
+        scope_l3_id: 'deliverable-1',
+        scope_l4_id: null,
+        scope_l5_id: null,
+        shares: [],
+      })).owner_payload.ciphertext),
+      flow: JSON.parse((await outboundFlow({
+        record_id: 'flow-1',
+        owner_npub: 'npub_owner',
+        title: 'Release pipeline',
+        description: 'Standard release flow',
+        steps: [{ title: 'Build', type: 'task' }],
+        next_flow_id: null,
+        scope_id: 'product-1',
+        scope_l1_id: 'product-1',
+        scope_l2_id: null,
+        scope_l3_id: null,
+        scope_l4_id: null,
+        scope_l5_id: null,
+        shares: [],
+        group_ids: ['group-1'],
+      })).owner_payload.ciphertext),
+      organisation: JSON.parse((await outboundOrganisation({
+        record_id: 'org-1',
+        owner_npub: 'npub_owner',
+        title: 'Acme Corp',
+        description: 'Widget manufacturer',
+        positioning: 'Market leader',
+        contacts: [{ type: 'email', value: 'info@acme.test' }],
+        person_links: ['person-1'],
+        scope_id: 'product-1',
+        scope_l1_id: 'product-1',
+        scope_l2_id: null,
+        scope_l3_id: null,
+        scope_l4_id: null,
+        scope_l5_id: null,
+        shares: [],
+        group_ids: ['group-1'],
+      })).owner_payload.ciphertext),
+      opportunity: JSON.parse((await outboundOpportunity({
+        record_id: 'opportunity-1',
+        owner_npub: 'npub_owner',
+        title: 'Capability statement pilot',
+        description: 'Explore a pilot for compliance onboarding automation.',
+        stage: 'qualified',
+        opportunity_type: 'automation',
+        responsible_npub: 'npub1seller',
+        person_links: [{ person_id: 'person-1', primary: true }],
+        organisation_links: [{ organisation_id: 'org-1', primary: true }],
+        task_links: [{ task_id: 'task-1', primary: true }],
+        expected_value: 25000,
+        currency: 'AUD',
+        expected_close_at: '2026-06-30',
+        source: 'wealth funds',
+        origin_opportunity_id: null,
+        scope_id: 'product-1',
+        scope_l1_id: 'product-1',
+        scope_l2_id: null,
+        scope_l3_id: null,
+        scope_l4_id: null,
+        scope_l5_id: null,
+        shares: [],
+        group_ids: ['group-1'],
+      })).owner_payload.ciphertext),
+      person: JSON.parse((await outboundPerson({
+        record_id: 'person-1',
+        owner_npub: 'npub_owner',
+        title: 'Jane Doe',
+        description: 'Engineer',
+        contacts: [{ type: 'email', value: 'jane@acme.test' }],
+        organisation_links: ['org-1'],
+        scope_id: 'product-1',
+        scope_l1_id: 'product-1',
+        scope_l2_id: null,
+        scope_l3_id: null,
+        scope_l4_id: null,
+        scope_l5_id: null,
+        shares: [],
+        group_ids: ['group-1'],
+      })).owner_payload.ciphertext),
+      reaction: JSON.parse((await outboundReaction({
+        record_id: 'reaction-1',
+        owner_npub: 'npub_owner',
+        target_record_id: 'msg-1',
+        target_record_family_hash: `${APP_NPUB}:chat_message`,
+        emoji: 'thumbs_up',
+        reactor_npub: 'npub_actor',
+        target_group_ids: ['group-1'],
+      })).owner_payload.ciphertext),
+      report: JSON.parse((await outboundReport({
+        record_id: 'report-1',
+        owner_npub: 'npub_owner',
+        group_ids: ['group-1'],
+        metadata: {
+          title: 'Daily Users',
+          generated_at: '2026-03-25T00:55:00Z',
+          record_state: 'active',
+          surface: 'flightdeck',
+          scope: {
+            id: 'deliverable-1',
+            level: 'deliverable',
+            l1_id: 'product-1',
+            l2_id: 'project-1',
+            l3_id: 'deliverable-1',
+            l4_id: null,
+            l5_id: null,
+          },
+        },
+        data: {
+          declaration_type: 'metric',
+          payload: {
+            label: 'Daily Users',
+            value: 50,
+            unit: 'per day',
+          },
+        },
+      })).owner_payload.ciphertext),
+      schedule: JSON.parse((await outboundSchedule({
+        record_id: 'schedule-1',
+        owner_npub: 'npub_owner',
+        title: 'Daily wrap-up',
+        time_start: '09:00',
+        time_end: '09:30',
+        days: ['mon'],
+        timezone: 'Australia/Perth',
+        shares: [],
+        group_ids: ['group-1'],
+      })).owner_payload.ciphertext),
+      scope: JSON.parse((await outboundScope({
+        record_id: 'scope-1',
+        owner_npub: 'npub_owner',
+        title: 'Flight Deck',
+        description: 'Product scope',
+        level: 'product',
+        group_ids: ['group-1'],
+      })).owner_payload.ciphertext),
+      settings: JSON.parse((await outboundWorkspaceSettings({
+        record_id: 'settings-1',
+        owner_npub: 'npub_owner',
+        workspace_owner_npub: 'npub_owner',
+        wingman_harness_url: 'https://host.otherstuff.ai',
+        group_ids: ['group-1'],
+      })).owner_payload.ciphertext),
+      task: JSON.parse((await outboundTask({
+        record_id: 'task-1',
+        owner_npub: 'npub_owner',
+        title: 'Build board',
+        description: 'Port v3',
+        state: 'new',
+        priority: 'rock',
+        assigned_to_npub: 'npub_assignee',
+        scope_id: 'deliverable-1',
+        scope_l1_id: 'product-1',
+        scope_l2_id: 'project-1',
+        scope_l3_id: 'deliverable-1',
+        scope_l4_id: null,
+        scope_l5_id: null,
+        shares: [],
+        group_ids: ['group-1'],
+      })).owner_payload.ciphertext),
+      wapp: JSON.parse((await outboundWapp({
+        record_id: 'wapp-1',
+        owner_npub: 'npub_owner',
+        title: 'Budget Builder',
+        description: 'Prepare a scope budget.',
+        wapp_id: 'wapp-budget',
+        app_id: 'app-budget',
+        launch_url: 'https://apps.example.test/budget',
+        source_wingman_url: null,
+        workspace_owner_npub: 'npub_owner',
+        scope_id: 'deliverable-1',
+        scope_l1_id: 'product-1',
+        scope_l2_id: 'project-1',
+        scope_l3_id: 'deliverable-1',
+        scope_l4_id: null,
+        scope_l5_id: null,
+        group_ids: ['group-1'],
+      })).owner_payload.ciphertext),
+    };
+
+    for (const family of expectedFamilies) {
+      assertMatchesPublishedSchema(family, payloads[family]);
+    }
+  });
+});

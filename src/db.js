@@ -1,0 +1,1151 @@
+import Dexie from 'dexie';
+import { getSyncFamily, getSyncStateKeyForFamily } from './sync-families.js';
+import {
+  resolveWindowLimit,
+  takeNewestWindow,
+  takeWindow,
+  sortRowsByTimestamp,
+} from './windowing.js';
+
+// ---------------------------------------------------------------------------
+// Shared DB — singleton, always open. Holds global (non-workspace) state.
+// ---------------------------------------------------------------------------
+
+const sharedDb = new Dexie('wingman-fd-shared');
+
+sharedDb.version(1).stores({
+  app_settings:        '++id',
+  storage_image_cache: '&object_id, cached_at',
+  profiles:            'pubkey',
+  address_book:        'npub, last_used_at',
+});
+
+sharedDb.version(2).stores({
+  app_settings:        '++id',
+  storage_image_cache: '&object_id, cached_at',
+  profiles:            'pubkey',
+  address_book:        'npub, last_used_at',
+  workspace_keys:      '&workspace_owner_npub, user_npub, ws_key_npub',
+});
+
+// ---------------------------------------------------------------------------
+// Workspace DB — one per workspace identity key.
+// Contains ALL record / sync tables.
+// ---------------------------------------------------------------------------
+
+let _currentWorkspaceDb = null;
+let _currentWorkspaceDbKey = null;
+
+const WORKSPACE_STORES = {
+  workspace_settings: '&workspace_owner_npub, record_id, updated_at',
+  channels:           'record_id, owner_npub, *group_ids, scope_id, scope_l1_id, scope_l2_id, scope_l3_id, scope_l4_id, scope_l5_id',
+  chat_messages:      'record_id, channel_id, parent_message_id, sync_status, updated_at',
+  groups:             'group_id, owner_npub, *member_npubs',
+  documents:          'record_id, owner_npub, parent_directory_id, sync_status, updated_at, scope_id, scope_l1_id, scope_l2_id, scope_l3_id, scope_l4_id, scope_l5_id',
+  directories:        'record_id, owner_npub, parent_directory_id, sync_status, updated_at',
+  reports:            'record_id, owner_npub, declaration_type, surface, generated_at, updated_at, *group_ids, scope_id, scope_l1_id, scope_l2_id, scope_l3_id, scope_l4_id, scope_l5_id',
+  tasks:              'record_id, owner_npub, parent_task_id, state, sync_status, updated_at, scope_id, scope_l1_id, scope_l2_id, scope_l3_id, scope_l4_id, scope_l5_id, *predecessor_task_ids, flow_id, flow_run_id, flow_step',
+  schedules:          'record_id, owner_npub, active, repeat, updated_at, sync_status',
+  comments:           'record_id, target_record_id, target_record_family_hash, parent_comment_id, updated_at',
+  reactions:          'record_id, target_record_id, target_record_family_hash, emoji, reactor_npub, &[target_record_family_hash+target_record_id+emoji+reactor_npub], updated_at',
+  audio_notes:        'record_id, owner_npub, target_record_id, target_record_family_hash, transcript_status, sync_status, updated_at',
+  scopes:             'record_id, owner_npub, level, parent_id, l1_id, l2_id, l3_id, l4_id, l5_id, updated_at',
+  flows:              'record_id, owner_npub, scope_id, scope_l1_id, scope_l2_id, scope_l3_id, scope_l4_id, scope_l5_id, sync_status, updated_at, *group_ids',
+  approvals:          'record_id, owner_npub, flow_id, flow_run_id, flow_step, status, approval_mode, scope_id, scope_l1_id, scope_l2_id, scope_l3_id, scope_l4_id, scope_l5_id, sync_status, updated_at, *group_ids, *task_ids',
+  persons:            'record_id, owner_npub, sync_status, updated_at, scope_id, scope_l1_id, scope_l2_id, scope_l3_id, scope_l4_id, scope_l5_id',
+  organisations:      'record_id, owner_npub, sync_status, updated_at, scope_id, scope_l1_id, scope_l2_id, scope_l3_id, scope_l4_id, scope_l5_id',
+  sync_quarantine:    '&key, family_hash, family_id, record_id, last_seen_at',
+  pending_writes:     '++row_id, record_id, record_family_hash, created_at',
+  sync_state:         'key',
+  read_cursors:       '&record_id, cursor_key, viewer_npub, read_until',
+};
+
+const WORKSPACE_STORES_V8 = {
+  ...WORKSPACE_STORES,
+  opportunities: 'record_id, owner_npub, stage, responsible_npub, sync_status, updated_at, scope_id, scope_l1_id, scope_l2_id, scope_l3_id, scope_l4_id, scope_l5_id, *group_ids',
+};
+
+const WORKSPACE_STORES_V10 = {
+  ...WORKSPACE_STORES_V8,
+  reactions: WORKSPACE_STORES.reactions,
+};
+
+const WORKSPACE_STORES_V11 = {
+  ...WORKSPACE_STORES_V10,
+  wapps: 'record_id, owner_npub, workspace_owner_npub, scope_id, scope_l1_id, scope_l2_id, scope_l3_id, scope_l4_id, scope_l5_id, updated_at',
+};
+
+function createWorkspaceDb(workspaceDbKey) {
+  const db = new Dexie(`wingman-fd-ws-${workspaceDbKey}`);
+  const WORKSPACE_STORES_V2 = {
+    workspace_settings: '&workspace_owner_npub, record_id, updated_at',
+    channels:           'record_id, owner_npub, *group_ids, scope_id, scope_product_id, scope_project_id, scope_deliverable_id',
+    chat_messages:      'record_id, channel_id, parent_message_id, sync_status, updated_at',
+    groups:             'group_id, owner_npub, *member_npubs',
+    documents:          'record_id, owner_npub, parent_directory_id, sync_status, updated_at, scope_id, scope_product_id, scope_project_id, scope_deliverable_id',
+    directories:        'record_id, owner_npub, parent_directory_id, sync_status, updated_at',
+    tasks:              'record_id, owner_npub, parent_task_id, state, sync_status, updated_at, scope_id, scope_product_id, scope_project_id, scope_deliverable_id',
+    schedules:          'record_id, owner_npub, active, repeat, updated_at, sync_status',
+    comments:           'record_id, target_record_id, target_record_family_hash, parent_comment_id, updated_at',
+    reactions:          'record_id, target_record_id, target_record_family_hash, emoji, reactor_npub, &[target_record_family_hash+target_record_id+emoji+reactor_npub], updated_at',
+    audio_notes:        'record_id, owner_npub, target_record_id, target_record_family_hash, transcript_status, sync_status, updated_at',
+    scopes:             'record_id, owner_npub, level, parent_id, product_id, project_id, updated_at',
+    sync_quarantine:    '&key, family_hash, family_id, record_id, last_seen_at',
+    pending_writes:     '++row_id, record_id, record_family_hash, created_at',
+    sync_state:         'key',
+    read_cursors:       '&record_id, cursor_key, viewer_npub, read_until',
+  };
+  // v1: original schema (without read_cursors)
+  db.version(1).stores({
+    workspace_settings: '&workspace_owner_npub, record_id, updated_at',
+    channels:           'record_id, owner_npub, *group_ids, scope_id, scope_product_id, scope_project_id, scope_deliverable_id',
+    chat_messages:      'record_id, channel_id, parent_message_id, sync_status, updated_at',
+    groups:             'group_id, owner_npub, *member_npubs',
+    documents:          'record_id, owner_npub, parent_directory_id, sync_status, updated_at, scope_id, scope_product_id, scope_project_id, scope_deliverable_id',
+    directories:        'record_id, owner_npub, parent_directory_id, sync_status, updated_at',
+    tasks:              'record_id, owner_npub, parent_task_id, state, sync_status, updated_at, scope_id, scope_product_id, scope_project_id, scope_deliverable_id',
+    schedules:          'record_id, owner_npub, active, repeat, updated_at, sync_status',
+    comments:           'record_id, target_record_id, target_record_family_hash, parent_comment_id, updated_at',
+    reactions:          'record_id, target_record_id, target_record_family_hash, emoji, reactor_npub, &[target_record_family_hash+target_record_id+emoji+reactor_npub], updated_at',
+    audio_notes:        'record_id, owner_npub, target_record_id, target_record_family_hash, transcript_status, sync_status, updated_at',
+    scopes:             'record_id, owner_npub, level, parent_id, product_id, project_id, updated_at',
+    sync_quarantine:    '&key, family_hash, family_id, record_id, last_seen_at',
+    pending_writes:     '++row_id, record_id, record_family_hash, created_at',
+    sync_state:         'key',
+  });
+  // v2: add read_cursors for unread indicators
+  db.version(2).stores(WORKSPACE_STORES_V2);
+  // v3: add reports table
+  db.version(3).stores({
+    ...WORKSPACE_STORES_V2,
+    reports: 'record_id, owner_npub, declaration_type, surface, generated_at, updated_at, *group_ids, scope_id, scope_product_id, scope_project_id, scope_deliverable_id',
+  });
+  // v4: canonical scope indexes (l1–l5 replacing product/project/deliverable)
+  const WORKSPACE_STORES_V4 = {
+    ...WORKSPACE_STORES,
+    tasks: 'record_id, owner_npub, parent_task_id, state, sync_status, updated_at, scope_id, scope_l1_id, scope_l2_id, scope_l3_id, scope_l4_id, scope_l5_id',
+  };
+  delete WORKSPACE_STORES_V4.flows;
+  delete WORKSPACE_STORES_V4.approvals;
+  db.version(4).stores(WORKSPACE_STORES_V4);
+  // v5: add flows, approvals tables + task flow extension indexes
+  const WORKSPACE_STORES_V5 = { ...WORKSPACE_STORES };
+  delete WORKSPACE_STORES_V5.persons;
+  delete WORKSPACE_STORES_V5.organisations;
+  db.version(5).stores(WORKSPACE_STORES_V5);
+  // v6: add persons, organisations tables
+  db.version(6).stores(WORKSPACE_STORES);
+  db.version(7).stores(WORKSPACE_STORES);
+  db.version(8).stores(WORKSPACE_STORES_V8);
+  // Delete the retired legacy store without keeping its identifier in runtime bundles.
+  const retiredAgentChatStore = [
+    97, 103, 101, 110, 116, 95, 99, 104, 97, 116, 95, 116, 114, 105, 103, 103, 101, 114, 115,
+  ].map((code) => String.fromCharCode(code)).join('');
+  db.version(9).stores({ [retiredAgentChatStore]: null });
+  db.version(10).stores(WORKSPACE_STORES_V10);
+  db.version(11).stores(WORKSPACE_STORES_V11);
+  return db;
+}
+
+export function openWorkspaceDb(workspaceDbKey) {
+  if (!workspaceDbKey) throw new Error('workspaceDbKey is required to open a workspace database');
+  if (_currentWorkspaceDbKey === workspaceDbKey && _currentWorkspaceDb) {
+    return _currentWorkspaceDb;
+  }
+  if (_currentWorkspaceDb) {
+    try { _currentWorkspaceDb.close(); } catch { /* already closed */ }
+  }
+  _currentWorkspaceDb = createWorkspaceDb(workspaceDbKey);
+  _currentWorkspaceDbKey = workspaceDbKey;
+  return _currentWorkspaceDb;
+}
+
+export function getWorkspaceDb() {
+  if (!_currentWorkspaceDb) throw new Error('No workspace database open — call openWorkspaceDb(workspaceDbKey) first');
+  return _currentWorkspaceDb;
+}
+
+export function getSharedDb() {
+  return sharedDb;
+}
+
+export function getCurrentWorkspaceDbKey() {
+  return _currentWorkspaceDbKey;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function sanitizeForStorage(value) {
+  if (value == null) return value;
+  return JSON.parse(JSON.stringify(value));
+}
+
+/** Shorthand — workspace db, throws if none open. */
+function wsDb() {
+  if (!_currentWorkspaceDb) throw new Error('No workspace database open — call openWorkspaceDb(workspaceDbKey) first');
+  return _currentWorkspaceDb;
+}
+
+export function hasWorkspaceDb() {
+  return _currentWorkspaceDb !== null;
+}
+
+export async function deleteWorkspaceDb(workspaceDbKey) {
+  if (!workspaceDbKey) throw new Error('workspaceDbKey is required to delete a workspace database');
+  if (_currentWorkspaceDbKey === workspaceDbKey && _currentWorkspaceDb) {
+    _currentWorkspaceDb.close();
+    _currentWorkspaceDb = null;
+    _currentWorkspaceDbKey = null;
+  }
+  const dbName = `wingman-fd-ws-${workspaceDbKey}`;
+  await Dexie.delete(dbName);
+}
+
+// ---------------------------------------------------------------------------
+// Migration: move app_settings from old CoworkerV4 DB into shared DB.
+// Called once on first load with the new code.
+// ---------------------------------------------------------------------------
+
+export async function migrateFromLegacyDb() {
+  const legacyDbName = 'CoworkerV4';
+  const databases = await Dexie.getDatabaseNames();
+  if (!databases.includes(legacyDbName)) return false;
+
+  const legacyDb = new Dexie(legacyDbName);
+  legacyDb.version(10).stores({
+    app_settings:       '++id',
+    workspace_settings: '&workspace_owner_npub, record_id, updated_at',
+    storage_image_cache:'&object_id, cached_at',
+    channels:           'record_id, owner_npub, *group_ids, scope_id, scope_product_id, scope_project_id, scope_deliverable_id',
+    chat_messages:      'record_id, channel_id, parent_message_id, sync_status, updated_at',
+    groups:             'group_id, owner_npub, *member_npubs',
+    documents:          'record_id, owner_npub, parent_directory_id, sync_status, updated_at, scope_id, scope_product_id, scope_project_id, scope_deliverable_id',
+    directories:        'record_id, owner_npub, parent_directory_id, sync_status, updated_at',
+    tasks:              'record_id, owner_npub, parent_task_id, state, sync_status, updated_at, scope_id, scope_product_id, scope_project_id, scope_deliverable_id',
+    comments:           'record_id, target_record_id, target_record_family_hash, parent_comment_id, updated_at',
+    audio_notes:        'record_id, owner_npub, target_record_id, target_record_family_hash, transcript_status, sync_status, updated_at',
+    scopes:             'record_id, owner_npub, level, parent_id, product_id, project_id, updated_at',
+    schedules:          'record_id, owner_npub, active, repeat, updated_at, sync_status',
+    sync_quarantine:    '&key, family_hash, family_id, record_id, last_seen_at',
+    pending_writes:     '++row_id, record_id, record_family_hash, created_at',
+    profiles:           'pubkey',
+    address_book:       'npub, last_used_at',
+    sync_state:         'key',
+  });
+
+  try {
+    await legacyDb.open();
+
+    const settings = await legacyDb.app_settings.toCollection().first();
+    if (settings) {
+      const { id: _id, ...rest } = settings;
+      await sharedDb.app_settings.add(rest);
+    }
+
+    const profiles = await legacyDb.profiles.toArray();
+    if (profiles.length > 0) {
+      await sharedDb.profiles.bulkPut(profiles);
+    }
+
+    const contacts = await legacyDb.address_book.toArray();
+    if (contacts.length > 0) {
+      await sharedDb.address_book.bulkPut(contacts);
+    }
+
+    const images = await legacyDb.storage_image_cache.toArray();
+    if (images.length > 0) {
+      await sharedDb.storage_image_cache.bulkPut(images);
+    }
+
+    legacyDb.close();
+    await Dexie.delete(legacyDbName);
+    return true;
+  } catch (error) {
+    console.warn('Legacy DB migration failed, will re-sync from server:', error?.message || error);
+    try { legacyDb.close(); } catch { /* ignore */ }
+    try { await Dexie.delete(legacyDbName); } catch { /* ignore */ }
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// app_settings helpers — shared DB
+// ---------------------------------------------------------------------------
+
+export async function getSettings() {
+  return sharedDb.app_settings.toCollection().first();
+}
+
+export async function saveSettings(settings) {
+  const sanitized = sanitizeForStorage(settings);
+  const existing = await sharedDb.app_settings.toCollection().first();
+  if (existing) {
+    return sharedDb.app_settings.update(existing.id, sanitized);
+  }
+  return sharedDb.app_settings.add(sanitized);
+}
+
+// ---------------------------------------------------------------------------
+// workspace_settings helpers — workspace DB
+// ---------------------------------------------------------------------------
+
+export async function getWorkspaceSettings(workspaceOwnerNpub) {
+  if (!workspaceOwnerNpub) return null;
+  return wsDb().workspace_settings.get(workspaceOwnerNpub);
+}
+
+export async function getWorkspaceSettingsSnapshot(workspaceDbKey, workspaceOwnerNpub) {
+  if (!workspaceDbKey || !workspaceOwnerNpub) return null;
+  // Reuse the already-open workspace DB when the key matches to avoid
+  // creating (and schema-parsing) a throwaway Dexie instance on every call.
+  if (_currentWorkspaceDbKey === workspaceDbKey && _currentWorkspaceDb) {
+    try {
+      return await _currentWorkspaceDb.workspace_settings.get(workspaceOwnerNpub);
+    } catch {
+      return null;
+    }
+  }
+  const tempDb = createWorkspaceDb(workspaceDbKey);
+  try {
+    await tempDb.open();
+    return await tempDb.workspace_settings.get(workspaceOwnerNpub);
+  } catch {
+    return null;
+  } finally {
+    tempDb.close();
+  }
+}
+
+export async function upsertWorkspaceSettings(settings) {
+  return wsDb().workspace_settings.put(sanitizeForStorage(settings));
+}
+
+// ---------------------------------------------------------------------------
+// storage_image_cache helpers — shared DB
+// ---------------------------------------------------------------------------
+
+export async function getCachedStorageImage(objectId) {
+  if (!objectId) return null;
+  const entry = await sharedDb.storage_image_cache.get(objectId);
+  if (entry) {
+    // Touch cached_at so it acts as a last-accessed timestamp for LRU eviction
+    sharedDb.storage_image_cache.update(objectId, { cached_at: Date.now() }).catch(() => {});
+  }
+  return entry;
+}
+
+export async function cacheStorageImage({ object_id, blob, content_type = '', cached_at = Date.now() }) {
+  if (!object_id || !(blob instanceof Blob)) return null;
+  const result = await sharedDb.storage_image_cache.put({
+    object_id,
+    blob,
+    content_type,
+    cached_at,
+  });
+  // Fire-and-forget eviction after caching a new entry
+  evictStorageImageCache().catch(() => {});
+  return result;
+}
+
+export async function evictStorageImageCache(maxEntries = 100) {
+  const count = await sharedDb.storage_image_cache.count();
+  if (count <= maxEntries) return 0;
+  const excess = count - maxEntries;
+  // sorted ascending by cached_at — oldest first
+  const oldest = await sharedDb.storage_image_cache
+    .orderBy('cached_at')
+    .limit(excess)
+    .primaryKeys();
+  await sharedDb.storage_image_cache.bulkDelete(oldest);
+  return oldest.length;
+}
+
+// ---------------------------------------------------------------------------
+// channels — workspace DB
+// ---------------------------------------------------------------------------
+
+export async function getChannelsByOwner(ownerNpub) {
+  const rows = await wsDb().channels.where('owner_npub').equals(ownerNpub).toArray();
+  return rows.filter((row) => row.record_state !== 'deleted');
+}
+
+export async function upsertChannel(channel) {
+  return wsDb().channels.put(sanitizeForStorage(channel));
+}
+
+export async function getChannelById(recordId) {
+  return wsDb().channels.get(recordId);
+}
+
+export async function deleteChannelRuntimeState(channelId) {
+  if (!channelId) {
+    return { deletedChannels: 0, deletedMessages: 0, deletedPendingWrites: 0 };
+  }
+
+  const db = wsDb();
+  return db.transaction('rw', db.channels, db.chat_messages, db.pending_writes, async () => {
+    const messageIds = (await db.chat_messages.where('channel_id').equals(channelId).primaryKeys())
+      .map((value) => String(value || '').trim())
+      .filter(Boolean);
+    const pendingWriteRecordIds = [...new Set([channelId, ...messageIds])];
+    const deletedMessages = await db.chat_messages.where('channel_id').equals(channelId).delete();
+    const deletedPendingWrites = pendingWriteRecordIds.length > 0
+      ? await db.pending_writes.where('record_id').anyOf(pendingWriteRecordIds).delete()
+      : 0;
+    const deletedChannels = await db.channels.where('record_id').equals(channelId).delete();
+
+    return { deletedChannels, deletedMessages, deletedPendingWrites };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// directories — workspace DB
+// ---------------------------------------------------------------------------
+
+export async function getDirectoriesByOwner(ownerNpub) {
+  const rows = await wsDb().directories.where('owner_npub').equals(ownerNpub).toArray();
+  return rows.filter((row) => row.record_state !== 'deleted');
+}
+
+export async function upsertDirectory(directory) {
+  return wsDb().directories.put(sanitizeForStorage(directory));
+}
+
+export async function getDirectoryById(recordId) {
+  return wsDb().directories.get(recordId);
+}
+
+// ---------------------------------------------------------------------------
+// documents — workspace DB
+// ---------------------------------------------------------------------------
+
+export async function getDocumentsByOwner(ownerNpub) {
+  const rows = await wsDb().documents.where('owner_npub').equals(ownerNpub).toArray();
+  return rows.filter((row) => row.record_state !== 'deleted');
+}
+
+export async function upsertDocument(document) {
+  return wsDb().documents.put(sanitizeForStorage(document));
+}
+
+export async function getDocumentById(recordId) {
+  return wsDb().documents.get(recordId);
+}
+
+// ---------------------------------------------------------------------------
+// chat_messages — workspace DB
+// ---------------------------------------------------------------------------
+
+export async function getMessagesByChannel(channelId, options = {}) {
+  const rows = await wsDb().chat_messages.where('channel_id').equals(channelId).sortBy('updated_at');
+  const activeRows = rows.filter((row) => row.record_state !== 'deleted');
+  if (!options.limit) return activeRows;
+  return takeWindow(activeRows, resolveWindowLimit('chatMessages', options), { fromStart: false });
+}
+
+export async function getMessagesByOwner(ownerNpub) {
+  const channels = await getChannelsByOwner(ownerNpub);
+  const channelIds = channels.map((channel) => channel.record_id).filter(Boolean);
+  if (channelIds.length === 0) return [];
+  const rows = await wsDb().chat_messages.where('channel_id').anyOf(channelIds).toArray();
+  return rows
+    .filter((row) => row.record_state !== 'deleted')
+    .sort((a, b) => String(a.updated_at || '').localeCompare(String(b.updated_at || '')));
+}
+
+export async function upsertMessage(msg) {
+  return wsDb().chat_messages.put(sanitizeForStorage(msg));
+}
+
+export async function getMessageById(recordId) {
+  return wsDb().chat_messages.get(recordId);
+}
+
+export async function getRecentChatMessagesSince(sinceIso, options = {}) {
+  const rows = await wsDb().chat_messages.where('updated_at').aboveOrEqual(sinceIso).toArray();
+  const ordered = sortRowsByTimestamp(rows.filter((row) => row.record_state !== 'deleted'));
+  if (!options.limit) return ordered;
+  return takeWindow(ordered, resolveWindowLimit('chatMessages', options), { fromStart: true });
+}
+
+export async function getRecentDocumentChangesSince(sinceIso, options = {}) {
+  const rows = await wsDb().documents.where('updated_at').aboveOrEqual(sinceIso).toArray();
+  const ordered = sortRowsByTimestamp(rows.filter((row) => row.record_state !== 'deleted'));
+  if (!options.limit) return ordered;
+  return takeNewestWindow(ordered, resolveWindowLimit('documents', options));
+}
+
+export async function getRecentDirectoryChangesSince(sinceIso, options = {}) {
+  const rows = await wsDb().directories.where('updated_at').aboveOrEqual(sinceIso).toArray();
+  const ordered = sortRowsByTimestamp(rows.filter((row) => row.record_state !== 'deleted'));
+  if (!options.limit) return ordered;
+  return takeNewestWindow(ordered, resolveWindowLimit('directories', options));
+}
+
+// ---------------------------------------------------------------------------
+// reports — workspace DB
+// ---------------------------------------------------------------------------
+
+export async function getReportsByOwner(ownerNpub) {
+  const rows = await wsDb().reports.where('owner_npub').equals(ownerNpub).toArray();
+  return rows.filter((row) => row.record_state !== 'deleted');
+}
+
+export async function getRecentReportChangesSince(sinceIso, options = {}) {
+  const rows = await wsDb().reports.where('updated_at').aboveOrEqual(sinceIso).toArray();
+  const ordered = sortRowsByTimestamp(rows.filter((row) => row.record_state !== 'deleted'));
+  if (!options.limit) return ordered;
+  return takeNewestWindow(ordered, resolveWindowLimit('reports', options));
+}
+
+export async function upsertReport(report) {
+  return wsDb().reports.put(sanitizeForStorage(report));
+}
+
+export async function getReportById(recordId) {
+  return wsDb().reports.get(recordId);
+}
+
+// ---------------------------------------------------------------------------
+// wapps — workspace DB
+// ---------------------------------------------------------------------------
+
+export async function upsertWapp(wapp) {
+  return wsDb().wapps.put(sanitizeForStorage(wapp));
+}
+
+export async function getWappsByOwner(ownerNpub) {
+  const db = wsDb();
+  const [workspaceRows, ownerRows] = await Promise.all([
+    db.wapps.where('workspace_owner_npub').equals(ownerNpub).toArray(),
+    db.wapps.where('owner_npub').equals(ownerNpub).toArray(),
+  ]);
+  const rowsById = new Map([...workspaceRows, ...ownerRows].map((row) => [row.record_id, row]));
+  return [...rowsById.values()].filter((row) => row.record_state !== 'archived' && row.record_state !== 'deleted' && row.status !== 'archived');
+}
+
+export async function getManageableWappsByOwner(ownerNpub) {
+  const db = wsDb();
+  const [workspaceRows, ownerRows] = await Promise.all([
+    db.wapps.where('workspace_owner_npub').equals(ownerNpub).toArray(),
+    db.wapps.where('owner_npub').equals(ownerNpub).toArray(),
+  ]);
+  const rowsById = new Map([...workspaceRows, ...ownerRows].map((row) => [row.record_id, row]));
+  return sortRowsByTimestamp([...rowsById.values()].filter((row) => row.record_state !== 'deleted'));
+}
+
+export async function getWappById(recordId) {
+  return wsDb().wapps.get(recordId);
+}
+
+export async function getRecentWappChangesSince(sinceIso, options = {}) {
+  const rows = await wsDb().wapps.where('updated_at').aboveOrEqual(sinceIso).toArray();
+  const ordered = sortRowsByTimestamp(rows.filter((row) => row.record_state !== 'archived' && row.record_state !== 'deleted' && row.status !== 'archived'));
+  if (!options.limit) return ordered;
+  return takeNewestWindow(ordered, resolveWindowLimit('wapps', options));
+}
+
+// ---------------------------------------------------------------------------
+// groups — workspace DB
+// ---------------------------------------------------------------------------
+
+export async function getGroupsByOwner(ownerNpub) {
+  return wsDb().groups.where('owner_npub').equals(ownerNpub).toArray();
+}
+
+export async function getAllGroups() {
+  return wsDb().groups.toArray();
+}
+
+export async function upsertGroup(group) {
+  return wsDb().groups.put(sanitizeForStorage(group));
+}
+
+export async function deleteGroupById(groupId) {
+  return wsDb().groups.delete(groupId);
+}
+
+// ---------------------------------------------------------------------------
+// address book — shared DB
+// ---------------------------------------------------------------------------
+
+export async function upsertAddressBookPerson(entry) {
+  const existing = await sharedDb.address_book.get(entry.npub);
+  const merged = {
+    npub: entry.npub,
+    label: entry.label ?? existing?.label ?? null,
+    avatar_url: entry.avatar_url ?? existing?.avatar_url ?? null,
+    bio: entry.bio ?? entry.about ?? existing?.bio ?? null,
+    nip05: entry.nip05 ?? existing?.nip05 ?? null,
+    source: entry.source ?? existing?.source ?? 'unknown',
+    last_used_at: entry.last_used_at ?? new Date().toISOString(),
+  };
+  return sharedDb.address_book.put(merged);
+}
+
+export async function getAddressBookPeople(query = '') {
+  const all = await sharedDb.address_book.orderBy('last_used_at').reverse().toArray();
+  const needle = String(query || '').trim().toLowerCase();
+  if (!needle) return all;
+
+  return all.filter((entry) =>
+    String(entry.npub || '').toLowerCase().includes(needle)
+    || String(entry.label || '').toLowerCase().includes(needle)
+    || String(entry.nip05 || '').toLowerCase().includes(needle)
+  );
+}
+
+// ---------------------------------------------------------------------------
+// profiles — shared DB
+// ---------------------------------------------------------------------------
+
+const PROFILE_CACHE_HOURS = 24;
+
+export async function cacheProfile(pubkey, profile) {
+  return sharedDb.profiles.put({
+    pubkey,
+    profile: sanitizeForStorage(profile),
+    cachedAt: Date.now(),
+  });
+}
+
+export async function getCachedProfile(pubkey) {
+  const row = await sharedDb.profiles.get(pubkey);
+  if (!row) return null;
+
+  const maxAge = PROFILE_CACHE_HOURS * 60 * 60 * 1000;
+  if (Date.now() - row.cachedAt > maxAge) {
+    await sharedDb.profiles.delete(pubkey);
+    return null;
+  }
+
+  return row.profile;
+}
+
+// ---------------------------------------------------------------------------
+// pending_writes — workspace DB
+// ---------------------------------------------------------------------------
+
+export async function addPendingWrite(write) {
+  return wsDb().pending_writes.add(sanitizeForStorage({ ...write, created_at: new Date().toISOString() }));
+}
+
+export async function updatePendingWrite(rowId, patch = {}) {
+  if (rowId == null) return 0;
+  return wsDb().pending_writes.update(rowId, sanitizeForStorage(patch));
+}
+
+export async function getPendingWrites() {
+  return wsDb().pending_writes.toArray();
+}
+
+export async function getPendingWritesByFamilies(familyIds = []) {
+  const hashes = [...new Set(familyIds.map((familyId) => getSyncFamily(familyId)?.hash).filter(Boolean))];
+  if (hashes.length === 0) return [];
+  return wsDb().pending_writes.where('record_family_hash').anyOf(hashes).toArray();
+}
+
+export async function removePendingWrite(rowId) {
+  return wsDb().pending_writes.delete(rowId);
+}
+
+// ---------------------------------------------------------------------------
+// sync_state — workspace DB
+// ---------------------------------------------------------------------------
+
+export async function getSyncState(key) {
+  const row = await wsDb().sync_state.get(key);
+  return row?.value ?? null;
+}
+
+export async function setSyncState(key, value) {
+  return wsDb().sync_state.put({ key, value });
+}
+
+export async function deleteSyncState(key) {
+  return wsDb().sync_state.delete(key);
+}
+
+export async function clearSyncStateForFamilies(familyIds = []) {
+  const keys = [...new Set(familyIds.map((familyId) => getSyncStateKeyForFamily(familyId)).filter(Boolean))];
+  if (keys.length === 0) return;
+  await Promise.all(keys.map((key) => deleteSyncState(key)));
+}
+
+export async function clearSyncState() {
+  return wsDb().sync_state.clear();
+}
+
+// ---------------------------------------------------------------------------
+// sync_quarantine — workspace DB
+// ---------------------------------------------------------------------------
+
+export function syncQuarantineKey(familyHash, recordId) {
+  return `${String(familyHash || '').trim()}:${String(recordId || '').trim()}`;
+}
+
+export async function getSyncQuarantineEntries() {
+  const rows = await wsDb().sync_quarantine.orderBy('last_seen_at').reverse().toArray();
+  return rows.filter((row) => row.record_state !== 'deleted');
+}
+
+export async function upsertSyncQuarantineEntry(entry) {
+  const db = wsDb();
+  const key = syncQuarantineKey(entry.family_hash, entry.record_id);
+  const existing = await db.sync_quarantine.get(key);
+  const now = new Date().toISOString();
+  return db.sync_quarantine.put(sanitizeForStorage({
+    ...existing,
+    ...entry,
+    key,
+    first_seen_at: existing?.first_seen_at || entry.first_seen_at || now,
+    last_seen_at: entry.last_seen_at || now,
+    skip_count: Number(existing?.skip_count || 0) + 1,
+    record_state: 'active',
+  }));
+}
+
+export async function deleteSyncQuarantineEntry(familyHash, recordId) {
+  return wsDb().sync_quarantine.delete(syncQuarantineKey(familyHash, recordId));
+}
+
+export async function clearSyncQuarantineForFamilies(familyIds = []) {
+  const hashes = [...new Set(familyIds.map((familyId) => getSyncFamily(familyId)?.hash).filter(Boolean))];
+  if (hashes.length === 0) return;
+  await Promise.all(hashes.map((hash) => wsDb().sync_quarantine.where('family_hash').equals(hash).delete()));
+}
+
+// ---------------------------------------------------------------------------
+// tasks — workspace DB
+// ---------------------------------------------------------------------------
+
+export async function getTasksByOwner(ownerNpub) {
+  const rows = await wsDb().tasks.where('owner_npub').equals(ownerNpub).toArray();
+  return rows.filter((row) => row.record_state !== 'deleted');
+}
+
+export async function getRecentTaskChangesSince(sinceIso, options = {}) {
+  const rows = await wsDb().tasks.where('updated_at').aboveOrEqual(sinceIso).toArray();
+  const ordered = sortRowsByTimestamp(rows.filter((row) => row.record_state !== 'deleted'));
+  if (!options.limit) return ordered;
+  return takeNewestWindow(ordered, resolveWindowLimit('tasks', options));
+}
+
+export async function upsertTask(task) {
+  return wsDb().tasks.put(sanitizeForStorage(task));
+}
+
+export async function getTaskById(recordId) {
+  return wsDb().tasks.get(recordId);
+}
+
+// ---------------------------------------------------------------------------
+// schedules — workspace DB
+// ---------------------------------------------------------------------------
+
+export async function getSchedulesByOwner(ownerNpub) {
+  const rows = await wsDb().schedules.where('owner_npub').equals(ownerNpub).toArray();
+  return rows.filter((row) => row.record_state !== 'deleted');
+}
+
+export async function getRecentScheduleChangesSince(sinceIso, options = {}) {
+  const rows = await wsDb().schedules.where('updated_at').aboveOrEqual(sinceIso).toArray();
+  const ordered = sortRowsByTimestamp(rows.filter((row) => row.record_state !== 'deleted'));
+  if (!options.limit) return ordered;
+  return takeNewestWindow(ordered, resolveWindowLimit('schedules', options));
+}
+
+export async function upsertSchedule(schedule) {
+  return wsDb().schedules.put(sanitizeForStorage(schedule));
+}
+
+export async function getScheduleById(recordId) {
+  return wsDb().schedules.get(recordId);
+}
+
+// ---------------------------------------------------------------------------
+// comments — workspace DB
+// ---------------------------------------------------------------------------
+
+export async function getCommentsByTarget(targetRecordId, options = {}) {
+  const rows = await wsDb().comments.where('target_record_id').equals(targetRecordId).toArray();
+  const ordered = rows
+    .filter((row) => row.record_state !== 'deleted')
+    .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
+  if (!options.limit) return ordered;
+  return takeWindow(ordered, resolveWindowLimit('threadReplies', options), { fromStart: true });
+}
+
+export async function getCommentsByOwner(ownerNpub) {
+  const owner = String(ownerNpub || '').trim();
+  if (!owner) return [];
+  const rows = await wsDb().comments.toArray();
+  return rows
+    .filter((row) => row.record_state !== 'deleted' && row.owner_npub === owner)
+    .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
+}
+
+export async function getRecentCommentsSince(sinceIso, options = {}) {
+  const rows = await wsDb().comments.where('updated_at').aboveOrEqual(sinceIso).toArray();
+  const ordered = sortRowsByTimestamp(rows.filter((row) => row.record_state !== 'deleted'));
+  if (!options.limit) return ordered;
+  return takeNewestWindow(ordered, resolveWindowLimit('threadReplies', options));
+}
+
+export async function upsertComment(comment) {
+  return wsDb().comments.put(sanitizeForStorage(comment));
+}
+
+export async function getCommentById(recordId) {
+  return wsDb().comments.get(recordId);
+}
+
+// ---------------------------------------------------------------------------
+// reactions — workspace DB
+// ---------------------------------------------------------------------------
+
+function reactionIdentityKey(row = {}) {
+  return [
+    String(row.target_record_family_hash || '').trim(),
+    String(row.target_record_id || '').trim(),
+    String(row.emoji || '').trim(),
+    String(row.reactor_npub || '').trim(),
+  ];
+}
+
+function reactionFreshness(row = {}) {
+  return `${String(row.updated_at || '')}\u0000${String(row.version ?? 0).padStart(12, '0')}`;
+}
+
+export async function getReactionsByTarget(targetRecordId, targetRecordFamilyHash = null) {
+  const targetId = String(targetRecordId || '').trim();
+  if (!targetId) return [];
+  const rows = await wsDb().reactions.where('target_record_id').equals(targetId).toArray();
+  const targetFamily = String(targetRecordFamilyHash || '').trim();
+  return rows
+    .filter((row) => !targetFamily || row.target_record_family_hash === targetFamily)
+    .sort((a, b) => String(a.updated_at || '').localeCompare(String(b.updated_at || '')));
+}
+
+export async function getReactionsByTargets(targetRecordIds = [], targetRecordFamilyHash = null) {
+  const targetIds = [...new Set((Array.isArray(targetRecordIds) ? targetRecordIds : [])
+    .map((value) => String(value || '').trim())
+    .filter(Boolean))];
+  if (targetIds.length === 0) return [];
+  const rows = await wsDb().reactions.where('target_record_id').anyOf(targetIds).toArray();
+  const targetFamily = String(targetRecordFamilyHash || '').trim();
+  return rows
+    .filter((row) => !targetFamily || row.target_record_family_hash === targetFamily)
+    .sort((a, b) => String(a.updated_at || '').localeCompare(String(b.updated_at || '')));
+}
+
+export async function getRecentReactionsSince(sinceIso, options = {}) {
+  const rows = await wsDb().reactions.where('updated_at').aboveOrEqual(sinceIso).toArray();
+  const ordered = sortRowsByTimestamp(rows.filter((row) => row.record_state !== 'deleted'));
+  if (!options.limit) return ordered;
+  return takeNewestWindow(ordered, resolveWindowLimit('threadReplies', options));
+}
+
+export async function getReactionByIdentity({
+  target_record_family_hash,
+  target_record_id,
+  emoji,
+  reactor_npub,
+}) {
+  const key = reactionIdentityKey({
+    target_record_family_hash,
+    target_record_id,
+    emoji,
+    reactor_npub,
+  });
+  if (key.some((part) => !part)) return null;
+  return wsDb().reactions
+    .where('[target_record_family_hash+target_record_id+emoji+reactor_npub]')
+    .equals(key)
+    .first();
+}
+
+export async function upsertReaction(reaction) {
+  const row = sanitizeForStorage(reaction);
+  const key = reactionIdentityKey(row);
+  if (key.some((part) => !part)) {
+    throw new Error('reaction identity requires target family, target id, emoji, and reactor');
+  }
+  const db = wsDb();
+  return db.transaction('rw', db.reactions, async () => {
+    const existing = await db.reactions
+      .where('[target_record_family_hash+target_record_id+emoji+reactor_npub]')
+      .equals(key)
+      .first();
+    if (existing?.record_id && existing.record_id !== row.record_id) {
+      if (reactionFreshness(existing) > reactionFreshness(row)) {
+        return existing.record_id;
+      }
+      await db.reactions.delete(existing.record_id);
+    }
+    return db.reactions.put(row);
+  });
+}
+
+export async function deleteRuntimeRecordByFamily(familyIdOrHash, recordId) {
+  const family = getSyncFamily(familyIdOrHash);
+  const tableName = family?.table;
+  if (!tableName || !recordId) return 0;
+  const db = wsDb();
+  const table = db[tableName];
+  if (!table) return 0;
+  return table.where('record_id').equals(recordId).delete();
+}
+
+// ---------------------------------------------------------------------------
+// audio notes — workspace DB
+// ---------------------------------------------------------------------------
+
+export async function getAudioNotesByOwner(ownerNpub) {
+  const rows = await wsDb().audio_notes.where('owner_npub').equals(ownerNpub).toArray();
+  return rows.filter((row) => row.record_state !== 'deleted');
+}
+
+export async function upsertAudioNote(audioNote) {
+  return wsDb().audio_notes.put(sanitizeForStorage(audioNote));
+}
+
+export async function getAudioNoteById(recordId) {
+  return wsDb().audio_notes.get(recordId);
+}
+
+// ---------------------------------------------------------------------------
+// scopes — workspace DB
+// ---------------------------------------------------------------------------
+
+export async function getScopesByOwner(ownerNpub) {
+  const rows = await wsDb().scopes.where('owner_npub').equals(ownerNpub).toArray();
+  return rows.filter((row) => row.record_state !== 'deleted');
+}
+
+export async function getRecentScopeChangesSince(sinceIso, options = {}) {
+  const rows = await wsDb().scopes.where('updated_at').aboveOrEqual(sinceIso).toArray();
+  const ordered = sortRowsByTimestamp(rows.filter((row) => row.record_state !== 'deleted'));
+  if (!options.limit) return ordered;
+  return takeNewestWindow(ordered, resolveWindowLimit('scopes', options));
+}
+
+export async function upsertScope(scope) {
+  return wsDb().scopes.put(scope);
+}
+
+export async function getScopeById(recordId) {
+  return wsDb().scopes.get(recordId);
+}
+
+// ---------------------------------------------------------------------------
+// flows — workspace DB
+// ---------------------------------------------------------------------------
+
+export async function upsertFlow(flow) {
+  return wsDb().flows.put(sanitizeForStorage(flow));
+}
+
+export async function getFlowById(recordId) {
+  return wsDb().flows.get(recordId);
+}
+
+export async function getFlowsByScope(scopeId) {
+  const rows = await wsDb().flows.where('scope_id').equals(scopeId).toArray();
+  return rows.filter((row) => row.record_state !== 'deleted');
+}
+
+export async function getFlowsByOwner(ownerNpub) {
+  const rows = await wsDb().flows.where('owner_npub').equals(ownerNpub).toArray();
+  return rows.filter((row) => row.record_state !== 'deleted');
+}
+
+export async function getRecentFlowChangesSince(sinceIso, options = {}) {
+  const rows = await wsDb().flows.where('updated_at').aboveOrEqual(sinceIso).toArray();
+  const ordered = sortRowsByTimestamp(rows.filter((row) => row.record_state !== 'deleted'));
+  if (!options.limit) return ordered;
+  return takeNewestWindow(ordered, resolveWindowLimit('flows', options));
+}
+
+// ---------------------------------------------------------------------------
+// approvals — workspace DB
+// ---------------------------------------------------------------------------
+
+export async function upsertApproval(approval) {
+  return wsDb().approvals.put(sanitizeForStorage(approval));
+}
+
+export async function getApprovalById(recordId) {
+  return wsDb().approvals.get(recordId);
+}
+
+export async function getApprovalsByScope(scopeId) {
+  const rows = await wsDb().approvals.where('scope_id').equals(scopeId).toArray();
+  return rows.filter((row) => row.record_state !== 'deleted');
+}
+
+export async function getApprovalsByStatus(status) {
+  const rows = await wsDb().approvals.where('status').equals(status).toArray();
+  return rows.filter((row) => row.record_state !== 'deleted');
+}
+
+export async function getAllApprovals() {
+  const rows = await wsDb().approvals.toArray();
+  return rows.filter((row) => row.record_state !== 'deleted');
+}
+
+// ---------------------------------------------------------------------------
+// persons — workspace DB
+// ---------------------------------------------------------------------------
+
+export async function upsertPerson(person) {
+  return wsDb().persons.put(sanitizeForStorage(person));
+}
+
+export async function getPersonById(recordId) {
+  return wsDb().persons.get(recordId);
+}
+
+export async function getPersonsByOwner(ownerNpub) {
+  const rows = await wsDb().persons.where('owner_npub').equals(ownerNpub).toArray();
+  return rows.filter((row) => row.record_state !== 'deleted');
+}
+
+// ---------------------------------------------------------------------------
+// organisations — workspace DB
+// ---------------------------------------------------------------------------
+
+export async function upsertOrganisation(organisation) {
+  return wsDb().organisations.put(sanitizeForStorage(organisation));
+}
+
+export async function getOrganisationById(recordId) {
+  return wsDb().organisations.get(recordId);
+}
+
+export async function getOrganisationsByOwner(ownerNpub) {
+  const rows = await wsDb().organisations.where('owner_npub').equals(ownerNpub).toArray();
+  return rows.filter((row) => row.record_state !== 'deleted');
+}
+
+// ---------------------------------------------------------------------------
+// opportunities — workspace DB
+// ---------------------------------------------------------------------------
+
+export async function upsertOpportunity(opportunity) {
+  return wsDb().opportunities.put(sanitizeForStorage(opportunity));
+}
+
+export async function getOpportunityById(recordId) {
+  return wsDb().opportunities.get(recordId);
+}
+
+export async function getOpportunitiesByOwner(ownerNpub) {
+  const rows = await wsDb().opportunities.where('owner_npub').equals(ownerNpub).toArray();
+  return rows.filter((row) => row.record_state !== 'deleted');
+}
+
+// ---------------------------------------------------------------------------
+// Bulk clear helpers — workspace DB
+// ---------------------------------------------------------------------------
+
+export async function clearRuntimeData() {
+  const db = wsDb();
+  await Promise.all([
+    db.channels.clear(),
+    db.chat_messages.clear(),
+    db.documents.clear(),
+    db.directories.clear(),
+    db.reports.clear(),
+    db.wapps.clear(),
+    db.tasks.clear(),
+    db.schedules.clear(),
+    db.comments.clear(),
+    db.reactions.clear(),
+    db.audio_notes.clear(),
+    db.scopes.clear(),
+    db.flows.clear(),
+    db.approvals.clear(),
+    db.persons.clear(),
+    db.organisations.clear(),
+    db.opportunities.clear(),
+    db.sync_quarantine.clear(),
+    db.groups.clear(),
+    db.pending_writes.clear(),
+    db.sync_state.clear(),
+  ]);
+}
+
+export async function clearRuntimeFamilies(familyIds = []) {
+  const tables = [...new Set(familyIds.map((familyId) => getSyncFamily(familyId)?.table).filter(Boolean))];
+  if (tables.length === 0) return;
+  const db = wsDb();
+  await Promise.all(
+    tables.map((tableName) => db[tableName]?.clear?.()).filter(Boolean)
+  );
+}
+
+// ---------------------------------------------------------------------------
+// read_cursors — workspace DB (for unread indicators)
+// ---------------------------------------------------------------------------
+
+export async function getReadCursor(recordId) {
+  return wsDb().read_cursors.get(recordId);
+}
+
+export async function getReadCursorByKey(cursorKey, viewerNpub) {
+  return wsDb().read_cursors
+    .where('cursor_key').equals(cursorKey)
+    .and((row) => row.viewer_npub === viewerNpub)
+    .first();
+}
+
+export async function upsertReadCursor(cursor) {
+  return wsDb().read_cursors.put(sanitizeForStorage(cursor));
+}
+
+export async function getAllReadCursors(viewerNpub) {
+  return wsDb().read_cursors.where('viewer_npub').equals(viewerNpub).toArray();
+}
+
+export async function getReadCursorsByKeys(viewerNpub, cursorKeys = []) {
+  const keys = [...new Set(cursorKeys.map((key) => String(key || '').trim()).filter(Boolean))];
+  if (!viewerNpub || keys.length === 0) return [];
+  return wsDb().read_cursors
+    .where('cursor_key')
+    .anyOf(keys)
+    .and((row) => row.viewer_npub === viewerNpub)
+    .toArray();
+}
+
+export async function getReadCursorsByPrefix(viewerNpub, cursorPrefix) {
+  const prefix = String(cursorPrefix || '').trim();
+  if (!viewerNpub || !prefix) return [];
+  return wsDb().read_cursors
+    .where('cursor_key')
+    .between(prefix, `${prefix}\uffff`, true, true)
+    .and((row) => row.viewer_npub === viewerNpub)
+    .toArray();
+}
+
+export async function getWindowedTasksByOwner(ownerNpub, options = {}) {
+  const rows = await getTasksByOwner(ownerNpub);
+  return takeNewestWindow(rows, resolveWindowLimit('tasks', options));
+}
+
+export async function getWindowedDocumentsByOwner(ownerNpub, options = {}) {
+  const rows = await getDocumentsByOwner(ownerNpub);
+  return takeNewestWindow(rows, resolveWindowLimit('documents', options));
+}
+
+export async function getWindowedReportsByOwner(ownerNpub, options = {}) {
+  const rows = await getReportsByOwner(ownerNpub);
+  return takeNewestWindow(rows, resolveWindowLimit('reports', options));
+}
+
+export async function getWindowedWappsByOwner(ownerNpub, options = {}) {
+  const rows = await getWappsByOwner(ownerNpub);
+  return takeNewestWindow(rows, resolveWindowLimit('wapps', options));
+}
