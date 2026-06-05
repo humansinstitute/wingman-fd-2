@@ -68,6 +68,8 @@ import {
   lockManagedRecordKey,
 } from './lock-managed-records.js';
 import { resolveFlightDeckRecordCheckoutPolicy } from './record-checkout-policy.js';
+import { isTowerPgBackendMode } from './backend-mode.js';
+import { resolvePgRecordContext } from './pg-record-context.js';
 import { diffLines } from 'diff';
 
 // ---------------------------------------------------------------------------
@@ -1932,6 +1934,9 @@ export const docsManagerMixin = {
   getDefaultDocScopeId(parentDirectoryId = null) {
     const inherited = this.getDirectoryDefaultScopeAssignment(parentDirectoryId);
     if (inherited?.scope_id && this.scopesMap?.has(inherited.scope_id)) return inherited.scope_id;
+    if (isTowerPgBackendMode() && this.selectedChannel?.scope_id && this.scopesMap?.has(this.selectedChannel.scope_id)) {
+      return this.selectedChannel.scope_id;
+    }
     if (this.selectedBoardScope?.record_id) return this.selectedBoardScope.record_id;
     if (this.selectedBoardId && this.scopesMap?.has(this.selectedBoardId)) return this.selectedBoardId;
     return null;
@@ -2053,7 +2058,22 @@ export const docsManagerMixin = {
     }
 
     const parentDirectoryId = this.getDefaultParentDirectoryId();
-    const scopeId = options.scopeId || this.getDefaultDocScopeId(parentDirectoryId);
+    let pgContext = null;
+    let scopeId = options.scopeId || this.getDefaultDocScopeId(parentDirectoryId);
+    if (isTowerPgBackendMode()) {
+      try {
+        pgContext = resolvePgRecordContext(this, {
+          scopeId,
+          channelId: options.channelId,
+          threadId: options.threadId,
+          boardId: options.boardId || this.selectedBoardId,
+        });
+        scopeId = pgContext.scopeId;
+      } catch (error) {
+        this.error = error?.message || 'Select a channel before creating a PG document.';
+        return null;
+      }
+    }
     const scopedAccess = this.buildDocAccessForScope(scopeId, this.getInheritedDirectoryShares(parentDirectoryId));
     if (!scopedAccess?.scope_id) {
       this.error = 'Select a scope before creating a document.';
@@ -2071,6 +2091,10 @@ export const docsManagerMixin = {
       deliverable_links: normalizeRecordLinkList(options.deliverableLinks || [], 'deliverable'),
       parent_directory_id: parentDirectoryId,
       ...scopedAccess,
+      ...(pgContext ? {
+        pg_channel_id: pgContext.channelId,
+        pg_thread_id: pgContext.threadId || null,
+      } : {}),
       sync_status: 'pending',
       record_state: 'active',
       version: 1,

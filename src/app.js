@@ -221,6 +221,10 @@ import {
   togglePreviewId,
 } from './preview-truncation.js';
 import { isTowerPgBackendMode } from './backend-mode.js';
+import {
+  buildPgChannelTaskBoardId,
+  resolvePgRecordContext,
+} from './pg-record-context.js';
 
 // Constants UNSCOPED_TASK_BOARD_ID, WEEKDAY_OPTIONS imported from task-board-state.js
 
@@ -2159,6 +2163,12 @@ export function initApp() {
     },
 
     navigateTo(section, options = {}) {
+      const pgTaskBoardFromChat = section === 'tasks'
+        && this.navSection === 'chat'
+        && isTowerPgBackendMode()
+        && this.selectedChannelId
+        ? buildPgChannelTaskBoardId(this.selectedChannelId)
+        : '';
       this.clearInactiveSectionData(section);
       this.navSection = section;
       this.mobileNavOpen = false;
@@ -2171,6 +2181,11 @@ export function initApp() {
         this.markSectionRead(section);
       }
       if (section === 'tasks' || section === 'reports' || section === 'files') {
+        if (section === 'tasks' && pgTaskBoardFromChat) {
+          this.selectedBoardId = pgTaskBoardFromChat;
+          this.persistSelectedBoardId(this.selectedBoardId);
+          this.showBoardDescendantTasks = false;
+        }
         this.validateSelectedBoardId();
         this.normalizeTaskFilterTags();
       }
@@ -3377,7 +3392,24 @@ export function initApp() {
       const title = String(this.newTaskTitle || '').trim();
       if (!title || !this.session?.npub) return null;
       const description = String(options.description || '').trim();
-      const targetScopeId = String(options.scopeId || this.selectedBoardId || '').trim();
+      let pgContext = null;
+      let targetScopeId = String(options.scopeId || this.selectedBoardId || '').trim();
+      if (isTowerPgBackendMode()) {
+        try {
+          pgContext = resolvePgRecordContext(this, {
+            scopeId: options.scopeId,
+            boardId: options.boardId || this.selectedBoardId,
+            channelId: options.channelId,
+            threadId: options.threadId,
+            includeActiveThread: options.includeActiveThread === true,
+            threadMessageId: options.threadMessageId,
+          });
+          targetScopeId = pgContext.scopeId;
+        } catch (error) {
+          this.error = error?.message || 'Select a channel before creating a PG task.';
+          return null;
+        }
+      }
       if (!targetScopeId) {
         this.error = 'Select a scope board first.';
         return null;
@@ -3431,6 +3463,10 @@ export function initApp() {
         source_links: Array.isArray(options.sourceLinks) ? options.sourceLinks : [],
         references: flowLinkage.references,
         deliverable_links: Array.isArray(options.deliverableLinks) ? options.deliverableLinks : [],
+        ...(pgContext ? {
+          pg_channel_id: pgContext.channelId,
+          pg_thread_id: pgContext.threadId || null,
+        } : {}),
         sync_status: 'pending',
         record_state: 'active',
         version: 1,

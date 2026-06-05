@@ -47,6 +47,13 @@ import {
   normalizeRecordLinkType,
   recordLinkKey,
 } from './record-links.js';
+import {
+  buildPgChannelTaskBoardId,
+  buildPgThreadTaskBoardId,
+  getPgChannelScopeId,
+  parsePgTaskBoardId,
+  resolvePgThreadId,
+} from './pg-record-context.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -339,8 +346,22 @@ function getTaskGraph(store) {
   return cached;
 }
 
+function isPgWorkspaceStore(store) {
+  return Boolean(store?.currentWorkspace?.pgBackendMode || store?.pgBackendMode);
+}
+
+function getTaskPgChannelId(task = {}) {
+  return String(task?.pg_channel_id || task?.channel_id || '').trim() || null;
+}
+
+function getTaskPgThreadId(task = {}) {
+  return String(task?.pg_thread_id || task?.thread_id || '').trim() || null;
+}
+
 function getDerivedSelectedBoardScope(store, scopesMap) {
   const selectedBoardId = store?.selectedBoardId;
+  const boardContext = parsePgTaskBoardId(selectedBoardId);
+  if (boardContext.type !== 'scope') return null;
   if (!selectedBoardId
     || selectedBoardId === ALL_TASK_BOARD_ID
     || selectedBoardId === RECENT_TASK_BOARD_ID
@@ -686,6 +707,16 @@ export function normalizeScopeRowGroupRefs(scope, resolverFn) {
 
 export function computeBoardScopedTasks(tasks, selectedBoardId, selectedBoardScope, scopesMap, showBoardDescendantTasks) {
   const live = tasks.filter((task) => task.record_state !== 'deleted');
+  const boardContext = parsePgTaskBoardId(selectedBoardId);
+  if (boardContext.type === 'thread') {
+    return live.filter((task) =>
+      getTaskPgChannelId(task) === boardContext.channelId
+      && getTaskPgThreadId(task) === boardContext.threadId
+    );
+  }
+  if (boardContext.type === 'channel') {
+    return live.filter((task) => getTaskPgChannelId(task) === boardContext.channelId);
+  }
   if (selectedBoardId === ALL_TASK_BOARD_ID) {
     return live;
   }
@@ -1022,21 +1053,85 @@ export const taskBoardStateMixin = {
   // --- board computation ---
 
   get taskBoards() {
-    const boards = sortTaskBoardScopes(
+    const scopeBoards = sortTaskBoardScopes(
       this.scopes.filter((scope) => scope.record_state !== 'deleted'),
       this.scopesMap,
     ).map((scope) => ({
       id: scope.record_id,
       level: scope.level,
+      zoom: 'scope',
       label: this.formatTaskBoardScopeDisplay(scope),
       breadcrumb: this.getScopeAncestorPath(scope.record_id),
       description: scope.description || '',
     }));
+    const boards = [...scopeBoards];
+    if (isPgWorkspaceStore(this)) {
+      const scopeLabel = (scopeId) => getTaskBoardOptionLabel(scopeId, this.scopesMap) || this.scopesMap.get(scopeId)?.title || 'Scope';
+      const channelBoards = (this.channels || [])
+        .filter((channel) => channel?.record_id && channel.record_state !== 'deleted')
+        .map((channel) => {
+          const scopeId = getPgChannelScopeId(channel);
+          const title = String(channel.title || channel.name || '').trim() || 'Untitled channel';
+          return {
+            id: buildPgChannelTaskBoardId(channel.record_id),
+            level: 'pg-channel',
+            zoom: 'channel',
+            channelId: channel.record_id,
+            scopeId,
+            label: `${title}`,
+            breadcrumb: scopeId ? `${scopeLabel(scopeId)} > ${title}` : title,
+            description: channel.description || 'Channel task board',
+          };
+        })
+        .sort((left, right) => String(left.breadcrumb || '').localeCompare(String(right.breadcrumb || '')));
+      const threadIds = new Set();
+      const threadBoards = [];
+      for (const task of this.tasks || []) {
+        const channelId = getTaskPgChannelId(task);
+        const threadId = getTaskPgThreadId(task);
+        if (!channelId || !threadId || task.record_state === 'deleted') continue;
+        const key = `${channelId}:${threadId}`;
+        if (threadIds.has(key)) continue;
+        threadIds.add(key);
+        const channel = (this.channels || []).find((item) => item.record_id === channelId) || null;
+        const channelTitle = String(channel?.title || channel?.name || '').trim() || 'Channel';
+        threadBoards.push({
+          id: buildPgThreadTaskBoardId(channelId, threadId),
+          level: 'pg-thread',
+          zoom: 'thread',
+          channelId,
+          threadId,
+          scopeId: getPgChannelScopeId(channel),
+          label: `Thread ${threadId.slice(0, 8)}`,
+          breadcrumb: `${channelTitle} > Thread ${threadId.slice(0, 8)}`,
+          description: 'Thread task board',
+        });
+      }
+      if (parsePgTaskBoardId(this.selectedBoardId).type === 'thread'
+        && !threadBoards.some((board) => board.id === this.selectedBoardId)) {
+        const selected = parsePgTaskBoardId(this.selectedBoardId);
+        const channel = (this.channels || []).find((item) => item.record_id === selected.channelId) || null;
+        const channelTitle = String(channel?.title || channel?.name || '').trim() || 'Channel';
+        threadBoards.push({
+          id: this.selectedBoardId,
+          level: 'pg-thread',
+          zoom: 'thread',
+          channelId: selected.channelId,
+          threadId: selected.threadId,
+          scopeId: getPgChannelScopeId(channel),
+          label: `Thread ${String(selected.threadId || '').slice(0, 8)}`,
+          breadcrumb: `${channelTitle} > Thread ${String(selected.threadId || '').slice(0, 8)}`,
+          description: 'Thread task board',
+        });
+      }
+      boards.push(...channelBoards, ...threadBoards);
+    }
     const hasUnscopedTasks = this.tasks.some((task) => task.record_state !== 'deleted' && isTaskUnscoped(task, this.scopesMap));
     if (hasUnscopedTasks) {
       boards.unshift({
         id: UNSCOPED_TASK_BOARD_ID,
         level: 'system',
+        zoom: 'system',
         label: 'Unscoped',
         breadcrumb: 'Unscoped',
         description: 'Tasks with no scope assignment',
@@ -1046,6 +1141,7 @@ export const taskBoardStateMixin = {
       {
         id: ALL_TASK_BOARD_ID,
         level: 'system',
+        zoom: 'system',
         label: 'All',
         breadcrumb: 'All',
         description: 'All tasks regardless of scope',
@@ -1053,6 +1149,7 @@ export const taskBoardStateMixin = {
       {
         id: RECENT_TASK_BOARD_ID,
         level: 'system',
+        zoom: 'system',
         label: 'Recent',
         breadcrumb: 'Recent',
         description: 'Tasks updated in the last 24 hours',
@@ -1062,6 +1159,7 @@ export const taskBoardStateMixin = {
   },
 
   get selectedBoardScope() {
+    if (parsePgTaskBoardId(this.selectedBoardId).type !== 'scope') return null;
     if (!this.selectedBoardId || this.selectedBoardId === UNSCOPED_TASK_BOARD_ID || this.selectedBoardId === ALL_TASK_BOARD_ID || this.selectedBoardId === RECENT_TASK_BOARD_ID) return null;
     return this.scopesMap.get(this.selectedBoardId) || null;
   },
@@ -1074,6 +1172,8 @@ export const taskBoardStateMixin = {
     if (this.selectedBoardId === ALL_TASK_BOARD_ID) return 'All';
     if (this.selectedBoardId === RECENT_TASK_BOARD_ID) return 'Recent';
     if (this.selectedBoardIsUnscoped) return 'Unscoped';
+    const board = this.taskBoards.find((item) => item.id === this.selectedBoardId);
+    if (board?.label) return board.label;
     if (!this.selectedBoardScope) return 'Scope board';
     return this.formatTaskBoardScopeDisplay(this.selectedBoardScope);
   },
@@ -1138,6 +1238,46 @@ export const taskBoardStateMixin = {
     return this.showBoardDescendantTasks ? 'Hide lower levels' : 'Show lower levels';
   },
 
+  get taskBoardZoomMode() {
+    const board = parsePgTaskBoardId(this.selectedBoardId);
+    if (board.type === 'thread') return 'thread';
+    if (board.type === 'channel') return 'channel';
+    return 'scope';
+  },
+
+  get showPgTaskBoardZoomControls() {
+    return isPgWorkspaceStore(this) && (this.channels || []).some((channel) => channel?.record_id && channel.record_state !== 'deleted');
+  },
+
+  get canSelectPgThreadTaskBoard() {
+    if (!this.showPgTaskBoardZoomControls) return false;
+    const board = parsePgTaskBoardId(this.selectedBoardId);
+    if (board.type === 'thread' && board.channelId && board.threadId) return true;
+    return Boolean(this.selectedChannelId && resolvePgThreadId(this, this.activeThreadId));
+  },
+
+  selectPgTaskBoardZoom(mode) {
+    const nextMode = String(mode || '').trim();
+    const board = parsePgTaskBoardId(this.selectedBoardId);
+    const selectedChannelId = board.channelId || this.selectedChannelId || null;
+    const selectedChannel = (this.channels || []).find((channel) => channel.record_id === selectedChannelId) || this.selectedChannel || null;
+    if (nextMode === 'scope') {
+      const scopeId = getPgChannelScopeId(selectedChannel) || (board.type === 'scope' ? board.scopeId : null);
+      if (scopeId) this.selectBoard(scopeId);
+      return;
+    }
+    if (nextMode === 'channel') {
+      const channelId = selectedChannel?.record_id || board.channelId || null;
+      if (channelId) this.selectBoard(buildPgChannelTaskBoardId(channelId));
+      return;
+    }
+    if (nextMode === 'thread') {
+      const channelId = selectedChannel?.record_id || board.channelId || null;
+      const threadId = board.threadId || resolvePgThreadId(this, this.activeThreadId);
+      if (channelId && threadId) this.selectBoard(buildPgThreadTaskBoardId(channelId, threadId));
+    }
+  },
+
   get preferredTaskBoardId() {
     const activeTasks = this.tasks.filter((task) => task.record_state !== 'deleted');
     const boards = this.taskBoards.filter((b) => b.id !== UNSCOPED_TASK_BOARD_ID);
@@ -1178,10 +1318,14 @@ export const taskBoardStateMixin = {
   },
 
   getTaskBoardOptionLabel(scopeId) {
+    const board = this.taskBoards.find((item) => item.id === scopeId);
+    if (board?.label) return board.label;
     return getTaskBoardOptionLabel(scopeId, this.scopesMap);
   },
 
   getTaskBoardSearchText(scopeId) {
+    const board = this.taskBoards.find((item) => item.id === scopeId);
+    if (board) return `${board.label || ''} ${board.breadcrumb || ''} ${board.description || ''}`.toLowerCase();
     return getTaskBoardSearchText(scopeId, this.scopesMap);
   },
 
@@ -1194,6 +1338,11 @@ export const taskBoardStateMixin = {
   },
 
   getTaskBoardWriteGroup(scopeId) {
+    const pgBoard = parsePgTaskBoardId(scopeId);
+    if (pgBoard.type !== 'scope') {
+      const channel = (this.channels || []).find((entry) => entry.record_id === pgBoard.channelId) || null;
+      return channel ? this.getPreferredChannelWriteGroup(channel) : null;
+    }
     if (scopeId === ALL_TASK_BOARD_ID || scopeId === RECENT_TASK_BOARD_ID || scopeId === UNSCOPED_TASK_BOARD_ID) return this.getWorkspaceSettingsGroupRef();
     const scope = this.scopesMap.get(scopeId);
     if (!scope) return null;
@@ -1210,6 +1359,12 @@ export const taskBoardStateMixin = {
   },
 
   buildTaskBoardAssignment(scopeId, fallbackTask = null) {
+    const pgBoard = parsePgTaskBoardId(scopeId);
+    if (pgBoard.type !== 'scope') {
+      const channel = (this.channels || []).find((entry) => entry.record_id === pgBoard.channelId) || null;
+      const channelScopeId = getPgChannelScopeId(channel);
+      return this.buildTaskBoardAssignment(channelScopeId, fallbackTask);
+    }
     if (scopeId === ALL_TASK_BOARD_ID || scopeId === RECENT_TASK_BOARD_ID || scopeId === UNSCOPED_TASK_BOARD_ID) {
       // Moving to unscoped — strip old scope shares, keep explicit
       const groupId = this.getWorkspaceSettingsGroupRef();

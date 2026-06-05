@@ -25,6 +25,7 @@ import { decryptAudioBytes, encryptAudioBlob, measureAudioDuration } from './aud
 import { sameListBySignature } from './utils/state-helpers.js';
 import { isTowerPgBackendMode } from './backend-mode.js';
 import { hydrateTowerPgAudioNotes } from './pg-read-hydrator.js';
+import { resolvePgRecordContext } from './pg-record-context.js';
 import {
   getEncryptableRecordGroupRefsForStore,
   getRecordGroupKeyState,
@@ -264,9 +265,21 @@ export const audioRecordingManagerMixin = {
     target_group_ids = [],
     write_group_ref = null,
     write_group_npub = null,
+    scopeId = null,
+    channelId = null,
+    threadId = null,
   }) {
     const audioNotes = [];
     const attachments = [];
+    let pgContext = null;
+    if (isTowerPgBackendMode() && drafts.length > 0) {
+      pgContext = resolvePgRecordContext(this, {
+        scopeId,
+        channelId,
+        threadId,
+        boardId: this.selectedBoardId,
+      });
+    }
     const audioWriteFields = await getRecordWriteFieldsForStore(this, {
       group_ids: target_group_ids,
     }, {
@@ -297,6 +310,10 @@ export const audioRecordingManagerMixin = {
         summary: null,
         sender_npub: this.session?.npub,
         group_ids: [...encryptableGroupIds],
+        ...(pgContext ? {
+          pg_channel_id: pgContext.channelId,
+          pg_thread_id: pgContext.threadId || null,
+        } : {}),
         sync_status: 'pending',
         record_state: 'active',
         version: 1,

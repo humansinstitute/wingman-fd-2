@@ -36,6 +36,10 @@ import {
   clearGroupKeyCache,
   createGroupIdentity,
 } from '../src/crypto/group-keys.js';
+import {
+  buildPgChannelTaskBoardId,
+  buildPgThreadTaskBoardId,
+} from '../src/pg-record-context.js';
 
 afterEach(() => {
   clearGroupKeyCache();
@@ -581,6 +585,31 @@ describe('computeBoardScopedTasks', () => {
   it('returns only unscoped tasks for UNSCOPED_TASK_BOARD_ID', () => {
     const result = computeBoardScopedTasks(tasks, UNSCOPED_TASK_BOARD_ID, null, scopesMap, false);
     expect(result.every((t) => !t.scope_id || !scopesMap.has(t.scope_id))).toBe(true);
+  });
+
+  it('filters PG channel and thread boards by channel/thread ids', () => {
+    const pgTasks = [
+      { record_id: 't-channel', record_state: 'active', scope_id: 'scope-product', pg_channel_id: 'channel-1', pg_thread_id: null },
+      { record_id: 't-thread', record_state: 'active', scope_id: 'scope-product', pg_channel_id: 'channel-1', pg_thread_id: 'thread-1' },
+      { record_id: 't-other-channel', record_state: 'active', scope_id: 'scope-product', pg_channel_id: 'channel-2', pg_thread_id: 'thread-1' },
+      { record_id: 't-other-thread', record_state: 'active', scope_id: 'scope-product', pg_channel_id: 'channel-1', pg_thread_id: 'thread-2' },
+    ];
+
+    expect(computeBoardScopedTasks(
+      pgTasks,
+      buildPgChannelTaskBoardId('channel-1'),
+      null,
+      scopesMap,
+      false,
+    ).map((task) => task.record_id)).toEqual(['t-channel', 't-thread', 't-other-thread']);
+
+    expect(computeBoardScopedTasks(
+      pgTasks,
+      buildPgThreadTaskBoardId('channel-1', 'thread-1'),
+      null,
+      scopesMap,
+      false,
+    ).map((task) => task.record_id)).toEqual(['t-thread']);
   });
 });
 

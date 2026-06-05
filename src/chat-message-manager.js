@@ -44,6 +44,7 @@ import { sameListBySignature } from './utils/state-helpers.js';
 import { getRecordWriteFieldsForStore } from './preferred-write-group.js';
 import { isTowerPgBackendMode } from './backend-mode.js';
 import { createTowerPgMessageFromLocal } from './pg-write-adapter.js';
+import { resolvePgThreadId } from './pg-record-context.js';
 import { buildSectionUrl, parseRouteLocation } from './route-helpers.js';
 import {
   hasPreviewId,
@@ -1128,6 +1129,7 @@ export const chatMessageManagerMixin = {
         channelId: sourceChannel.record_id,
         clickedMessageId: resolved.clickedMessage.record_id,
         threadRootMessageId: resolved.threadRootMessage.record_id,
+        pgThreadId: resolved.threadRootMessage.pg_thread_id || resolved.clickedMessage.pg_thread_id || null,
         sourceSurface,
         createdAt: new Date().toISOString(),
       };
@@ -1226,10 +1228,17 @@ export const chatMessageManagerMixin = {
     const selectedScopeId = this.chatGetItDoneScopeId || this.resolveChatGetItDoneDefaultScope();
     const taskScopeId = selectedScopeId || UNSCOPED_TASK_BOARD_ID;
     const hasScopedDocTarget = Boolean(selectedScopeId && this.scopesMap?.has?.(selectedScopeId));
+    const pgThreadId = isTowerPgBackendMode()
+      ? (source.pgThreadId || resolvePgThreadId(this, source.threadRootMessageId))
+      : null;
     this.chatGetItDoneSubmitting = true;
     try {
       if (this.chatGetItDoneOutputType === 'doc' && hasScopedDocTarget && typeof this.createDocument === 'function') {
-        const doc = await this.createDocument(this.chatGetItDoneTitle, { scopeId: selectedScopeId, sourceLinks });
+        const doc = await this.createDocument(this.chatGetItDoneTitle, {
+          scopeId: selectedScopeId,
+          sourceLinks,
+          ...(isTowerPgBackendMode() ? { channelId: source.channelId, threadId: pgThreadId } : {}),
+        });
         if (doc?.record_id) deliverableLinks.push({ type: 'doc', id: doc.record_id, order: 1 });
       }
 
@@ -1247,6 +1256,7 @@ export const chatMessageManagerMixin = {
         description,
         state: 'ready',
         scopeId: taskScopeId,
+        ...(isTowerPgBackendMode() ? { channelId: source.channelId, threadId: pgThreadId } : {}),
         assignedToNpub: this.chatGetItDoneAssigneeNpub || null,
         sourceLinks,
         deliverableLinks,

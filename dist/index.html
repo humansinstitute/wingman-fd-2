@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-BEEenUzM.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-DvMs6zFi.css">
+  <script type="module" crossorigin src="/assets/index-F9fGinBo.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-BMLhGVdE.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -1393,6 +1393,28 @@
                 </template>
               </div>
             </template>
+
+            <div class="task-board-zoom-controls" x-show="$store.chat.showPgTaskBoardZoomControls" x-cloak>
+              <button
+                type="button"
+                class="task-board-zoom-btn"
+                :class="{ 'task-board-zoom-btn-active': $store.chat.taskBoardZoomMode === 'scope' }"
+                @click="$store.chat.selectPgTaskBoardZoom('scope')"
+              >Scope</button>
+              <button
+                type="button"
+                class="task-board-zoom-btn"
+                :class="{ 'task-board-zoom-btn-active': $store.chat.taskBoardZoomMode === 'channel' }"
+                @click="$store.chat.selectPgTaskBoardZoom('channel')"
+              >Channel</button>
+              <button
+                type="button"
+                class="task-board-zoom-btn"
+                :disabled="!$store.chat.canSelectPgThreadTaskBoard"
+                :class="{ 'task-board-zoom-btn-active': $store.chat.taskBoardZoomMode === 'thread' }"
+                @click="$store.chat.selectPgTaskBoardZoom('thread')"
+              >Thread</button>
+            </div>
 
             <button
               type="button"

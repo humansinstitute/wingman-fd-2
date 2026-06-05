@@ -41,10 +41,8 @@ describe('PG write adapter', () => {
     });
   });
 
-  it('falls back to a visible channel under the task scope', () => {
-    expect(resolveTowerPgTaskChannel(store({ selectedChannelId: 'channel-1' }), { scope_id: 'scope-2' })).toMatchObject({
-      record_id: 'channel-2',
-    });
+  it('does not fall back to a different channel under the requested task scope', () => {
+    expect(resolveTowerPgTaskChannel(store({ selectedChannelId: 'channel-1' }), { scope_id: 'scope-2' })).toBeNull();
   });
 
   it('creates a Tower PG task and maps the accepted response', async () => {
@@ -79,6 +77,41 @@ describe('PG write adapter', () => {
       metadata: { board_order: null, tags: '' },
     }, { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
     expect(task).toMatchObject({ record_id: 'task-1', pg_channel_id: 'channel-1' });
+  });
+
+  it('passes PG thread context when creating a Tower PG task', async () => {
+    const api = await import('../src/api.js');
+    api.createTowerPgChannelTask.mockResolvedValue({
+      task: {
+        id: 'task-thread',
+        workspace_id: 'workspace-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        thread_id: 'thread-1',
+        title: 'Task',
+        state: 'new',
+        priority: 'sand',
+        row_version: 1,
+      },
+    });
+
+    await createTowerPgTaskFromLocal(store(), {
+      title: 'Task',
+      scope_id: 'scope-1',
+      pg_channel_id: 'channel-1',
+      pg_thread_id: 'thread-1',
+    });
+
+    expect(api.createTowerPgChannelTask).toHaveBeenCalledWith('workspace-1', 'channel-1', expect.objectContaining({
+      thread_id: 'thread-1',
+    }), { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
+  });
+
+  it('rejects PG task creation when the selected channel mismatches the task scope', async () => {
+    await expect(createTowerPgTaskFromLocal(store({ selectedChannelId: 'channel-1' }), {
+      title: 'Task',
+      scope_id: 'scope-2',
+    })).rejects.toThrow('Selected PG channel does not belong to the requested scope');
   });
 
   it('uses the state endpoint for state-only task patches', async () => {

@@ -9,30 +9,31 @@ import {
   mapPgTaskToLocal,
   resolveTowerPgWorkspaceContext,
 } from './pg-read-hydrator.js';
+import {
+  getPgChannelScopeId,
+  resolvePgRecordContext,
+} from './pg-record-context.js';
 
 function trimText(value) {
   return String(value ?? '').trim();
 }
 
-function selectedOrScopedChannel(store, scopeId = '') {
-  const channels = Array.isArray(store?.channels) ? store.channels : [];
-  const selectedId = trimText(store?.selectedChannelId);
-  const selected = channels.find((channel) => channel?.record_id === selectedId) || null;
-  if (selected?.record_id && (!scopeId || selected.scope_id === scopeId || selected.scope_l1_id === scopeId)) return selected;
-  return channels.find((channel) => channel?.record_state !== 'deleted' && (
-    !scopeId || channel.scope_id === scopeId || channel.scope_l1_id === scopeId
-  )) || selected || null;
-}
-
 export function resolveTowerPgTaskChannel(store, task = {}) {
   const explicitChannelId = trimText(task.pg_channel_id || task.channel_id);
   const channels = Array.isArray(store?.channels) ? store.channels : [];
+  const scopeId = trimText(task.scope_id || task.scope_l1_id);
+  const matchesScope = (channel) => {
+    if (!channel?.record_id || channel.record_state === 'deleted') return false;
+    const channelScopeId = getPgChannelScopeId(channel);
+    return !scopeId || channelScopeId === scopeId;
+  };
   if (explicitChannelId) {
     const channel = channels.find((entry) => entry?.record_id === explicitChannelId) || null;
-    if (channel) return channel;
+    return matchesScope(channel) ? channel : null;
   }
-  const scopeId = trimText(task.scope_id || task.scope_l1_id);
-  return selectedOrScopedChannel(store, scopeId);
+  const selectedId = trimText(store?.selectedChannelId);
+  const selected = channels.find((channel) => channel?.record_id === selectedId) || null;
+  return matchesScope(selected) ? selected : null;
 }
 
 function pgRequestOptions(context) {
@@ -44,15 +45,25 @@ function pgRequestOptions(context) {
 
 export async function createTowerPgTaskFromLocal(store, task) {
   const context = resolveTowerPgWorkspaceContext(store);
-  const channel = resolveTowerPgTaskChannel(store, task);
   if (!context.workspaceId || !context.workspaceOwnerNpub || !context.baseUrl) throw new Error('Tower PG workspace is not ready');
-  if (!channel?.record_id) throw new Error('Select a channel in this scope before creating a PG task');
+  const recordContext = resolvePgRecordContext(store, {
+    scopeId: task.scope_id || task.scope_l1_id,
+    channelId: task.pg_channel_id || task.channel_id,
+    threadId: task.pg_thread_id || task.thread_id,
+    includeActiveThread: false,
+  });
+  const channel = resolveTowerPgTaskChannel(store, {
+    ...task,
+    pg_channel_id: recordContext.channelId,
+    scope_id: recordContext.scopeId,
+  });
+  if (!channel?.record_id) throw new Error('Selected PG channel does not match the task scope');
   const result = await createTowerPgChannelTask(context.workspaceId, channel.record_id, {
     title: task.title,
     description: task.description || null,
     state: task.state || 'new',
     priority: task.priority || 'sand',
-    thread_id: task.pg_thread_id || null,
+    thread_id: recordContext.threadId || null,
     metadata: {
       board_order: task.board_order ?? null,
       tags: task.tags || '',

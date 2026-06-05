@@ -1392,6 +1392,28 @@
               </div>
             </template>
 
+            <div class="task-board-zoom-controls" x-show="$store.chat.showPgTaskBoardZoomControls" x-cloak>
+              <button
+                type="button"
+                class="task-board-zoom-btn"
+                :class="{ 'task-board-zoom-btn-active': $store.chat.taskBoardZoomMode === 'scope' }"
+                @click="$store.chat.selectPgTaskBoardZoom('scope')"
+              >Scope</button>
+              <button
+                type="button"
+                class="task-board-zoom-btn"
+                :class="{ 'task-board-zoom-btn-active': $store.chat.taskBoardZoomMode === 'channel' }"
+                @click="$store.chat.selectPgTaskBoardZoom('channel')"
+              >Channel</button>
+              <button
+                type="button"
+                class="task-board-zoom-btn"
+                :disabled="!$store.chat.canSelectPgThreadTaskBoard"
+                :class="{ 'task-board-zoom-btn-active': $store.chat.taskBoardZoomMode === 'thread' }"
+                @click="$store.chat.selectPgTaskBoardZoom('thread')"
+              >Thread</button>
+            </div>
+
             <button
               type="button"
               class="board-descendant-toggle"
