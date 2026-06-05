@@ -322,6 +322,13 @@ export async function listTowerPgWorkspaces({ baseUrl = _baseUrl, appNpub = APP_
   return json(resp, { requestUrl, method: 'GET', prefix: 'Tower PG API' });
 }
 
+export async function createTowerPgAdminWorkspace(body, { baseUrl = _baseUrl, appNpub = APP_NPUB } = {}) {
+  const requestPath = '/api/v4/admin/flightdeck-pg/workspaces';
+  const requestUrl = resolveTowerPgUrl(requestPath, baseUrl);
+  const resp = await signedTowerPgFetch(requestPath, { method: 'POST', body, baseUrl, appNpub });
+  return json(resp, { requestUrl, method: 'POST', prefix: 'Tower PG Admin API' });
+}
+
 export async function getTowerPgWorkspaceDescriptor(workspaceId, { baseUrl = _baseUrl, appNpub = APP_NPUB, path = null } = {}) {
   const encodedWorkspaceId = encodeURIComponent(String(workspaceId || '').trim());
   if (!encodedWorkspaceId && !path) throw new Error('Tower PG workspace id is required');

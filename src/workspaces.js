@@ -1,4 +1,5 @@
 import { APP_NPUB } from './app-identity.js';
+import { isPgWorkspacesOnlyMode } from './backend-mode.js';
 import { buildSuperBasedConnectionToken, parseSuperBasedToken } from './superbased-token.js';
 
 function hasOwn(obj, key) {
@@ -326,9 +327,11 @@ export function mergeWorkspaceEntries(existing = [], incoming = []) {
 
 export function filterWorkspacesForSession(workspaces = [], sessionNpub = '') {
   const activeSession = String(sessionNpub || '').trim();
+  const pgOnly = isPgWorkspacesOnlyMode();
   return (Array.isArray(workspaces) ? workspaces : [])
     .map((entry) => normalizeWorkspaceEntry(entry))
     .filter(Boolean)
+    .filter((entry) => !pgOnly || entry.pgBackendMode)
     .filter((entry) => {
       if (!entry.pgBackendMode) return true;
       return Boolean(activeSession && entry.pgSessionNpub === activeSession);

@@ -654,7 +654,8 @@ describe('applyWorkspaceSettingsRow', () => {
 // Workspace bootstrap modal
 // ---------------------------------------------------------------------------
 describe('workspace bootstrap modal', () => {
-  it('openWorkspaceBootstrapModal sets state', () => {
+  it('openWorkspaceBootstrapModal redirects to connect in PG-only mode', () => {
+    const openConnectModal = vi.fn();
     const { fn, store } = bindMethod('openWorkspaceBootstrapModal', {
       newWorkspaceName: 'leftover',
       newWorkspaceDescription: 'leftover',
@@ -662,14 +663,13 @@ describe('workspace bootstrap modal', () => {
       showWorkspaceBootstrapModal: false,
       showWorkspaceSwitcherMenu: true,
       mobileNavOpen: true,
+      openConnectModal,
     });
     fn();
-    expect(store.showConnectModal).toBe(false);
-    expect(store.showWorkspaceBootstrapModal).toBe(true);
-    expect(store.showWorkspaceSwitcherMenu).toBe(false);
-    expect(store.mobileNavOpen).toBe(false);
-    expect(store.newWorkspaceName).toBe('');
-    expect(store.newWorkspaceDescription).toBe('');
+    expect(openConnectModal).toHaveBeenCalledTimes(1);
+    expect(store.showWorkspaceBootstrapModal).toBe(false);
+    expect(store.newWorkspaceName).toBe('leftover');
+    expect(store.newWorkspaceDescription).toBe('leftover');
   });
 
   it('closeWorkspaceBootstrapModal closes when not submitting', () => {
@@ -695,19 +695,19 @@ describe('workspace bootstrap modal', () => {
 // updateWorkspaceBootstrapPrompt
 // ---------------------------------------------------------------------------
 describe('updateWorkspaceBootstrapPrompt', () => {
-  it('prompts when signed in, has backend, no workspace', () => {
+  it('opens connect instead of legacy bootstrap when PG-only signed in, has backend, no workspace', () => {
     const { fn, store } = bindMethod('updateWorkspaceBootstrapPrompt', {
       session: { npub: 'npub1me' },
       backendUrl: 'https://backend.example.com',
       currentWorkspaceOwnerNpub: '',
       knownWorkspaces: [],
-      showConnectModal: true,
+      showConnectModal: false,
       showWorkspaceBootstrapModal: false,
     });
     const result = fn();
-    expect(result).toBe(true);
-    expect(store.showConnectModal).toBe(false);
-    expect(store.showWorkspaceBootstrapModal).toBe(true);
+    expect(result).toBe(false);
+    expect(store.showConnectModal).toBe(true);
+    expect(store.showWorkspaceBootstrapModal).toBe(false);
   });
 
   it('does not prompt when workspace exists', () => {

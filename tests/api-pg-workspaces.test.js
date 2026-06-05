@@ -233,6 +233,36 @@ describe('Tower PG API helpers', () => {
     expect(createNip98AuthHeaderForSecret).not.toHaveBeenCalled();
   });
 
+  it('creates admin Flight Deck PG workspaces with browser NIP-98 auth', async () => {
+    const { createNip98AuthHeader, createNip98AuthHeaderForSecret } = await import('../src/auth/nostr.js');
+    const api = await import('../src/api.js');
+    api.setBaseUrl('https://tower.example');
+
+    await api.createTowerPgAdminWorkspace({
+      workspace_name: 'Pete docs',
+      workspace_description: 'PG workspace',
+      app_npub: 'flightdeck_pg',
+    }, { appNpub: 'flightdeck_pg' });
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'https://tower.example/api/v4/admin/flightdeck-pg/workspaces',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'NIP98 POST https://tower.example/api/v4/admin/flightdeck-pg/workspaces',
+          'x-flightdeck-pg-app-npub': 'flightdeck_pg',
+        }),
+        body: JSON.stringify({
+          workspace_name: 'Pete docs',
+          workspace_description: 'PG workspace',
+          app_npub: 'flightdeck_pg',
+        }),
+      }),
+    );
+    expect(createNip98AuthHeader).toHaveBeenCalledTimes(1);
+    expect(createNip98AuthHeaderForSecret).not.toHaveBeenCalled();
+  });
+
   it('calls Tower PG workspace admin group and member routes', async () => {
     const { createNip98AuthHeader, createNip98AuthHeaderForSecret } = await import('../src/auth/nostr.js');
     const api = await import('../src/api.js');

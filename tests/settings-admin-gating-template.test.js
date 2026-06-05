@@ -31,6 +31,6 @@ describe('settings admin gating template', () => {
     const html = readFileSync(INDEX_PATH, 'utf8');
 
     expect(html).toContain('<div class="scope-create-bar" x-show="$store.chat.canAdminWorkspace">');
-    expect(html).toContain('<div class="scope-card-actions" x-show="$store.chat.canAdminWorkspace">');
+    expect(html).toContain('<div class="scope-card-actions" x-show="$store.chat.canAdminWorkspace && !$store.chat.isTowerPgMode">');
   });
 });

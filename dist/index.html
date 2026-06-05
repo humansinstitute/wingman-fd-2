@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-BuRP4HHv.js"></script>
+  <script type="module" crossorigin src="/assets/index-D0KlKvxg.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-BMLhGVdE.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
@@ -419,12 +419,12 @@
             <p
               class="connect-workspace-empty"
               x-show="$store.chat.connectWorkspaces.length === 0 && !$store.chat.connectWorkspacesBusy && !$store.chat.connectWorkspacesError"
-              x-text="$store.chat.isTowerPgMode ? 'No PG workspaces found on this Tower. Create one in Tower, then reconnect by URL or descriptor.' : 'No workspaces found on this host. Create one below.'"
+              x-text="$store.chat.isTowerPgMode ? 'No PG workspaces found on this Tower. Create one below if your signer is a Tower admin.' : 'No workspaces found on this host. Create one below.'"
             >
             </p>
             <p class="auth-error" x-show="$store.chat.connectWorkspacesError" x-text="$store.chat.connectWorkspacesError"></p>
-            <div class="connect-create-workspace" x-show="!$store.chat.isTowerPgMode">
-              <strong>Create new workspace</strong>
+            <div class="connect-create-workspace">
+              <strong x-text="$store.chat.isTowerPgMode ? 'Create new PG workspace' : 'Create new workspace'"></strong>
               <form class="connect-create-form" @submit.prevent="$store.chat.connectCreateWorkspace()">
                 <label><span>Name</span><input type="text" x-model="$store.chat.connectNewWorkspaceName" placeholder="My workspace" /></label>
                 <label><span>Description (optional)</span><input type="text" x-model="$store.chat.connectNewWorkspaceDescription" placeholder="" /></label>

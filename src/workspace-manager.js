@@ -1245,6 +1245,13 @@ export const workspaceManagerMixin = {
 
   updateWorkspaceBootstrapPrompt() {
     const shouldPrompt = Boolean(this.session?.npub) && Boolean(this.backendUrl) && !this.currentWorkspaceKey && this.knownWorkspaces.length === 0;
+    if (shouldPrompt && isTowerPgBackendMode()) {
+      this.showWorkspaceBootstrapModal = false;
+      this.showWorkspaceSwitcherMenu = false;
+      this.mobileNavOpen = false;
+      this.showConnectModal = true;
+      return false;
+    }
     if (shouldPrompt) {
       this.showConnectModal = false;
       this.showWorkspaceSwitcherMenu = false;
@@ -1269,6 +1276,10 @@ export const workspaceManagerMixin = {
   },
 
   openWorkspaceBootstrapModal() {
+    if (isTowerPgBackendMode()) {
+      this.openConnectModal?.();
+      return;
+    }
     this.newWorkspaceName = '';
     this.newWorkspaceDescription = '';
     this.showConnectModal = false;
@@ -1283,6 +1294,10 @@ export const workspaceManagerMixin = {
   },
 
   async createWorkspaceBootstrap() {
+    if (isTowerPgBackendMode()) {
+      this.error = 'This Flight Deck build only creates Tower PG workspaces. Use Connect to create a PG workspace from a Tower host.';
+      return;
+    }
     const memberNpub = this.session?.npub;
     if (!memberNpub) {
       this.error = 'Sign in first';

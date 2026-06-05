@@ -1,11 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+const DEFAULT_APP_NPUB = 'npub1hd37reqgfcnz3pvzj4grknd2nkzc94p9ercmunrxx22razr2rfxsw6dns5';
+
 vi.mock('../src/backend-mode.js', () => ({
   isTowerPgBackendMode: vi.fn(() => true),
 }));
 
 vi.mock('../src/api.js', () => ({
   setBaseUrl: vi.fn(),
+  createTowerPgAdminWorkspace: vi.fn(),
   createWorkspace: vi.fn(),
   getWorkspaces: vi.fn(),
   getTowerPgService: vi.fn(),
@@ -113,5 +116,38 @@ describe('PG connect settings manager', () => {
 
     expect(api.getTowerPgWorkspaceDescriptor).not.toHaveBeenCalled();
     expect(api.getTowerPgWorkspaceMe).not.toHaveBeenCalled();
+  });
+
+  it('creates PG workspaces through Tower admin setup and connects with the returned descriptor', async () => {
+    const api = await import('../src/api.js');
+    api.createTowerPgAdminWorkspace.mockResolvedValue({ descriptor });
+    api.getTowerPgWorkspaceDescriptor.mockResolvedValue(descriptor);
+    api.getTowerPgWorkspaceMe.mockResolvedValue({ actor: { npub: 'npub1user' }, membership: { role: 'owner' } });
+    const { connectSettingsManagerMixin } = await import('../src/connect-settings-manager.js');
+    const store = createStore({
+      connectHostUrl: 'https://tower.example',
+      backendUrl: 'https://tower.example',
+      connectNewWorkspaceName: 'Pete docs',
+      connectNewWorkspaceDescription: 'PG workspace',
+      connectCreatingWorkspace: false,
+    });
+    Object.defineProperties(store, Object.getOwnPropertyDescriptors(connectSettingsManagerMixin));
+
+    await store.connectCreateWorkspace();
+
+    expect(api.createTowerPgAdminWorkspace).toHaveBeenCalledWith({
+      workspace_name: 'Pete docs',
+      workspace_description: 'PG workspace',
+      app_npub: DEFAULT_APP_NPUB,
+    }, {
+      baseUrl: 'https://tower.example',
+      appNpub: DEFAULT_APP_NPUB,
+    });
+    expect(api.createWorkspace).not.toHaveBeenCalled();
+    expect(store.knownWorkspaces[0]).toMatchObject({
+      pgBackendMode: true,
+      workspaceOwnerNpub: 'npub1owner',
+    });
+    expect(store.showConnectModal).toBe(false);
   });
 });

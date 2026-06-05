@@ -136,25 +136,25 @@ describe('settings methods', () => {
 
 // --- connection settings ---
 describe('saveConnectionSettings', () => {
-  it('sets error for invalid token', async () => {
+  it('rejects legacy or invalid connection tokens in PG-only mode', async () => {
     const { fn, store } = bindMethod('saveConnectionSettings', {
       superbasedTokenInput: 'bad-token',
     });
     await fn();
-    expect(store.superbasedError).toBe('Connection key must include a direct HTTPS URL');
+    expect(store.superbasedError).toBe('This Flight Deck build only accepts Tower PG workspace descriptors, not legacy connection tokens.');
   });
 
-  it('sets error when no backend URL', async () => {
+  it('requires a PG descriptor when saving connection settings directly', async () => {
     const { fn, store } = bindMethod('saveConnectionSettings', {
       superbasedTokenInput: '',
       backendUrl: '',
       session: { npub: 'npub1me' },
     });
     await fn();
-    expect(store.superbasedError).toBe('Connection key or backend URL required');
+    expect(store.superbasedError).toBe('Flight Deck PG requires a workspace descriptor. Connect through a Tower PG host or paste a descriptor.');
   });
 
-  it('captures tower metadata from a pasted connection token', async () => {
+  it('does not import tower metadata from legacy connection tokens in PG-only mode', async () => {
     const token = btoa(JSON.stringify({
       type: 'superbased_connection',
       version: 2,
@@ -172,13 +172,9 @@ describe('saveConnectionSettings', () => {
 
     await fn();
 
-    expect(store.knownHosts).toContainEqual(expect.objectContaining({
-      url: 'https://tower.example',
-      label: 'Family Tower',
-      serviceNpub: 'npub1service',
-      towerName: 'Family Tower',
-      towerDescription: 'Shared family workspace host',
-    }));
+    expect(store.knownHosts).toEqual([]);
+    expect(store.mergeKnownWorkspaces).not.toHaveBeenCalled();
+    expect(store.superbasedError).toBe('This Flight Deck build only accepts Tower PG workspace descriptors, not legacy connection tokens.');
   });
 });
 

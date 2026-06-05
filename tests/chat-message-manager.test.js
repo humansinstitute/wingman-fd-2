@@ -12,6 +12,10 @@ vi.mock('../src/translators/chat.js', () => ({
   recordFamilyHash: (family) => `mock:${family}`,
 }));
 
+vi.mock('../src/backend-mode.js', () => ({
+  isTowerPgBackendMode: vi.fn(() => false),
+}));
+
 import { chatMessageManagerMixin } from '../src/chat-message-manager.js';
 import { createChatThreadFlowDispatchState } from '../src/chat-thread-flow-dispatch.js';
 import { createChatGetItDoneState } from '../src/chat-get-it-done.js';

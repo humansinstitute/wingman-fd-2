@@ -1,6 +1,9 @@
 const DEFAULT_APP_NPUB = 'npub1hd37reqgfcnz3pvzj4grknd2nkzc94p9ercmunrxx22razr2rfxsw6dns5';
 
-export { FLIGHT_DECK_BACKEND_MODE } from './backend-mode.js';
+export {
+  FLIGHT_DECK_BACKEND_MODE,
+  FLIGHT_DECK_PG_WORKSPACES_ONLY,
+} from './backend-mode.js';
 
 export const APP_VARIANT = 'wm-fd-2';
 export const APP_BASELINE = 'pg-classic';

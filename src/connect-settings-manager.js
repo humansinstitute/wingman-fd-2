@@ -8,6 +8,7 @@
 import {
   setBaseUrl,
   createWorkspace,
+  createTowerPgAdminWorkspace,
   getWorkspaces,
   getTowerPgService,
   getTowerPgWorkspaceDescriptor,
@@ -146,7 +147,15 @@ export const connectSettingsManagerMixin = {
   async saveConnectionSettings() {
     this.superbasedError = null;
     const token = String(this.superbasedTokenInput || '').trim();
-    if (isTowerPgBackendMode() && token && looksLikeJsonObject(token)) {
+    if (isTowerPgBackendMode()) {
+      if (!token) {
+        this.superbasedError = 'Flight Deck PG requires a workspace descriptor. Connect through a Tower PG host or paste a descriptor.';
+        return;
+      }
+      if (!looksLikeJsonObject(token)) {
+        this.superbasedError = 'This Flight Deck build only accepts Tower PG workspace descriptors, not legacy connection tokens.';
+        return;
+      }
       try {
         await this.connectWithPgDescriptor(token, { closeModal: false });
       } catch (error) {
@@ -194,6 +203,9 @@ export const connectSettingsManagerMixin = {
   },
 
   async connectToPreset(presetUrl) {
+    if (isTowerPgBackendMode()) {
+      return this.connectToPgHost(presetUrl, this.presetConnectHost?.label || '');
+    }
     this.presetConnecting = true;
     this.superbasedError = null;
     try {
@@ -530,7 +542,33 @@ export const connectSettingsManagerMixin = {
 
   async connectCreateWorkspace() {
     if (isTowerPgBackendMode()) {
-      this.connectWorkspacesError = 'Create PG workspaces from Tower, then connect here with the descriptor.';
+      const memberNpub = this.session?.npub;
+      if (!memberNpub) { this.connectWorkspacesError = 'Sign in first'; return; }
+      const name = String(this.connectNewWorkspaceName || '').trim();
+      if (!name) { this.connectWorkspacesError = 'Workspace name is required'; return; }
+      const baseUrl = normalizeBackendUrl(this.connectHostUrl || this.backendUrl);
+      if (!baseUrl) {
+        this.connectWorkspacesError = 'Connect to a Tower PG host before creating a workspace.';
+        return;
+      }
+      this.connectCreatingWorkspace = true;
+      this.connectWorkspacesError = null;
+      try {
+        const result = await createTowerPgAdminWorkspace({
+          workspace_name: name,
+          workspace_description: String(this.connectNewWorkspaceDescription || '').trim(),
+          app_npub: APP_NPUB,
+        }, { baseUrl, appNpub: APP_NPUB });
+        if (!result?.descriptor) throw new Error('Tower did not return a workspace descriptor');
+        const workspace = await this.connectWithPgDescriptor(JSON.stringify(result.descriptor));
+        this.connectNewWorkspaceName = '';
+        this.connectNewWorkspaceDescription = '';
+        return workspace;
+      } catch (error) {
+        this.connectWorkspacesError = pgErrorMessage(error, 'Failed to create Flight Deck PG workspace');
+      } finally {
+        this.connectCreatingWorkspace = false;
+      }
       return;
     }
     const memberNpub = this.session?.npub;
@@ -582,7 +620,11 @@ export const connectSettingsManagerMixin = {
   async connectWithToken() {
     const token = String(this.connectTokenInput || '').trim();
     if (!token) return;
-    if (isTowerPgBackendMode() && looksLikeJsonObject(token)) {
+    if (isTowerPgBackendMode()) {
+      if (!looksLikeJsonObject(token)) {
+        this.connectWorkspacesError = 'This Flight Deck build only accepts Tower PG workspace descriptors, not legacy connection tokens.';
+        return;
+      }
       try {
         await this.connectWithPgDescriptor(token);
       } catch (error) {
