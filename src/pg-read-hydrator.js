@@ -1,4 +1,5 @@
 import { FLIGHT_DECK_PG_APP_NPUB } from './app-identity.js';
+import { normalizeBackendUrl } from './utils/state-helpers.js';
 import {
   getTowerPgChannelAudioNotes,
   getTowerPgChannelDocs,
@@ -62,7 +63,7 @@ export function resolveTowerPgWorkspaceContext(store = {}) {
     || identity.workspace_owner_npub
     || identity.workspaceOwnerNpub
   );
-  const baseUrl = trimText(workspace.directHttpsUrl || descriptor.tower_base_url || descriptor.towerBaseUrl || store.backendUrl);
+  const baseUrl = normalizeBackendUrl(workspace.directHttpsUrl || descriptor.tower_base_url || descriptor.towerBaseUrl || store.backendUrl);
   const appNpub = trimText(workspace.appNpub || identity.app_npub || identity.appNpub || FLIGHT_DECK_PG_APP_NPUB || 'flightdeck_pg');
   return {
     workspace,

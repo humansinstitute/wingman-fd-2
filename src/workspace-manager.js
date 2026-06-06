@@ -1173,7 +1173,7 @@ export const workspaceManagerMixin = {
         const workspaces = (result.workspaces || [])
           .map((entry) => normalizeWorkspaceEntry({
             ...entry,
-            directHttpsUrl: entry.tower_base_url || activeBackendUrl,
+            directHttpsUrl: normalizeBackendUrl(entry.tower_base_url || activeBackendUrl),
             serviceNpub: entry.identity?.tower_service_npub || null,
             towerServiceNpub: entry.identity?.tower_service_npub || null,
             workspaceServiceNpub: entry.identity?.workspace_service_npub || null,

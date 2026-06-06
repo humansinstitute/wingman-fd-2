@@ -1,4 +1,5 @@
 import { FLIGHT_DECK_PG_APP_NPUB } from './app-identity.js';
+import { normalizeBackendUrl } from './utils/state-helpers.js';
 
 export const PG_WORKSPACE_DESCRIPTOR_TYPE = 'wingman_workspace_locator';
 
@@ -8,6 +9,10 @@ function trimText(value) {
 
 function trimUrl(value) {
   return trimText(value).replace(/\/+$/, '');
+}
+
+function normalizeTowerBaseUrl(value) {
+  return normalizeBackendUrl(trimUrl(value));
 }
 
 function parseJsonDescriptor(input) {
@@ -67,7 +72,7 @@ export function parsePgWorkspaceDescriptor(input) {
   const identity = descriptor.identity && typeof descriptor.identity === 'object'
     ? descriptor.identity
     : descriptor;
-  const towerBaseUrl = trimUrl(
+  const towerBaseUrl = normalizeTowerBaseUrl(
     descriptor.tower_base_url
     || descriptor.towerBaseUrl
     || descriptor.base_url

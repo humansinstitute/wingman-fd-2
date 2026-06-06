@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect } from 'vitest';
 import {
   toRaw,
   normalizeBackendUrl,
@@ -42,6 +42,16 @@ describe('toRaw', () => {
 });
 
 describe('normalizeBackendUrl', () => {
+  const originalWindow = globalThis.window;
+
+  afterEach(() => {
+    if (originalWindow === undefined) {
+      delete globalThis.window;
+    } else {
+      globalThis.window = originalWindow;
+    }
+  });
+
   it('returns empty string for falsy input', () => {
     expect(normalizeBackendUrl('')).toBe('');
     expect(normalizeBackendUrl(null)).toBe('');
@@ -55,6 +65,12 @@ describe('normalizeBackendUrl', () => {
 
   it('preserves valid URLs', () => {
     expect(normalizeBackendUrl('https://api.example.com')).toBe('https://api.example.com');
+  });
+
+  it('upgrades http backend URLs when Flight Deck is hosted over https', () => {
+    globalThis.window = { location: { origin: 'https://near-tea-crab.rick.runwingman.com' } };
+
+    expect(normalizeBackendUrl('http://sb4.otherstuff.studio/')).toBe('https://sb4.otherstuff.studio');
   });
 
   it('handles non-URL strings gracefully', () => {

@@ -13,11 +13,14 @@ export function normalizeBackendUrl(url) {
 
   try {
     const parsed = new URL(url);
-    const normalized = parsed.toString().replace(/\/+$/, '');
 
-    if (typeof window === 'undefined') return normalized;
+    if (typeof window === 'undefined') return parsed.toString().replace(/\/+$/, '');
 
     const current = new URL(window.location.origin);
+
+    if (current.protocol === 'https:' && parsed.protocol === 'http:') {
+      parsed.protocol = 'https:';
+    }
 
     if (
       parsed.hostname === current.hostname
@@ -27,7 +30,7 @@ export function normalizeBackendUrl(url) {
       return current.origin;
     }
 
-    return normalized;
+    return parsed.toString().replace(/\/+$/, '');
   } catch {
     return String(url).trim().replace(/\/+$/, '');
   }

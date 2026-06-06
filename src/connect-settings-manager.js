@@ -393,7 +393,7 @@ export const connectSettingsManagerMixin = {
         });
         this.connectWorkspaces = (result.workspaces || []).map((entry) => ({
           ...entry,
-          directHttpsUrl: entry.tower_base_url || this.connectHostUrl || this.backendUrl,
+          directHttpsUrl: normalizeBackendUrl(entry.tower_base_url || this.connectHostUrl || this.backendUrl),
           serviceNpub: entry.identity?.tower_service_npub || this.connectHostServiceNpub,
           workspaceId: entry.identity?.workspace_id,
           workspaceOwnerNpub: entry.identity?.workspace_owner_npub,

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   hydrateTowerPgChannels,
   hydrateTowerPgAudioNotes,
@@ -56,6 +56,16 @@ function store(seed = {}) {
 }
 
 describe('PG read hydrator', () => {
+  const originalWindow = globalThis.window;
+
+  afterEach(() => {
+    if (originalWindow === undefined) {
+      delete globalThis.window;
+    } else {
+      globalThis.window = originalWindow;
+    }
+  });
+
   it('resolves Tower PG workspace request context from the selected workspace', () => {
     expect(resolveTowerPgWorkspaceContext(store())).toMatchObject({
       workspaceId: 'workspace-1',
@@ -65,6 +75,20 @@ describe('PG read hydrator', () => {
       links: {
         scopes: '/api/v4/flightdeck-pg/workspaces/workspace-1/scopes',
       },
+    });
+  });
+
+  it('normalizes saved http Tower URLs before PG API requests on hosted https Flight Deck', () => {
+    globalThis.window = { location: { origin: 'https://near-tea-crab.rick.runwingman.com' } };
+
+    expect(resolveTowerPgWorkspaceContext(store({
+      backendUrl: 'https://sb4.otherstuff.studio',
+      currentWorkspace: {
+        ...store().currentWorkspace,
+        directHttpsUrl: 'http://sb4.otherstuff.studio',
+      },
+    }))).toMatchObject({
+      baseUrl: 'https://sb4.otherstuff.studio',
     });
   });
 
