@@ -1,14 +1,16 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTaskById, openWorkspaceDb } from '../src/db.js';
 
 const {
   alpineStartMock,
   alpineStoreMock,
   createTowerPgTaskFromLocalMock,
+  releaseTowerPgEditLeaseMock,
 } = vi.hoisted(() => ({
   alpineStartMock: vi.fn(),
   alpineStoreMock: vi.fn(),
   createTowerPgTaskFromLocalMock: vi.fn(),
+  releaseTowerPgEditLeaseMock: vi.fn(),
 }));
 
 vi.mock('alpinejs', () => ({
@@ -30,6 +32,18 @@ vi.mock('../src/pg-write-adapter.js', () => ({
   updateTowerPgDocFromLocal: vi.fn(),
   updateTowerPgTaskFromLocal: vi.fn(),
 }));
+
+vi.mock('../src/api.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  releaseTowerPgEditLease: releaseTowerPgEditLeaseMock,
+}));
+
+beforeEach(() => {
+  alpineStartMock.mockClear();
+  alpineStoreMock.mockClear();
+  createTowerPgTaskFromLocalMock.mockReset();
+  releaseTowerPgEditLeaseMock.mockReset();
+});
 
 afterEach(() => {
   Object.defineProperty(globalThis, 'navigator', {
@@ -115,5 +129,107 @@ describe('app PG task offline drafts', () => {
       title: 'Offline PG task edited',
       sync_status: 'failed',
     });
+  });
+
+  it('releases a held synced PG task lease when switching task detail routes', async () => {
+    releaseTowerPgEditLeaseMock.mockResolvedValueOnce({ released: true });
+    const { initApp } = await import('../src/app.js');
+    initApp();
+    const store = alpineStoreMock.mock.calls.find(([name]) => name === 'chat')?.[1];
+    expect(store).toBeTruthy();
+
+    Object.assign(store, {
+      session: { npub: 'npub1owner' },
+      ownerNpub: 'npub1pgworkspace',
+      currentWorkspaceOwnerNpub: 'npub1pgworkspace',
+      selectedWorkspaceKey: 'workspace-1',
+      knownWorkspaces: [{
+        workspaceKey: 'workspace-1',
+        workspaceId: 'workspace-1',
+        workspaceOwnerNpub: 'npub1pgworkspace',
+        directHttpsUrl: 'https://tower.example',
+        appNpub: 'flightdeck_pg',
+        pgBackendMode: true,
+      }],
+      backendUrl: 'https://tower.example',
+      tasks: [
+        {
+          record_id: 'task-1',
+          title: 'Synced PG task',
+          pg_backend: true,
+          sync_status: 'synced',
+          record_state: 'active',
+        },
+        {
+          record_id: 'task-2',
+          title: 'Next synced PG task',
+          pg_backend: true,
+          sync_status: 'synced',
+          record_state: 'active',
+        },
+      ],
+      activeTaskId: 'task-1',
+      editingTask: {
+        record_id: 'task-1',
+        title: 'Synced PG task',
+        pg_backend: true,
+        sync_status: 'synced',
+        record_state: 'active',
+      },
+      taskDetailMode: 'edit',
+      pgEditLeaseSessions: {
+        'task:task-1': {
+          acquireState: 'held',
+          lease: { id: 'lease-task-1', lease_token: 'task-token-1' },
+        },
+      },
+      pgEditLeaseRenewalTimers: {
+        'task:task-1': 123,
+      },
+      loadTaskComments: vi.fn(),
+      scheduleStorageImageHydration: vi.fn(),
+      markTaskRead: vi.fn(),
+      syncRoute: vi.fn(),
+    });
+
+    store.openTaskDetail('task-2');
+
+    expect(releaseTowerPgEditLeaseMock).toHaveBeenCalledWith('workspace-1', 'lease-task-1', {
+      lease_token: 'task-token-1',
+    }, { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
+    expect(store.pgEditLeaseSessions['task:task-1']).toBeUndefined();
+    expect(store.pgEditLeaseRenewalTimers['task:task-1']).toBeUndefined();
+    expect(store.activeTaskId).toBe('task-2');
+    expect(store.editingTask.record_id).toBe('task-2');
+    expect(store.taskDetailMode).toBe('view');
+  });
+
+  it('does not use PG lease release when switching from an encrypted-record task detail edit', async () => {
+    const { initApp } = await import('../src/app.js');
+    initApp();
+    const store = alpineStoreMock.mock.calls.find(([name]) => name === 'chat')?.[1];
+    expect(store).toBeTruthy();
+
+    Object.assign(store, {
+      tasks: [
+        { record_id: 'task-classic-1', title: 'Classic task', record_state: 'active' },
+        { record_id: 'task-classic-2', title: 'Next classic task', record_state: 'active' },
+      ],
+      activeTaskId: 'task-classic-1',
+      editingTask: { record_id: 'task-classic-1', title: 'Classic task', record_state: 'active' },
+      taskDetailMode: 'edit',
+      pgEditLeaseSessions: {},
+      pgEditLeaseRenewalTimers: {},
+      loadTaskComments: vi.fn(),
+      scheduleStorageImageHydration: vi.fn(),
+      markTaskRead: vi.fn(),
+      syncRoute: vi.fn(),
+    });
+
+    store.openTaskDetail('task-classic-2');
+
+    expect(releaseTowerPgEditLeaseMock).not.toHaveBeenCalled();
+    expect(store.activeTaskId).toBe('task-classic-2');
+    expect(store.editingTask.record_id).toBe('task-classic-2');
   });
 });

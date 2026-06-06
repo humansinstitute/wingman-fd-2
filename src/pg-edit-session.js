@@ -198,6 +198,9 @@ export async function releasePgEditLeaseForRecord(store, record, entityType, opt
   stopPgEditLeaseRenewal(store, record, entityType, options);
   const session = getPgEditLeaseSession(store, entityType, recordId);
   if (!session?.lease?.id || !session?.lease?.lease_token) return false;
+  if (options.clearLocalBeforeRelease) {
+    clearPgEditLeaseSession(store, entityType, recordId);
+  }
   try {
     const context = resolveTowerPgWorkspaceContext(store);
     await releaseTowerPgEditLease(context.workspaceId, session.lease.id, {
@@ -206,11 +209,15 @@ export async function releasePgEditLeaseForRecord(store, record, entityType, opt
       baseUrl: context.baseUrl,
       appNpub: context.appNpub,
     });
-    clearPgEditLeaseSession(store, entityType, recordId);
+    if (!options.clearLocalBeforeRelease) {
+      clearPgEditLeaseSession(store, entityType, recordId);
+    }
     return true;
   } catch (error) {
     if (options.reportError && store) store.error = error?.message || 'Unable to release Tower PG edit lease.';
-    clearPgEditLeaseSession(store, entityType, recordId);
+    if (!options.clearLocalBeforeRelease) {
+      clearPgEditLeaseSession(store, entityType, recordId);
+    }
     return false;
   }
 }

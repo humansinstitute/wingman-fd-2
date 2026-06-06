@@ -4381,7 +4381,25 @@ export function initApp() {
       await this.queueTaskWrite(updated, task, { intent: 'delete' });
     },
 
+    releaseCurrentPgTaskDetailLeaseBeforeSwitch(nextTaskId) {
+      if (!isTowerPgBackendMode()) return;
+      const previousTaskId = String(this.activeTaskId || this.editingTask?.record_id || '').trim();
+      const targetTaskId = String(nextTaskId || '').trim();
+      if (!previousTaskId || previousTaskId === targetTaskId) return;
+      const previousTask = this.tasks.find(t => t.record_id === previousTaskId)
+        || this.editingTask
+        || this.taskEditOriginal;
+      if (!isSyncedPgRecord(previousTask)) return;
+      const session = getPgEditLeaseSession(this, 'task', previousTask.record_id);
+      if (!session?.lease?.lease_token) return;
+      void releasePgEditLeaseForRecord(this, previousTask, 'task', {
+        reportError: false,
+        clearLocalBeforeRelease: true,
+      }).catch(() => {});
+    },
+
     openTaskDetail(taskId, options = {}) {
+      this.releaseCurrentPgTaskDetailLeaseBeforeSwitch(taskId);
       this.activeTaskId = taskId;
       const task = this.tasks.find(t => t.record_id === taskId);
       this.editingTask = task ? toRaw(task) : null;
