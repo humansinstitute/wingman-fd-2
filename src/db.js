@@ -887,6 +887,39 @@ export async function upsertComment(comment) {
   return wsDb().comments.put(sanitizeForStorage(comment));
 }
 
+export async function replaceCommentRecord(previousRecordId, comment) {
+  const row = sanitizeForStorage(comment);
+  if (!row?.record_id) return null;
+  const db = wsDb();
+  return db.transaction('rw', db.comments, async () => {
+    const previousId = String(previousRecordId || '').trim();
+    if (previousId && previousId !== row.record_id) {
+      await db.comments.delete(previousId);
+    }
+    await db.comments.put(row);
+    return row.record_id;
+  });
+}
+
+export async function replacePgCommentsForTarget(targetRecordId, comments = []) {
+  const targetId = String(targetRecordId || '').trim();
+  if (!targetId) return 0;
+  const rows = (Array.isArray(comments) ? comments : [])
+    .map((comment) => sanitizeForStorage(comment))
+    .filter((comment) => comment?.record_id);
+  const db = wsDb();
+  return db.transaction('rw', db.comments, async () => {
+    const existing = await db.comments.where('target_record_id').equals(targetId).toArray();
+    const pgCommentIds = existing
+      .filter((comment) => comment?.pg_backend === true)
+      .map((comment) => comment.record_id)
+      .filter(Boolean);
+    if (pgCommentIds.length > 0) await db.comments.bulkDelete(pgCommentIds);
+    if (rows.length > 0) await db.comments.bulkPut(rows);
+    return rows.length;
+  });
+}
+
 export async function getCommentById(recordId) {
   return wsDb().comments.get(recordId);
 }

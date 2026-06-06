@@ -94,9 +94,10 @@ describe('Tower PG API helpers', () => {
     await api.getTowerPgChannelMessages('workspace-1', 'channel-1', { appNpub: 'flightdeck_pg', limit: 40 });
     await api.getTowerPgChannelTasks('workspace-1', 'channel-1', { appNpub: 'flightdeck_pg', limit: 50 });
     await api.getTowerPgScopeTasks('workspace-1', 'scope-1', { appNpub: 'flightdeck_pg', limit: 60 });
-    await api.getTowerPgChannelDocs('workspace-1', 'channel-1', { appNpub: 'flightdeck_pg', limit: 70 });
-    await api.getTowerPgChannelFiles('workspace-1', 'channel-1', { appNpub: 'flightdeck_pg', limit: 80 });
-    await api.getTowerPgChannelAudioNotes('workspace-1', 'channel-1', { appNpub: 'flightdeck_pg', limit: 90 });
+    await api.getTowerPgTaskComments('workspace-1', 'task-1', { appNpub: 'flightdeck_pg', limit: 70 });
+    await api.getTowerPgChannelDocs('workspace-1', 'channel-1', { appNpub: 'flightdeck_pg', limit: 80 });
+    await api.getTowerPgChannelFiles('workspace-1', 'channel-1', { appNpub: 'flightdeck_pg', limit: 90 });
+    await api.getTowerPgChannelAudioNotes('workspace-1', 'channel-1', { appNpub: 'flightdeck_pg', limit: 100 });
 
     expect(globalThis.fetch).toHaveBeenNthCalledWith(
       1,
@@ -166,38 +167,49 @@ describe('Tower PG API helpers', () => {
     );
     expect(globalThis.fetch).toHaveBeenNthCalledWith(
       7,
-      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/channels/channel-1/docs?limit=70',
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/tasks/task-1/comments?limit=70',
       expect.objectContaining({
         method: 'GET',
         headers: expect.objectContaining({
-          Authorization: 'NIP98 GET https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/channels/channel-1/docs?limit=70',
+          Authorization: 'NIP98 GET https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/tasks/task-1/comments?limit=70',
           'x-flightdeck-pg-app-npub': 'flightdeck_pg',
         }),
       }),
     );
     expect(globalThis.fetch).toHaveBeenNthCalledWith(
       8,
-      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/channels/channel-1/files?limit=80',
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/channels/channel-1/docs?limit=80',
       expect.objectContaining({
         method: 'GET',
         headers: expect.objectContaining({
-          Authorization: 'NIP98 GET https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/channels/channel-1/files?limit=80',
+          Authorization: 'NIP98 GET https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/channels/channel-1/docs?limit=80',
           'x-flightdeck-pg-app-npub': 'flightdeck_pg',
         }),
       }),
     );
     expect(globalThis.fetch).toHaveBeenNthCalledWith(
       9,
-      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/channels/channel-1/audio-notes?limit=90',
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/channels/channel-1/files?limit=90',
       expect.objectContaining({
         method: 'GET',
         headers: expect.objectContaining({
-          Authorization: 'NIP98 GET https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/channels/channel-1/audio-notes?limit=90',
+          Authorization: 'NIP98 GET https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/channels/channel-1/files?limit=90',
           'x-flightdeck-pg-app-npub': 'flightdeck_pg',
         }),
       }),
     );
-    expect(createNip98AuthHeader).toHaveBeenCalledTimes(9);
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      10,
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/channels/channel-1/audio-notes?limit=100',
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({
+          Authorization: 'NIP98 GET https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/channels/channel-1/audio-notes?limit=100',
+          'x-flightdeck-pg-app-npub': 'flightdeck_pg',
+        }),
+      }),
+    );
+    expect(createNip98AuthHeader).toHaveBeenCalledTimes(10);
     expect(createNip98AuthHeaderForSecret).not.toHaveBeenCalled();
   });
 
@@ -226,6 +238,34 @@ describe('Tower PG API helpers', () => {
           kind: 'project',
           description: 'Top-level marketing work area',
           owner_group_id: 'group-1',
+        }),
+      }),
+    );
+    expect(createNip98AuthHeader).toHaveBeenCalledTimes(1);
+    expect(createNip98AuthHeaderForSecret).not.toHaveBeenCalled();
+  });
+
+  it('creates Tower PG task comments with browser NIP-98 auth', async () => {
+    const { createNip98AuthHeader, createNip98AuthHeaderForSecret } = await import('../src/auth/nostr.js');
+    const api = await import('../src/api.js');
+    api.setBaseUrl('https://tower.example');
+
+    await api.createTowerPgTaskComment('workspace-1', 'task-1', {
+      body: 'Task comment',
+      thread_id: 'thread-1',
+    }, { appNpub: 'flightdeck_pg' });
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/tasks/task-1/comments',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'NIP98 POST https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/tasks/task-1/comments',
+          'x-flightdeck-pg-app-npub': 'flightdeck_pg',
+        }),
+        body: JSON.stringify({
+          body: 'Task comment',
+          thread_id: 'thread-1',
         }),
       }),
     );

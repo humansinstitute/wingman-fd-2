@@ -26,8 +26,9 @@ import { opportunitiesManagerMixin } from './opportunities-manager.js';
 import { wappsManagerMixin } from './wapps-manager.js';
 import { reportsManagerMixin } from './reports-manager.js';
 import { filesManagerMixin } from './files-manager.js';
-import { hydrateTowerPgDocumentsAndFiles, hydrateTowerPgTasks } from './pg-read-hydrator.js';
+import { hydrateTowerPgDocumentsAndFiles, hydrateTowerPgTaskComments, hydrateTowerPgTasks } from './pg-read-hydrator.js';
 import {
+  createTowerPgTaskCommentFromLocal,
   createTowerPgTaskFromLocal,
   updateTowerPgTaskFromLocal,
 } from './pg-write-adapter.js';
@@ -123,6 +124,7 @@ import {
   getScheduleById,
   getCommentsByTarget,
   upsertComment,
+  replaceCommentRecord,
   getScopesByOwner,
   addPendingWrite,
   getPendingWrites,
@@ -241,6 +243,18 @@ function applyMixins(target, ...mixins) {
     Object.defineProperties(target, descriptors);
   }
   return target;
+}
+
+function dedupeRowsByRecordId(rows = []) {
+  const seen = new Set();
+  const result = [];
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const recordId = String(row?.record_id || '').trim();
+    if (!recordId || seen.has(recordId)) continue;
+    seen.add(recordId);
+    result.push(row);
+  }
+  return result;
 }
 
 const NUMBER_FORMATTER = new Intl.NumberFormat();
@@ -4559,6 +4573,10 @@ export function initApp() {
         this.applyTaskComments([]);
         return;
       }
+      if (isTowerPgBackendMode()) {
+        await hydrateTowerPgTaskComments(this, taskId);
+        return;
+      }
       this.startTaskCommentsLiveQuery();
       await this.applyTaskComments(await getCommentsByTarget(taskId));
     },
@@ -4601,7 +4619,7 @@ export function initApp() {
     },
 
     async applyTaskComments(comments = []) {
-      const nextComments = Array.isArray(comments) ? comments : [];
+      const nextComments = dedupeRowsByRecordId(comments);
       if (!sameListBySignature(this.taskComments, nextComments, (comment) => [
         String(comment?.record_id || ''),
         String(comment?.updated_at || ''),
@@ -4635,14 +4653,24 @@ export function initApp() {
       const now = new Date().toISOString();
       const recordId = crypto.randomUUID();
       const ownerNpub = this.workspaceOwnerNpub;
-      const taskWriteFields = await this.getTaskWriteFieldsForWrite(task);
-      const { attachments } = await this.materializeAudioDrafts({
-        drafts,
-        target_record_id: recordId,
-        target_record_family_hash: recordFamilyHash('comment'),
-        target_group_ids: taskWriteFields.group_ids,
-        write_group_ref: taskWriteFields.write_group_ref,
-      });
+      const pgMode = isTowerPgBackendMode();
+      if (pgMode && drafts.length > 0) {
+        this.error = 'Audio drafts are not available in Tower PG task comments yet.';
+        return;
+      }
+      let taskWriteFields = null;
+      let attachments = [];
+      if (!pgMode) {
+        taskWriteFields = await this.getTaskWriteFieldsForWrite(task);
+        const materialized = await this.materializeAudioDrafts({
+          drafts,
+          target_record_id: recordId,
+          target_record_family_hash: recordFamilyHash('comment'),
+          target_group_ids: taskWriteFields.group_ids,
+          write_group_ref: taskWriteFields.write_group_ref,
+        });
+        attachments = materialized.attachments;
+      }
 
       const localRow = {
         record_id: recordId,
@@ -4657,15 +4685,44 @@ export function initApp() {
         version: 1,
         created_at: now,
         updated_at: now,
+        ...(pgMode ? {
+          sync_status: 'pending',
+          pg_backend: true,
+          pg_record_type: 'task_comment',
+          pg_channel_id: task?.pg_channel_id || null,
+          pg_thread_id: task?.pg_thread_id || null,
+        } : {}),
       };
 
       await upsertComment(localRow);
-      this.taskComments = [localRow, ...this.taskComments];
+      this.taskComments = dedupeRowsByRecordId([localRow, ...this.taskComments]);
       this.syncTaskCommentPreviewState();
       this.newTaskCommentBody = '';
       this.taskCommentAudioDrafts = [];
       this.scheduleTaskCommentPreviewMeasurement();
       this.scheduleStorageImageHydration();
+
+      if (pgMode) {
+        try {
+          const accepted = await createTowerPgTaskCommentFromLocal(this, localRow);
+          await replaceCommentRecord(localRow.record_id, accepted);
+          this.taskComments = dedupeRowsByRecordId([
+            accepted,
+            ...this.taskComments.filter((comment) => comment.record_id !== localRow.record_id),
+          ]);
+          this._fireMentionTriggers(body, `task comment on "${task?.title || taskId}"`);
+          await hydrateTowerPgTaskComments(this, taskId);
+        } catch (error) {
+          const failed = { ...localRow, sync_status: 'failed', updated_at: new Date().toISOString() };
+          await upsertComment(failed);
+          this.taskComments = dedupeRowsByRecordId([
+            failed,
+            ...this.taskComments.filter((comment) => comment.record_id !== localRow.record_id),
+          ]);
+          this.error = error?.message || 'Failed to sync PG task comment';
+        }
+        return;
+      }
 
       const envelope = await outboundComment({
         ...localRow,

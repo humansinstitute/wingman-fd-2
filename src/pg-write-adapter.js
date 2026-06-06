@@ -4,6 +4,7 @@ import {
   createTowerPgChannelFile,
   createTowerPgChannelMessage,
   createTowerPgChannelTask,
+  createTowerPgTaskComment,
   updateTowerPgTask,
   updateTowerPgTaskState,
 } from './api.js';
@@ -13,6 +14,7 @@ import {
   mapPgFileToLocalDocument,
   mapPgMessageToLocal,
   mapPgTaskToLocal,
+  mapPgTaskCommentToLocal,
   resolveTowerPgWorkspaceContext,
 } from './pg-read-hydrator.js';
 import { recordFamilyHash } from './translators/chat.js';
@@ -187,6 +189,19 @@ export async function updateTowerPgTaskFromLocal(store, task, previousTask = nul
   };
   const result = await updateTowerPgTask(context.workspaceId, task.record_id, body, pgRequestOptions(context));
   return mapPgTaskToLocal(result.task, { workspaceOwnerNpub: context.workspaceOwnerNpub });
+}
+
+export async function createTowerPgTaskCommentFromLocal(store, comment) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  if (!context.workspaceId || !comment?.target_record_id) throw new Error('Tower PG task comments are not ready');
+  const result = await createTowerPgTaskComment(context.workspaceId, comment.target_record_id, {
+    body: comment.body,
+    ...(comment.pg_thread_id ? { thread_id: comment.pg_thread_id } : {}),
+  }, pgRequestOptions(context));
+  return mapPgTaskCommentToLocal(result.comment, {
+    workspaceOwnerNpub: context.workspaceOwnerNpub,
+    senderNpub: store?.session?.npub,
+  });
 }
 
 export async function createTowerPgMessageFromLocal(store, message, options = {}) {

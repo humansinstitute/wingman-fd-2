@@ -4,6 +4,7 @@ import {
   createTowerPgDocFromLocal,
   createTowerPgFileFromLocal,
   createTowerPgMessageFromLocal,
+  createTowerPgTaskCommentFromLocal,
   createTowerPgTaskFromLocal,
   resolveTowerPgTaskChannel,
   updateTowerPgTaskFromLocal,
@@ -16,11 +17,13 @@ vi.mock('../src/api.js', () => ({
   createTowerPgChannelFile: vi.fn(),
   createTowerPgChannelMessage: vi.fn(),
   createTowerPgChannelTask: vi.fn(),
+  createTowerPgTaskComment: vi.fn(),
   getTowerPgChannelAudioNotes: vi.fn(),
   getTowerPgChannelDocs: vi.fn(),
   getTowerPgChannelFiles: vi.fn(),
   getTowerPgChannelMessages: vi.fn(),
   getTowerPgChannelTasks: vi.fn(),
+  getTowerPgTaskComments: vi.fn(),
   getTowerPgChannelThreads: vi.fn(),
   getTowerPgScopeChannels: vi.fn(),
   getTowerPgScopeTasks: vi.fn(),
@@ -334,6 +337,41 @@ describe('PG write adapter', () => {
       record_id: 'reply-1',
       parent_message_id: 'root-message-1',
       pg_thread_id: 'thread-1',
+    });
+  });
+
+  it('creates Tower PG task comments and maps the accepted comment', async () => {
+    const api = await import('../src/api.js');
+    api.createTowerPgTaskComment.mockResolvedValue({
+      comment: {
+        id: 'comment-1',
+        workspace_id: 'workspace-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        task_id: 'task-1',
+        thread_id: 'thread-1',
+        body: 'Task comment',
+        row_version: 1,
+      },
+    });
+
+    const comment = await createTowerPgTaskCommentFromLocal(store(), {
+      target_record_id: 'task-1',
+      body: 'Task comment',
+      pg_thread_id: 'thread-1',
+    });
+
+    expect(api.createTowerPgTaskComment).toHaveBeenCalledWith('workspace-1', 'task-1', {
+      body: 'Task comment',
+      thread_id: 'thread-1',
+    }, { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
+    expect(comment).toMatchObject({
+      record_id: 'comment-1',
+      target_record_id: 'task-1',
+      body: 'Task comment',
+      sync_status: 'synced',
+      pg_backend: true,
+      pg_record_type: 'task_comment',
     });
   });
 });

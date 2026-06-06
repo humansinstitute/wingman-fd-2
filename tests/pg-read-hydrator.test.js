@@ -5,6 +5,7 @@ import {
   hydrateTowerPgDocumentsAndFiles,
   hydrateTowerPgScopes,
   hydrateTowerPgTasks,
+  hydrateTowerPgTaskComments,
   mapPgChannelToLocal,
   mapPgAudioNoteToLocal,
   mapPgDocToLocal,
@@ -12,6 +13,7 @@ import {
   mapPgMessageToLocal,
   mapPgScopeToLocal,
   mapPgTaskToLocal,
+  mapPgTaskCommentToLocal,
   mapPgThreadToLocal,
   resolveTowerPgWorkspaceContext,
 } from '../src/pg-read-hydrator.js';
@@ -224,6 +226,38 @@ describe('PG read hydrator', () => {
     });
   });
 
+  it('maps PG task comments into classic comment rows', () => {
+    expect(mapPgTaskCommentToLocal({
+      id: 'comment-1',
+      workspace_id: 'workspace-1',
+      scope_id: 'scope-1',
+      channel_id: 'channel-1',
+      task_id: 'task-1',
+      thread_id: 'thread-1',
+      body: 'Comment body',
+      row_version: 2,
+      created_at: '2026-06-06T01:00:00.000Z',
+      updated_at: '2026-06-06T01:01:00.000Z',
+    }, {
+      workspaceOwnerNpub: 'npub1owner',
+      senderNpub: 'npub1pete',
+    })).toMatchObject({
+      record_id: 'comment-1',
+      owner_npub: 'npub1owner',
+      target_record_id: 'task-1',
+      target_record_family_hash: expect.stringContaining(':task'),
+      parent_comment_id: null,
+      body: 'Comment body',
+      sender_npub: 'npub1pete',
+      sync_status: 'synced',
+      version: 2,
+      pg_backend: true,
+      pg_record_type: 'task_comment',
+      pg_channel_id: 'channel-1',
+      pg_thread_id: 'thread-1',
+    });
+  });
+
   it('maps PG docs and files into classic document rows for docs/files views', () => {
     expect(mapPgDocToLocal({
       id: 'doc-1',
@@ -415,6 +449,36 @@ describe('PG read hydrator', () => {
     });
     expect(replaceTasksForOwner).toHaveBeenCalledWith('npub1owner', tasks);
     expect(target.applyTasks).toHaveBeenCalledWith(tasks);
+  });
+
+  it('hydrates PG task comments and replaces the local PG set for the task', async () => {
+    const applyTaskComments = vi.fn();
+    const getTowerPgTaskComments = vi.fn(async () => ({
+      comments: [{
+        id: 'comment-1',
+        workspace_id: 'workspace-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        task_id: 'task-1',
+        body: 'Comment body',
+        row_version: 1,
+      }],
+    }));
+    const replacePgCommentsForTarget = vi.fn(async () => 1);
+
+    const comments = await hydrateTowerPgTaskComments(store({ applyTaskComments }), 'task-1', {
+      getTowerPgTaskComments,
+      replacePgCommentsForTarget,
+    });
+
+    expect(getTowerPgTaskComments).toHaveBeenCalledWith('workspace-1', 'task-1', {
+      baseUrl: 'https://tower.example',
+      appNpub: 'flightdeck_pg',
+    });
+    expect(replacePgCommentsForTarget).toHaveBeenCalledWith('task-1', expect.arrayContaining([
+      expect.objectContaining({ record_id: 'comment-1', target_record_id: 'task-1', pg_backend: true }),
+    ]));
+    expect(applyTaskComments).toHaveBeenCalledWith(comments);
   });
 
   it('hydrates PG docs and files from accessible channels', async () => {

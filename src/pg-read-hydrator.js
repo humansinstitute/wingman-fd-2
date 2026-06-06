@@ -6,6 +6,7 @@ import {
   getTowerPgChannelFiles,
   getTowerPgChannelMessages,
   getTowerPgChannelTasks,
+  getTowerPgTaskComments,
   getTowerPgChannelThreads,
   getTowerPgScopeChannels,
   getTowerPgScopeTasks,
@@ -15,11 +16,13 @@ import {
   replaceAudioNotesForOwner,
   replaceChannelsForOwner,
   replaceDocumentsForOwner,
+  replacePgCommentsForTarget,
   replacePgMessagesForChannel,
   replaceTasksForOwner,
   replaceScopesForOwner,
 } from './db.js';
 import { recordFamilyHash } from './translators/chat.js';
+import { recordFamilyHash as taskFamilyHash } from './translators/tasks.js';
 
 function trimText(value) {
   return String(value ?? '').trim();
@@ -235,6 +238,33 @@ export function mapPgTaskToLocal(task, { workspaceOwnerNpub } = {}) {
     pg_thread_id: trimText(task?.thread_id) || null,
     pg_created_by_actor_id: trimText(task?.created_by_actor_id),
     pg_updated_by_actor_id: trimText(task?.updated_by_actor_id),
+  };
+}
+
+export function mapPgTaskCommentToLocal(comment, { workspaceOwnerNpub, senderNpub } = {}) {
+  const updatedAt = isoTimestamp(comment?.updated_at || comment?.created_at);
+  return {
+    record_id: trimText(comment?.id || comment?.record_id),
+    owner_npub: trimText(workspaceOwnerNpub),
+    target_record_id: trimText(comment?.task_id || comment?.target_record_id),
+    target_record_family_hash: taskFamilyHash('task'),
+    parent_comment_id: null,
+    body: trimText(comment?.body),
+    attachments: [],
+    sender_npub: trimText(senderNpub) || trimText(workspaceOwnerNpub),
+    sync_status: 'synced',
+    record_state: 'active',
+    version: rowVersion(comment?.row_version || comment?.version),
+    created_at: isoTimestamp(comment?.created_at || updatedAt),
+    updated_at: updatedAt,
+    pg_backend: true,
+    pg_record_type: 'task_comment',
+    pg_workspace_id: trimText(comment?.workspace_id),
+    pg_scope_id: trimText(comment?.scope_id),
+    pg_channel_id: trimText(comment?.channel_id),
+    pg_thread_id: trimText(comment?.thread_id) || null,
+    pg_created_by_actor_id: trimText(comment?.created_by_actor_id),
+    pg_updated_by_actor_id: trimText(comment?.updated_by_actor_id),
   };
 }
 
@@ -523,6 +553,28 @@ export async function hydrateTowerPgTasks(store, deps = {}) {
   await replaceTasks(context.workspaceOwnerNpub, tasks);
   if (typeof store.applyTasks === 'function') await store.applyTasks(tasks);
   return tasks;
+}
+
+export async function hydrateTowerPgTaskComments(store, taskId, deps = {}) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  const recordId = trimText(taskId);
+  if (!context.workspaceId || !context.workspaceOwnerNpub || !context.baseUrl || !recordId) return [];
+  const readTaskComments = deps.getTowerPgTaskComments || getTowerPgTaskComments;
+  const replaceComments = deps.replacePgCommentsForTarget || replacePgCommentsForTarget;
+  const result = await readTaskComments(context.workspaceId, recordId, {
+    baseUrl: context.baseUrl,
+    appNpub: context.appNpub,
+  });
+  const senderNpub = trimText(store.session?.npub) || context.workspaceOwnerNpub;
+  const comments = (Array.isArray(result?.comments) ? result.comments : [])
+    .map((comment) => mapPgTaskCommentToLocal(comment, {
+      workspaceOwnerNpub: context.workspaceOwnerNpub,
+      senderNpub,
+    }))
+    .filter((comment) => comment.record_id && comment.target_record_id);
+  await replaceComments(recordId, comments);
+  if (typeof store.applyTaskComments === 'function') await store.applyTaskComments(comments);
+  return comments;
 }
 
 export async function hydrateTowerPgDocumentsAndFiles(store, deps = {}) {
