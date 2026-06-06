@@ -1,58 +1,204 @@
-# Kind 33357 Flight Deck Onboarding
+# Kind 33356/33357 Flight Deck Workspace Discovery
 
 Status: design draft
-Last updated: 2026-06-06
+Last updated: 2026-06-07
 
 ## Purpose
 
-Kind `33357` is the Nostr announcement that lets a Flight Deck user or agent
-discover that they have been added to a Wingman/Flight Deck workspace.
+Flight Deck PG workspaces should feel portable across devices.
 
-It is not the access grant itself. Tower remains the source of truth for
-workspace, group, scope, channel, and record access.
+After a user has logged into a workspace once, they should not need to repeatedly
+paste Tower URLs, generate connection tokens, or manually re-enter workspace
+locators on every browser, phone, or app install. Their Nostr identity already
+gives us a user-owned discovery mailbox: encrypted Nostr events addressed to
+their npub.
 
-The event exists to make onboarding feel immediate:
+This design uses two related event kinds:
 
-1. An authorised actor adds a recipient npub to a Flight Deck workspace/group.
-2. A kind `33357` event is published to that recipient.
-3. Flight Deck or Autopilot decrypts the event.
-4. The recipient verifies access with Tower.
-5. The client imports the workspace and fetches current groups, scopes, channels,
-   docs, `llms.txt`, and other allowed records through authenticated APIs.
+- Kind `33356`: a self-published, encrypted workspace self-index. One event per
+  verified workspace.
+- Kind `33357`: an encrypted onboarding/grant notice sent to a user or agent
+  when someone else adds them to a workspace.
 
-## Non-Goals
+Tower remains the source of truth. These events are discovery hints, not access
+grants.
 
-Do not use kind `33357` to carry live workspace context.
+## Product Outcomes
 
-The encrypted payload must not include:
+- A user enters a Tower URL or descriptor once.
+- After verification, Flight Deck publishes a self-index event for that
+  workspace.
+- On a new device, the user logs in with the same Nostr identity and verified
+  workspaces appear automatically.
+- If a workspace admin adds a user or agent to a workspace, that recipient can
+  discover the workspace from `33357` after login.
+- If Tower later revokes access, stale relay events do not preserve access.
 
-- scope lists;
-- channel lists;
-- group membership lists;
-- task/doc/chat context;
-- pipeline routing context;
-- inferred graph context.
+## Authority Model
 
-Those records change over time and must be fetched from Tower after
-authentication.
+The event flow must preserve one simple rule:
 
-## Event Semantics
+> Nostr discovers possible workspaces. Tower decides current access.
 
-Kind `33357` means:
+Clients must verify each decrypted locator with Tower before showing it as an
+available workspace.
 
-> This npub has an onboarding message for the app identified by `app_pub`.
-> Decrypt the event, verify the connection details with Tower, then sync current
-> workspace state.
+If an event says a user knows about workspace `X` but Tower `/me` rejects the
+actor, the app should hide or mark that locator stale.
 
-The relay event is only a bootstrap hint. It must be safe for an old relay event
-to exist after the recipient's access is revoked, because Tower verification
-will reject current access.
+## Event Roles
 
-## Cleartext Event Shape
+### Kind 33356: Self-Index Locator
 
-Cleartext tags should only support recipient filtering and safe routing. They
-must not expose workspace names, scope names, channel names, endpoint URLs, or
-connection tokens.
+Kind `33356` is published by the logged-in user to themselves after they have
+verified a workspace.
+
+Use it for:
+
+- cross-device workspace discovery;
+- restoring `knownWorkspaces` after a fresh browser login;
+- avoiding repeated Tower URL or descriptor entry;
+- remembering PG workspace locators that carry no bearer auth.
+
+Do not use it for:
+
+- granting access to someone else;
+- carrying live workspace records;
+- storing group/channel/task/doc lists;
+- replacing Tower workspace membership checks.
+
+### Kind 33357: Onboarding Notice
+
+Kind `33357` is published to a recipient when an authorised actor adds that
+recipient to a workspace or group.
+
+Use it for:
+
+- "Pete added wm21 to this Tower workspace";
+- "Andy was added to this company workspace";
+- "An Autopilot agent npub has a new workspace to import";
+- prompting the recipient to verify and import the workspace.
+
+Do not use it for:
+
+- current record state;
+- current group/channel/scope lists;
+- permanent membership authority;
+- replacing the recipient's own `33356` self-index.
+
+Once a recipient verifies a `33357` notice with Tower, the recipient's client
+should publish its own `33356` self-index event for that workspace.
+
+## Kind 33356 Shape
+
+Kind `33356` is a parameterized replaceable event. Publish one event per
+workspace.
+
+Cleartext tags should support filtering without leaking human workspace names,
+scope names, channel names, Tower URLs, or credentials.
+
+```json
+{
+  "kind": 33356,
+  "pubkey": "<user-pubkey-hex>",
+  "created_at": 1780710000,
+  "tags": [
+    ["d", "fd-self:<opaque-workspace-hash>"],
+    ["p", "<user-pubkey-hex>"],
+    ["app_pub", "<flightdeck-app-pubkey-hex>"],
+    ["protocol", "workspace-self-index"],
+    ["v", "1"]
+  ],
+  "content": "<encrypted payload for user pubkey>"
+}
+```
+
+`d` tag:
+
+- deterministic for the same user/app/Tower/workspace identity;
+- opaque, for example `fd-self:` plus a hash;
+- must not include plain Tower URLs, workspace labels, scope names, or channel
+  names.
+
+Suggested hash input:
+
+```text
+v1:<user_pubkey_hex>:<app_pubkey_hex>:<tower_service_pubkey_hex>:<workspace_id>
+```
+
+Clients do not need to know `d` in advance. On login they query by author,
+kind, `#p`, `#app_pub`, and `#protocol`.
+
+### Kind 33356 Encrypted Payload
+
+The payload is encrypted to the user's own pubkey.
+
+Prefer NIP-44 encryption when the signer supports it. Fall back to NIP-04 only
+if required by the available signer/runtime. If the runtime cannot encrypt to
+self, the client should keep the locator locally and show a recoverable
+"workspace discovery not backed up to relays" state.
+
+```json
+{
+  "type": "flightdeck_workspace_self_index",
+  "version": 1,
+  "issued_at": "2026-06-07T00:00:00.000Z",
+  "updated_at": "2026-06-07T00:00:00.000Z",
+  "user_npub": "npub1...",
+  "app": {
+    "app_npub": "npub1...",
+    "app_pubkey": "<flightdeck-app-pubkey-hex>",
+    "namespace": "flightdeck_pg"
+  },
+  "workspace": {
+    "type": "wingman_workspace_locator",
+    "version": 1,
+    "tower_base_url": "https://sb4.otherstuff.studio",
+    "tower_service_npub": "npub1...",
+    "workspace_id": "uuid",
+    "workspace_service_npub": "npub1...",
+    "workspace_owner_npub": "npub1...",
+    "app_npub": "npub1...",
+    "label": "Wingers",
+    "description": "Optional user-facing label",
+    "capabilities": [
+      "pg_scopes",
+      "pg_channels",
+      "pg_channel_grants",
+      "pg_tasks",
+      "pg_chat",
+      "realtime_events"
+    ],
+    "links": {
+      "descriptor": "/api/v4/flightdeck-pg/workspaces/uuid/descriptor",
+      "me": "/api/v4/flightdeck-pg/workspaces/uuid/me",
+      "scopes": "/api/v4/flightdeck-pg/workspaces/uuid/scopes",
+      "events": "/api/v4/flightdeck-pg/workspaces/uuid/events"
+    }
+  },
+  "verification": {
+    "last_verified_at": "2026-06-07T00:00:00.000Z",
+    "verified_by": "flightdeck",
+    "tower_service_npub": "npub1..."
+  },
+  "state": {
+    "deleted": false
+  }
+}
+```
+
+For PG workspaces this payload must not carry a bearer token or database
+credential. It is effectively the same credential-free locator that the user
+could paste manually.
+
+Legacy encrypted-record or Agent Connect flows may still have encrypted
+connection-token payloads, but those are outside the PG self-index contract and
+should not be reintroduced for PG workspace access.
+
+## Kind 33357 Shape
+
+Kind `33357` is a parameterized replaceable onboarding notice addressed to a
+recipient.
 
 ```json
 {
@@ -60,83 +206,55 @@ connection tokens.
   "pubkey": "<issuer-pubkey-hex>",
   "created_at": 1780710000,
   "tags": [
+    ["d", "fd-onboard:<opaque-grant-hash>"],
     ["p", "<recipient-pubkey-hex>"],
     ["app_pub", "<flightdeck-app-pubkey-hex>"],
-    ["protocol", "onboarding"]
+    ["protocol", "workspace-onboarding"],
+    ["v", "1"]
   ],
   "content": "<encrypted payload for recipient pubkey>"
 }
 ```
 
-Tag meanings:
+`pubkey` is the actor that publishes the notice. In practice this may be:
 
-- `p`: the recipient pubkey that should try to decrypt this event.
-- `app_pub`: the app/schema pubkey for the Flight Deck-compatible app.
-- `protocol`: the reusable cleartext class of the message. Use `onboarding`.
+- the workspace admin's browser;
+- Tower's service identity;
+- an Autopilot or Yoke process acting from an authorised admin flow.
 
-Do not use a cleartext `app` tag for this contract. Use `app_pub` so the tag is
-explicitly a pubkey, not an app label.
+The publishing identity is not the grant. Tower membership is the grant.
 
-If a `d` tag is later required for addressable/replacement behaviour, it must be
-opaque and must not encode human-readable workspace, group, scope, or channel
-names. The first implementation can avoid depending on replacement semantics by
-processing latest valid encrypted payloads by recipient, app, issuer, and
-encrypted grant id.
+### Kind 33357 Encrypted Payload
 
-## Encryption
-
-The content must be encrypted to the recipient pubkey from the `p` tag.
-
-The default rule for Nostr relay data in Flight Deck is:
-
-> Anything operational, user-specific, workspace-specific, or connection-bearing
-> is encrypted to the expected recipient.
-
-For `33357`, the expected recipient is the person or agent npub that has just
-been added to Flight Deck.
-
-## Encrypted Payload
-
-The encrypted content is JSON. It should contain enough to connect and verify,
-not enough to replace a Tower sync.
+The payload is encrypted to the recipient from the `p` tag.
 
 ```json
 {
-  "type": "flightdeck_onboarding",
+  "type": "flightdeck_workspace_onboarding",
   "version": 1,
-  "protocol": "onboarding",
-  "issued_at": "2026-06-06T00:00:00.000Z",
-  "expires_at": "2026-06-13T00:00:00.000Z",
+  "issued_at": "2026-06-07T00:00:00.000Z",
+  "expires_at": "2026-06-14T00:00:00.000Z",
   "issued_by_npub": "npub1...",
   "recipient_npub": "npub1...",
   "app": {
     "app_npub": "npub1...",
-    "app_pubkey": "<flightdeck-app-pubkey-hex>"
-  },
-  "service": {
-    "direct_https_url": "https://tower.example.com",
-    "service_npub": "npub1...",
-    "openapi_url": "https://tower.example.com/openapi.json",
-    "docs_url": "https://tower.example.com/docs",
-    "health_url": "https://tower.example.com/health",
-    "relay_urls": ["wss://relay.example.com"]
+    "app_pubkey": "<flightdeck-app-pubkey-hex>",
+    "namespace": "flightdeck_pg"
   },
   "workspace": {
-    "owner_npub": "npub1...",
+    "type": "wingman_workspace_locator",
+    "version": 1,
+    "tower_base_url": "https://sb4.otherstuff.studio",
+    "tower_service_npub": "npub1...",
+    "workspace_id": "uuid",
     "workspace_service_npub": "npub1...",
-    "label": "Optional human label"
-  },
-  "agent_connect": {
-    "kind": "coworker_agent_connect",
-    "version": 5,
-    "generated_at": "2026-06-06T00:00:00.000Z",
-    "llms_url": "https://flightdeck.example.com/llms.txt",
-    "robots_url": "https://flightdeck.example.com/robots.txt",
-    "service": {},
-    "workspace": {},
-    "app": {},
-    "connection_token": "<connection token>",
-    "notes": []
+    "workspace_owner_npub": "npub1...",
+    "app_npub": "npub1...",
+    "label": "Wingers",
+    "links": {
+      "descriptor": "/api/v4/flightdeck-pg/workspaces/uuid/descriptor",
+      "me": "/api/v4/flightdeck-pg/workspaces/uuid/me"
+    }
   },
   "grant": {
     "grant_id": "opaque-id-for-idempotency",
@@ -147,193 +265,194 @@ not enough to replace a Tower sync.
 
 Payload requirements:
 
-- `recipient_npub` must match the `p` tag.
-- `app.app_pubkey` must match the `app_pub` tag.
-- `protocol` must be `onboarding`.
-- `agent_connect` should remain compatible with the package produced by
-  `src/agent-connect.js`.
-- `llms_url` should be present inside `agent_connect`; consumers should read it
-  after verifying the workspace.
-- `grant.grant_id` is an opaque idempotency key. It is not a permission.
+- `recipient_npub` must match the cleartext `p` tag.
+- `app.app_pubkey` must match the cleartext `app_pub` tag.
+- `workspace.type` must be `wingman_workspace_locator`.
+- `grant.grant_id` is an idempotency key only, not a permission.
+- `expires_at` controls automatic import attempts. Expired notices can remain in
+  diagnostics but should not auto-import.
 
-The `agent_connect.connection_token` is sensitive bootstrap material. It is
-allowed only because the payload is encrypted to the intended recipient.
+## Login Discovery Flow
 
-## Publisher Flow
+On every login or app startup with a Nostr signer:
 
-### Grant
+1. Resolve the logged-in pubkey.
+2. Query configured relays for kind `33356` events:
+   - author equals the logged-in pubkey;
+   - `#p` equals the logged-in pubkey;
+   - `#app_pub` equals the current app pubkey;
+   - `#protocol` equals `workspace-self-index`.
+3. Decrypt and validate each self-index payload.
+4. Query configured relays for kind `33357` events:
+   - `#p` equals the logged-in pubkey;
+   - `#app_pub` equals the current app pubkey;
+   - `#protocol` equals `workspace-onboarding`.
+5. Decrypt and validate each onboarding payload.
+6. Deduplicate locators by app, Tower service npub, workspace id, and workspace
+   service npub.
+7. For each candidate locator, call Tower:
+   - `GET /api/v4/flightdeck-pg/workspaces/:workspaceId/descriptor`
+   - `GET /api/v4/flightdeck-pg/workspaces/:workspaceId/me`
+8. Merge verified workspaces into `knownWorkspaces`.
+9. Hide or mark stale any locator that Tower rejects.
+10. For verified `33357` onboarding notices, publish or refresh the recipient's
+    own `33356` self-index event for that workspace.
 
-The user-facing action is:
+The app should show a small "Workspace discovered" state when new verified
+workspaces appear.
 
-> Add this npub to this workspace/group.
+## First Connection Flow
 
-That action writes the real authorisation state in Tower. The old invite screen
-should not be the primary model for permissioning.
+When a user manually enters a Tower URL, scans a descriptor, or creates a new PG
+workspace:
 
-### Announce
+1. Flight Deck validates the descriptor shape locally.
+2. Flight Deck verifies Tower service metadata.
+3. Flight Deck signs NIP-98 requests and calls Tower `/descriptor` and `/me`.
+4. If Tower confirms access, Flight Deck stores the locator in local
+   `knownWorkspaces`.
+5. Flight Deck publishes a kind `33356` self-index event for that workspace.
+6. The workspace becomes available on future devices after Nostr login.
 
-After Tower confirms the authorised grant, publish a `33357` event encrypted to
-the added npub.
+If self-index publishing fails, the workspace should still open locally. The UI
+should show that cross-device discovery is not yet backed up.
 
-The publishing path may live in Flight Deck or Tower, but the semantic order is:
+## Admin Add-User Flow
 
-1. Tower authorises and records access.
-2. The onboarding payload is built from current service/workspace/app details.
-3. The event is encrypted to the recipient.
-4. The event is published to configured relays.
-5. The UI records whether the announcement was published.
+When an admin adds a user/agent npub to a workspace or group:
 
-If publishing fails after the access grant succeeds, the grant remains valid.
-The UI should report that access exists but the relay announcement did not
-publish.
+1. Admin action writes the real access grant in Tower.
+2. Tower or the admin client builds a credential-free PG workspace locator.
+3. Tower/client publishes a kind `33357` onboarding notice encrypted to the
+   recipient.
+4. The admin UI reports:
+   - access grant succeeded;
+   - onboarding notice published, failed, or pending.
 
-## Human Flight Deck Flow
-
-### Add User To Group
-
-The workspace admin UI should support direct npub entry:
-
-1. Open workspace/group access.
-2. Paste or select a recipient npub.
-3. Confirm the group/workspace grant.
-4. Flight Deck writes the grant through Tower.
-5. Flight Deck publishes or requests publication of the `33357` event.
-
-If the person is new, Flight Deck may show a lightweight share modal. This modal
-is not the permissioning step. It is only convenience.
-
-Suggested modal actions:
-
-- copy generic workspace open link;
-- copy a short message for Signal/WhatsApp/email;
-- show that the recipient already has access;
-- show relay announcement status.
-
-The link does not need to identify or authorise the person. It can simply open
-Flight Deck and let the recipient's login plus `33357` discovery select the
-workspace.
-
-### Recipient Login
-
-On login/startup, Flight Deck should:
-
-1. Determine the logged-in user pubkey.
-2. Fetch recent `33357` events with:
-   - `#p` equal to the user pubkey;
-   - `#app_pub` equal to this Flight Deck app pubkey;
-   - `#protocol` equal to `onboarding`.
-3. Try to decrypt each event.
-4. Validate payload fields.
-5. Import or stage the Agent Connect package.
-6. Call Tower with NIP-98 to verify current access.
-7. Fetch the current workspace state through PG APIs or the compatible
-   workspace sync path.
-8. Show the workspace only after verification succeeds.
-
-### UI States
-
-Flight Deck should distinguish these states:
-
-- `Found`: encrypted onboarding event exists.
-- `Verified`: Tower confirms access.
-- `Ready`: workspace metadata has synced enough to open.
-- `Stale`: event decrypted, but Tower rejected current access.
-- `Failed`: decrypt, parse, import, or network verification failed.
-
-Normal workspace lists should show only verified/ready workspaces. Stale or
-failed entries can appear in a diagnostics/recovery view, not as selectable
-workspaces.
-
-### Open Behaviour
-
-If the user clicks a generic workspace link and a matching verified onboarding
-event exists, Flight Deck should open the new workspace directly after sync.
-
-If the user simply logs in later, Flight Deck should surface a small "New
-workspace available" row or toast after verification, with an Open action.
+If publishing fails, the Tower access grant remains valid. The recipient can
+still join through a manual descriptor/link, and the notice can be retried.
 
 ## Autopilot And Yoke Flow
 
-Autopilot and Yoke should consume the same `33357` event contract.
+Autopilot/Yoke should consume the same event contract.
 
 For an agent npub:
 
-1. Autopilot watches or polls relays for `33357` events addressed to the agent
-   pubkey.
-2. It filters by `app_pub` and `protocol=onboarding`.
-3. It decrypts the payload with the agent key.
-4. It validates the Agent Connect package.
-5. It imports or updates the workspace through the existing Agent Connect/Yoke
-   path.
-6. It verifies current access with Tower.
-7. It syncs current groups, scopes, channels, docs, and chat/task records it is
-   allowed to see.
-8. It reads `llms_url` and stores the workspace guidance as agent context.
-9. It can then configure default dispatch routes, chat handling, and
-   scope/channel-aware context lookups.
+1. Poll or subscribe to relays for `33357` notices addressed to the agent.
+2. Decrypt with the agent key.
+3. Verify the locator with Tower using NIP-98.
+4. Import the workspace into Yoke's workspace config.
+5. Fetch current scopes, channels, docs, `llms.txt`, and visible records from
+   Tower.
+6. Publish or store an agent-owned `33356` self-index where appropriate.
 
-Autopilot must not treat the relay payload as the list of current groups or
-channels. It must fetch those from Tower after import.
+Autopilot work to retrieve `33357` notices can land separately. Flight Deck
+should not block its self-index flow on Autopilot support.
 
-## Scope, Channel, And Context Hydration
+## UI States
 
-The slick onboarding outcome depends on the post-verification sync, not on
-putting context into the event.
+Flight Deck should distinguish:
 
-After verification, clients should fetch:
+- `Local only`: workspace exists in local Dexie settings but has no relay
+  self-index backup.
+- `Indexed`: kind `33356` was published for the workspace.
+- `Discovered`: relay event decrypted and parsed.
+- `Verified`: Tower confirms current access.
+- `Ready`: enough workspace metadata has synced to open.
+- `Stale`: event decrypts, but Tower rejects current access.
+- `Failed`: decrypt, parse, network, or verification failed.
 
-- workspace identity and labels;
-- groups the actor belongs to;
-- scopes visible to that actor;
-- channels visible to that actor;
-- scope/channel descriptions;
-- linked docs and `llms.txt`;
-- current chat/task/doc records according to access.
+Normal workspace lists should show `Verified` and `Ready` workspaces. Stale or
+failed entries belong in diagnostics/recovery.
 
-Those records give agents enough context to answer naturally when a user starts
-chatting in a scope or channel. For example, an Autopilot-scoped channel can
-later bind to Autopilot-specific policies, local repo context, and custom chat
-pipelines.
+## Deletion And Revocation
+
+Revocation:
+
+- Admin removes access in Tower.
+- Old `33356` or `33357` events may remain on relays.
+- Future Tower `/me` verification rejects access.
+- Client marks the locator stale and hides it from normal workspace switching.
+
+User removes from their local list:
+
+- Client removes the workspace from local `knownWorkspaces`.
+- Client should publish a replacement `33356` event using the same `d` tag with
+  `state.deleted=true`.
+- Other devices that decrypt the tombstone should remove or hide that self-index
+  entry.
+
+This does not revoke Tower access. It only removes the user's personal discovery
+entry.
+
+## Relay Strategy
+
+First implementation can use:
+
+- app default relays;
+- relays configured in the user's Flight Deck settings;
+- relays exposed by the Nostr signer when available;
+- later, the user's NIP-65 relay list.
+
+Publishing should be best effort across multiple relays. A locator is considered
+published if at least one configured relay accepts it, but the UI should record
+partial failures for diagnostics.
 
 ## Security Rules
 
-- Tower grants access. Nostr announces that the recipient should verify.
-- Relay events are never the source of truth for current access.
-- Operational URLs, connection tokens, workspace ids, labels, and relay hints
-  belong in encrypted content.
-- Scope/channel/group lists are not part of the `33357` payload.
-- Revocation is enforced by Tower verification, not relay deletion.
-- Expired payloads should not be imported automatically.
-- Duplicate payloads should be idempotent by encrypted `grant.grant_id`,
-  service identity, workspace owner, app pubkey, and recipient.
+- Tower grants access.
+- Nostr events announce or remember where to verify access.
+- Cleartext tags must not expose workspace names, scope names, channel names,
+  URLs, or tokens.
+- PG self-index payloads must not contain bearer tokens or database credentials.
+- Scope/channel/group/task/doc lists are not part of either payload.
+- Revocation is enforced by Tower verification.
+- Duplicate payloads are idempotent by app pubkey, Tower service pubkey,
+  workspace id, workspace service npub, and recipient.
+- Expired `33357` payloads should not auto-import.
+- `33356` self-index entries should be refreshable after successful Tower
+  verification.
 
-## Deferred Kind 33355 Endpoint Announcement
+## Open Decisions
 
-Kind `33355` is a related but deferred idea. It would announce that an npub has
-a Wingman-style endpoint that Flight Deck can contact directly, for example to
-ping an Autopilot endpoint and trigger message checks without relying only on
-SSE subscriptions.
+- Exact app pubkey/namespace for `wm-fd-2` PG mode in cleartext `app_pub`.
+- Whether Flight Deck browser code or Tower service should publish `33357` for
+  admin add-user flows.
+- Whether Tower should expose a "publish onboarding notice" helper endpoint that
+  returns a signed event, publishes directly, or both.
+- Which encryption API is mandatory for launch: NIP-44 only, or NIP-44 with
+  NIP-04 fallback.
+- Whether deletion tombstones should be automatic when Tower reports revoked
+  access, or only when the user explicitly removes the workspace from their
+  personal list.
 
-This is useful later, but `33357` should be built first.
+## Implementation Slices
 
-For `33355`, the cleartext event should be even smaller:
+### Slice 1: Flight Deck Self-Index
 
-```json
-{
-  "kind": 33355,
-  "pubkey": "<announcing-pubkey-hex>",
-  "tags": [
-    ["p", "<flightdeck-app-pubkey-hex>"]
-  ],
-  "content": "<encrypted endpoint payload for Flight Deck app pubkey>"
-}
-```
+- Add relay query/publish helpers for `33356`.
+- After successful PG workspace verification, publish one self-index event.
+- On login, query/decrypt `33356`, verify with Tower, and merge into
+  `knownWorkspaces`.
+- Show local/indexed/discovered/verified states.
 
-Do not use cleartext `d` or `protocol` tags for `33355` in the current design.
-The endpoint URL, capabilities, health URL, `llms.txt`, and protocol details
-belong in the encrypted payload.
+### Slice 2: Flight Deck Onboarding Notices
 
-The endpoint URL should be configured in Autopilot admin options before
-Autopilot publishes `33355`. Any direct endpoint call must still be
-authenticated, normally with NIP-98.
+- Add relay query/decrypt helpers for `33357`.
+- On login, process onboarding notices after self-index locators.
+- Verify with Tower.
+- Merge verified workspaces.
+- Publish recipient-owned `33356` after successful `33357` import.
 
+### Slice 3: Admin/Tower Publish Flow
+
+- When a workspace admin adds a user or agent, publish or request publication of
+  a `33357` notice.
+- Record publish status in the admin UI.
+- Add retry diagnostics for relay failures.
+
+### Slice 4: Autopilot/Yoke Consumption
+
+- Poll/query relays for `33357` addressed to the agent npub.
+- Import verified workspaces into Yoke.
+- Fetch workspace guidance and current visible state from Tower.
