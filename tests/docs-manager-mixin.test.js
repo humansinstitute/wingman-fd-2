@@ -100,6 +100,14 @@ function createStore(overrides = {}) {
     loadDocComments: vi.fn(),
     syncRoute: vi.fn(),
     ensureBackgroundSync: vi.fn(),
+    patchDocumentLocal: vi.fn(function patchDocumentLocal(nextDocument) {
+      const index = this.documents.findIndex((item) => item.record_id === nextDocument.record_id);
+      if (index >= 0) {
+        this.documents.splice(index, 1, { ...this.documents[index], ...nextDocument });
+      } else {
+        this.documents = [...this.documents, nextDocument];
+      }
+    }),
     buildLockManagedCheckoutIdentityContext: vi.fn(() => ({
       workspaceServiceNpub: 'npub1workspace',
       userNpub: 'npub1owner',
@@ -121,6 +129,13 @@ function createStore(overrides = {}) {
 
 beforeEach(() => {
   isTowerPgBackendModeMock.mockReturnValue(false);
+});
+
+afterEach(() => {
+  Object.defineProperty(globalThis, 'navigator', {
+    configurable: true,
+    value: { onLine: true },
+  });
 });
 
 describe('docsManagerMixin record link save references', () => {
@@ -504,6 +519,38 @@ describe('docsManagerMixin checkout orchestration', () => {
     expect(store.currentFolderId).toBe('dir-b');
   });
 
+  it('releases the previous PG document lease when switching records', () => {
+    isTowerPgBackendModeMock.mockReturnValue(true);
+    releaseTowerPgEditLeaseMock.mockResolvedValueOnce({ released: true });
+    const previousRecord = { record_id: 'doc-a', parent_directory_id: 'dir-a', pg_backend: true, sync_status: 'synced' };
+    const nextRecord = { record_id: 'doc-b', parent_directory_id: 'dir-b', pg_backend: true, sync_status: 'synced' };
+    const store = createStore({
+      documents: [previousRecord, nextRecord],
+      selectedDocType: 'document',
+      selectedDocId: 'doc-a',
+      currentWorkspace: {
+        workspaceId: 'workspace-1',
+        workspaceOwnerNpub: 'npub1owner',
+        directHttpsUrl: 'https://tower.example',
+        appNpub: 'flightdeck_pg',
+        pgBackendMode: true,
+      },
+      pgEditLeaseSessions: {
+        'document:doc-a': { lease: { id: 'lease-doc-a', lease_token: 'token-doc-a' } },
+      },
+      releaseLockManagedCheckout: vi.fn(async () => true),
+    });
+
+    store.openDoc('doc-b');
+
+    expect(releaseTowerPgEditLeaseMock).toHaveBeenCalledWith('workspace-1', 'lease-doc-a', {
+      lease_token: 'token-doc-a',
+    }, { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
+    expect(store.releaseLockManagedCheckout).not.toHaveBeenCalled();
+    expect(store.selectedDocId).toBe('doc-b');
+    expect(store.currentFolderId).toBe('dir-b');
+  });
+
   it('does not release a held checkout while a local write is still pending', async () => {
     const store = createStore();
     store.setLockManagedCheckoutSession('doc-a', documentFamilyHash, {
@@ -586,6 +633,7 @@ describe('docsManagerMixin checkout orchestration', () => {
 
   it('acquires a PG edit lease before entering synced PG document edit mode', async () => {
     isTowerPgBackendModeMock.mockReturnValue(true);
+    const setIntervalSpy = vi.spyOn(globalThis, 'setInterval').mockReturnValue('doc-renew-timer');
     acquireTowerPgEditLeaseMock.mockResolvedValueOnce({
       lease: { id: 'lease-doc-1', lease_token: 'doc-token-1' },
     });
@@ -615,6 +663,7 @@ describe('docsManagerMixin checkout orchestration', () => {
     }), { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
     expect(acquireRecordCheckoutMock).not.toHaveBeenCalled();
     expect(store.pgEditLeaseSessions['document:doc-pg'].lease.lease_token).toBe('doc-token-1');
+    expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), 60_000);
     expect(store.setDocEditorMode).toHaveBeenCalledWith('block');
   });
 
@@ -1014,6 +1063,88 @@ describe('docsManagerMixin canonical row normalization', () => {
     }), { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
     expect(row).toMatchObject({ record_id: 'pg-doc-1', pg_channel_id: 'channel-1', pg_thread_id: 'thread-1' });
     expect(await getPendingWrites()).toEqual([]);
+  });
+
+  it('keeps offline-created PG documents local and editable until Tower accepts them', async () => {
+    const wsDb = openWorkspaceDb('npub1signedinactor');
+    await wsDb.open();
+    await Promise.all(wsDb.tables.map((table) => table.clear()));
+    Object.defineProperty(globalThis, 'navigator', {
+      configurable: true,
+      value: { onLine: false },
+    });
+    isTowerPgBackendModeMock.mockReturnValue(true);
+    prepareTowerPgStorageObjectMock.mockResolvedValue({ object_id: 'storage-pg-doc-local', upload_url: '' });
+    uploadStorageObjectMock.mockResolvedValue({});
+    completeStorageObjectMock.mockResolvedValue({});
+    createTowerPgChannelDocMock.mockRejectedValueOnce(new Error('offline'));
+
+    const store = createStore({
+      workspaceOwnerNpub: 'npub1signedinactor',
+      backendUrl: 'https://tower.example',
+      currentWorkspace: {
+        workspaceId: 'workspace-1',
+        workspaceOwnerNpub: 'npub1pgworkspace',
+        directHttpsUrl: 'https://tower.example',
+        appNpub: 'flightdeck_pg',
+      },
+      selectedChannelId: 'channel-1',
+      selectedBoardId: '',
+      channels: [{ record_id: 'channel-1', scope_id: 'scope-1', scope_l1_id: 'scope-1', record_state: 'active' }],
+      getInheritedDirectoryShares: vi.fn(() => []),
+      buildDocAccessForScope: vi.fn(() => ({
+        scope_id: 'scope-1',
+        scope_l1_id: 'scope-1',
+        scope_l2_id: null,
+        scope_l3_id: null,
+        scope_l4_id: null,
+        scope_l5_id: null,
+        scope_policy_group_ids: null,
+        shares: [],
+        group_ids: [],
+      })),
+      refreshDocuments: vi.fn(async function refreshDocuments() {
+        return this.documents;
+      }),
+      openDoc: vi.fn(function openDoc(recordId) {
+        this.selectedDocType = 'document';
+        this.selectedDocId = recordId;
+      }),
+    });
+
+    const row = await store.createDocument('Offline PG document', {
+      scopeId: 'scope-1',
+      channelId: 'channel-1',
+      threadId: 'thread-1',
+    });
+
+    expect(row).toMatchObject({
+      pg_backend: true,
+      pg_record_type: 'doc',
+      sync_status: 'failed',
+      pg_channel_id: 'channel-1',
+      pg_thread_id: 'thread-1',
+    });
+    expect(store.error).toBe('PG document saved locally. Reconnect to sync it.');
+    expect(await getPendingWrites()).toEqual([]);
+
+    store.docEditorTitle = 'Offline PG document edited';
+    store.docEditorBlocks = [{ id: 'block-1', type: 'markdown', text: 'Edited while offline', attrs: {} }];
+    const edited = await store.saveSelectedDocItem({ autosave: false });
+
+    expect(edited).toMatchObject({
+      record_id: row.record_id,
+      title: 'Offline PG document edited',
+      content: 'Edited while offline',
+      sync_status: 'failed',
+      pg_backend: true,
+    });
+    expect(createTowerPgChannelDocMock).toHaveBeenCalledTimes(1);
+    expect(await getPendingWrites()).toEqual([]);
+    Object.defineProperty(globalThis, 'navigator', {
+      configurable: true,
+      value: { onLine: true },
+    });
   });
 
   it('preserves non-writable delivery groups in canonical document rows', () => {

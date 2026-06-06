@@ -264,16 +264,23 @@ describe('PG write adapter', () => {
       },
     });
 
-    const task = await updateTowerPgTaskFromLocal(store(), {
+    const task = await updateTowerPgTaskFromLocal(store({
+      pgEditLeaseSessions: {
+        'task:task-1': { lease: { lease_token: 'state-lease-token' } },
+      },
+    }), {
       record_id: 'task-1',
+      pg_backend: true,
+      sync_status: 'synced',
       title: 'Task',
       state: 'done',
       priority: 'sand',
       version: 2,
-    }, { version: 1 }, { state: 'done' });
+    }, { record_id: 'task-1', version: 1, pg_backend: true, sync_status: 'synced' }, { state: 'done' });
 
     expect(api.updateTowerPgTaskState).toHaveBeenCalledWith('workspace-1', 'task-1', {
       row_version: 1,
+      lease_token: 'state-lease-token',
       state: 'done',
     }, { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
     expect(task).toMatchObject({ record_id: 'task-1', state: 'done', version: 2 });

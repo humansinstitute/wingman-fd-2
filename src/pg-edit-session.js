@@ -28,6 +28,13 @@ export function isUnsyncedLocalPgRecord(record = null) {
   return isPgBackedRecord(record) && trimText(record?.sync_status || 'synced') !== 'synced';
 }
 
+export async function preparePgSyncedRecordMutation(store, record, entityType, options = {}) {
+  if (!isSyncedPgRecord(record)) return null;
+  const existing = getPgEditLeaseSession(store, entityType, record?.record_id);
+  if (existing?.lease?.lease_token) return existing.lease;
+  return acquirePgEditLeaseForRecord(store, record, entityType, options);
+}
+
 export function pgEditLeaseSessionKey(entityType, recordId) {
   const cleanType = trimText(entityType);
   const cleanId = trimText(recordId);
@@ -64,6 +71,18 @@ export function clearPgEditLeaseSession(store, entityType, recordId) {
   const next = { ...(store.pgEditLeaseSessions || {}) };
   delete next[key];
   store.pgEditLeaseSessions = next;
+}
+
+export function stopPgEditLeaseRenewal(store, record, entityType, options = {}) {
+  const key = pgEditLeaseSessionKey(entityType, record?.record_id);
+  if (!key || !store?.pgEditLeaseRenewalTimers?.[key]) return false;
+  const timer = store.pgEditLeaseRenewalTimers[key];
+  const clearIntervalFn = options.clearInterval || globalThis.clearInterval;
+  if (typeof clearIntervalFn === 'function') clearIntervalFn(timer);
+  const next = { ...(store.pgEditLeaseRenewalTimers || {}) };
+  delete next[key];
+  store.pgEditLeaseRenewalTimers = next;
+  return true;
 }
 
 function normalizeAcquireError(error) {
@@ -133,8 +152,50 @@ export async function renewPgEditLeaseForRecord(store, record, entityType, optio
   return result.lease || session.lease;
 }
 
+export function startPgEditLeaseRenewal(store, record, entityType, options = {}) {
+  if (!isSyncedPgRecord(record)) return null;
+  const key = pgEditLeaseSessionKey(entityType, record?.record_id);
+  if (!key || !store) return null;
+  const session = getPgEditLeaseSession(store, entityType, record.record_id);
+  if (!session?.lease?.id || !session?.lease?.lease_token) return null;
+
+  stopPgEditLeaseRenewal(store, record, entityType, options);
+
+  const setIntervalFn = options.setInterval || globalThis.setInterval;
+  if (typeof setIntervalFn !== 'function') return null;
+  const intervalMs = Math.max(1_000, Number(options.intervalMs) || 60_000);
+  let renewing = false;
+  const timer = setIntervalFn(async () => {
+    if (renewing) return;
+    const current = getPgEditLeaseSession(store, entityType, record.record_id);
+    if (!current?.lease?.id || !current?.lease?.lease_token) {
+      stopPgEditLeaseRenewal(store, record, entityType, options);
+      return;
+    }
+    renewing = true;
+    try {
+      await renewPgEditLeaseForRecord(store, record, entityType, options);
+    } catch (error) {
+      setPgEditLeaseSession(store, entityType, record.record_id, {
+        acquireState: 'blocked',
+        message: error?.userMessage || error?.message || 'Unable to renew Tower PG edit lease.',
+      });
+      stopPgEditLeaseRenewal(store, record, entityType, options);
+      if (options.reportError && store) store.error = error?.message || 'Unable to renew Tower PG edit lease.';
+    } finally {
+      renewing = false;
+    }
+  }, intervalMs);
+  store.pgEditLeaseRenewalTimers = {
+    ...(store.pgEditLeaseRenewalTimers || {}),
+    [key]: timer,
+  };
+  return timer;
+}
+
 export async function releasePgEditLeaseForRecord(store, record, entityType, options = {}) {
   const recordId = trimText(record?.record_id);
+  stopPgEditLeaseRenewal(store, record, entityType, options);
   const session = getPgEditLeaseSession(store, entityType, recordId);
   if (!session?.lease?.id || !session?.lease?.lease_token) return false;
   try {
@@ -149,6 +210,7 @@ export async function releasePgEditLeaseForRecord(store, record, entityType, opt
     return true;
   } catch (error) {
     if (options.reportError && store) store.error = error?.message || 'Unable to release Tower PG edit lease.';
+    clearPgEditLeaseSession(store, entityType, recordId);
     return false;
   }
 }

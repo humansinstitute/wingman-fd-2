@@ -84,6 +84,7 @@ import {
   isSyncedPgRecord,
   isUnsyncedLocalPgRecord,
   releasePgEditLeaseForRecord,
+  startPgEditLeaseRenewal,
 } from './pg-edit-session.js';
 import { diffLines } from 'diff';
 
@@ -729,7 +730,11 @@ export const docsManagerMixin = {
     const nextRecordId = String(recordId || '').trim();
     const previousRecord = this.selectedDocType === 'document' ? this.selectedDocument : null;
     if (previousRecord?.record_id && previousRecord.record_id !== nextRecordId) {
-      void this.releaseLockManagedCheckout(previousRecord, recordFamilyHash('document'), { reportError: false });
+      if (isTowerPgBackendMode()) {
+        void releasePgEditLeaseForRecord(this, previousRecord, 'document', { reportError: false });
+      } else {
+        void this.releaseLockManagedCheckout(previousRecord, recordFamilyHash('document'), { reportError: false });
+      }
     }
     this.selectedDocType = 'document';
     this.selectedDocId = recordId;
@@ -1423,6 +1428,9 @@ export const docsManagerMixin = {
       if (!acquired) return false;
     }
     this.setDocEditorMode(mode === 'source' ? 'source' : 'block');
+    if (isTowerPgBackendMode() && isSyncedPgRecord(item)) {
+      startPgEditLeaseRenewal(this, item, 'document');
+    }
     return true;
   },
 
