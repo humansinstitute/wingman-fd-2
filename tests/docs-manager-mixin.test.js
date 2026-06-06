@@ -894,7 +894,7 @@ describe('docsManagerMixin canonical row normalization', () => {
   });
 
   it('creates PG documents through Tower without encrypted pending writes', async () => {
-    const wsDb = openWorkspaceDb('npub1workspace');
+    const wsDb = openWorkspaceDb('npub1signedinactor');
     await wsDb.open();
     await Promise.all(wsDb.tables.map((table) => table.clear()));
     isTowerPgBackendModeMock.mockReturnValue(true);
@@ -915,11 +915,11 @@ describe('docsManagerMixin canonical row normalization', () => {
     });
 
     const store = createStore({
-      workspaceOwnerNpub: 'npub1workspace',
+      workspaceOwnerNpub: 'npub1signedinactor',
       backendUrl: 'https://tower.example',
       currentWorkspace: {
         workspaceId: 'workspace-1',
-        workspaceOwnerNpub: 'npub1workspace',
+        workspaceOwnerNpub: 'npub1pgworkspace',
         directHttpsUrl: 'https://tower.example',
         appNpub: 'flightdeck_pg',
       },
@@ -957,6 +957,9 @@ describe('docsManagerMixin canonical row normalization', () => {
       threadId: 'thread-1',
     });
 
+    expect(prepareStorageObjectMock).toHaveBeenCalledWith(expect.objectContaining({
+      owner_npub: 'npub1pgworkspace',
+    }));
     expect(createTowerPgChannelDocMock).toHaveBeenCalledWith('workspace-1', 'channel-1', expect.objectContaining({
       title: 'PG document',
       storage_object_id: 'storage-pg-doc-1',

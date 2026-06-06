@@ -71,6 +71,7 @@ import {
 import { resolveFlightDeckRecordCheckoutPolicy } from './record-checkout-policy.js';
 import { isTowerPgBackendMode } from './backend-mode.js';
 import { resolvePgRecordContext } from './pg-record-context.js';
+import { resolveTowerPgWorkspaceContext } from './pg-read-hydrator.js';
 import { diffLines } from 'diff';
 
 // ---------------------------------------------------------------------------
@@ -2085,14 +2086,16 @@ export const docsManagerMixin = {
     const contentModel = buildDocumentContentModel([]);
     if (pgContext) {
       try {
+        const pgWorkspaceContext = resolveTowerPgWorkspaceContext(this);
+        const pgWorkspaceOwnerNpub = pgWorkspaceContext.workspaceOwnerNpub || ownerNpub;
         const contentPayload = await this.prepareDocumentContentForEnvelope({
           record_id: recordId,
-          owner_npub: ownerNpub,
+          owner_npub: pgWorkspaceOwnerNpub,
           title,
         }, contentModel, []);
         const accepted = await createTowerPgDocFromLocal(this, {
           record_id: recordId,
-          owner_npub: ownerNpub,
+          owner_npub: pgWorkspaceOwnerNpub,
           title,
           ...contentModel,
           ...contentPayload,

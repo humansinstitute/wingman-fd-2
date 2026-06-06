@@ -80,6 +80,18 @@ describe('PG read hydrator', () => {
     });
   });
 
+  it('prefers the selected PG workspace owner over the signed-in actor owner', () => {
+    expect(resolveTowerPgWorkspaceContext(store({
+      workspaceOwnerNpub: 'npub1signedinactor',
+      currentWorkspace: {
+        ...store().currentWorkspace,
+        workspaceOwnerNpub: 'npub1pgworkspace',
+      },
+    }))).toMatchObject({
+      workspaceOwnerNpub: 'npub1pgworkspace',
+    });
+  });
+
   it('normalizes saved http Tower URLs before PG API requests on hosted https Flight Deck', () => {
     globalThis.window = { location: { origin: 'https://near-tea-crab.rick.runwingman.com' } };
 

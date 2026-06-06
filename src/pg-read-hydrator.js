@@ -61,10 +61,10 @@ export function resolveTowerPgWorkspaceContext(store = {}) {
     : {};
   const workspaceId = trimText(workspace.workspaceId || identity.workspace_id || identity.workspaceId);
   const workspaceOwnerNpub = trimText(
-    store.workspaceOwnerNpub
-    || workspace.workspaceOwnerNpub
+    workspace.workspaceOwnerNpub
     || identity.workspace_owner_npub
     || identity.workspaceOwnerNpub
+    || store.workspaceOwnerNpub
   );
   const baseUrl = normalizeBackendUrl(workspace.directHttpsUrl || descriptor.tower_base_url || descriptor.towerBaseUrl || store.backendUrl);
   const appNpub = trimText(workspace.appNpub || identity.app_npub || identity.appNpub || FLIGHT_DECK_PG_APP_NPUB || 'flightdeck_pg');
