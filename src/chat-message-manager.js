@@ -709,6 +709,10 @@ export const chatMessageManagerMixin = {
       this.error = 'Select a channel first';
       return;
     }
+    if (isTowerPgBackendMode()) {
+      this.error = 'Deleting PG channels is not available yet.';
+      return;
+    }
 
     if (!this.channelDeleteConfirmArmed) {
       this.channelDeleteConfirmArmed = true;
@@ -812,18 +816,21 @@ export const chatMessageManagerMixin = {
     const msgId = crypto.randomUUID();
     const now = new Date().toISOString();
     const body = this.messageInput.trim();
-    const channelWriteFields = await getRecordWriteFieldsForStore(this, channel, {
-      label: 'Chat message write',
-    });
-    const { attachments } = await this.materializeAudioDrafts({
-      drafts,
-      target_record_id: msgId,
-      target_record_family_hash: recordFamilyHash('chat_message'),
-      target_group_ids: channelWriteFields.group_ids,
-      write_group_ref: channelWriteFields.write_group_ref,
-    });
-
     const pgMode = isTowerPgBackendMode();
+    let channelWriteFields = null;
+    let attachments = [];
+    if (!pgMode) {
+      channelWriteFields = await getRecordWriteFieldsForStore(this, channel, {
+        label: 'Chat message write',
+      });
+      ({ attachments } = await this.materializeAudioDrafts({
+        drafts,
+        target_record_id: msgId,
+        target_record_family_hash: recordFamilyHash('chat_message'),
+        target_group_ids: channelWriteFields.group_ids,
+        write_group_ref: channelWriteFields.write_group_ref,
+      }));
+    }
     const localRow = {
       record_id: msgId,
       channel_id: this.selectedChannelId,
@@ -917,18 +924,21 @@ export const chatMessageManagerMixin = {
     const msgId = crypto.randomUUID();
     const now = new Date().toISOString();
     const body = this.threadInput.trim();
-    const channelWriteFields = await getRecordWriteFieldsForStore(this, channel, {
-      label: 'Chat reply write',
-    });
-    const { attachments } = await this.materializeAudioDrafts({
-      drafts,
-      target_record_id: msgId,
-      target_record_family_hash: recordFamilyHash('chat_message'),
-      target_group_ids: channelWriteFields.group_ids,
-      write_group_ref: channelWriteFields.write_group_ref,
-    });
-
     const pgMode = isTowerPgBackendMode();
+    let channelWriteFields = null;
+    let attachments = [];
+    if (!pgMode) {
+      channelWriteFields = await getRecordWriteFieldsForStore(this, channel, {
+        label: 'Chat reply write',
+      });
+      ({ attachments } = await this.materializeAudioDrafts({
+        drafts,
+        target_record_id: msgId,
+        target_record_family_hash: recordFamilyHash('chat_message'),
+        target_group_ids: channelWriteFields.group_ids,
+        write_group_ref: channelWriteFields.write_group_ref,
+      }));
+    }
     const localRow = {
       record_id: msgId,
       channel_id: this.selectedChannelId,
@@ -1443,6 +1453,10 @@ export const chatMessageManagerMixin = {
     const parent = this.getThreadParentMessage();
     if (!parent || !this.selectedChannelId) {
       this.error = 'Open a thread first';
+      return;
+    }
+    if (isTowerPgBackendMode()) {
+      this.error = 'Deleting PG threads is not available yet.';
       return;
     }
 

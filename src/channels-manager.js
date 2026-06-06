@@ -28,6 +28,7 @@ import {
   createTowerPgWorkspaceGroup,
   createTowerPgWorkspaceMember,
   createTowerPgChannelGrant,
+  createTowerPgScopeChannel,
   getTowerPgChannelGrants,
   getTowerPgWorkspaceGroups,
   getTowerPgWorkspaceMembers,
@@ -62,6 +63,7 @@ import {
   hydrateTowerPgDocumentsAndFiles,
   hydrateTowerPgScopes,
   hydrateTowerPgTasks,
+  mapPgChannelToLocal,
   resolveTowerPgWorkspaceContext,
 } from './pg-read-hydrator.js';
 
@@ -1197,6 +1199,44 @@ export const channelsManagerMixin = {
     try {
       const profileName = this.chatProfiles[targetNpub]?.name || targetNpub.slice(0, 12) + '…';
       const name = `DM: ${profileName}`;
+      if (isTowerPgBackendMode()) {
+        const { workspaceId, workspaceOwnerNpub, baseUrl, appNpub } = resolveTowerPgWorkspaceContext(this);
+        const boardScopeId = this.scopesMap?.has?.(this.selectedBoardId) ? this.selectedBoardId : '';
+        const scopeId = this.selectedChannel?.scope_id || this.selectedBoardScope?.record_id || boardScopeId || this.scopes?.[0]?.record_id;
+        if (!workspaceId || !baseUrl || !scopeId) throw new Error('Select a PG scope before creating a DM.');
+        const memberResult = await createTowerPgWorkspaceMember(workspaceId, {
+          member_npub: targetNpub,
+          role: 'member',
+          kind: 'human',
+        }, { baseUrl, appNpub }).catch((error) => {
+          if (String(error?.message || '').includes('409')) return null;
+          throw error;
+        });
+        await this.refreshTowerPgWorkspaceMembers({ force: true, limit: 200 });
+        const actorId = memberResult?.actor?.actor_id
+          || memberResult?.actor?.id
+          || this.getPgWorkspaceMemberActorId?.(targetNpub)
+          || '';
+        const result = await createTowerPgScopeChannel(workspaceId, scopeId, {
+          name,
+          kind: 'dm',
+        }, { baseUrl, appNpub });
+        const channelRow = mapPgChannelToLocal(result.channel, { workspaceOwnerNpub });
+        await upsertChannel(channelRow);
+        this.channels = [...this.channels.filter((channel) => channel.record_id !== channelRow.record_id), channelRow];
+        if (actorId) {
+          await createTowerPgChannelGrant(workspaceId, channelRow.record_id, {
+            principal_type: 'actor',
+            principal_id: actorId,
+            permissions: permissionsForPgChannelCapacity('contributor'),
+          }, { baseUrl, appNpub });
+        }
+        await this.rememberPeople([ownerNpub, targetNpub], 'chat');
+        await this.refreshChannels();
+        await this.selectChannel(channelRow.record_id, { syncRoute: false });
+        this.closeNewChannelModal();
+        return;
+      }
       const group = await this.createEncryptedGroup(name, [targetNpub]);
       const groupId = group.group_id;
       await this.rememberPeople([ownerNpub, targetNpub], 'chat');
@@ -1246,9 +1286,33 @@ export const channelsManagerMixin = {
     const title = this.newChannelName.trim();
     const selectedGroupRef = this.newChannelGroupId;
     const groupId = this.resolveGroupId(selectedGroupRef);
-    if (!ownerNpub || !title || !groupId) return;
+    if (!ownerNpub || !title || (!groupId && !isTowerPgBackendMode())) return;
 
     try {
+      if (isTowerPgBackendMode()) {
+        const { workspaceId, workspaceOwnerNpub, baseUrl, appNpub } = resolveTowerPgWorkspaceContext(this);
+        const boardScopeId = this.scopesMap?.has?.(this.selectedBoardId) ? this.selectedBoardId : '';
+        const scopeId = this.selectedChannel?.scope_id || this.selectedBoardScope?.record_id || boardScopeId || this.scopes?.[0]?.record_id;
+        if (!workspaceId || !baseUrl || !scopeId) throw new Error('Select a PG scope before creating a channel.');
+        const result = await createTowerPgScopeChannel(workspaceId, scopeId, {
+          name: title,
+          kind: 'channel',
+        }, { baseUrl, appNpub });
+        const channelRow = mapPgChannelToLocal(result.channel, { workspaceOwnerNpub });
+        await upsertChannel(channelRow);
+        this.channels = [...this.channels.filter((channel) => channel.record_id !== channelRow.record_id), channelRow];
+        if (groupId) {
+          await createTowerPgChannelGrant(workspaceId, channelRow.record_id, {
+            principal_type: 'group',
+            principal_id: groupId,
+            permissions: permissionsForPgChannelCapacity('contributor'),
+          }, { baseUrl, appNpub });
+        }
+        await this.refreshChannels();
+        await this.selectChannel(channelRow.record_id, { syncRoute: false });
+        this.closeNewChannelModal();
+        return;
+      }
       const group = this.groups.find(g => g.group_id === groupId || g.group_npub === selectedGroupRef || g.group_npub === groupId);
       const participants = group?.member_npubs ?? [ownerNpub];
 

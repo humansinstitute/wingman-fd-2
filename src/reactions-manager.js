@@ -9,8 +9,14 @@ import {
   getTaskById,
   upsertReaction,
 } from './db.js';
+import {
+  createTowerPgReaction,
+  deleteTowerPgReaction,
+  getTowerPgReactions,
+} from './api.js';
 import { outboundReaction } from './translators/reactions.js';
 import { recordFamilyHash } from './translators/chat.js';
+import { recordFamilyHash as taskFamilyHash } from './translators/tasks.js';
 import {
   DEFAULT_REACTION_EMOJI,
   REACTION_EMOJI_OPTIONS,
@@ -20,6 +26,8 @@ import {
 } from './reactions.js';
 import { getRecordWriteFieldsForStore } from './preferred-write-group.js';
 import { toRaw } from './utils/state-helpers.js';
+import { isTowerPgBackendMode } from './backend-mode.js';
+import { resolveTowerPgWorkspaceContext } from './pg-read-hydrator.js';
 
 function targetKey(targetRecordFamilyHash, targetRecordId) {
   return `${String(targetRecordFamilyHash || '').trim()}::${String(targetRecordId || '').trim()}`;
@@ -56,6 +64,16 @@ function requireReactionTargetGroupIds(writeFields) {
     ...writeFields,
     target_group_ids: targetGroupIds,
   };
+}
+
+async function resolvePgReactionTarget(targetId, familyHash) {
+  if (familyHash === recordFamilyHash('chat_message')) return { target_type: 'message', target_id: targetId };
+  if (familyHash === taskFamilyHash('task')) return { target_type: 'task', target_id: targetId };
+  if (familyHash === recordFamilyHash('comment')) {
+    const comment = await getCommentById(targetId);
+    if (comment?.pg_record_type === 'task_comment') return { target_type: 'task_comment', target_id: targetId };
+  }
+  return null;
 }
 
 export const reactionsManagerMixin = {
@@ -146,7 +164,50 @@ export const reactionsManagerMixin = {
       getReactionsByTargets(chatTargetIds, chatFamilyHash),
       getReactionsByTargets(commentTargetIds, commentFamilyHash),
     ]);
-    this.applyReactions([...messageReactions, ...commentReactions]);
+    const pgReactions = [];
+    if (isTowerPgBackendMode()) {
+      const context = resolveTowerPgWorkspaceContext(this);
+      const collectPg = async (targetType, targetId, familyHash) => {
+        const result = await getTowerPgReactions(context.workspaceId, {
+          targetType,
+          targetId,
+          baseUrl: context.baseUrl,
+          appNpub: context.appNpub,
+        });
+        for (const reaction of Array.isArray(result?.reactions) ? result.reactions : []) {
+          const now = new Date().toISOString();
+          pgReactions.push({
+            record_id: reaction.id,
+            owner_npub: context.workspaceOwnerNpub,
+            target_record_id: targetId,
+            target_record_family_hash: familyHash,
+            emoji: reaction.emoji,
+            emoji_shortcode: reaction.emoji_shortcode,
+            reactor_npub: reaction.reactor_npub || reaction.reactor_actor_id,
+            sender_npub: reaction.reactor_npub || reaction.reactor_actor_id,
+            record_state: reaction.record_state || 'active',
+            version: Number(reaction.row_version || 1),
+            created_at: reaction.created_at || reaction.updated_at || now,
+            updated_at: reaction.updated_at || reaction.created_at || now,
+            pg_backend: true,
+            pg_record_type: 'reaction',
+            pg_workspace_id: reaction.workspace_id,
+            pg_channel_id: reaction.channel_id,
+            pg_thread_id: reaction.thread_id || null,
+          });
+        }
+      };
+      await Promise.all([
+        ...chatTargetIds.map((targetId) => collectPg('message', targetId, chatFamilyHash)),
+        ...(this.tasks || [])
+          .filter((task) => task?.pg_backend && task?.record_id)
+          .map((task) => collectPg('task', task.record_id, taskFamilyHash('task'))),
+        ...(this.taskComments || [])
+          .filter((comment) => comment?.pg_backend && comment?.record_id)
+          .map((comment) => collectPg('task_comment', comment.record_id, commentFamilyHash)),
+      ]);
+    }
+    this.applyReactions([...messageReactions, ...commentReactions, ...pgReactions]);
   },
 
   findLocalCommentForReaction(commentId) {
@@ -226,6 +287,62 @@ export const reactionsManagerMixin = {
 
     try {
       const canonicalEmoji = normalizeReactionEmoji(emoji);
+      if (isTowerPgBackendMode()) {
+        const target = await resolvePgReactionTarget(targetId, familyHash);
+        if (!target) {
+          this.error = 'Reactions for this PG record type are not available yet.';
+          return;
+        }
+        const context = resolveTowerPgWorkspaceContext(this);
+        const existing = await getReactionByIdentity({
+          target_record_family_hash: familyHash,
+          target_record_id: targetId,
+          emoji: canonicalEmoji,
+          reactor_npub: reactorNpub,
+        });
+        let accepted;
+        if (existing?.record_state === 'active' && existing?.pg_backend) {
+          const result = await deleteTowerPgReaction(context.workspaceId, existing.record_id, {
+            baseUrl: context.baseUrl,
+            appNpub: context.appNpub,
+          });
+          accepted = result.reaction;
+        } else {
+          const result = await createTowerPgReaction(context.workspaceId, {
+            target_type: target.target_type,
+            target_id: target.target_id,
+            emoji: canonicalEmoji,
+          }, {
+            baseUrl: context.baseUrl,
+            appNpub: context.appNpub,
+          });
+          accepted = result.reaction;
+        }
+        const now = new Date().toISOString();
+        const reaction = {
+          record_id: accepted.id,
+          owner_npub: context.workspaceOwnerNpub,
+          target_record_id: targetId,
+          target_record_family_hash: familyHash,
+          emoji: accepted.emoji || canonicalEmoji,
+          emoji_shortcode: accepted.emoji_shortcode || REACTION_EMOJI_OPTIONS.find((option) => option.emoji === canonicalEmoji)?.shortcode || ':thumbs_up:',
+          reactor_npub: accepted.reactor_npub || reactorNpub,
+          sender_npub: accepted.reactor_npub || reactorNpub,
+          record_state: accepted.record_state || 'active',
+          version: Number(accepted.row_version || existing?.version || 1),
+          created_at: accepted.created_at || existing?.created_at || now,
+          updated_at: accepted.updated_at || now,
+          pg_backend: true,
+          pg_record_type: 'reaction',
+          pg_workspace_id: accepted.workspace_id,
+          pg_channel_id: accepted.channel_id,
+          pg_thread_id: accepted.thread_id || null,
+        };
+        await upsertReaction(reaction);
+        this.patchReactionLocal(reaction);
+        this.closeReactionPicker();
+        return;
+      }
       const writeFields = requireReactionTargetGroupIds(
         await this.resolveReactionWriteFields(targetId, familyHash),
       );

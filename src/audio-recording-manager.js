@@ -12,6 +12,7 @@ import {
 } from './db.js';
 import {
   prepareStorageObject,
+  prepareTowerPgStorageObject,
   uploadStorageObject,
   completeStorageObject,
   downloadStorageObject,
@@ -24,7 +25,7 @@ import {
 import { decryptAudioBytes, encryptAudioBlob, measureAudioDuration } from './audio-notes.js';
 import { sameListBySignature } from './utils/state-helpers.js';
 import { isTowerPgBackendMode } from './backend-mode.js';
-import { hydrateTowerPgAudioNotes } from './pg-read-hydrator.js';
+import { hydrateTowerPgAudioNotes, resolveTowerPgWorkspaceContext } from './pg-read-hydrator.js';
 import { resolvePgRecordContext } from './pg-record-context.js';
 import { createTowerPgAudioNoteFromLocal } from './pg-write-adapter.js';
 import {
@@ -218,13 +219,20 @@ export const audioRecordingManagerMixin = {
       const uploadBytes = pgMode
         ? new Uint8Array(await this._audioRecorderBlob.arrayBuffer())
         : encrypted.encryptedBytes;
-      const prepared = await prepareStorageObject(buildStoragePrepareBody({
-        ownerNpub: this.workspaceOwnerNpub,
+      const pgWorkspaceContext = pgMode ? resolveTowerPgWorkspaceContext(this) : null;
+      const prepareBody = buildStoragePrepareBody({
+        ownerNpub: pgMode ? pgWorkspaceContext.workspaceOwnerNpub : this.workspaceOwnerNpub,
         accessGroupIds: pgMode ? [] : accessGroupIds,
         contentType: this._audioRecorderBlob.type || 'audio/webm;codecs=opus',
         sizeBytes: uploadBytes.byteLength,
         fileName: `${(this.audioRecorderTitle || this.getAudioRecorderDefaultTitle()).replace(/[^a-zA-Z0-9._-]/g, '_')}.webm`,
-      }));
+      });
+      const prepared = pgMode
+        ? await prepareTowerPgStorageObject(pgWorkspaceContext.workspaceId, prepareBody, {
+          baseUrl: pgWorkspaceContext.baseUrl,
+          appNpub: pgWorkspaceContext.appNpub,
+        })
+        : await prepareStorageObject(prepareBody);
       await uploadStorageObject(
         prepared,
         uploadBytes,

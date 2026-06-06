@@ -534,6 +534,11 @@ export const scopesManagerMixin = {
   async selectScopeForDoc(scopeId) {
     const doc = this.selectedDocument;
     if (!doc || !this.session?.npub) return;
+    if (isTowerPgBackendMode()) {
+      this.error = 'Moving PG documents between scopes is not available yet.';
+      this.closeScopePicker();
+      return;
+    }
     await this.updateDocScope(doc, scopeId);
     this.closeScopePicker();
   },
@@ -547,6 +552,10 @@ export const scopesManagerMixin = {
 
   async updateDocScope(doc, scopeId, options = {}) {
     if (!doc || !this.session?.npub) return;
+    if (isTowerPgBackendMode()) {
+      this.error = 'Moving PG documents between scopes is not available yet.';
+      return;
+    }
     if (!scopeId) {
       this.error = 'Documents must have a scope.';
       return;
@@ -608,6 +617,11 @@ export const scopesManagerMixin = {
   async selectScopeForDirectory(scopeId) {
     const dir = this.currentFolder;
     if (!dir || !this.session?.npub) return;
+    if (isTowerPgBackendMode()) {
+      this.error = 'Folders are not available in Tower PG mode.';
+      this.closeScopePicker();
+      return;
+    }
     await this.updateDirectoryScope(dir, scopeId);
     this.closeScopePicker();
   },
@@ -621,6 +635,10 @@ export const scopesManagerMixin = {
 
   async updateDirectoryScope(dir, scopeId) {
     if (!dir || !this.session?.npub) return;
+    if (isTowerPgBackendMode()) {
+      this.error = 'Folders are not available in Tower PG mode.';
+      return;
+    }
     if (!scopeId) {
       this.error = 'Folders must have a scope.';
       return;
@@ -654,6 +672,11 @@ export const scopesManagerMixin = {
   async selectScopeForChannel(scopeId) {
     const ch = this.selectedChannel;
     if (!ch || !this.session?.npub) return;
+    if (isTowerPgBackendMode()) {
+      this.error = 'Moving PG channels between scopes is not available yet.';
+      this.closeChannelScopePicker();
+      return;
+    }
     const chain = resolveScopeChain(scopeId, this.scopesMap);
     const updated = toRaw({
       ...ch,
@@ -673,6 +696,11 @@ export const scopesManagerMixin = {
   async clearChannelScope() {
     const ch = this.selectedChannel;
     if (!ch || !this.session?.npub) return;
+    if (isTowerPgBackendMode()) {
+      this.error = 'PG channels must stay attached to a scope.';
+      this.closeChannelScopePicker();
+      return;
+    }
     const updated = toRaw({
       ...ch,
       scope_id: null,

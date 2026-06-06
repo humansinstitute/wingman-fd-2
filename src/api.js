@@ -496,6 +496,17 @@ export async function getTowerPgScopeChannels(workspaceId, scopeId, { baseUrl = 
   return json(resp, { requestUrl, method: 'GET', prefix: 'Tower PG API' });
 }
 
+export async function createTowerPgScopeChannel(workspaceId, scopeId, body, { baseUrl = _baseUrl, appNpub = FLIGHT_DECK_PG_APP_NPUB } = {}) {
+  const encodedWorkspaceId = encodeURIComponent(String(workspaceId || '').trim());
+  const encodedScopeId = encodeURIComponent(String(scopeId || '').trim());
+  if (!encodedWorkspaceId) throw new Error('Tower PG workspace id is required');
+  if (!encodedScopeId) throw new Error('Tower PG scope id is required');
+  const requestPath = `/api/v4/flightdeck-pg/workspaces/${encodedWorkspaceId}/scopes/${encodedScopeId}/channels`;
+  const requestUrl = resolveTowerPgUrl(requestPath, baseUrl);
+  const resp = await signedTowerPgFetch(requestPath, { method: 'POST', body, baseUrl, appNpub });
+  return json(resp, { requestUrl, method: 'POST', prefix: 'Tower PG API' });
+}
+
 export async function getTowerPgChannelThreads(workspaceId, channelId, { baseUrl = _baseUrl, appNpub = FLIGHT_DECK_PG_APP_NPUB, limit = 100 } = {}) {
   const encodedWorkspaceId = encodeURIComponent(String(workspaceId || '').trim());
   const encodedChannelId = encodeURIComponent(String(channelId || '').trim());
@@ -645,6 +656,39 @@ export async function createTowerPgChannelAudioNote(workspaceId, channelId, body
   return json(resp, { requestUrl, method: 'POST', prefix: 'Tower PG API' });
 }
 
+export async function prepareTowerPgStorageObject(workspaceId, body, { baseUrl = _baseUrl, appNpub = FLIGHT_DECK_PG_APP_NPUB } = {}) {
+  const encodedWorkspaceId = encodeURIComponent(String(workspaceId || '').trim());
+  if (!encodedWorkspaceId) throw new Error('Tower PG workspace id is required');
+  const requestPath = `/api/v4/flightdeck-pg/workspaces/${encodedWorkspaceId}/storage/prepare`;
+  const requestUrl = resolveTowerPgUrl(requestPath, baseUrl);
+  const resp = await signedTowerPgFetch(requestPath, { method: 'POST', body, baseUrl, appNpub });
+  return json(resp, { requestUrl, method: 'POST', prefix: 'Tower PG API' });
+}
+
+export async function updateTowerPgDoc(workspaceId, docId, body, { baseUrl = _baseUrl, appNpub = FLIGHT_DECK_PG_APP_NPUB } = {}) {
+  const encodedWorkspaceId = encodeURIComponent(String(workspaceId || '').trim());
+  const encodedDocId = encodeURIComponent(String(docId || '').trim());
+  if (!encodedWorkspaceId) throw new Error('Tower PG workspace id is required');
+  if (!encodedDocId) throw new Error('Tower PG doc id is required');
+  const requestPath = `/api/v4/flightdeck-pg/workspaces/${encodedWorkspaceId}/docs/${encodedDocId}`;
+  const requestUrl = resolveTowerPgUrl(requestPath, baseUrl);
+  const resp = await signedTowerPgFetch(requestPath, { method: 'PATCH', body, baseUrl, appNpub });
+  return json(resp, { requestUrl, method: 'PATCH', prefix: 'Tower PG API' });
+}
+
+export async function deleteTowerPgDoc(workspaceId, docId, { rowVersion = null, baseUrl = _baseUrl, appNpub = FLIGHT_DECK_PG_APP_NPUB } = {}) {
+  const encodedWorkspaceId = encodeURIComponent(String(workspaceId || '').trim());
+  const encodedDocId = encodeURIComponent(String(docId || '').trim());
+  if (!encodedWorkspaceId) throw new Error('Tower PG workspace id is required');
+  if (!encodedDocId) throw new Error('Tower PG doc id is required');
+  const params = new URLSearchParams();
+  if (rowVersion) params.set('row_version', String(rowVersion));
+  const requestPath = `/api/v4/flightdeck-pg/workspaces/${encodedWorkspaceId}/docs/${encodedDocId}${params.size > 0 ? `?${params.toString()}` : ''}`;
+  const requestUrl = resolveTowerPgUrl(requestPath, baseUrl);
+  const resp = await signedTowerPgFetch(requestPath, { method: 'DELETE', baseUrl, appNpub });
+  return json(resp, { requestUrl, method: 'DELETE', prefix: 'Tower PG API' });
+}
+
 export async function updateTowerPgTask(workspaceId, taskId, body, { baseUrl = _baseUrl, appNpub = FLIGHT_DECK_PG_APP_NPUB } = {}) {
   const encodedWorkspaceId = encodeURIComponent(String(workspaceId || '').trim());
   const encodedTaskId = encodeURIComponent(String(taskId || '').trim());
@@ -687,6 +731,42 @@ export async function createTowerPgChannelMessage(workspaceId, channelId, body, 
   const requestUrl = resolveTowerPgUrl(requestPath, baseUrl);
   const resp = await signedTowerPgFetch(requestPath, { method: 'POST', body, baseUrl, appNpub });
   return json(resp, { requestUrl, method: 'POST', prefix: 'Tower PG API' });
+}
+
+export async function getTowerPgReactions(workspaceId, { targetType, targetId, baseUrl = _baseUrl, appNpub = FLIGHT_DECK_PG_APP_NPUB, limit = 100 } = {}) {
+  const encodedWorkspaceId = encodeURIComponent(String(workspaceId || '').trim());
+  if (!encodedWorkspaceId) throw new Error('Tower PG workspace id is required');
+  if (!targetType) throw new Error('Tower PG reaction target type is required');
+  if (!targetId) throw new Error('Tower PG reaction target id is required');
+  const params = new URLSearchParams({
+    target_type: String(targetType),
+    target_id: String(targetId),
+  });
+  if (limit) params.set('limit', String(limit));
+  const requestPath = `/api/v4/flightdeck-pg/workspaces/${encodedWorkspaceId}/reactions?${params.toString()}`;
+  const requestUrl = resolveTowerPgUrl(requestPath, baseUrl);
+  const resp = await signedTowerPgFetch(requestPath, { baseUrl, appNpub });
+  return json(resp, { requestUrl, method: 'GET', prefix: 'Tower PG API' });
+}
+
+export async function createTowerPgReaction(workspaceId, body, { baseUrl = _baseUrl, appNpub = FLIGHT_DECK_PG_APP_NPUB } = {}) {
+  const encodedWorkspaceId = encodeURIComponent(String(workspaceId || '').trim());
+  if (!encodedWorkspaceId) throw new Error('Tower PG workspace id is required');
+  const requestPath = `/api/v4/flightdeck-pg/workspaces/${encodedWorkspaceId}/reactions`;
+  const requestUrl = resolveTowerPgUrl(requestPath, baseUrl);
+  const resp = await signedTowerPgFetch(requestPath, { method: 'POST', body, baseUrl, appNpub });
+  return json(resp, { requestUrl, method: 'POST', prefix: 'Tower PG API' });
+}
+
+export async function deleteTowerPgReaction(workspaceId, reactionId, { baseUrl = _baseUrl, appNpub = FLIGHT_DECK_PG_APP_NPUB } = {}) {
+  const encodedWorkspaceId = encodeURIComponent(String(workspaceId || '').trim());
+  const encodedReactionId = encodeURIComponent(String(reactionId || '').trim());
+  if (!encodedWorkspaceId) throw new Error('Tower PG workspace id is required');
+  if (!encodedReactionId) throw new Error('Tower PG reaction id is required');
+  const requestPath = `/api/v4/flightdeck-pg/workspaces/${encodedWorkspaceId}/reactions/${encodedReactionId}`;
+  const requestUrl = resolveTowerPgUrl(requestPath, baseUrl);
+  const resp = await signedTowerPgFetch(requestPath, { method: 'DELETE', baseUrl, appNpub });
+  return json(resp, { requestUrl, method: 'DELETE', prefix: 'Tower PG API' });
 }
 
 export async function recoverWorkspace(body) {

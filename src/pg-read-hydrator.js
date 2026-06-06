@@ -167,7 +167,7 @@ export function mapPgMessageToLocal(message, { workspaceOwnerNpub, senderNpub, t
   const recordId = trimText(message?.id || message?.record_id);
   const threadId = trimText(message?.thread_id);
   const thread = threadId ? threadById.get(threadId) || null : null;
-  const sourceMessageId = trimText(thread?.source_message_id);
+  const sourceMessageId = trimText(thread?.source_message_id || message?.thread_source_message_id || message?.source_message_id);
   const updatedAt = isoTimestamp(message?.updated_at || message?.created_at);
   return {
     record_id: recordId,

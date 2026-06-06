@@ -37,10 +37,15 @@ import {
   completeStorageObject,
   fetchRecordHistory,
   prepareStorageObject,
+  prepareTowerPgStorageObject,
   releaseRecordCheckout,
   uploadStorageObject,
 } from './api.js';
-import { createTowerPgDocFromLocal } from './pg-write-adapter.js';
+import {
+  createTowerPgDocFromLocal,
+  deleteTowerPgDocFromLocal,
+  updateTowerPgDocFromLocal,
+} from './pg-write-adapter.js';
 import { inboundDocument } from './translators/docs.js';
 import { renderMarkdownToHtml, hydrateStorageImageMarkup } from './markdown.js';
 import { normalizeGroupIds } from './scope-delivery.js';
@@ -643,7 +648,7 @@ export const docsManagerMixin = {
     return this.attachLockManagedCheckoutToEnvelope(record, envelope, options);
   },
 
-  async prepareDocumentContentForEnvelope(payload, contentModel, encryptableGroupIds = [], record = null) {
+  async prepareDocumentContentForEnvelope(payload, contentModel, encryptableGroupIds = [], record = null, options = {}) {
     const existingObjectId = String(record?.content_storage_object_id || payload?.content_storage_object_id || '').trim();
     const storagePayload = buildStoredDocumentContent(contentModel);
     const bytes = new TextEncoder().encode(JSON.stringify(storagePayload));
@@ -672,14 +677,21 @@ export const docsManagerMixin = {
         .filter(Boolean),
     );
 
-    const prepared = await prepareStorageObject(buildStoragePrepareBody({
+    const prepareBody = buildStoragePrepareBody({
       ownerNpub,
       ownerGroupId,
       accessGroupIds,
       contentType: DOCUMENT_CONTENT_STORAGE_MIME,
       sizeBytes: bytes.byteLength,
       fileName: buildDocumentStorageFileName(payload?.title, payload?.record_id),
-    }));
+    });
+    const pgStorageContext = options.pgStorageContext || null;
+    const prepared = pgStorageContext?.workspaceId
+      ? await prepareTowerPgStorageObject(pgStorageContext.workspaceId, prepareBody, {
+        baseUrl: pgStorageContext.baseUrl,
+        appNpub: pgStorageContext.appNpub,
+      })
+      : await prepareStorageObject(prepareBody);
     await uploadStorageObject(prepared, bytes, DOCUMENT_CONTENT_STORAGE_MIME);
     await completeStorageObject(prepared.object_id, {
       size_bytes: bytes.byteLength,
@@ -1141,6 +1153,10 @@ export const docsManagerMixin = {
       return;
     }
     if ((!body && drafts.length === 0) || !doc || !this.session?.npub) return;
+    if (isTowerPgBackendMode()) {
+      this.error = 'PG document comments are not available yet.';
+      return;
+    }
 
     const targetGroupIds = await this.getEncryptableDocCommentGroupIdsForWrite(doc);
     if (targetGroupIds == null) return;
@@ -1206,6 +1222,10 @@ export const docsManagerMixin = {
       return;
     }
     if ((!body && drafts.length === 0) || !doc || !root || !this.session?.npub) return;
+    if (isTowerPgBackendMode()) {
+      this.error = 'PG document comment replies are not available yet.';
+      return;
+    }
 
     const targetGroupIds = await this.getEncryptableDocCommentGroupIdsForWrite(doc);
     if (targetGroupIds == null) return;
@@ -1264,6 +1284,10 @@ export const docsManagerMixin = {
     const comment = this.getDocCommentById(commentId);
     const doc = this.selectedDocument;
     if (!comment || !doc || !this.session?.npub) return;
+    if (isTowerPgBackendMode()) {
+      this.error = 'PG document comment status changes are not available yet.';
+      return;
+    }
     const status = nextStatus === 'resolved' ? 'resolved' : 'open';
     if ((comment.comment_status || 'open') === status) return;
     const targetGroupIds = await this.getEncryptableDocCommentGroupIdsForWrite(doc);
@@ -1301,6 +1325,10 @@ export const docsManagerMixin = {
     const comment = this.getDocCommentById(commentId);
     const doc = this.selectedDocument;
     if (!comment || !doc || !this.session?.npub) return;
+    if (isTowerPgBackendMode()) {
+      this.error = 'PG document comment deletion is not available yet.';
+      return;
+    }
     const targetGroupIds = await this.getEncryptableDocCommentGroupIdsForWrite(doc);
     if (targetGroupIds == null) return;
 
@@ -1984,6 +2012,10 @@ export const docsManagerMixin = {
   getShareGroupIds,
 
   async createDirectory(title = 'New directory', options = {}) {
+    if (isTowerPgBackendMode()) {
+      this.error = 'Folders are not available in Tower PG mode. Use scopes, channels, and threads for structure.';
+      return null;
+    }
     const ownerNpub = this.workspaceOwnerNpub;
     if (!ownerNpub) {
       this.error = 'Sign in first';
@@ -2092,7 +2124,7 @@ export const docsManagerMixin = {
           record_id: recordId,
           owner_npub: pgWorkspaceOwnerNpub,
           title,
-        }, contentModel, []);
+        }, contentModel, [], null, { pgStorageContext: pgWorkspaceContext });
         const accepted = await createTowerPgDocFromLocal(this, {
           record_id: recordId,
           owner_npub: pgWorkspaceOwnerNpub,
@@ -2294,6 +2326,69 @@ export const docsManagerMixin = {
       this.docAutosaveState = autosave ? 'error' : this.docAutosaveState;
       if (!autosave) this.error = 'Select a scope before saving this document.';
       return;
+    }
+    if (isTowerPgBackendMode()) {
+      const nextTitle = this.docEditorTitle.trim() || 'Untitled document';
+      const contentModel = buildDocumentContentModel(this.docEditorBlocks);
+      const nextReferences = mergeDocumentSaveReferences(item, parseRecordReferencesFromText(contentModel.content));
+      const nextLinksSerialized = JSON.stringify(buildRecordLinkPayload({
+        ...item,
+        references: nextReferences,
+      }));
+      const currentLinksSerialized = JSON.stringify(buildRecordLinkPayload(item));
+      const hasChanges = nextTitle !== (item.title ?? 'Untitled document')
+        || (contentModel.content || '') !== (item.content || '')
+        || nextLinksSerialized !== currentLinksSerialized;
+      if (!hasChanges) {
+        this.docAutosaveState = 'saved';
+        return item;
+      }
+
+      this.docAutosaveState = autosave ? 'saving' : this.docAutosaveState;
+      try {
+        const pgWorkspaceContext = resolveTowerPgWorkspaceContext(this);
+        const contentPayload = await this.prepareDocumentContentForEnvelope({
+          record_id: item.record_id,
+          owner_npub: pgWorkspaceContext.workspaceOwnerNpub || ownerNpub,
+          title: nextTitle,
+        }, contentModel, [], item, { pgStorageContext: pgWorkspaceContext });
+        const updated = {
+          ...item,
+          title: nextTitle,
+          ...contentModel,
+          ...contentPayload,
+          references: nextReferences,
+          sync_status: 'pending',
+          updated_at: new Date().toISOString(),
+        };
+        await upsertDocument(updated);
+        this.patchDocumentLocal(updated);
+        const accepted = await updateTowerPgDocFromLocal(this, updated, item);
+        const canonical = {
+          ...accepted,
+          content: contentModel.content,
+          content_format: contentModel.content_format,
+          content_blocks: contentModel.content_blocks,
+          content_storage_object_id: contentPayload.content_storage_object_id,
+          content_storage_format: contentPayload.content_storage_format,
+          content_storage_content_type: contentPayload.content_storage_content_type,
+          content_size_bytes: contentPayload.content_size_bytes,
+          content_sha256_hex: contentPayload.content_sha256_hex,
+          content_storage_status: 'remote',
+          content_storage_error: null,
+          references: nextReferences,
+        };
+        await upsertDocument(canonical);
+        this.patchDocumentLocal(canonical);
+        this.docAutosaveState = 'saved';
+        this.docEditorSharesDirty = false;
+        if (!autosave) await this.refreshDocuments();
+        return canonical;
+      } catch (error) {
+        this.docAutosaveState = 'error';
+        if (!autosave) this.error = error?.message || 'Failed to save PG document.';
+        throw error;
+      }
     }
     this.assertCanMutateLockManagedRecord(item, recordFamilyHash('document'), { autosave });
     await this.ensureLockManagedCheckout(item, recordFamilyHash('document'), {

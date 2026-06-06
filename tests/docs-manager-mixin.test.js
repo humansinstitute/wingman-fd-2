@@ -7,6 +7,7 @@ const {
   downloadStorageObjectMock,
   isTowerPgBackendModeMock,
   prepareStorageObjectMock,
+  prepareTowerPgStorageObjectMock,
   releaseRecordCheckoutMock,
   uploadStorageObjectMock,
 } = vi.hoisted(() => ({
@@ -16,6 +17,7 @@ const {
   downloadStorageObjectMock: vi.fn(),
   isTowerPgBackendModeMock: vi.fn(() => false),
   prepareStorageObjectMock: vi.fn(),
+  prepareTowerPgStorageObjectMock: vi.fn(),
   releaseRecordCheckoutMock: vi.fn(),
   uploadStorageObjectMock: vi.fn(),
 }));
@@ -40,6 +42,7 @@ vi.mock('../src/api.js', () => ({
   getTowerPgScopeTasks: vi.fn(),
   getTowerPgWorkspaceScopes: vi.fn(),
   prepareStorageObject: prepareStorageObjectMock,
+  prepareTowerPgStorageObject: prepareTowerPgStorageObjectMock,
   releaseRecordCheckout: releaseRecordCheckoutMock,
   updateTowerPgTask: vi.fn(),
   updateTowerPgTaskState: vi.fn(),
@@ -898,7 +901,7 @@ describe('docsManagerMixin canonical row normalization', () => {
     await wsDb.open();
     await Promise.all(wsDb.tables.map((table) => table.clear()));
     isTowerPgBackendModeMock.mockReturnValue(true);
-    prepareStorageObjectMock.mockResolvedValue({ object_id: 'storage-pg-doc-1', upload_url: '' });
+    prepareTowerPgStorageObjectMock.mockResolvedValue({ object_id: 'storage-pg-doc-1', upload_url: '' });
     uploadStorageObjectMock.mockResolvedValue({});
     completeStorageObjectMock.mockResolvedValue({});
     createTowerPgChannelDocMock.mockResolvedValue({
@@ -957,9 +960,10 @@ describe('docsManagerMixin canonical row normalization', () => {
       threadId: 'thread-1',
     });
 
-    expect(prepareStorageObjectMock).toHaveBeenCalledWith(expect.objectContaining({
+    expect(prepareStorageObjectMock).not.toHaveBeenCalled();
+    expect(prepareTowerPgStorageObjectMock).toHaveBeenCalledWith('workspace-1', expect.objectContaining({
       owner_npub: 'npub1pgworkspace',
-    }));
+    }), { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
     expect(createTowerPgChannelDocMock).toHaveBeenCalledWith('workspace-1', 'channel-1', expect.objectContaining({
       title: 'PG document',
       storage_object_id: 'storage-pg-doc-1',

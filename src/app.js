@@ -30,6 +30,7 @@ import { hydrateTowerPgDocumentsAndFiles, hydrateTowerPgTaskComments, hydrateTow
 import {
   createTowerPgTaskCommentFromLocal,
   createTowerPgTaskFromLocal,
+  deleteTowerPgDocFromLocal,
   updateTowerPgTaskFromLocal,
 } from './pg-write-adapter.js';
 import { createShellState } from './shell-state.js';
@@ -3781,6 +3782,10 @@ export function initApp() {
     async addSubtask(parentId) {
       const title = String(this.newSubtaskTitle || '').trim();
       if (!title || !this.session?.npub) return;
+      if (isTowerPgBackendMode()) {
+        this.error = 'PG subtasks are not available yet.';
+        return;
+      }
 
       const parent = this.tasks.find(t => t.record_id === parentId);
       if (parent && parent.parent_task_id) {
@@ -5052,6 +5057,41 @@ export function initApp() {
         if (!confirmed) return false;
       }
 
+      if (isTowerPgBackendMode()) {
+        for (const item of items) {
+          const pending = {
+            ...item,
+            record_state: 'deleted',
+            sync_status: 'pending',
+            updated_at: new Date().toISOString(),
+          };
+          await upsertDocument(pending);
+          this.patchDocumentLocal(pending);
+          try {
+            const deleted = await deleteTowerPgDocFromLocal(this, item);
+            await upsertDocument({
+              ...pending,
+              ...deleted,
+              record_state: 'deleted',
+              sync_status: 'synced',
+            });
+          } catch (error) {
+            await upsertDocument({
+              ...pending,
+              sync_status: 'failed',
+              updated_at: new Date().toISOString(),
+            });
+            this.error = error?.message || 'Failed to delete PG document.';
+            return false;
+          }
+        }
+        if (items.some((item) => item.record_id === this.selectedDocId)) {
+          this.selectedDocId = null;
+          this.selectedDocType = null;
+        }
+        return true;
+      }
+
       for (const item of items) {
         this.assertCanMutateLockManagedRecord(item, recordFamilyHash('document'));
         await this.ensureLockManagedCheckout(item, recordFamilyHash('document'), { intent: 'delete' });
@@ -5152,6 +5192,10 @@ export function initApp() {
     async moveTaskToBoard(taskId, boardScopeId) {
       const task = this.tasks.find(t => t.record_id === taskId);
       if (!task || !this.session?.npub) return;
+      if (isTowerPgBackendMode()) {
+        this.error = 'Moving PG tasks between scopes/channels is not available yet.';
+        return;
+      }
 
       const assignment = this.buildTaskBoardAssignment(boardScopeId, task);
       if (!assignment.scope_id) return;

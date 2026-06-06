@@ -2235,7 +2235,7 @@
                     </template>
                   </div>
                   <div class="task-comments-list">
-                    <template x-for="comment in $store.chat.taskComments" :key="comment.record_id">
+                    <template x-for="(comment, index) in $store.chat.taskComments" :key="`${comment.record_id || 'comment'}:${index}`">
                       <div class="task-comment-row">
                         <div class="task-comment-header">
                           <button type="button" class="identity-avatar-button" @click.stop="$store.chat.openIdentityCard($event, comment.sender_npub)" :title="$store.chat.getSenderName(comment.sender_npub)">

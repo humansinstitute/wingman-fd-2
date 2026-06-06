@@ -5,6 +5,8 @@ import {
   createTowerPgChannelMessage,
   createTowerPgChannelTask,
   createTowerPgTaskComment,
+  deleteTowerPgDoc,
+  updateTowerPgDoc,
   updateTowerPgTask,
   updateTowerPgTaskState,
 } from './api.js';
@@ -119,6 +121,29 @@ export async function createTowerPgDocFromLocal(store, document) {
     summary: document.content || null,
     metadata: pgMetadataWithThread(document.pg_metadata || document.metadata, recordContext.threadId),
   }, pgRequestOptions(context));
+  return mapPgDocToLocal(result.doc, { workspaceOwnerNpub: context.workspaceOwnerNpub });
+}
+
+export async function updateTowerPgDocFromLocal(store, document, previousDocument = null) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  if (!context.workspaceId || !document?.record_id) throw new Error('Tower PG doc is not ready');
+  const result = await updateTowerPgDoc(context.workspaceId, document.record_id, {
+    row_version: previousDocument?.version || document.version || undefined,
+    title: document.title || 'Untitled document',
+    storage_object_id: document.content_storage_object_id || document.storage_object_id,
+    summary: document.content || null,
+    metadata: pgMetadataWithThread(document.pg_metadata || document.metadata, document.pg_thread_id || document.thread_id),
+  }, pgRequestOptions(context));
+  return mapPgDocToLocal(result.doc, { workspaceOwnerNpub: context.workspaceOwnerNpub });
+}
+
+export async function deleteTowerPgDocFromLocal(store, document) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  if (!context.workspaceId || !document?.record_id) throw new Error('Tower PG doc is not ready');
+  const result = await deleteTowerPgDoc(context.workspaceId, document.record_id, {
+    rowVersion: document.version || undefined,
+    ...pgRequestOptions(context),
+  });
   return mapPgDocToLocal(result.doc, { workspaceOwnerNpub: context.workspaceOwnerNpub });
 }
 

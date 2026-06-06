@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-B3_vu3Vb.js"></script>
+  <script type="module" crossorigin src="/assets/index-DLyzxU2F.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-B4ZTzM-z.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
@@ -2237,7 +2237,7 @@
                     </template>
                   </div>
                   <div class="task-comments-list">
-                    <template x-for="comment in $store.chat.taskComments" :key="comment.record_id">
+                    <template x-for="(comment, index) in $store.chat.taskComments" :key="`${comment.record_id || 'comment'}:${index}`">
                       <div class="task-comment-row">
                         <div class="task-comment-header">
                           <button type="button" class="identity-avatar-button" @click.stop="$store.chat.openIdentityCard($event, comment.sender_npub)" :title="$store.chat.getSenderName(comment.sender_npub)">

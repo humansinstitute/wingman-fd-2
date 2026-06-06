@@ -21,6 +21,10 @@ vi.mock('../src/crypto/group-keys.js', () => ({
   hasGroupKey: vi.fn(() => true),
 }));
 
+vi.mock('../src/backend-mode.js', () => ({
+  isTowerPgBackendMode: vi.fn(() => false),
+}));
+
 vi.mock('../src/translators/chat.js', () => ({
   outboundChatMessage: vi.fn(async (payload) => ({ ...payload, record_family_hash: 'mock:chat_message' })),
   outboundChannel: vi.fn(async (payload) => ({ ...payload, record_family_hash: 'mock:channel' })),

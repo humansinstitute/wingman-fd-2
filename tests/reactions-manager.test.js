@@ -11,6 +11,10 @@ const mocks = vi.hoisted(() => ({
   getReactionsByTargets: vi.fn(),
   getTaskById: vi.fn(),
   upsertReaction: vi.fn(),
+  createTowerPgReaction: vi.fn(),
+  deleteTowerPgReaction: vi.fn(),
+  getTowerPgReactions: vi.fn(),
+  isTowerPgBackendMode: vi.fn(() => false),
   outboundReaction: vi.fn(),
   getRecordWriteFieldsForStore: vi.fn(),
 }));
@@ -33,6 +37,25 @@ vi.mock('../src/translators/chat.js', () => ({
 
 vi.mock('../src/translators/reactions.js', () => ({
   outboundReaction: mocks.outboundReaction,
+}));
+
+vi.mock('../src/api.js', () => ({
+  createTowerPgReaction: mocks.createTowerPgReaction,
+  deleteTowerPgReaction: mocks.deleteTowerPgReaction,
+  getTowerPgReactions: mocks.getTowerPgReactions,
+}));
+
+vi.mock('../src/backend-mode.js', () => ({
+  isTowerPgBackendMode: mocks.isTowerPgBackendMode,
+}));
+
+vi.mock('../src/pg-read-hydrator.js', () => ({
+  resolveTowerPgWorkspaceContext: (store = {}) => ({
+    workspaceId: store.currentWorkspace?.workspaceId || 'workspace-1',
+    workspaceOwnerNpub: store.currentWorkspace?.workspaceOwnerNpub || store.workspaceOwnerNpub || 'npub1owner',
+    baseUrl: store.currentWorkspace?.directHttpsUrl || store.backendUrl || 'https://tower.example',
+    appNpub: store.currentWorkspace?.appNpub || 'flightdeck_pg',
+  }),
 }));
 
 vi.mock('../src/preferred-write-group.js', () => ({
@@ -74,6 +97,7 @@ function createStore(overrides = {}) {
 describe('reactionsManagerMixin', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.isTowerPgBackendMode.mockReturnValue(false);
     mocks.outboundReaction.mockImplementation(async (payload) => ({
       record_family_hash: 'app:reaction',
       payload,
@@ -81,6 +105,35 @@ describe('reactionsManagerMixin', () => {
     mocks.addPendingWrite.mockResolvedValue(undefined);
     mocks.upsertReaction.mockResolvedValue(undefined);
     mocks.getReactionByIdentity.mockResolvedValue(null);
+    mocks.createTowerPgReaction.mockResolvedValue({
+      reaction: {
+        id: 'pg-reaction-1',
+        workspace_id: 'workspace-1',
+        channel_id: 'channel-1',
+        target_type: 'message',
+        target_id: 'msg-1',
+        emoji: 'thumbs_up',
+        emoji_shortcode: ':thumbs_up:',
+        reactor_npub: 'npub1me',
+        record_state: 'active',
+        row_version: 1,
+      },
+    });
+    mocks.deleteTowerPgReaction.mockResolvedValue({
+      reaction: {
+        id: 'pg-reaction-existing',
+        workspace_id: 'workspace-1',
+        channel_id: 'channel-1',
+        target_type: 'message',
+        target_id: 'msg-1',
+        emoji: 'thumbs_up',
+        emoji_shortcode: ':thumbs_up:',
+        reactor_npub: 'npub1me',
+        record_state: 'deleted',
+        row_version: 2,
+      },
+    });
+    mocks.getTowerPgReactions.mockResolvedValue({ reactions: [] });
     mocks.getRecordWriteFieldsForStore.mockResolvedValue({
       group_ids: ['group-chat'],
       write_group_ref: 'group-chat',
@@ -184,6 +237,37 @@ describe('reactionsManagerMixin', () => {
     expect(mocks.outboundReaction).not.toHaveBeenCalled();
     expect(mocks.addPendingWrite).not.toHaveBeenCalled();
     expect(store.error).toBe('Reaction write is missing target group keys.');
+  });
+
+  it('creates PG chat reactions through Tower without encrypted pending writes', async () => {
+    mocks.isTowerPgBackendMode.mockReturnValue(true);
+    const store = createStore({
+      currentWorkspace: {
+        workspaceId: 'workspace-1',
+        workspaceOwnerNpub: 'npub1owner',
+        directHttpsUrl: 'https://tower.example',
+        appNpub: 'flightdeck_pg',
+      },
+      messages: [{ record_id: 'msg-1', pg_backend: true, channel_id: 'channel-1' }],
+    });
+
+    await store.toggleReaction('msg-1', 'app:chat_message');
+
+    expect(mocks.createTowerPgReaction).toHaveBeenCalledWith('workspace-1', {
+      target_type: 'message',
+      target_id: 'msg-1',
+      emoji: 'thumbs_up',
+    }, { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
+    expect(mocks.upsertReaction).toHaveBeenCalledWith(expect.objectContaining({
+      record_id: 'pg-reaction-1',
+      target_record_id: 'msg-1',
+      target_record_family_hash: 'app:chat_message',
+      emoji: 'thumbs_up',
+      reactor_npub: 'npub1me',
+      pg_backend: true,
+    }));
+    expect(mocks.addPendingWrite).not.toHaveBeenCalled();
+    expect(mocks.outboundReaction).not.toHaveBeenCalled();
   });
 
   it('soft-deletes an active own reaction and inherits task comment groups', async () => {

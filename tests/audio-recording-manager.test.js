@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   upsertAudioNote: vi.fn(),
   addPendingWrite: vi.fn(),
   prepareStorageObject: vi.fn(),
+  prepareTowerPgStorageObject: vi.fn(),
   uploadStorageObject: vi.fn(),
   completeStorageObject: vi.fn(),
   createTowerPgChannelAudioNote: vi.fn(),
@@ -25,6 +26,7 @@ vi.mock('../src/db.js', () => ({
 
 vi.mock('../src/api.js', () => ({
   prepareStorageObject: mocks.prepareStorageObject,
+  prepareTowerPgStorageObject: mocks.prepareTowerPgStorageObject,
   uploadStorageObject: mocks.uploadStorageObject,
   completeStorageObject: mocks.completeStorageObject,
   createTowerPgChannelAudioNote: mocks.createTowerPgChannelAudioNote,
@@ -86,6 +88,7 @@ describe('audioRecordingManagerMixin', () => {
       mediaEncryption: { scheme: 'aes-gcm', key_b64: 'key', iv_b64: 'iv' },
     });
     mocks.prepareStorageObject.mockResolvedValue({ object_id: 'storage-1' });
+    mocks.prepareTowerPgStorageObject.mockResolvedValue({ object_id: 'storage-pg-1' });
     mocks.outboundAudioNote.mockImplementation(async (payload) => ({
       record_id: payload.record_id,
       owner_npub: payload.owner_npub,
@@ -191,6 +194,13 @@ describe('audioRecordingManagerMixin', () => {
     mocks.isTowerPgBackendMode.mockReturnValue(true);
     const store = createStore({
       workspaceOwnerNpub: 'npub-workspace',
+      backendUrl: 'https://tower.example',
+      currentWorkspace: {
+        workspaceId: 'workspace-1',
+        workspaceOwnerNpub: 'npub-workspace',
+        directHttpsUrl: 'https://tower.example',
+        appNpub: 'flightdeck_pg',
+      },
       audioRecorderContext: 'thread',
       audioRecorderTitle: 'Thread voice note',
       audioRecorderDurationSeconds: 8,
@@ -209,7 +219,13 @@ describe('audioRecordingManagerMixin', () => {
     await store.attachRecordedAudioDraft();
 
     expect(mocks.encryptAudioBlob).not.toHaveBeenCalled();
-    const prepareBody = mocks.prepareStorageObject.mock.calls[0][0];
+    expect(mocks.prepareStorageObject).not.toHaveBeenCalled();
+    expect(mocks.prepareTowerPgStorageObject).toHaveBeenCalledWith(
+      'workspace-1',
+      expect.any(Object),
+      { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' },
+    );
+    const prepareBody = mocks.prepareTowerPgStorageObject.mock.calls[0][1];
     expect(prepareBody).toMatchObject({
       owner_npub: 'npub-workspace',
       content_type: 'audio/webm;codecs=opus',
@@ -217,13 +233,13 @@ describe('audioRecordingManagerMixin', () => {
     });
     expect(prepareBody).not.toHaveProperty('access_group_ids');
     expect(mocks.uploadStorageObject).toHaveBeenCalledWith(
-      { object_id: 'storage-1' },
+      { object_id: 'storage-pg-1' },
       new Uint8Array([4, 5, 6]),
       'audio/webm;codecs=opus',
     );
     expect(store.threadAudioDrafts[0]).toMatchObject({
       title: 'Thread voice note',
-      storage_object_id: 'storage-1',
+      storage_object_id: 'storage-pg-1',
       media_encryption: null,
     });
   });
