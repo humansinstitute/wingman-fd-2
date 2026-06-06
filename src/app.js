@@ -11,7 +11,6 @@ import { scopesManagerMixin } from './scopes-manager.js';
 import { channelsManagerMixin } from './channels-manager.js';
 import { audioRecordingManagerMixin } from './audio-recording-manager.js';
 import { storageImageManagerMixin } from './storage-image-manager.js';
-import { triggersManagerMixin } from './triggers-manager.js';
 import { jobsManagerMixin } from './jobs-manager.js';
 import { workspaceManagerMixin, guessDefaultBackendUrl } from './workspace-manager.js';
 import { chatMessageManagerMixin } from './chat-message-manager.js';
@@ -819,18 +818,8 @@ export function initApp() {
     syncQuarantineError: null,
     syncQuarantineNotice: '',
 
-    // triggers
+    // Legacy workspace settings may still contain trigger rows; no runtime trigger publisher is mounted.
     workspaceTriggers: [],
-    newTriggerType: 'manual',
-    newTriggerName: '',
-    newTriggerId: '',
-    newTriggerChannelId: '',
-    newTriggerBotNpub: '',
-    newTriggerBotQuery: '',
-    triggerMessage: {},
-    triggerFiring: {},
-    triggerError: null,
-    triggerSuccess: null,
 
     // jobs
     jobDefinitions: [],
@@ -2124,9 +2113,6 @@ export function initApp() {
       if (!this.workspaceHarnessUrl || typeof window === 'undefined') return;
       window.open(this.workspaceHarnessUrl, '_blank', 'noopener,noreferrer');
     },
-
-    // --- Triggers (extracted to triggers-manager.js) ---
-    // triggersManagerMixin applied via applyMixins (has getters)
 
     togglePrimaryNav() {
       if (typeof window !== 'undefined' && window.innerWidth <= 768) {
@@ -3783,13 +3769,6 @@ export function initApp() {
       const newAssignee = updated.assigned_to_npub;
       if (newAssignee && newAssignee !== task.assigned_to_npub) {
         await this.rememberPeople([newAssignee], 'task-assignee');
-        for (const trigger of (this.workspaceTriggers || [])) {
-          if (!trigger.enabled || !trigger.botNpub || trigger.triggerType !== 'chat_bot_tagged') continue;
-          if (newAssignee === trigger.botNpub) {
-            this._checkTriggerRules('chat_bot_tagged', trigger.botPubkeyHex,
-              `Task assigned to bot: "${updated.title}" [${updated.state}]`);
-          }
-        }
       }
 
       if (options.sync !== false) {
@@ -4271,20 +4250,6 @@ export function initApp() {
         });
         // Task checkout edits commit one task record. Subtask scope cascades
         // need their own explicit transaction if we bring them back here.
-        if (updated.description && updated.description !== taskForSave.description) {
-          this._fireMentionTriggers(updated.description, `task "${updated.title}"`);
-        }
-        // Fire trigger when task is assigned to a bot
-        const newAssignee = updated.assigned_to_npub;
-        if (newAssignee && newAssignee !== taskForSave.assigned_to_npub) {
-          for (const trigger of (this.workspaceTriggers || [])) {
-            if (!trigger.enabled || !trigger.botNpub || trigger.triggerType !== 'chat_bot_tagged') continue;
-            if (newAssignee === trigger.botNpub) {
-              this._checkTriggerRules('chat_bot_tagged', trigger.botPubkeyHex,
-                `Task assigned to bot: "${updated.title}" [${updated.state}]`);
-            }
-          }
-        }
         const flushResult = await this.flushAndBackgroundSync();
         let pendingWrites = await getPendingWrites();
         let acceptedTask = (flushResult?.pushed ?? 0) > 0
@@ -4877,7 +4842,6 @@ export function initApp() {
             accepted,
             ...this.taskComments.filter((comment) => comment.record_id !== localRow.record_id),
           ]);
-          this._fireMentionTriggers(body, `task comment on "${task?.title || taskId}"`);
           await hydrateTowerPgTaskComments(this, taskId);
         } catch (error) {
           const failed = { ...localRow, sync_status: 'failed', updated_at: new Date().toISOString() };
@@ -4902,7 +4866,6 @@ export function initApp() {
         record_family_hash: envelope.record_family_hash,
         envelope,
       });
-      this._fireMentionTriggers(body, `task comment on "${task?.title || taskId}"`);
       await this.flushAndBackgroundSync();
     },
 
@@ -6497,7 +6460,6 @@ export function initApp() {
     channelsManagerMixin,
     scopesManagerMixin,
     docsManagerMixin,
-    triggersManagerMixin,
     jobsManagerMixin,
     audioRecordingManagerMixin,
     storageImageManagerMixin,

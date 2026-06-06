@@ -1225,7 +1225,6 @@ export const docsManagerMixin = {
       record_family_hash: envelope.record_family_hash,
       envelope,
     });
-    this._fireMentionTriggers(body, `doc comment on "${doc.title}"`);
     await this.flushAndBackgroundSync();
   },
 
@@ -1293,7 +1292,6 @@ export const docsManagerMixin = {
       record_family_hash: envelope.record_family_hash,
       envelope,
     });
-    this._fireMentionTriggers(body, `doc comment reply on "${doc.title}"`);
     await this.flushAndBackgroundSync();
   },
 
@@ -2609,18 +2607,6 @@ export const docsManagerMixin = {
           write_group_ref: this.getPreferredDocWriteGroupRef(updated),
         }, item, { intent: 'edit' }),
       });
-
-      // Fire triggers for newly added @mentions in doc body
-      const oldContent = item.content || '';
-      const newContent = updated.content || '';
-      if (newContent !== oldContent) {
-        const oldMentions = new Set((oldContent.match(/@\[.*?\]\(mention:person:[^\)]+\)/g) || []));
-        const newMentions = (newContent.match(/@\[.*?\]\(mention:person:[^\)]+\)/g) || []);
-        const freshMentions = newMentions.filter((m) => !oldMentions.has(m));
-        if (freshMentions.length > 0) {
-          this._fireMentionTriggers(freshMentions.join(' '), `doc "${updated.title}"`);
-        }
-      }
 
       await this.flushAndBackgroundSync();
       await this.refreshDirectories();

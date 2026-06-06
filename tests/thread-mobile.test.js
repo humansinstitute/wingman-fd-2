@@ -54,7 +54,6 @@ function createStore(overrides = {}) {
     getChannelLabel: vi.fn().mockReturnValue('test-channel'),
     materializeAudioDrafts: vi.fn().mockResolvedValue({ attachments: [] }),
     containsInlineImageUploadToken: vi.fn().mockReturnValue(false),
-    _fireMentionTriggers: vi.fn(),
     workspaceOwnerNpub: 'npub1owner',
     ...overrides,
   };

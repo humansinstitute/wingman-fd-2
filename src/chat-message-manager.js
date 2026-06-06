@@ -858,9 +858,6 @@ export const chatMessageManagerMixin = {
         await replaceMessageRecord(localRow.record_id, accepted);
         this.messages = this.messages.filter((message) => message.record_id !== localRow.record_id);
         this.patchMessageLocal(accepted);
-        this._fireMentionTriggers(body, `chat #${channel.label || channel.record_id}`, {
-          channelId: this.selectedChannelId,
-        });
         await this.refreshMessages({ scrollToLatest: true });
       } catch (error) {
         await this.setMessageSyncStatus(msgId, 'failed');
@@ -888,9 +885,6 @@ export const chatMessageManagerMixin = {
         envelope,
       });
 
-      this._fireMentionTriggers(body, `chat #${channel.label || channel.record_id}`, {
-        channelId: this.selectedChannelId,
-      });
       await this.flushAndBackgroundSync();
     } catch (error) {
       await this.setMessageSyncStatus(msgId, 'failed');
@@ -966,9 +960,6 @@ export const chatMessageManagerMixin = {
         await replaceMessageRecord(localRow.record_id, accepted);
         this.messages = this.messages.filter((message) => message.record_id !== localRow.record_id);
         this.patchMessageLocal(accepted);
-        this._fireMentionTriggers(body, `chat #${channel.label || channel.record_id}`, {
-          channelId: this.selectedChannelId,
-        });
         await this.refreshMessages({ scrollThreadToLatest: true });
       } catch (error) {
         await this.setMessageSyncStatus(msgId, 'failed');
@@ -996,9 +987,6 @@ export const chatMessageManagerMixin = {
         envelope,
       });
 
-      this._fireMentionTriggers(body, `chat #${channel.label || channel.record_id}`, {
-        channelId: this.selectedChannelId,
-      });
       await this.flushAndBackgroundSync();
     } catch (error) {
       await this.setMessageSyncStatus(msgId, 'failed');

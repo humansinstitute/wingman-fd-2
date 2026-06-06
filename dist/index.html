@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-KjIx1u-d.js"></script>
+  <script type="module" crossorigin src="/assets/index-B7tdJGnw.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-B4ZTzM-z.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
@@ -5512,7 +5512,6 @@
             <button x-show="$store.chat.canAdminWorkspace" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'workspace' }" @click="$store.chat.settingsTab = 'workspace'">Workspace</button>
             <button class="settings-tab" :class="{ active: $store.chat.settingsTab === 'connection' }" @click="$store.chat.settingsTab = 'connection'">Connection</button>
             <button class="settings-tab" :class="{ active: $store.chat.settingsTab === 'flows' }" @click="$store.chat.settingsTab = 'flows'; $store.chat.refreshFlows(); $store.chat.refreshApprovals()">Flows</button>
-            <button x-show="$store.chat.canAdminWorkspace" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'automation' }" @click="$store.chat.settingsTab = 'automation'">Automation</button>
             <button x-show="$store.chat.canAdminWorkspace" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'schedules' }" @click="$store.chat.settingsTab = 'schedules'; $store.chat.refreshSchedules()">Schedules</button>
             <button x-show="$store.chat.canAdminWorkspace" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'apps' }" @click="$store.chat.settingsTab = 'apps'; $store.chat.refreshWapps()">Apps</button>
             <button x-show="$store.chat.canAdminWorkspace" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'scopes' }" @click="$store.chat.settingsTab = 'scopes'; $store.chat.refreshScopes()">Scopes</button>
@@ -5848,120 +5847,6 @@
               </div>
             </div>
             <p class="settings-field-help">Build: <code x-text="$store.chat.appBuildId"></code></p>
-          </section>
-          </div>
-
-          <div class="settings-tab-content" x-show="$store.chat.canAdminWorkspace && $store.chat.settingsTab === 'automation'">
-          <section class="settings-panel">
-            <div class="settings-panel-header">
-              <div>
-                <h2>Triggers</h2>
-                <p>Nostr workflow triggers. When fired, a signed kind 9256 event is published to relays for Wingman to pick up.</p>
-              </div>
-            </div>
-
-            <div class="trigger-banner trigger-error" x-show="$store.chat.triggerError" x-text="$store.chat.triggerError"></div>
-            <div class="trigger-banner trigger-success" x-show="$store.chat.triggerSuccess" x-text="$store.chat.triggerSuccess"></div>
-
-            <!-- Existing triggers -->
-            <div class="triggers-list">
-              <template x-for="trigger in $store.chat.workspaceTriggers" :key="trigger.id">
-                <div class="trigger-item" :class="{ 'trigger-disabled': !trigger.enabled }">
-                  <div class="trigger-header">
-                    <div class="trigger-info">
-                      <strong x-text="trigger.name"></strong>
-                      <span class="trigger-type-badge" x-text="$store.chat.triggerTypeLabel(trigger.triggerType)"></span>
-                      <span class="trigger-bot-label" x-show="trigger.triggerType === 'chat_channel_message'" x-text="'Channel: ' + $store.chat.getTriggerChannelLabel(trigger)"></span>
-                      <span class="trigger-bot-label" x-text="'Bot: ' + $store.chat.getSenderName(trigger.botNpub || '')"></span>
-                    </div>
-                    <div class="trigger-actions">
-                      <button type="button" class="scope-action-btn" @click="$store.chat.toggleTrigger(trigger.id)" x-text="trigger.enabled ? 'Disable' : 'Enable'"></button>
-                      <button type="button" class="scope-action-btn scope-delete-btn" @click="$store.chat.removeTrigger(trigger.id)">Remove</button>
-                    </div>
-                  </div>
-                  <div class="trigger-fire" x-show="trigger.enabled && trigger.triggerType === 'manual'">
-                    <input
-                      type="text"
-                      class="trigger-message-input"
-                      placeholder="Optional message..."
-                      :value="$store.chat.triggerMessage[trigger.id] || ''"
-                      @input="$store.chat.triggerMessage = { ...$store.chat.triggerMessage, [trigger.id]: $event.target.value }"
-                    />
-                    <button
-                      type="button"
-                      class="btn-confirm"
-                      @click="$store.chat.fireTrigger(trigger.id)"
-                      :disabled="$store.chat.triggerFiring[trigger.id]"
-                      x-text="$store.chat.triggerFiring[trigger.id] ? 'Firing...' : 'Fire'"
-                    ></button>
-                  </div>
-                  <div class="trigger-auto-hint" x-show="trigger.enabled && trigger.triggerType !== 'manual'">
-                    <span class="trigger-bot-label">Fires automatically on event</span>
-                  </div>
-                </div>
-              </template>
-              <p class="settings-field-help" x-show="$store.chat.workspaceTriggers.length === 0">No triggers configured yet.</p>
-            </div>
-
-            <!-- Add trigger form -->
-            <div class="trigger-add-form">
-              <h4>Add Trigger</h4>
-              <div class="trigger-form-row">
-                <label class="settings-field-label">When</label>
-                <select x-model="$store.chat.newTriggerType" @change="$store.chat.onTriggerTypeChange()">
-                  <option value="manual">Manual (fire button)</option>
-                  <option value="chat_bot_tagged">Bot is @tagged anywhere</option>
-                  <option value="chat_channel_message">Chat: Any message in channel</option>
-                </select>
-              </div>
-              <div class="trigger-form-row" x-show="$store.chat.newTriggerType === 'chat_channel_message'">
-                <label class="settings-field-label">Channel</label>
-                <select x-model="$store.chat.newTriggerChannelId">
-                  <option value="">Any channel</option>
-                  <template x-for="channel in $store.chat.triggerChannelOptions" :key="`trigger-channel-${channel.id}`">
-                    <option :value="channel.id" x-text="channel.label"></option>
-                  </template>
-                </select>
-              </div>
-              <div class="trigger-form-row">
-                <label class="settings-field-label">Name</label>
-                <input type="text" x-model="$store.chat.newTriggerName" placeholder="e.g. FD-RoutingTrigger" />
-              </div>
-              <div class="trigger-form-row">
-                <label class="settings-field-label">Trigger ID</label>
-                <input type="text" x-model="$store.chat.newTriggerId" placeholder="UUID from Wingman scheduler" />
-              </div>
-              <div class="trigger-form-row">
-                <label class="settings-field-label">Bot (npub)</label>
-                <template x-if="$store.chat.newTriggerBotNpub">
-                  <div class="trigger-bot-selected">
-                    <span x-text="$store.chat.getSenderName($store.chat.newTriggerBotNpub)"></span>
-                    <small x-text="$store.chat.newTriggerBotNpub"></small>
-                    <button type="button" class="scope-clear-btn" @click="$store.chat.clearTriggerBot()">x</button>
-                  </div>
-                </template>
-                <input
-                  type="text"
-                  x-show="!$store.chat.newTriggerBotNpub"
-                  x-model="$store.chat.newTriggerBotQuery"
-                  placeholder="Type a name, paste npub1..., or paste a hex pubkey"
-                  @keydown.enter.prevent="$store.chat.handleTriggerBotEnter()"
-                />
-                <ul class="docs-share-suggestions" x-show="$store.chat.triggerBotSuggestions.length > 0 && !$store.chat.newTriggerBotNpub">
-                  <template x-for="person in $store.chat.triggerBotSuggestions" :key="`trigger-bot-${person.npub}`">
-                    <li>
-                      <button type="button" class="docs-share-suggestion" @click="$store.chat.selectTriggerBot(person.npub)">
-                        <span class="docs-share-suggestion-copy">
-                          <strong x-text="person.label"></strong>
-                          <small x-text="person.subtitle"></small>
-                        </span>
-                      </button>
-                    </li>
-                  </template>
-                </ul>
-              </div>
-              <button type="button" class="btn-confirm" @click="$store.chat.addTrigger()">Add Trigger</button>
-            </div>
           </section>
           </div>
 

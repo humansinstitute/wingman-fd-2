@@ -123,7 +123,6 @@ function createStore(overrides = {}) {
     }),
     materializeAudioDrafts: vi.fn().mockResolvedValue({ attachments: [] }),
     containsInlineImageUploadToken: vi.fn().mockReturnValue(false),
-    _fireMentionTriggers: vi.fn(),
     getSenderName: vi.fn((npub) => npub ? `Name ${npub}` : ''),
     getSenderAvatar: vi.fn(() => null),
     getInitials: vi.fn((name) => String(name || 'NA').slice(0, 2).toUpperCase()),
