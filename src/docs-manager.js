@@ -80,7 +80,9 @@ import { resolveTowerPgWorkspaceContext } from './pg-read-hydrator.js';
 import {
   acquirePgEditLeaseForRecord,
   getPgEditLeaseSession,
+  isOnlineForPgEdit,
   isSyncedPgRecord,
+  isUnsyncedLocalPgRecord,
   releasePgEditLeaseForRecord,
 } from './pg-edit-session.js';
 import { diffLines } from 'diff';
@@ -2212,7 +2214,7 @@ export const docsManagerMixin = {
         await upsertDocument(localRow);
         this.patchDocumentLocal(localRow);
         this.openDoc(localRow.record_id);
-        this.error = this.isPgEditOnline?.()
+        this.error = isOnlineForPgEdit()
           ? (error?.message || 'Could not create PG document.')
           : 'PG document saved locally. Reconnect to sync it.';
         return localRow;
@@ -2403,7 +2405,7 @@ export const docsManagerMixin = {
         return item;
       }
       const pgSession = getPgEditLeaseSession(this, 'document', item.record_id);
-      const pgLeaseToken = pgSession?.lease?.lease_token || this.getPgEditLeaseToken?.('document', item.record_id);
+      const pgLeaseToken = pgSession?.lease?.lease_token;
       if (isSyncedPgRecord(item) && !pgLeaseToken) {
         this.docAutosaveState = 'error';
         if (!autosave) this.error = 'Acquire a PG edit lease before saving this document.';
@@ -2412,18 +2414,18 @@ export const docsManagerMixin = {
 
       this.docAutosaveState = autosave ? 'saving' : this.docAutosaveState;
       try {
-        if (this.isPgUnsyncedEditableRecord?.(item)) {
+        if (isUnsyncedLocalPgRecord(item)) {
           const localUpdated = {
             ...item,
             title: nextTitle,
             ...contentModel,
             references: nextReferences,
-            sync_status: this.isPgEditOnline?.() ? 'pending' : 'failed',
+            sync_status: isOnlineForPgEdit() ? 'pending' : 'failed',
             updated_at: new Date().toISOString(),
           };
           await upsertDocument(localUpdated);
           this.patchDocumentLocal(localUpdated);
-          if (!this.isPgEditOnline?.()) {
+          if (!isOnlineForPgEdit()) {
             this.docAutosaveState = 'saved';
             this.docEditorSharesDirty = false;
             return localUpdated;
