@@ -71,7 +71,7 @@ import { buildAppSchemaManifestRequest, getFlightDeckSchemaBundle } from './tran
 import { buildStoragePrepareBody } from './storage-payloads.js';
 import { buildSuperBasedConnectionToken } from './superbased-token.js';
 import { flightDeckLog } from './logging.js';
-import { APP_NAME, APP_NPUB, DEFAULT_SUPERBASED_URL } from './app-identity.js';
+import { APP_NAME, APP_NPUB, DEFAULT_SUPERBASED_URL, FLIGHT_DECK_PG_APP_NPUB } from './app-identity.js';
 import { getRecordWriteFieldsForStore } from './preferred-write-group.js';
 import { pgWorkspaceSessionNpubFromMe } from './pg-workspace-descriptor.js';
 
@@ -1027,7 +1027,7 @@ export const workspaceManagerMixin = {
         workspace_service_npub: workspace.workspaceServiceNpub,
         workspace_owner_npub: workspace.workspaceOwnerNpub,
         workspace_id: workspace.workspaceId,
-        app_npub: workspace.appNpub || APP_NPUB,
+        app_npub: workspace.appNpub || FLIGHT_DECK_PG_APP_NPUB,
       },
       label: workspace.name,
       description: workspace.description,
@@ -1169,7 +1169,7 @@ export const workspaceManagerMixin = {
     try {
       if (isTowerPgBackendMode()) {
         const activeBackendUrl = normalizeBackendUrl(this.backendUrl);
-        const result = await listTowerPgWorkspaces({ baseUrl: activeBackendUrl, appNpub: APP_NPUB });
+        const result = await listTowerPgWorkspaces({ baseUrl: activeBackendUrl, appNpub: FLIGHT_DECK_PG_APP_NPUB });
         const workspaces = (result.workspaces || [])
           .map((entry) => normalizeWorkspaceEntry({
             ...entry,
@@ -1179,7 +1179,7 @@ export const workspaceManagerMixin = {
             workspaceServiceNpub: entry.identity?.workspace_service_npub || null,
             workspaceId: entry.identity?.workspace_id || null,
             workspaceOwnerNpub: entry.identity?.workspace_owner_npub || null,
-            appNpub: entry.identity?.app_npub || APP_NPUB,
+            appNpub: entry.identity?.app_npub || FLIGHT_DECK_PG_APP_NPUB,
             pgSessionNpub: this.session.npub,
             name: entry.label,
             description: entry.description,

@@ -23,7 +23,7 @@ import { isTowerPgBackendMode } from './backend-mode.js';
 import { normalizeBackendUrl } from './utils/state-helpers.js';
 import { parseSuperBasedToken, buildSuperBasedConnectionToken } from './superbased-token.js';
 import { buildAgentConnectPackage } from './agent-connect.js';
-import { APP_NPUB, DEFAULT_SUPERBASED_URL } from './app-identity.js';
+import { APP_NPUB, DEFAULT_SUPERBASED_URL, FLIGHT_DECK_PG_APP_NPUB } from './app-identity.js';
 import {
   parsePgWorkspaceDescriptor,
   pgWorkspaceEntryFromDescriptor,
@@ -325,7 +325,7 @@ export const connectSettingsManagerMixin = {
       if (!cleanUrl) throw new Error('URL is required');
       this.backendUrl = normalizeBackendUrl(cleanUrl);
       setBaseUrl(this.backendUrl);
-      const result = await getTowerPgService({ baseUrl: this.backendUrl, appNpub: APP_NPUB });
+      const result = await getTowerPgService({ baseUrl: this.backendUrl, appNpub: FLIGHT_DECK_PG_APP_NPUB });
       const service = result.service || {};
       const towerName = trimText(service.name);
       const towerDescription = trimText(service.description);
@@ -389,7 +389,7 @@ export const connectSettingsManagerMixin = {
       if (isTowerPgBackendMode()) {
         const result = await listTowerPgWorkspaces({
           baseUrl: this.connectHostUrl || this.backendUrl,
-          appNpub: APP_NPUB,
+          appNpub: FLIGHT_DECK_PG_APP_NPUB,
         });
         this.connectWorkspaces = (result.workspaces || []).map((entry) => ({
           ...entry,
@@ -398,7 +398,7 @@ export const connectSettingsManagerMixin = {
           workspaceId: entry.identity?.workspace_id,
           workspaceOwnerNpub: entry.identity?.workspace_owner_npub,
           workspaceServiceNpub: entry.identity?.workspace_service_npub,
-          appNpub: entry.identity?.app_npub || APP_NPUB,
+          appNpub: entry.identity?.app_npub || FLIGHT_DECK_PG_APP_NPUB,
           name: entry.label,
           description: entry.description,
           pgBackendMode: true,
@@ -451,7 +451,7 @@ export const connectSettingsManagerMixin = {
     const towerBaseUrl = normalizeBackendUrl(baseUrl || candidate.towerBaseUrl);
     const descriptor = await getTowerPgWorkspaceDescriptor(candidate.workspaceId, {
       baseUrl: towerBaseUrl,
-      appNpub: candidate.appNpub || APP_NPUB,
+      appNpub: candidate.appNpub || FLIGHT_DECK_PG_APP_NPUB,
       path: candidate.links.descriptor || null,
     });
     const verified = parsePgWorkspaceDescriptor({
@@ -469,7 +469,7 @@ export const connectSettingsManagerMixin = {
     }
     const me = await getTowerPgWorkspaceMe(verified.workspaceId, {
       baseUrl: towerBaseUrl,
-      appNpub: verified.appNpub || APP_NPUB,
+      appNpub: verified.appNpub || FLIGHT_DECK_PG_APP_NPUB,
       path: verified.links.me || null,
     });
     return { descriptor: verified, me };
@@ -523,7 +523,7 @@ export const connectSettingsManagerMixin = {
       const descriptorPath = workspaceEntry.links?.descriptor || null;
       const descriptor = await getTowerPgWorkspaceDescriptor(workspaceId, {
         baseUrl,
-        appNpub: workspaceEntry.appNpub || APP_NPUB,
+        appNpub: workspaceEntry.appNpub || FLIGHT_DECK_PG_APP_NPUB,
         path: descriptorPath,
       });
       const { descriptor: verified, me } = await this.verifyPgDescriptor({
@@ -557,8 +557,8 @@ export const connectSettingsManagerMixin = {
         const result = await createTowerPgAdminWorkspace({
           workspace_name: name,
           workspace_description: String(this.connectNewWorkspaceDescription || '').trim(),
-          app_npub: APP_NPUB,
-        }, { baseUrl, appNpub: APP_NPUB });
+          app_npub: FLIGHT_DECK_PG_APP_NPUB,
+        }, { baseUrl, appNpub: FLIGHT_DECK_PG_APP_NPUB });
         if (!result?.descriptor) throw new Error('Tower did not return a workspace descriptor');
         const workspace = await this.connectWithPgDescriptor(JSON.stringify(result.descriptor));
         this.connectNewWorkspaceName = '';

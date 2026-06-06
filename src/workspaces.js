@@ -1,4 +1,4 @@
-import { APP_NPUB } from './app-identity.js';
+import { APP_NPUB, FLIGHT_DECK_PG_APP_NPUB } from './app-identity.js';
 import { isPgWorkspacesOnlyMode } from './backend-mode.js';
 import { buildSuperBasedConnectionToken, parseSuperBasedToken } from './superbased-token.js';
 
@@ -47,7 +47,7 @@ function buildPgWorkspaceKey({
   const session = String(sessionNpub || '').trim();
   const tower = String(towerServiceNpub || '').trim();
   const workspace = String(workspaceServiceNpub || '').trim();
-  const app = String(appNpub || APP_NPUB || 'flightdeck_pg').trim();
+  const app = String(appNpub || FLIGHT_DECK_PG_APP_NPUB || 'flightdeck_pg').trim();
   if (!tower || !workspace || !app) return '';
   const identity = `tower:${tower}::workspace:${workspace}::app:${app}`;
   return session ? `pg:${session}::${identity}` : `pg:${identity}`;
@@ -158,7 +158,9 @@ export function normalizeWorkspaceEntry(raw = {}) {
   const serviceNpub = String(raw.serviceNpub || raw.service_npub || parsedToken.serviceNpub || '').trim() || null;
   const towerServiceNpub = String(raw.towerServiceNpub || raw.tower_service_npub || '').trim() || serviceNpub || null;
   const workspaceServiceNpub = String(raw.workspaceServiceNpub || raw.workspace_service_npub || '').trim() || null;
-  const appNpub = String(raw.appNpub || raw.app_npub || parsedToken.appNpub || APP_NPUB || '').trim() || null;
+  const pgBackendMode = Boolean(raw.pgBackendMode || raw.pg_backend_mode);
+  const defaultAppNpub = pgBackendMode ? FLIGHT_DECK_PG_APP_NPUB : APP_NPUB;
+  const appNpub = String(raw.appNpub || raw.app_npub || parsedToken.appNpub || defaultAppNpub || '').trim() || null;
   const pgSessionNpub = pgSessionNpubFromEntry(raw);
   const relayUrls = sanitizeRelayUrls(raw.relayUrls ?? raw.relay_urls ?? parsedToken.relayUrls);
   const towerName = sanitizeOptionalString(
@@ -193,7 +195,6 @@ export function normalizeWorkspaceEntry(raw = {}) {
     ?? null,
   );
 
-  const pgBackendMode = Boolean(raw.pgBackendMode || raw.pg_backend_mode);
   const connectionToken = pgBackendMode
     ? token
     : (token || buildSuperBasedConnectionToken({

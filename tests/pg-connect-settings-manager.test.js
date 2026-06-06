@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const DEFAULT_APP_NPUB = 'npub1hd37reqgfcnz3pvzj4grknd2nkzc94p9ercmunrxx22razr2rfxsw6dns5';
+const DEFAULT_PG_APP_NPUB = 'flightdeck_pg';
 
 vi.mock('../src/backend-mode.js', () => ({
   isTowerPgBackendMode: vi.fn(() => true),
@@ -138,10 +138,10 @@ describe('PG connect settings manager', () => {
     expect(api.createTowerPgAdminWorkspace).toHaveBeenCalledWith({
       workspace_name: 'Pete docs',
       workspace_description: 'PG workspace',
-      app_npub: DEFAULT_APP_NPUB,
+      app_npub: DEFAULT_PG_APP_NPUB,
     }, {
       baseUrl: 'https://tower.example',
-      appNpub: DEFAULT_APP_NPUB,
+      appNpub: DEFAULT_PG_APP_NPUB,
     });
     expect(api.createWorkspace).not.toHaveBeenCalled();
     expect(store.knownWorkspaces[0]).toMatchObject({
