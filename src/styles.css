@@ -268,12 +268,20 @@ button:disabled {
   box-shadow: 0 0 0 3px #22c55e, var(--shadow-soft);
 }
 
+.avatar-chip.avatar-status-tower-pg-connected {
+  box-shadow: 0 0 0 3px #22c55e, var(--shadow-soft);
+}
+
 .avatar-chip.sync-status-unsynced {
   box-shadow: 0 0 0 3px #f97316, var(--shadow-soft);
 }
 
+.avatar-chip.avatar-status-syncing {
+  box-shadow: 0 0 0 3px #f97316, var(--shadow-soft);
+}
+
 .avatar-chip.sync-status-syncing {
-  box-shadow: 0 0 0 3px #3b82f6, var(--shadow-soft);
+  box-shadow: 0 0 0 3px #f97316, var(--shadow-soft);
 }
 
 .avatar-chip.sync-status-quarantined,
@@ -287,6 +295,10 @@ button:disabled {
 
 .avatar-chip.sync-status-disabled {
   box-shadow: 0 0 0 3px #64748b, var(--shadow-soft);
+}
+
+.avatar-chip.avatar-status-local-only {
+  box-shadow: 0 0 0 3px #8b5cf6, var(--shadow-soft);
 }
 
 .avatar-fallback {
@@ -545,12 +557,14 @@ button:disabled {
 }
 
 .sync-dot-synced { background: #22c55e; }
+.sync-dot-tower-pg-connected { background: #22c55e; }
 .sync-dot-unsynced { background: #f97316; }
 .sync-dot-stale { background: #f59e0b; }
-.sync-dot-syncing { background: #3b82f6; animation: sync-pulse 1.2s ease-in-out infinite; }
+.sync-dot-syncing { background: #f97316; animation: sync-pulse 1.2s ease-in-out infinite; }
 .sync-dot-quarantined,
 .sync-dot-error { background: #dc2626; }
 .sync-dot-disabled { background: #64748b; }
+.sync-dot-local-only { background: #8b5cf6; }
 
 @keyframes sync-pulse {
   0%, 100% { opacity: 1; }

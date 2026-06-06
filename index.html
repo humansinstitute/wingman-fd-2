@@ -206,17 +206,20 @@
         <button
           class="avatar-chip"
           :class="{
-            'sync-status-synced': $store.chat.syncStatus === 'synced',
-            'sync-status-unsynced': $store.chat.syncStatus === 'unsynced',
-            'sync-status-stale': $store.chat.syncStatus === 'stale',
-            'sync-status-syncing': $store.chat.syncStatus === 'syncing',
-            'sync-status-quarantined': $store.chat.syncStatus === 'quarantined',
-            'sync-status-error': $store.chat.syncStatus === 'error',
-            'sync-status-disabled': $store.chat.syncStatus === 'disabled'
+            'avatar-status-tower-pg-connected': $store.chat.avatarConnectionStatus === 'tower-pg-connected',
+            'avatar-status-syncing': $store.chat.avatarConnectionStatus === 'syncing',
+            'avatar-status-local-only': $store.chat.avatarConnectionStatus === 'local-only',
+            'sync-status-synced': !$store.chat.isTowerPgMode && $store.chat.syncStatus === 'synced',
+            'sync-status-unsynced': !$store.chat.isTowerPgMode && $store.chat.syncStatus === 'unsynced',
+            'sync-status-stale': !$store.chat.isTowerPgMode && $store.chat.syncStatus === 'stale',
+            'sync-status-syncing': !$store.chat.isTowerPgMode && $store.chat.syncStatus === 'syncing',
+            'sync-status-quarantined': !$store.chat.isTowerPgMode && $store.chat.syncStatus === 'quarantined',
+            'sync-status-error': !$store.chat.isTowerPgMode && $store.chat.syncStatus === 'error',
+            'sync-status-disabled': !$store.chat.isTowerPgMode && $store.chat.syncStatus === 'disabled'
           }"
           type="button"
           @click="$store.chat.showAvatarMenu = !$store.chat.showAvatarMenu"
-          :title="$store.chat.isTowerPgMode ? 'Postgres workspace active' : (({synced:'Synced',unsynced:'Local changes pending',stale:'Updates available',syncing:'Syncing...',quarantined:'Quarantine needs review',error:'Sync error',disabled:'Sync disabled'})[$store.chat.syncStatus] || 'Unknown')"
+          :title="$store.chat.avatarConnectionTitle"
         >
           <template x-if="$store.chat.avatarUrl">
             <img class="chat-post-avatar" :src="$store.chat.avatarUrl" alt="Your profile picture" />
@@ -232,8 +235,8 @@
           <div class="avatar-menu-section sync-status-panel">
             <span class="avatar-menu-label" x-text="$store.chat.isTowerPgMode ? 'Backend' : 'Sync Status'"></span>
             <div class="sync-status-row">
-              <span class="sync-status-dot" :class="'sync-dot-' + $store.chat.syncStatus"></span>
-              <span class="sync-status-label" x-text="$store.chat.isTowerPgMode ? 'Postgres' : (({synced:'Synced',unsynced:'Pending',stale:'Stale',syncing:'Syncing',quarantined:'Quarantined',error:'Error',disabled:'Disabled'})[$store.chat.syncStatus] || $store.chat.syncStatus)"></span>
+              <span class="sync-status-dot" :class="'sync-dot-' + $store.chat.avatarConnectionStatus"></span>
+              <span class="sync-status-label" x-text="$store.chat.avatarConnectionLabel"></span>
               <span class="sync-status-time" x-text="$store.chat.lastSyncTimeLabel()"></span>
             </div>
             <div class="sync-build-row">

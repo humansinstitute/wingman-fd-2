@@ -986,6 +986,56 @@ export function initApp() {
       return this.getInitials(source);
     },
 
+    get avatarConnectionStatus() {
+      if (!this.isTowerPgMode) return this.syncStatus || 'disabled';
+      if (
+        this.syncing
+        || this.connectHostBusy
+        || this.connectWorkspacesBusy
+        || this.connectCreatingWorkspace
+        || this.pendingWritesBusy
+        || this.syncStatus === 'syncing'
+      ) {
+        return 'syncing';
+      }
+      const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+      const connected = Boolean(this.currentWorkspace?.pgBackendMode && this.backendUrl && this.session?.npub);
+      if (offline || !connected) return 'local-only';
+      return 'tower-pg-connected';
+    },
+
+    get avatarConnectionLabel() {
+      if (this.isTowerPgMode) {
+        return ({
+          'tower-pg-connected': 'Tower Connected (PG)',
+          syncing: 'Syncing',
+          'local-only': 'Offline (Local Only)',
+        })[this.avatarConnectionStatus] || 'Offline (Local Only)';
+      }
+      return ({
+        synced: 'Synced',
+        unsynced: 'Pending',
+        stale: 'Stale',
+        syncing: 'Syncing',
+        quarantined: 'Quarantined',
+        error: 'Error',
+        disabled: 'Disabled',
+      })[this.syncStatus] || this.syncStatus;
+    },
+
+    get avatarConnectionTitle() {
+      if (this.isTowerPgMode) return this.avatarConnectionLabel;
+      return ({
+        synced: 'Synced',
+        unsynced: 'Local changes pending',
+        stale: 'Updates available',
+        syncing: 'Syncing...',
+        quarantined: 'Quarantine needs review',
+        error: 'Sync error',
+        disabled: 'Sync disabled',
+      })[this.syncStatus] || 'Unknown';
+    },
+
     get superbasedConnectionConfig() {
       if (!this.superbasedTokenInput) return null;
       const parsed = parseSuperBasedToken(this.superbasedTokenInput);

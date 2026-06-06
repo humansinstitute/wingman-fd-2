@@ -1459,6 +1459,22 @@ describe('lastSyncTimeLabel', () => {
     });
     expect(fn()).toBe('Encrypted sync off');
   });
+
+  it('returns PG live status for connected Postgres workspaces', () => {
+    const { fn } = bindMethod('lastSyncTimeLabel', {
+      isTowerPgMode: true,
+      avatarConnectionStatus: 'tower-pg-connected',
+    });
+    expect(fn()).toBe('Live');
+  });
+
+  it('returns PG local cache status for offline Postgres workspaces', () => {
+    const { fn } = bindMethod('lastSyncTimeLabel', {
+      isTowerPgMode: true,
+      avatarConnectionStatus: 'local-only',
+    });
+    expect(fn()).toBe('Local cache');
+  });
 });
 
 describe('runAccessPruneOnLogin', () => {

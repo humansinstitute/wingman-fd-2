@@ -2385,6 +2385,11 @@ export const syncManagerMixin = {
   },
 
   lastSyncTimeLabel() {
+    if (this.isTowerPgMode) {
+      if (this.avatarConnectionStatus === 'tower-pg-connected') return 'Live';
+      if (this.avatarConnectionStatus === 'syncing') return 'In progress';
+      return 'Local cache';
+    }
     if (this.syncSession.state === 'disabled' || this.syncStatus === 'disabled') return 'Encrypted sync off';
     const t = this.syncSession.lastSuccessAt;
     if (!t) return 'Never';
