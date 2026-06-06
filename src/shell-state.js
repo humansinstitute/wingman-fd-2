@@ -459,6 +459,7 @@ export function createShellState(options = {}) {
     },
 
     async ensureWorkspaceSessionKey() {
+      if (isTowerPgBackendMode()) return null;
       const workspaceOwnerNpub = this.workspaceOwnerNpub
         || this.currentWorkspaceOwnerNpub
         || this.ownerNpub
@@ -493,12 +494,20 @@ export function createShellState(options = {}) {
 
     async bootstrapSelectedWorkspace(options = {}) {
       if (!this.selectedWorkspaceKey && !this.currentWorkspaceOwnerNpub) return;
-      await this.ensureWorkspaceSessionKey();
-      await this.refreshGroups({ maxAgeMs: this.GROUP_KEY_REFRESH_MAX_AGE_MS });
-      this.refreshFlows().catch(() => {});
-      this.refreshWorkspaceKeyMappings().catch(() => {});
-      if (options.runAccessPrune === true) {
-        this.runAccessPruneOnLogin().catch(() => {});
+      if (isTowerPgBackendMode()) {
+        await this.refreshScopes?.();
+        await this.refreshChannels?.();
+        await this.refreshTasks?.();
+        await this.refreshDocuments?.();
+        await this.refreshAudioNotes?.();
+      } else {
+        await this.ensureWorkspaceSessionKey();
+        await this.refreshGroups({ maxAgeMs: this.GROUP_KEY_REFRESH_MAX_AGE_MS });
+        this.refreshFlows().catch(() => {});
+        this.refreshWorkspaceKeyMappings().catch(() => {});
+        if (options.runAccessPrune === true) {
+          this.runAccessPruneOnLogin().catch(() => {});
+        }
       }
       this.selectedBoardId = this.readStoredTaskBoardId();
       this.collapsedSections = this.readStoredCollapsedSections();

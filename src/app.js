@@ -71,6 +71,7 @@ import { createChatThreadFlowDispatchState } from './chat-thread-flow-dispatch.j
 import { createChatGetItDoneState } from './chat-get-it-done.js';
 import { commandPaletteMixin, createCommandPaletteState } from './command-palette.js';
 import { buildAttentionFeed, buildTimingFeed, summarizeAttentionFeed } from './attention-feed.js';
+import { avatarStatusMixin } from './components/avatar-status.js';
 import {
   toRaw,
   normalizeBackendUrl,
@@ -984,56 +985,6 @@ export function initApp() {
     get avatarFallback() {
       const source = this.displayName || this.session?.npub || 'cw';
       return this.getInitials(source);
-    },
-
-    get avatarConnectionStatus() {
-      if (!this.isTowerPgMode) return this.syncStatus || 'disabled';
-      if (
-        this.syncing
-        || this.connectHostBusy
-        || this.connectWorkspacesBusy
-        || this.connectCreatingWorkspace
-        || this.pendingWritesBusy
-        || this.syncStatus === 'syncing'
-      ) {
-        return 'syncing';
-      }
-      const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
-      const connected = Boolean(this.currentWorkspace?.pgBackendMode && this.backendUrl && this.session?.npub);
-      if (offline || !connected) return 'local-only';
-      return 'tower-pg-connected';
-    },
-
-    get avatarConnectionLabel() {
-      if (this.isTowerPgMode) {
-        return ({
-          'tower-pg-connected': 'Tower Connected (PG)',
-          syncing: 'Syncing',
-          'local-only': 'Offline (Local Only)',
-        })[this.avatarConnectionStatus] || 'Offline (Local Only)';
-      }
-      return ({
-        synced: 'Synced',
-        unsynced: 'Pending',
-        stale: 'Stale',
-        syncing: 'Syncing',
-        quarantined: 'Quarantined',
-        error: 'Error',
-        disabled: 'Disabled',
-      })[this.syncStatus] || this.syncStatus;
-    },
-
-    get avatarConnectionTitle() {
-      if (this.isTowerPgMode) return this.avatarConnectionLabel;
-      return ({
-        synced: 'Synced',
-        unsynced: 'Local changes pending',
-        stale: 'Updates available',
-        syncing: 'Syncing...',
-        quarantined: 'Quarantine needs review',
-        error: 'Sync error',
-        disabled: 'Sync disabled',
-      })[this.syncStatus] || 'Unknown';
     },
 
     get superbasedConnectionConfig() {
@@ -6272,6 +6223,7 @@ export function initApp() {
   applyMixins(
     storeObj,
     shellState,
+    avatarStatusMixin,
     taskBoardStateMixin,
     workspaceManagerMixin,
     chatMessageManagerMixin,

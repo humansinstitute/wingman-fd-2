@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createShellState, SHELL_STATE_KEYS, SHELL_METHOD_NAMES } from '../src/shell-state.js';
 
 // ---------------------------------------------------------------------------
@@ -329,6 +329,46 @@ describe('shell state is spreadable into a store', () => {
     // isLoggedIn should still be a getter
     const loggedInDesc = Object.getOwnPropertyDescriptor(target, 'isLoggedIn');
     expect(loggedInDesc?.get).toBeDefined();
+  });
+});
+
+describe('shell PG bootstrap guard', () => {
+  it('does not bootstrap encrypted workspace user keys in PG mode', async () => {
+    const shell = createShellState();
+    shell.backendUrl = 'https://tower.example';
+    shell.currentWorkspaceOwnerNpub = 'npub1workspace';
+    shell.session = { npub: 'npub1user' };
+
+    await expect(shell.ensureWorkspaceSessionKey()).resolves.toBeNull();
+  });
+
+  it('uses PG hydration instead of encrypted group refresh during PG workspace bootstrap', async () => {
+    const shell = createShellState();
+    shell.selectedWorkspaceKey = 'pg:workspace';
+    shell.currentWorkspaceOwnerNpub = 'npub1workspace';
+    shell.refreshScopes = vi.fn(async () => {});
+    shell.refreshChannels = vi.fn(async () => {});
+    shell.refreshTasks = vi.fn(async () => {});
+    shell.refreshDocuments = vi.fn(async () => {});
+    shell.refreshAudioNotes = vi.fn(async () => {});
+    shell.refreshGroups = vi.fn(async () => {});
+    shell.refreshWorkspaceKeyMappings = vi.fn(async () => {});
+    shell.readStoredTaskBoardId = vi.fn(() => null);
+    shell.readStoredCollapsedSections = vi.fn(() => ({}));
+    shell.validateSelectedBoardId = vi.fn();
+    shell.applyRouteFromLocation = vi.fn(async () => {});
+    shell.refreshSyncStatus = vi.fn(async () => {});
+    shell.refreshStatusRecentChanges = vi.fn(async () => {});
+
+    await shell.bootstrapSelectedWorkspace({ runAccessPrune: true });
+
+    expect(shell.refreshScopes).toHaveBeenCalled();
+    expect(shell.refreshChannels).toHaveBeenCalled();
+    expect(shell.refreshTasks).toHaveBeenCalled();
+    expect(shell.refreshDocuments).toHaveBeenCalled();
+    expect(shell.refreshAudioNotes).toHaveBeenCalled();
+    expect(shell.refreshGroups).not.toHaveBeenCalled();
+    expect(shell.refreshWorkspaceKeyMappings).not.toHaveBeenCalled();
   });
 });
 
