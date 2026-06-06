@@ -33,6 +33,14 @@ import {
   deleteTowerPgDocFromLocal,
   updateTowerPgTaskFromLocal,
 } from './pg-write-adapter.js';
+import {
+  acquirePgEditLeaseForRecord,
+  getPgEditLeaseSession,
+  isOnlineForPgEdit,
+  isSyncedPgRecord,
+  isUnsyncedLocalPgRecord,
+  releasePgEditLeaseForRecord,
+} from './pg-edit-session.js';
 import { createShellState } from './shell-state.js';
 import {
   checkoutErrorMessage,
@@ -705,6 +713,7 @@ export function initApp() {
     docAutosaveState: 'saved',
     recordCheckoutPolicyConfig: FLIGHT_DECK_RECORD_CHECKOUT_POLICY_CONFIG,
     lockManagedCheckoutSessions: {},
+    pgEditLeaseSessions: {},
     showDocShareModal: false,
     docMoveScopePrompt: null,
     showDocMoveModal: false,
@@ -3481,6 +3490,8 @@ export function initApp() {
         references: flowLinkage.references,
         deliverable_links: Array.isArray(options.deliverableLinks) ? options.deliverableLinks : [],
         ...(pgContext ? {
+          pg_backend: true,
+          pg_record_type: 'task',
           pg_channel_id: pgContext.channelId,
           pg_thread_id: pgContext.threadId || null,
         } : {}),
@@ -3506,12 +3517,15 @@ export function initApp() {
           await this.refreshTasks();
           return createdTask;
         } catch (error) {
-          await upsertTask({ ...localRow, sync_status: 'failed', updated_at: new Date().toISOString() });
+          const failedRow = { ...localRow, sync_status: 'failed', updated_at: new Date().toISOString() };
+          await upsertTask(failedRow);
           this.tasks = this.tasks.map((task) => task.record_id === localRow.record_id
-            ? { ...localRow, sync_status: 'failed' }
+            ? failedRow
             : task);
-          this.error = error?.message || 'Failed to create PG task';
-          return null;
+          this.error = this.isPgEditOnline()
+            ? (error?.message || 'Failed to create PG task')
+            : 'PG task saved locally. Reconnect to sync it.';
+          return failedRow;
         }
       }
 
@@ -3623,6 +3637,123 @@ export function initApp() {
 
     isTaskDetailEditing() {
       return this.taskDetailMode === 'edit';
+    },
+
+    isPgSyncedEditableRecord(record) {
+      return isTowerPgBackendMode()
+        && record?.pg_backend === true
+        && String(record?.sync_status || '').trim() === 'synced'
+        && Boolean(record?.record_id);
+    },
+
+    isPgUnsyncedEditableRecord(record) {
+      if (!isTowerPgBackendMode() || !record) return false;
+      const status = String(record.sync_status || '').trim();
+      return record.pg_backend === true && status !== 'synced';
+    },
+
+    isPgEditOnline() {
+      return typeof navigator === 'undefined' || navigator.onLine !== false;
+    },
+
+    pgEditLeaseErrorMessage(entityType, error = null) {
+      const label = entityType === 'document' ? 'document' : 'task';
+      const responseText = String(error?.responseText || error?.message || '');
+      if (responseText.includes('edit_lease_held')) return `This PG ${label} is being edited by another actor.`;
+      if (responseText.includes('permission_denied')) return `You do not have permission to edit this PG ${label}.`;
+      return `Could not acquire PG edit lease for this ${label}.`;
+    },
+
+    getPgEditSession(entityType, recordId = null) {
+      const key = entityType === 'document' ? 'document' : 'task';
+      const session = this.pgEditSessions?.[key] || null;
+      if (recordId && session?.entity_id !== recordId) return null;
+      return session;
+    },
+
+    getPgEditLeaseToken(entityType, recordId = null) {
+      return this.getPgEditSession(entityType, recordId)?.lease_token || null;
+    },
+
+    schedulePgEditLeaseRenewal(entityType, lease) {
+      const key = entityType === 'document' ? 'document' : 'task';
+      if (this.pgEditLeaseRenewTimers?.[key]) clearInterval(this.pgEditLeaseRenewTimers[key]);
+      const context = resolveTowerPgWorkspaceContext(this);
+      const leaseId = lease?.id;
+      const leaseToken = lease?.lease_token;
+      if (!context.workspaceId || !leaseId || !leaseToken) return;
+      const renew = async () => {
+        try {
+          const result = await renewTowerPgEditLease(context.workspaceId, leaseId, {
+            lease_token: leaseToken,
+            ttl_seconds: 120,
+          }, { baseUrl: context.baseUrl, appNpub: context.appNpub });
+          if (result?.lease) {
+            this.pgEditSessions = {
+              ...(this.pgEditSessions || {}),
+              [key]: { ...result.lease, lease_token: leaseToken },
+            };
+          }
+        } catch {
+          if (this.pgEditLeaseRenewTimers?.[key]) clearInterval(this.pgEditLeaseRenewTimers[key]);
+          this.pgEditLeaseRenewTimers = { ...(this.pgEditLeaseRenewTimers || {}), [key]: null };
+        }
+      };
+      this.pgEditLeaseRenewTimers = {
+        ...(this.pgEditLeaseRenewTimers || {}),
+        [key]: setInterval(renew, 60_000),
+      };
+    },
+
+    async beginPgEditSession(entityType, record) {
+      const key = entityType === 'document' ? 'document' : 'task';
+      if (this.isPgUnsyncedEditableRecord(record)) return true;
+      if (!this.isPgSyncedEditableRecord(record)) return false;
+      if (!this.isPgEditOnline()) {
+        this.error = key === 'document'
+          ? 'Reconnect to edit synced PG documents.'
+          : 'Reconnect to edit synced PG tasks.';
+        return false;
+      }
+      const existing = this.getPgEditSession(key, record.record_id);
+      if (existing?.lease_token) return true;
+      const context = resolveTowerPgWorkspaceContext(this);
+      try {
+        const result = await acquireTowerPgEditLease(context.workspaceId, {
+          entity_type: key,
+          entity_id: record.record_id,
+          field_path: null,
+          ttl_seconds: 120,
+        }, { baseUrl: context.baseUrl, appNpub: context.appNpub });
+        if (!result?.lease?.lease_token) throw new Error('Tower PG edit lease response was missing lease_token');
+        this.pgEditSessions = {
+          ...(this.pgEditSessions || {}),
+          [key]: result.lease,
+        };
+        this.schedulePgEditLeaseRenewal(key, result.lease);
+        return true;
+      } catch (error) {
+        this.error = this.pgEditLeaseErrorMessage(key, error);
+        return false;
+      }
+    },
+
+    async releasePgEditSession(entityType, recordId = null) {
+      const key = entityType === 'document' ? 'document' : 'task';
+      const session = this.getPgEditSession(key, recordId);
+      if (this.pgEditLeaseRenewTimers?.[key]) clearInterval(this.pgEditLeaseRenewTimers[key]);
+      this.pgEditLeaseRenewTimers = { ...(this.pgEditLeaseRenewTimers || {}), [key]: null };
+      this.pgEditSessions = { ...(this.pgEditSessions || {}), [key]: null };
+      if (!session?.id || !session?.lease_token) return false;
+      try {
+        const context = resolveTowerPgWorkspaceContext(this);
+        await releaseTowerPgEditLease(context.workspaceId, session.id, {
+          lease_token: session.lease_token,
+        }, { baseUrl: context.baseUrl, appNpub: context.appNpub });
+        return true;
+      } catch {
+        return false;
+      }
     },
 
     // Task creates stay optimistic. Every existing-task mutation should use
@@ -3939,10 +4070,30 @@ export function initApp() {
         await upsertTask(taskForEdit);
         this.tasks = this.tasks.map(t => t.record_id === taskForEdit.record_id ? taskForEdit : t);
       }
+      if (isTowerPgBackendMode()) {
+        this.taskDetailCheckoutPending = true;
+        try {
+          const canEdit = await this.beginPgEditSession('task', taskForEdit);
+          if (!canEdit) return false;
+          this.taskEditOriginal = toRaw(taskForEdit);
+          this.editingTask = toRaw(taskForEdit);
+          this.editingTask.predecessor_task_ids = normalizePredecessorTaskIds(this.editingTask.predecessor_task_ids || [], this.editingTask.record_id);
+          this.taskDetailMode = 'edit';
+          this.taskDescriptionEditing = true;
+          this.error = '';
+          return true;
+        } finally {
+          this.taskDetailCheckoutPending = false;
+        }
+      }
       const checkoutPolicyConfig = this.getTaskDetailCheckoutPolicyConfig();
       this.taskDetailCheckoutPending = true;
       try {
-        if (pendingTaskWrites.length === 0) {
+        if (isTowerPgBackendMode()) {
+          if (isSyncedPgRecord(taskForEdit)) {
+            await acquirePgEditLeaseForRecord(this, taskForEdit, 'task');
+          }
+        } else if (pendingTaskWrites.length === 0) {
           await this.ensureLockManagedCheckout(taskForEdit, taskFamilyHash('task'), {
             intent: 'edit',
             checkoutPolicyConfig,
@@ -3968,13 +4119,34 @@ export function initApp() {
     async cancelTaskDetailEdit(options = {}) {
       if (!this.editingTask) return;
       const task = this.tasks.find(t => t.record_id === this.editingTask.record_id) || this.taskEditOriginal;
+      if (isTowerPgBackendMode()) {
+        await this.releasePgEditSession('task', task?.record_id);
+        const latest = task?.record_id ? this.tasks.find(t => t.record_id === task.record_id) || task : null;
+        this.editingTask = latest ? toRaw(latest) : null;
+        if (this.editingTask) {
+          this.editingTask.predecessor_task_ids = normalizePredecessorTaskIds(this.editingTask.predecessor_task_ids || [], this.editingTask.record_id);
+        }
+        this.taskEditOriginal = null;
+        this.taskDetailMode = 'view';
+        this.taskDescriptionEditing = false;
+        this.taskAssigneeQuery = '';
+        this.predecessorTaskQuery = '';
+        this.showPredecessorTaskPicker = false;
+        this.showFlowPicker = false;
+        this.closeScopePicker();
+        return;
+      }
       const checkoutPolicyConfig = this.getTaskDetailCheckoutPolicyConfig();
       if (task?.record_id) {
-        await this.releaseLockManagedCheckout(task, taskFamilyHash('task'), {
-          reportError: options.reportError === true,
-          force: true,
-          checkoutPolicyConfig,
-        });
+        if (isTowerPgBackendMode()) {
+          await releasePgEditLeaseForRecord(this, task, 'task', { reportError: options.reportError === true });
+        } else {
+          await this.releaseLockManagedCheckout(task, taskFamilyHash('task'), {
+            reportError: options.reportError === true,
+            force: true,
+            checkoutPolicyConfig,
+          });
+        }
       }
       const latest = task?.record_id ? this.tasks.find(t => t.record_id === task.record_id) || task : null;
       this.editingTask = latest ? toRaw(latest) : null;
@@ -4104,6 +4276,69 @@ export function initApp() {
 
       this.taskDetailSaving = true;
       try {
+        if (isTowerPgBackendMode()) {
+          await upsertTask(updated);
+          this.tasks = this.tasks.map(t => t.record_id === updated.record_id ? updated : t);
+          this.editingTask = { ...updated };
+          this.editingTask.predecessor_task_ids = normalizePredecessorTaskIds(this.editingTask.predecessor_task_ids || [], this.editingTask.record_id);
+
+          if (this.isPgUnsyncedEditableRecord(taskForSave)) {
+            if (this.isPgEditOnline()) {
+              try {
+                const createdTask = await createTowerPgTaskFromLocal(this, updated);
+                await upsertTask(createdTask);
+                this.tasks = mergeTaskIntoList(
+                  this.tasks.filter((entry) => entry.record_id !== updated.record_id),
+                  createdTask,
+                );
+                this.editingTask = { ...createdTask };
+              } catch (error) {
+                const failed = { ...updated, sync_status: 'failed', updated_at: new Date().toISOString() };
+                await upsertTask(failed);
+                this.tasks = this.tasks.map(t => t.record_id === failed.record_id ? failed : t);
+                this.editingTask = { ...failed };
+                this.error = error?.message || 'Failed to sync local PG task.';
+                return;
+              }
+            }
+            this.taskDetailMode = 'view';
+            this.taskEditOriginal = null;
+            this.taskDescriptionEditing = false;
+            await this.refreshTasks();
+            return;
+          }
+
+          if (!this.getPgEditLeaseToken('task', taskForSave.record_id)) {
+            this.error = 'Acquire a PG edit lease before saving this task.';
+            return;
+          }
+          let acceptedTask = taskForSave;
+          const stateChanged = updated.state !== taskForSave.state;
+          const scalarPatch = {};
+          if (updated.title !== taskForSave.title) scalarPatch.title = updated.title;
+          if ((updated.description || '') !== (taskForSave.description || '')) scalarPatch.description = updated.description;
+          if (updated.priority !== taskForSave.priority) scalarPatch.priority = updated.priority;
+          if (stateChanged) {
+            acceptedTask = await updateTowerPgTaskFromLocal(this, updated, taskForSave, { state: updated.state });
+          }
+          if (Object.keys(scalarPatch).length > 0 || !stateChanged) {
+            acceptedTask = await updateTowerPgTaskFromLocal(this, {
+              ...updated,
+              record_id: acceptedTask.record_id,
+              version: acceptedTask.version,
+            }, acceptedTask, scalarPatch);
+          }
+          await upsertTask(acceptedTask);
+          this.tasks = this.tasks.map(t => t.record_id === updated.record_id ? acceptedTask : t);
+          this.editingTask = { ...acceptedTask };
+          this.editingTask.predecessor_task_ids = normalizePredecessorTaskIds(this.editingTask.predecessor_task_ids || [], this.editingTask.record_id);
+          await this.releasePgEditSession('task', taskForSave.record_id);
+          this.taskDetailMode = 'view';
+          this.taskEditOriginal = null;
+          this.taskDescriptionEditing = false;
+          await this.refreshTasks();
+          return;
+        }
         const hasQueuedTaskWrite = pendingTaskWrites.length > 0;
         const queuedCheckout = pendingTaskWrites.find((row) => row?.envelope?.checkout)?.envelope?.checkout || null;
         const queuedCheckoutPolicyConfig = pendingTaskWrites.find((row) => row?.checkout_policy_config)?.checkout_policy_config || null;
@@ -4167,7 +4402,11 @@ export function initApp() {
           this.tasks = this.tasks.map(t => t.record_id === acceptedTask.record_id ? acceptedTask : t);
           this.editingTask = { ...acceptedTask };
           this.editingTask.predecessor_task_ids = normalizePredecessorTaskIds(this.editingTask.predecessor_task_ids || [], this.editingTask.record_id);
-          this.clearLockManagedCheckoutSession(updated.record_id, taskFamilyHash('task'));
+          if (isTowerPgBackendMode()) {
+            await releasePgEditLeaseForRecord(this, updated, 'task');
+          } else {
+            this.clearLockManagedCheckoutSession(updated.record_id, taskFamilyHash('task'));
+          }
           this.taskDetailMode = 'view';
           this.taskEditOriginal = null;
           this.taskDescriptionEditing = false;

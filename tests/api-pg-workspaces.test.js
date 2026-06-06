@@ -360,4 +360,45 @@ describe('Tower PG API helpers', () => {
     expect(createNip98AuthHeader).toHaveBeenCalledTimes(8);
     expect(createNip98AuthHeaderForSecret).not.toHaveBeenCalled();
   });
+
+  it('calls Tower PG edit lease acquire, renew, and release routes', async () => {
+    const api = await import('../src/api.js');
+    api.setBaseUrl('https://tower.example');
+
+    await api.acquireTowerPgEditLease('workspace-1', {
+      entity_type: 'task',
+      entity_id: 'task-1',
+    }, { appNpub: 'flightdeck_pg' });
+    await api.renewTowerPgEditLease('workspace-1', 'lease-1', {
+      lease_token: 'token-1',
+    }, { appNpub: 'flightdeck_pg' });
+    await api.releaseTowerPgEditLease('workspace-1', 'lease-1', {
+      lease_token: 'token-1',
+    }, { appNpub: 'flightdeck_pg' });
+
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      1,
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/edit-leases/acquire',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ entity_type: 'task', entity_id: 'task-1' }),
+      }),
+    );
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      2,
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/edit-leases/lease-1/renew',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ lease_token: 'token-1' }),
+      }),
+    );
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      3,
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/edit-leases/lease-1/release',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ lease_token: 'token-1' }),
+      }),
+    );
+  });
 });

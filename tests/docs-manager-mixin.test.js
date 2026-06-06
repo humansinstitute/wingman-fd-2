@@ -9,9 +9,12 @@ const {
   prepareStorageObjectMock,
   prepareTowerPgStorageObjectMock,
   releaseRecordCheckoutMock,
+  acquireTowerPgEditLeaseMock,
+  releaseTowerPgEditLeaseMock,
   uploadStorageObjectMock,
 } = vi.hoisted(() => ({
   acquireRecordCheckoutMock: vi.fn(),
+  acquireTowerPgEditLeaseMock: vi.fn(),
   completeStorageObjectMock: vi.fn(),
   createTowerPgChannelDocMock: vi.fn(),
   downloadStorageObjectMock: vi.fn(),
@@ -19,11 +22,13 @@ const {
   prepareStorageObjectMock: vi.fn(),
   prepareTowerPgStorageObjectMock: vi.fn(),
   releaseRecordCheckoutMock: vi.fn(),
+  releaseTowerPgEditLeaseMock: vi.fn(),
   uploadStorageObjectMock: vi.fn(),
 }));
 
 vi.mock('../src/api.js', () => ({
   acquireRecordCheckout: acquireRecordCheckoutMock,
+  acquireTowerPgEditLease: acquireTowerPgEditLeaseMock,
   completeStorageObject: completeStorageObjectMock,
   createTowerPgChannelAudioNote: vi.fn(),
   createTowerPgChannelDoc: createTowerPgChannelDocMock,
@@ -44,6 +49,8 @@ vi.mock('../src/api.js', () => ({
   prepareStorageObject: prepareStorageObjectMock,
   prepareTowerPgStorageObject: prepareTowerPgStorageObjectMock,
   releaseRecordCheckout: releaseRecordCheckoutMock,
+  releaseTowerPgEditLease: releaseTowerPgEditLeaseMock,
+  renewTowerPgEditLease: vi.fn(),
   updateTowerPgTask: vi.fn(),
   updateTowerPgTaskState: vi.fn(),
   uploadStorageObject: uploadStorageObjectMock,
@@ -143,6 +150,8 @@ describe('docsManagerMixin.getMissingDocGroupRefs', () => {
   beforeEach(() => {
     acquireRecordCheckoutMock.mockReset();
     releaseRecordCheckoutMock.mockReset();
+    acquireTowerPgEditLeaseMock.mockReset();
+    releaseTowerPgEditLeaseMock.mockReset();
   });
 
   afterEach(() => {
@@ -572,6 +581,40 @@ describe('docsManagerMixin checkout orchestration', () => {
       recordId: 'doc-a',
       recordFamilyHash: documentFamilyHash,
     }));
+    expect(store.setDocEditorMode).toHaveBeenCalledWith('block');
+  });
+
+  it('acquires a PG edit lease before entering synced PG document edit mode', async () => {
+    isTowerPgBackendModeMock.mockReturnValue(true);
+    acquireTowerPgEditLeaseMock.mockResolvedValueOnce({
+      lease: { id: 'lease-doc-1', lease_token: 'doc-token-1' },
+    });
+
+    const record = { record_id: 'doc-pg', pg_backend: true, sync_status: 'synced', version: 1 };
+    const store = createStore({
+      documents: [record],
+      selectedDocType: 'document',
+      selectedDocId: 'doc-pg',
+      pgEditLeaseSessions: {},
+      currentWorkspace: {
+        workspaceId: 'workspace-1',
+        workspaceOwnerNpub: 'npub1owner',
+        directHttpsUrl: 'https://tower.example',
+        appNpub: 'flightdeck_pg',
+        pgBackendMode: true,
+      },
+      setDocEditorMode: vi.fn(),
+    });
+
+    const entered = await store.enterSelectedDocEditMode('block');
+
+    expect(entered).toBe(true);
+    expect(acquireTowerPgEditLeaseMock).toHaveBeenCalledWith('workspace-1', expect.objectContaining({
+      entity_type: 'document',
+      entity_id: 'doc-pg',
+    }), { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
+    expect(acquireRecordCheckoutMock).not.toHaveBeenCalled();
+    expect(store.pgEditLeaseSessions['document:doc-pg'].lease.lease_token).toBe('doc-token-1');
     expect(store.setDocEditorMode).toHaveBeenCalledWith('block');
   });
 

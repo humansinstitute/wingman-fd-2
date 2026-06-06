@@ -77,6 +77,12 @@ import { resolveFlightDeckRecordCheckoutPolicy } from './record-checkout-policy.
 import { isTowerPgBackendMode } from './backend-mode.js';
 import { resolvePgRecordContext } from './pg-record-context.js';
 import { resolveTowerPgWorkspaceContext } from './pg-read-hydrator.js';
+import {
+  acquirePgEditLeaseForRecord,
+  getPgEditLeaseSession,
+  isSyncedPgRecord,
+  releasePgEditLeaseForRecord,
+} from './pg-edit-session.js';
 import { diffLines } from 'diff';
 
 // ---------------------------------------------------------------------------
@@ -750,7 +756,11 @@ export const docsManagerMixin = {
   closeDocEditor(options = {}) {
     const selectedRecord = this.selectedDocument;
     if (selectedRecord?.record_id) {
-      void this.releaseLockManagedCheckout(selectedRecord, recordFamilyHash('document'), { reportError: false });
+      if (isTowerPgBackendMode()) {
+        void releasePgEditLeaseForRecord(this, selectedRecord, 'document');
+      } else {
+        void this.releaseLockManagedCheckout(selectedRecord, recordFamilyHash('document'), { reportError: false });
+      }
     }
     this.stopDocCommentsLiveQuery();
     this.selectedDocType = null;
@@ -1375,6 +1385,19 @@ export const docsManagerMixin = {
   async acquireSelectedDocCheckout(options = {}) {
     const item = this.selectedDocument;
     if (!item) return false;
+    if (isTowerPgBackendMode()) {
+      try {
+        await acquirePgEditLeaseForRecord(this, item, 'document', options);
+        return true;
+      } catch (error) {
+        if (options.reportError !== false) {
+          this.error = error?.code === 'pg_synced_offline'
+            ? 'Reconnect to edit synced PG documents.'
+            : (error?.userMessage || error?.message || 'Unable to acquire Tower PG edit lease.');
+        }
+        return false;
+      }
+    }
     try {
       await this.ensureLockManagedCheckout(item, recordFamilyHash('document'), {
         intent: 'edit',
@@ -1390,8 +1413,10 @@ export const docsManagerMixin = {
   async enterSelectedDocEditMode(mode = 'block') {
     const item = this.selectedDocument;
     if (!item) return false;
+    const hasPgLease = isTowerPgBackendMode()
+      && (!isSyncedPgRecord(item) || Boolean(getPgEditLeaseSession(this, 'document', item.record_id)?.lease?.lease_token));
     const session = this.getSelectedDocCheckoutSession();
-    if (!isCheckoutHeld(session?.checkout)) {
+    if (!hasPgLease && !isCheckoutHeld(session?.checkout)) {
       const acquired = await this.acquireSelectedDocCheckout();
       if (!acquired) return false;
     }
@@ -1419,18 +1444,27 @@ export const docsManagerMixin = {
     }
 
     this.setDocEditorMode('preview');
-    await this.releaseLockManagedCheckout(this.selectedDocument || item, recordFamilyHash('document'), {
-      reportError: false,
-      force: true,
-    });
+    if (isTowerPgBackendMode()) {
+      await releasePgEditLeaseForRecord(this, this.selectedDocument || item, 'document');
+    } else {
+      await this.releaseLockManagedCheckout(this.selectedDocument || item, recordFamilyHash('document'), {
+        reportError: false,
+        force: true,
+      });
+    }
     return true;
   },
 
   setDocEditorMode(mode) {
     const nextMode = mode === 'source' ? 'source' : mode === 'block' ? 'block' : 'preview';
     if (nextMode !== 'preview') {
+      if (isTowerPgBackendMode()) {
+        const item = this.selectedDocument;
+        if (isSyncedPgRecord(item) && !getPgEditLeaseSession(this, 'document', item?.record_id)?.lease?.lease_token) return;
+      } else {
       const session = this.getSelectedDocCheckoutSession();
       if (!isCheckoutHeld(session?.checkout)) return;
+      }
     }
     if (nextMode === 'source' && this.docEditingBlockIndex >= 0) {
       this.commitDocBlockEdit();
@@ -2155,8 +2189,33 @@ export const docsManagerMixin = {
         this.openDoc(accepted.record_id);
         return row;
       } catch (error) {
-        this.error = error?.message || 'Could not create PG document.';
-        return null;
+        const localRow = this.normalizeDocumentRowGroupRefs({
+          record_id: recordId,
+          owner_npub: ownerNpub,
+          title,
+          ...contentModel,
+          source_links: normalizeRecordLinkList(options.sourceLinks || [], 'source'),
+          references: [],
+          deliverable_links: normalizeRecordLinkList(options.deliverableLinks || [], 'deliverable'),
+          parent_directory_id: parentDirectoryId,
+          ...scopedAccess,
+          pg_backend: true,
+          pg_record_type: 'doc',
+          pg_channel_id: pgContext.channelId,
+          pg_thread_id: pgContext.threadId || null,
+          sync_status: 'failed',
+          record_state: 'active',
+          version: 1,
+          created_at: now,
+          updated_at: now,
+        });
+        await upsertDocument(localRow);
+        this.patchDocumentLocal(localRow);
+        this.openDoc(localRow.record_id);
+        this.error = this.isPgEditOnline?.()
+          ? (error?.message || 'Could not create PG document.')
+          : 'PG document saved locally. Reconnect to sync it.';
+        return localRow;
       }
     }
     let row = {
@@ -2343,9 +2402,72 @@ export const docsManagerMixin = {
         this.docAutosaveState = 'saved';
         return item;
       }
+      const pgSession = getPgEditLeaseSession(this, 'document', item.record_id);
+      const pgLeaseToken = pgSession?.lease?.lease_token || this.getPgEditLeaseToken?.('document', item.record_id);
+      if (isSyncedPgRecord(item) && !pgLeaseToken) {
+        this.docAutosaveState = 'error';
+        if (!autosave) this.error = 'Acquire a PG edit lease before saving this document.';
+        return;
+      }
 
       this.docAutosaveState = autosave ? 'saving' : this.docAutosaveState;
       try {
+        if (this.isPgUnsyncedEditableRecord?.(item)) {
+          const localUpdated = {
+            ...item,
+            title: nextTitle,
+            ...contentModel,
+            references: nextReferences,
+            sync_status: this.isPgEditOnline?.() ? 'pending' : 'failed',
+            updated_at: new Date().toISOString(),
+          };
+          await upsertDocument(localUpdated);
+          this.patchDocumentLocal(localUpdated);
+          if (!this.isPgEditOnline?.()) {
+            this.docAutosaveState = 'saved';
+            this.docEditorSharesDirty = false;
+            return localUpdated;
+          }
+          try {
+            const pgWorkspaceContext = resolveTowerPgWorkspaceContext(this);
+            const contentPayload = await this.prepareDocumentContentForEnvelope({
+              record_id: localUpdated.record_id,
+              owner_npub: pgWorkspaceContext.workspaceOwnerNpub || ownerNpub,
+              title: nextTitle,
+            }, contentModel, [], null, { pgStorageContext: pgWorkspaceContext });
+            const accepted = await createTowerPgDocFromLocal(this, {
+              ...localUpdated,
+              ...contentPayload,
+            });
+            const canonical = {
+              ...accepted,
+              content: contentModel.content,
+              content_format: contentModel.content_format,
+              content_blocks: contentModel.content_blocks,
+              content_storage_object_id: contentPayload.content_storage_object_id,
+              content_storage_format: contentPayload.content_storage_format,
+              content_storage_content_type: contentPayload.content_storage_content_type,
+              content_size_bytes: contentPayload.content_size_bytes,
+              content_sha256_hex: contentPayload.content_sha256_hex,
+              content_storage_status: 'remote',
+              content_storage_error: null,
+              references: nextReferences,
+            };
+            await upsertDocument(canonical);
+            this.patchDocumentLocal(canonical);
+            this.docAutosaveState = 'saved';
+            this.docEditorSharesDirty = false;
+            if (!autosave) await this.refreshDocuments();
+            return canonical;
+          } catch (error) {
+            const failed = { ...localUpdated, sync_status: 'failed', updated_at: new Date().toISOString() };
+            await upsertDocument(failed);
+            this.patchDocumentLocal(failed);
+            if (!autosave) this.error = error?.message || 'Failed to sync local PG document.';
+            this.docAutosaveState = 'error';
+            throw error;
+          }
+        }
         const pgWorkspaceContext = resolveTowerPgWorkspaceContext(this);
         const contentPayload = await this.prepareDocumentContentForEnvelope({
           record_id: item.record_id,

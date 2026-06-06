@@ -24,6 +24,7 @@ import {
   getPgChannelScopeId,
   resolvePgRecordContext,
 } from './pg-record-context.js';
+import { addPgEditLeaseToSaveBody } from './pg-edit-session.js';
 
 function trimText(value) {
   return String(value ?? '').trim();
@@ -127,13 +128,14 @@ export async function createTowerPgDocFromLocal(store, document) {
 export async function updateTowerPgDocFromLocal(store, document, previousDocument = null) {
   const context = resolveTowerPgWorkspaceContext(store);
   if (!context.workspaceId || !document?.record_id) throw new Error('Tower PG doc is not ready');
-  const result = await updateTowerPgDoc(context.workspaceId, document.record_id, {
+  const body = addPgEditLeaseToSaveBody(store, previousDocument || document, 'document', {
     row_version: previousDocument?.version || document.version || undefined,
     title: document.title || 'Untitled document',
     storage_object_id: document.content_storage_object_id || document.storage_object_id,
     summary: document.content || null,
     metadata: pgMetadataWithThread(document.pg_metadata || document.metadata, document.pg_thread_id || document.thread_id),
-  }, pgRequestOptions(context));
+  });
+  const result = await updateTowerPgDoc(context.workspaceId, document.record_id, body, pgRequestOptions(context));
   return mapPgDocToLocal(result.doc, { workspaceOwnerNpub: context.workspaceOwnerNpub });
 }
 
@@ -200,7 +202,7 @@ export async function updateTowerPgTaskFromLocal(store, task, previousTask = nul
   const onlyState = patchKeys.length === 1 && Object.prototype.hasOwnProperty.call(patch, 'state');
   if (onlyState) {
     const result = await updateTowerPgTaskState(context.workspaceId, task.record_id, {
-      ...body,
+      ...addPgEditLeaseToSaveBody(store, previousTask || task, 'task', body),
       state: task.state,
     }, pgRequestOptions(context));
     return mapPgTaskToLocal(result.task, { workspaceOwnerNpub: context.workspaceOwnerNpub });
@@ -212,7 +214,12 @@ export async function updateTowerPgTaskFromLocal(store, task, previousTask = nul
     board_order: task.board_order ?? null,
     tags: task.tags || '',
   };
-  const result = await updateTowerPgTask(context.workspaceId, task.record_id, body, pgRequestOptions(context));
+  const result = await updateTowerPgTask(
+    context.workspaceId,
+    task.record_id,
+    addPgEditLeaseToSaveBody(store, { ...task, ...(previousTask || {}) }, 'task', body),
+    pgRequestOptions(context),
+  );
   return mapPgTaskToLocal(result.task, { workspaceOwnerNpub: context.workspaceOwnerNpub });
 }
 

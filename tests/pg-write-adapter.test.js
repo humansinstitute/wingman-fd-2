@@ -7,11 +7,13 @@ import {
   createTowerPgTaskCommentFromLocal,
   createTowerPgTaskFromLocal,
   resolveTowerPgTaskChannel,
+  updateTowerPgDocFromLocal,
   updateTowerPgTaskFromLocal,
 } from '../src/pg-write-adapter.js';
 import { recordFamilyHash } from '../src/translators/chat.js';
 
 vi.mock('../src/api.js', () => ({
+  acquireTowerPgEditLease: vi.fn(),
   createTowerPgChannelAudioNote: vi.fn(),
   createTowerPgChannelDoc: vi.fn(),
   createTowerPgChannelFile: vi.fn(),
@@ -28,6 +30,9 @@ vi.mock('../src/api.js', () => ({
   getTowerPgScopeChannels: vi.fn(),
   getTowerPgScopeTasks: vi.fn(),
   getTowerPgWorkspaceScopes: vi.fn(),
+  releaseTowerPgEditLease: vi.fn(),
+  renewTowerPgEditLease: vi.fn(),
+  updateTowerPgDoc: vi.fn(),
   updateTowerPgTask: vi.fn(),
   updateTowerPgTaskState: vi.fn(),
 }));
@@ -272,6 +277,81 @@ describe('PG write adapter', () => {
       state: 'done',
     }, { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
     expect(task).toMatchObject({ record_id: 'task-1', state: 'done', version: 2 });
+  });
+
+  it('adds PG edit lease token and row version to synced task save payloads', async () => {
+    const api = await import('../src/api.js');
+    api.updateTowerPgTask.mockResolvedValue({
+      task: {
+        id: 'task-1',
+        workspace_id: 'workspace-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        title: 'Edited',
+        state: 'new',
+        priority: 'sand',
+        row_version: 3,
+      },
+    });
+
+    await updateTowerPgTaskFromLocal(store({
+      pgEditLeaseSessions: {
+        'task:task-1': { lease: { lease_token: 'lease-token-1' } },
+      },
+    }), {
+      record_id: 'task-1',
+      pg_backend: true,
+      sync_status: 'synced',
+      title: 'Edited',
+      description: 'Body',
+      state: 'new',
+      priority: 'sand',
+      version: 3,
+    }, { version: 2, pg_backend: true, sync_status: 'synced' }, { title: 'Edited' });
+
+    expect(api.updateTowerPgTask).toHaveBeenCalledWith('workspace-1', 'task-1', expect.objectContaining({
+      row_version: 2,
+      lease_token: 'lease-token-1',
+    }), { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
+  });
+
+  it('adds PG edit lease token and row version to synced document save payloads', async () => {
+    const api = await import('../src/api.js');
+    api.updateTowerPgDoc.mockResolvedValue({
+      doc: {
+        id: 'doc-1',
+        workspace_id: 'workspace-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        storage_object_id: 'storage-doc',
+        title: 'Doc edited',
+        row_version: 5,
+      },
+    });
+
+    await updateTowerPgDocFromLocal(store({
+      pgEditLeaseSessions: {
+        'document:doc-1': { lease: { lease_token: 'doc-lease-token' } },
+      },
+    }), {
+      record_id: 'doc-1',
+      pg_backend: true,
+      sync_status: 'synced',
+      title: 'Doc edited',
+      content: 'Body',
+      content_storage_object_id: 'storage-doc',
+      version: 5,
+    }, {
+      record_id: 'doc-1',
+      pg_backend: true,
+      sync_status: 'synced',
+      version: 4,
+    });
+
+    expect(api.updateTowerPgDoc).toHaveBeenCalledWith('workspace-1', 'doc-1', expect.objectContaining({
+      row_version: 4,
+      lease_token: 'doc-lease-token',
+    }), { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
   });
 
   it('creates Tower PG thread messages and maps the returned message', async () => {
