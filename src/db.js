@@ -485,6 +485,20 @@ export async function upsertMessage(msg) {
   return wsDb().chat_messages.put(sanitizeForStorage(msg));
 }
 
+export async function replaceMessageRecord(previousRecordId, msg) {
+  const row = sanitizeForStorage(msg);
+  if (!row?.record_id) return null;
+  const db = wsDb();
+  return db.transaction('rw', db.chat_messages, async () => {
+    const previousId = String(previousRecordId || '').trim();
+    if (previousId && previousId !== row.record_id) {
+      await db.chat_messages.delete(previousId);
+    }
+    await db.chat_messages.put(row);
+    return row.record_id;
+  });
+}
+
 export async function replacePgThreadsForChannel(channelId, messages = []) {
   if (!channelId) return 0;
   const rows = (Array.isArray(messages) ? messages : [])

@@ -301,4 +301,39 @@ describe('PG write adapter', () => {
     }, { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
     expect(message).toMatchObject({ record_id: 'message-1', parent_message_id: null, pg_thread_id: 'thread-1' });
   });
+
+  it('maps Tower PG replies to the local thread parent when the response omits thread metadata', async () => {
+    const api = await import('../src/api.js');
+    api.createTowerPgChannelMessage.mockResolvedValue({
+      message: {
+        id: 'reply-1',
+        workspace_id: 'workspace-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        thread_id: 'thread-1',
+        body: 'Reply',
+        row_version: 1,
+      },
+    });
+
+    const message = await createTowerPgMessageFromLocal(store(), {
+      channel_id: 'channel-1',
+      body: 'Reply',
+    }, {
+      parentMessage: {
+        record_id: 'root-message-1',
+        pg_thread_id: 'thread-1',
+      },
+    });
+
+    expect(api.createTowerPgChannelMessage).toHaveBeenCalledWith('workspace-1', 'channel-1', {
+      body: 'Reply',
+      thread_id: 'thread-1',
+    }, { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
+    expect(message).toMatchObject({
+      record_id: 'reply-1',
+      parent_message_id: 'root-message-1',
+      pg_thread_id: 'thread-1',
+    });
+  });
 });

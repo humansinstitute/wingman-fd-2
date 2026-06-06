@@ -199,8 +199,23 @@ export async function createTowerPgMessageFromLocal(store, message, options = {}
     ...(threadId ? { thread_id: threadId } : { create_thread: true, thread_title: message.body.slice(0, 80) }),
   }, pgRequestOptions(context));
   const threadById = new Map();
-  if (result.thread?.id) threadById.set(String(result.thread.id), result.thread);
-  return mapPgMessageToLocal(result.message, {
+  const returnedThreadId = trimText(result.thread?.id);
+  if (returnedThreadId) {
+    threadById.set(returnedThreadId, {
+      ...result.thread,
+      source_message_id: trimText(result.thread?.source_message_id) || trimText(parentMessage?.record_id),
+    });
+  }
+  if (threadId && parentMessage?.record_id && !threadById.has(threadId)) {
+    threadById.set(threadId, {
+      id: threadId,
+      source_message_id: parentMessage.record_id,
+    });
+  }
+  const messageForMapping = threadId && !trimText(result.message?.thread_id)
+    ? { ...result.message, thread_id: threadId }
+    : result.message;
+  return mapPgMessageToLocal(messageForMapping, {
     workspaceOwnerNpub: context.workspaceOwnerNpub,
     senderNpub: store?.session?.npub,
     threadById,

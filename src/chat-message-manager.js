@@ -9,6 +9,7 @@ import {
   getMessagesByChannel,
   getMessageById,
   upsertMessage,
+  replaceMessageRecord,
   upsertChannel,
   addPendingWrite,
   deleteChannelRuntimeState,
@@ -822,6 +823,7 @@ export const chatMessageManagerMixin = {
       write_group_ref: channelWriteFields.write_group_ref,
     });
 
+    const pgMode = isTowerPgBackendMode();
     const localRow = {
       record_id: msgId,
       channel_id: this.selectedChannelId,
@@ -833,6 +835,7 @@ export const chatMessageManagerMixin = {
       record_state: 'active',
       version: 1,
       updated_at: now,
+      ...(pgMode ? { pg_backend: true } : {}),
     };
 
     await upsertMessage(localRow);
@@ -842,10 +845,10 @@ export const chatMessageManagerMixin = {
     this.messageAudioDrafts = [];
     this.scheduleComposerAutosize('message');
 
-    if (isTowerPgBackendMode()) {
+    if (pgMode) {
       try {
         const accepted = await createTowerPgMessageFromLocal(this, localRow);
-        await upsertMessage(accepted);
+        await replaceMessageRecord(localRow.record_id, accepted);
         this.messages = this.messages.filter((message) => message.record_id !== localRow.record_id);
         this.patchMessageLocal(accepted);
         this._fireMentionTriggers(body, `chat #${channel.label || channel.record_id}`, {
@@ -925,6 +928,7 @@ export const chatMessageManagerMixin = {
       write_group_ref: channelWriteFields.write_group_ref,
     });
 
+    const pgMode = isTowerPgBackendMode();
     const localRow = {
       record_id: msgId,
       channel_id: this.selectedChannelId,
@@ -936,6 +940,7 @@ export const chatMessageManagerMixin = {
       record_state: 'active',
       version: 1,
       updated_at: now,
+      ...(pgMode ? { pg_backend: true } : {}),
     };
     await upsertMessage(localRow);
     this.patchMessageLocal(localRow);
@@ -944,11 +949,11 @@ export const chatMessageManagerMixin = {
     this.threadAudioDrafts = [];
     this.scheduleComposerAutosize('thread');
 
-    if (isTowerPgBackendMode()) {
+    if (pgMode) {
       try {
         const parentMessage = this.getThreadParentMessage();
         const accepted = await createTowerPgMessageFromLocal(this, localRow, { parentMessage });
-        await upsertMessage(accepted);
+        await replaceMessageRecord(localRow.record_id, accepted);
         this.messages = this.messages.filter((message) => message.record_id !== localRow.record_id);
         this.patchMessageLocal(accepted);
         this._fireMentionTriggers(body, `chat #${channel.label || channel.record_id}`, {

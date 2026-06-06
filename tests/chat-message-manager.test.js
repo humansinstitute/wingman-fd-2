@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import './setup.js';
 
 // Mock Alpine.js — it requires a browser `window` at import time
@@ -16,10 +16,27 @@ vi.mock('../src/backend-mode.js', () => ({
   isTowerPgBackendMode: vi.fn(() => false),
 }));
 
+vi.mock('../src/pg-write-adapter.js', () => ({
+  createTowerPgMessageFromLocal: vi.fn(),
+}));
+
+import { isTowerPgBackendMode } from '../src/backend-mode.js';
 import { chatMessageManagerMixin } from '../src/chat-message-manager.js';
 import { createChatThreadFlowDispatchState } from '../src/chat-thread-flow-dispatch.js';
 import { createChatGetItDoneState } from '../src/chat-get-it-done.js';
-import { clearRuntimeData, deleteWorkspaceDb, openWorkspaceDb } from '../src/db.js';
+import { createTowerPgMessageFromLocal } from '../src/pg-write-adapter.js';
+import {
+  clearRuntimeData,
+  deleteWorkspaceDb,
+  getMessageById,
+  openWorkspaceDb,
+  upsertMessage,
+} from '../src/db.js';
+
+beforeEach(() => {
+  isTowerPgBackendMode.mockReturnValue(false);
+  createTowerPgMessageFromLocal.mockReset();
+});
 
 // ---------------------------------------------------------------------------
 // Helper: create a fake store with all mixin methods applied
@@ -797,6 +814,53 @@ describe('sendMessage', () => {
       await deleteWorkspaceDb(workspaceDbKey);
     }
   });
+
+  it('replaces the optimistic local row with the accepted PG message', async () => {
+    const workspaceDbKey = 'chat-message-manager-send-message-pg';
+    openWorkspaceDb(workspaceDbKey);
+    await clearRuntimeData();
+    isTowerPgBackendMode.mockReturnValue(true);
+    createTowerPgMessageFromLocal.mockImplementation(async (_store, localRow) => ({
+      record_id: 'pg-message-1',
+      channel_id: localRow.channel_id,
+      parent_message_id: null,
+      body: localRow.body,
+      attachments: [],
+      sender_npub: localRow.sender_npub,
+      sync_status: 'synced',
+      record_state: 'active',
+      version: 1,
+      updated_at: '2026-06-06T01:00:00.000Z',
+      pg_backend: true,
+      pg_record_type: 'message',
+      pg_thread_id: 'pg-thread-1',
+    }));
+
+    try {
+      const { fn, store } = bindMethod('sendMessage', {
+        session: { npub: 'npub1viewer' },
+        workspaceOwnerNpub: 'npub1owner',
+        selectedChannelId: 'ch1',
+        channels: [{ record_id: 'ch1', owner_npub: 'npub1owner', group_ids: [] }],
+        messageInput: 'hello pg',
+        getPreferredChannelWriteGroup: vi.fn().mockReturnValue(null),
+      });
+
+      await fn();
+
+      const localRecordId = createTowerPgMessageFromLocal.mock.calls[0][1].record_id;
+      expect(await getMessageById(localRecordId)).toBeUndefined();
+      expect(await getMessageById('pg-message-1')).toMatchObject({
+        record_id: 'pg-message-1',
+        body: 'hello pg',
+        sync_status: 'synced',
+        pg_backend: true,
+      });
+      expect(store.messages.map((message) => message.record_id)).toEqual(['pg-message-1']);
+    } finally {
+      await deleteWorkspaceDb(workspaceDbKey);
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -834,6 +898,72 @@ describe('sendThreadReply', () => {
     });
     await fn();
     expect(store.error).toBe('Wait for image upload to finish.');
+  });
+
+  it('replaces optimistic PG thread replies without promoting them to the main channel', async () => {
+    const workspaceDbKey = 'chat-message-manager-send-thread-reply-pg';
+    openWorkspaceDb(workspaceDbKey);
+    await clearRuntimeData();
+    isTowerPgBackendMode.mockReturnValue(true);
+    createTowerPgMessageFromLocal.mockImplementation(async (_store, localRow) => ({
+      record_id: 'pg-reply-1',
+      channel_id: localRow.channel_id,
+      parent_message_id: localRow.parent_message_id,
+      body: localRow.body,
+      attachments: [],
+      sender_npub: localRow.sender_npub,
+      sync_status: 'synced',
+      record_state: 'active',
+      version: 1,
+      updated_at: '2026-06-06T01:01:00.000Z',
+      pg_backend: true,
+      pg_record_type: 'message',
+      pg_thread_id: 'pg-thread-1',
+    }));
+
+    try {
+      const rootMessage = {
+        record_id: 'root-1',
+        channel_id: 'ch1',
+        parent_message_id: null,
+        body: 'Root',
+        sender_npub: 'npub1viewer',
+        sync_status: 'synced',
+        record_state: 'active',
+        updated_at: '2026-06-06T01:00:00.000Z',
+        pg_backend: true,
+        pg_thread_id: 'pg-thread-1',
+      };
+      await upsertMessage(rootMessage);
+      const { fn, store } = bindMethod('sendThreadReply', {
+        session: { npub: 'npub1viewer' },
+        workspaceOwnerNpub: 'npub1owner',
+        selectedChannelId: 'ch1',
+        activeThreadId: 'root-1',
+        threadInput: 'reply pg',
+        channels: [{ record_id: 'ch1', owner_npub: 'npub1owner', group_ids: [] }],
+        messages: [rootMessage],
+        getPreferredChannelWriteGroup: vi.fn().mockReturnValue(null),
+      });
+
+      await fn();
+
+      const localRecordId = createTowerPgMessageFromLocal.mock.calls[0][1].record_id;
+      expect(createTowerPgMessageFromLocal.mock.calls[0][2]).toMatchObject({
+        parentMessage: rootMessage,
+      });
+      expect(await getMessageById(localRecordId)).toBeUndefined();
+      expect(await getMessageById('pg-reply-1')).toMatchObject({
+        record_id: 'pg-reply-1',
+        parent_message_id: 'root-1',
+        sync_status: 'synced',
+        pg_backend: true,
+      });
+      expect(store.mainFeedMessages.map((message) => message.record_id)).toEqual(['root-1']);
+      expect(store.threadMessages.map((message) => message.record_id)).toEqual(['pg-reply-1']);
+    } finally {
+      await deleteWorkspaceDb(workspaceDbKey);
+    }
   });
 });
 
