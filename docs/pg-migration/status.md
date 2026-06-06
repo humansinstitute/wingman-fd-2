@@ -19,6 +19,7 @@ Scope/group/channel alignment is now treated as a Phase 3 blocker rather than la
 - Synced PG tasks/docs are viewable offline but not editable offline.
 - New local PG tasks/docs can be created and edited offline until Tower accepts them.
 - Synced PG task/doc edits use PG-native Tower edit leases, not encrypted-record checkout.
+- Kind `33356` is the additive PG workspace self-index path for cross-device workspace discovery; it must not change the existing kind `33357` onboarding contract.
 - Keep Tower encrypted-record sync backwards compatible.
 - Use the experimental `flightdeck-pg` app as API reference/test harness only, not as the product UI target.
 - Dogfood with a seeded Wingmen Community PG workspace as soon as read hydration is usable.
@@ -56,6 +57,7 @@ Scope/group/channel alignment is now treated as a Phase 3 blocker rather than la
 - Renamed completed PH2-03 work package with the `COMPLETED-` prefix.
 - Added initial Phase 3 online write adapter slice: Tower PG POST/PATCH helpers, a PG write adapter module, PG-mode task create/update/state routing, and PG-mode chat thread/message/reply creation from the existing classic UI. Kept PH3 tickets open because the offline queue and broader write surfaces are not complete.
 - Added PH4-04 design/work package for PG-native edit leases and offline edit gating: synced task/doc rows are read-only offline; local unsynced creates remain editable until first sync.
+- Added PH5-03 work package for kind `33356` PG workspace self-index discovery. This is additive to PG workspace login and explicitly preserves the existing kind `33357` onboarding contract while another implementation thread owns that flow.
 
 ## Outputs
 
