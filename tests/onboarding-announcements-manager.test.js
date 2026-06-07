@@ -130,6 +130,16 @@ describe('onboarding announcements manager', () => {
       recipientNpub: 'npub1recipient',
       grantId: 'grant-1',
     });
+
+    publishOnboardingAnnouncementMock.mockResolvedValue({
+      event: { id: 'event-retry' },
+      acceptedRelays: ['wss://relay.test'],
+    });
+    const retry = await store.retryPgOnboardingAnnouncement(status.key);
+    expect(retry).toMatchObject({
+      status: 'published',
+      eventId: 'event-retry',
+    });
   });
 
   it('verifies discovered onboarding events through Tower before importing', async () => {
@@ -155,5 +165,29 @@ describe('onboarding announcements manager', () => {
       publishSelfIndex: false,
     });
     expect(summary.verified).toBe(1);
+  });
+
+  it('keeps stale onboarding events diagnostic-only when Tower rejects access', async () => {
+    const store = await bindStore({
+      knownWorkspaces: [],
+      rememberVerifiedPgWorkspace: vi.fn(),
+      verifyPgDescriptor: vi.fn().mockRejectedValue(new Error('Tower PG API 403')),
+    });
+    const summary = await store.discoverPgOnboardingAnnouncements({
+      candidates: [{
+        event: { id: 'event-stale' },
+        locator: {
+          ...descriptor,
+          tower_base_url: 'https://tower.example',
+        },
+      }],
+    });
+
+    expect(summary.stale).toBe(1);
+    expect(store.rememberVerifiedPgWorkspace).not.toHaveBeenCalled();
+    expect(store.pgOnboardingAnnouncementSummary.rejected[0]).toMatchObject({
+      eventId: 'event-stale',
+      error: 'Tower PG API 403',
+    });
   });
 });
