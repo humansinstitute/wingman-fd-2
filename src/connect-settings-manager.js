@@ -481,7 +481,7 @@ export const connectSettingsManagerMixin = {
     if (this.session?.npub && sessionNpub !== this.session.npub) {
       throw new Error('Workspace descriptor was verified by a different signer');
     }
-    const workspace = normalizeWorkspaceEntry(pgWorkspaceEntryFromDescriptor(descriptor, {
+    let workspace = normalizeWorkspaceEntry(pgWorkspaceEntryFromDescriptor(descriptor, {
       me,
       sessionNpub,
       verifiedAt: new Date().toISOString(),
@@ -508,7 +508,16 @@ export const connectSettingsManagerMixin = {
     }
     await this.saveSettings();
     if (options.publishSelfIndex !== false && typeof this.publishPgWorkspaceSelfIndex === 'function') {
-      await this.publishPgWorkspaceSelfIndex(workspace);
+      if (typeof this.markPgWorkspaceSelfIndexPending === 'function') {
+        workspace = await this.markPgWorkspaceSelfIndexPending(workspace) || workspace;
+      }
+      if (typeof this.schedulePgWorkspaceSelfIndexPublish === 'function') {
+        this.schedulePgWorkspaceSelfIndexPublish(workspace);
+      } else {
+        Promise.resolve()
+          .then(() => this.publishPgWorkspaceSelfIndex(workspace))
+          .catch(() => {});
+      }
     }
     return workspace;
   },

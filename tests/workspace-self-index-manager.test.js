@@ -114,6 +114,43 @@ describe('workspace self-index manager', () => {
     expect(store.persistWorkspaceSettings).toHaveBeenCalled();
   });
 
+  it('records pending state before publishing in the background', async () => {
+    let finishPublish;
+    publishWorkspaceSelfIndexMock.mockReturnValue(new Promise((resolve) => {
+      finishPublish = resolve;
+    }));
+    const store = await bindStore();
+
+    const pending = await store.markPgWorkspaceSelfIndexPending(workspace);
+    const task = store.schedulePgWorkspaceSelfIndexPublish(pending);
+
+    expect(store.knownWorkspaces[0]).toMatchObject({
+      pgSelfIndexStatus: 'pending',
+      pgSelfIndexError: null,
+    });
+    expect(task).toBe(store.pgWorkspaceSelfIndexPublishPromise);
+    expect(publishWorkspaceSelfIndexMock).not.toHaveBeenCalled();
+
+    await Promise.resolve();
+
+    expect(publishWorkspaceSelfIndexMock).toHaveBeenCalled();
+    expect(store.knownWorkspaces[0]).toMatchObject({
+      pgSelfIndexStatus: 'pending',
+    });
+
+    finishPublish({
+      event: { id: 'event-queued' },
+      acceptedRelays: ['wss://relay.test'],
+      publishedAt: '2026-06-07T00:00:00.000Z',
+    });
+    await task;
+
+    expect(store.knownWorkspaces[0]).toMatchObject({
+      pgSelfIndexStatus: 'indexed',
+      pgSelfIndexEventId: 'event-queued',
+    });
+  });
+
   it('verifies discovered locators through Tower and merges them into knownWorkspaces', async () => {
     const store = await bindStore({ knownWorkspaces: [] });
     const candidate = {

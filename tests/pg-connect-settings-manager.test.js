@@ -116,6 +116,7 @@ describe('PG connect settings manager', () => {
     Object.defineProperties(store, Object.getOwnPropertyDescriptors(connectSettingsManagerMixin));
 
     await store.connectWithPgDescriptor(JSON.stringify(descriptor));
+    await Promise.resolve();
 
     expect(publishPgWorkspaceSelfIndex).toHaveBeenCalledWith(expect.objectContaining({
       workspaceKey: 'pg:npub1user::tower:npub1tower::workspace:npub1workspace::app:flightdeck_pg',
@@ -124,6 +125,52 @@ describe('PG connect settings manager', () => {
     expect(store.knownWorkspaces[0]).toMatchObject({
       workspaceOwnerNpub: 'npub1owner',
       pgBackendMode: true,
+    });
+  });
+
+  it('opens a verified PG workspace without waiting for relay self-index publish', async () => {
+    const api = await import('../src/api.js');
+    api.getTowerPgWorkspaceDescriptor.mockResolvedValue(descriptor);
+    api.getTowerPgWorkspaceMe.mockResolvedValue({ actor: { npub: 'npub1user' }, membership: { role: 'member' } });
+    const { connectSettingsManagerMixin } = await import('../src/connect-settings-manager.js');
+    const { workspaceSelfIndexManagerMixin } = await import('../src/workspace-self-index-manager.js');
+    let rejectPublish;
+    const publishPgWorkspaceSelfIndex = vi.fn(() => new Promise((resolve, reject) => {
+      rejectPublish = reject;
+    }));
+    const store = createStore({ publishPgWorkspaceSelfIndex });
+    Object.defineProperties(store, Object.getOwnPropertyDescriptors(connectSettingsManagerMixin));
+    Object.defineProperties(store, Object.getOwnPropertyDescriptors(workspaceSelfIndexManagerMixin));
+    store.publishPgWorkspaceSelfIndex = publishPgWorkspaceSelfIndex;
+
+    const workspace = await store.connectWithPgDescriptor(JSON.stringify(descriptor));
+
+    expect(workspace).toMatchObject({
+      workspaceKey: 'pg:npub1user::tower:npub1tower::workspace:npub1workspace::app:flightdeck_pg',
+      pgSelfIndexStatus: 'pending',
+    });
+    expect(store.knownWorkspaces[0]).toMatchObject({
+      pgSelfIndexStatus: 'pending',
+      pgSelfIndexError: null,
+    });
+    expect(store.showConnectModal).toBe(false);
+    expect(store.selectWorkspace).toHaveBeenCalledWith(
+      'pg:npub1user::tower:npub1tower::workspace:npub1workspace::app:flightdeck_pg',
+      { pgVerified: true },
+    );
+
+    await Promise.resolve();
+
+    expect(publishPgWorkspaceSelfIndex).toHaveBeenCalledWith(expect.objectContaining({
+      workspaceKey: workspace.workspaceKey,
+      pgSelfIndexStatus: 'pending',
+    }));
+
+    rejectPublish(new Error('relay unavailable'));
+    await store.pgWorkspaceSelfIndexPublishPromise;
+    expect(store.knownWorkspaces[0]).toMatchObject({
+      pgSelfIndexStatus: 'failed',
+      pgSelfIndexError: 'relay unavailable',
     });
   });
 

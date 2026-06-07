@@ -47,6 +47,35 @@ export const workspaceSelfIndexManagerMixin = {
     return updated;
   },
 
+  async markPgWorkspaceSelfIndexPending(workspace) {
+    if (!isTowerPgBackendMode() || !workspace?.pgBackendMode || !this.session?.npub) return workspace || null;
+    return this.persistWorkspaceSelfIndexPatch(workspace, {
+      pgSelfIndexStatus: 'pending',
+      pgSelfIndexError: null,
+      pgSelfIndexFailedAt: null,
+    });
+  },
+
+  schedulePgWorkspaceSelfIndexPublish(workspace) {
+    if (!isTowerPgBackendMode() || !workspace?.pgBackendMode || !this.session?.npub) return null;
+    const task = Promise.resolve()
+      .then(() => this.publishPgWorkspaceSelfIndex(workspace))
+      .catch(async (error) => {
+        try {
+          await this.persistWorkspaceSelfIndexPatch(workspace, {
+            pgSelfIndexStatus: 'failed',
+            pgSelfIndexError: errorMessage(error),
+            pgSelfIndexFailedAt: timestamp(),
+          });
+        } catch (_) {
+          // Best-effort background publish must never disrupt local workspace use.
+        }
+        return null;
+      });
+    this.pgWorkspaceSelfIndexPublishPromise = task;
+    return task;
+  },
+
   async publishPgWorkspaceSelfIndex(workspace) {
     if (!isTowerPgBackendMode() || !workspace?.pgBackendMode || !this.session?.npub) return null;
     try {
