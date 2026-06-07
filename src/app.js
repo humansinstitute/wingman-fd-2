@@ -19,6 +19,7 @@ import { syncManagerMixin } from './sync-manager.js';
 import { peopleProfilesManagerMixin } from './people-profiles-manager.js';
 import { connectSettingsManagerMixin } from './connect-settings-manager.js';
 import { workspaceSelfIndexManagerMixin } from './workspace-self-index-manager.js';
+import { onboardingAnnouncementsManagerMixin } from './onboarding-announcements-manager.js';
 import { unreadStoreMixin } from './unread-store.js';
 import { flowsManagerMixin } from './flows-manager.js';
 import { personsManagerMixin } from './persons-manager.js';
@@ -821,6 +822,10 @@ export function initApp() {
     pgWorkspaceSelfIndexDiscovering: false,
     pgWorkspaceSelfIndexError: null,
     pgWorkspaceSelfIndexSummary: null,
+    pgOnboardingAnnouncementStatuses: [],
+    pgOnboardingAnnouncementDiscovering: false,
+    pgOnboardingAnnouncementError: null,
+    pgOnboardingAnnouncementSummary: null,
 
     // Legacy workspace settings may still contain trigger rows; no runtime trigger publisher is mounted.
     workspaceTriggers: [],
@@ -1974,6 +1979,7 @@ export function initApp() {
         this.ownerNpub = this.currentWorkspaceOwnerNpub || this.superbasedConnectionConfig?.workspaceOwnerNpub || npub;
         this.resolveChatProfile(npub);
         await this.rememberPeople([npub], 'self');
+        await this.discoverPgOnboardingAnnouncements();
         await this.discoverPgWorkspaceSelfIndex();
         await this.loadRemoteWorkspaces();
         if (!this.selectedWorkspaceKey && this.currentWorkspaceOwnerNpub) {
@@ -2011,6 +2017,7 @@ export function initApp() {
         await this.rememberPeople([npub], 'self');
         this.updateWorkspaceBootstrapPrompt();
 
+        await this.discoverPgOnboardingAnnouncements();
         await this.discoverPgWorkspaceSelfIndex();
         await this.loadRemoteWorkspaces();
         if (!this.selectedWorkspaceKey && this.currentWorkspaceOwnerNpub) {
@@ -6471,6 +6478,7 @@ export function initApp() {
     peopleProfilesManagerMixin,
     connectSettingsManagerMixin,
     workspaceSelfIndexManagerMixin,
+    onboardingAnnouncementsManagerMixin,
     channelsManagerMixin,
     scopesManagerMixin,
     docsManagerMixin,

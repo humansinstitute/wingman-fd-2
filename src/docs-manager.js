@@ -94,6 +94,13 @@ import { diffLines } from 'diff';
 
 const DOCUMENT_INLINE_PREVIEW_CHARS = 8_192;
 
+function isPgStaleRowVersionError(error) {
+  if (!error) return false;
+  if (error.code === 'stale_row_version') return true;
+  const text = String(error.responseText || error.message || '');
+  return text.includes('"code":"stale_row_version"') || text.includes('stale_row_version');
+}
+
 async function sha256HexForBytes(bytes) {
   const digest = await crypto.subtle.digest('SHA-256', bytes);
   return Array.from(new Uint8Array(digest))
@@ -2395,129 +2402,24 @@ export const docsManagerMixin = {
       return;
     }
     if (isTowerPgBackendMode()) {
-      const nextTitle = this.docEditorTitle.trim() || 'Untitled document';
-      const contentModel = buildDocumentContentModel(this.docEditorBlocks);
-      const nextReferences = mergeDocumentSaveReferences(item, parseRecordReferencesFromText(contentModel.content));
-      const nextLinksSerialized = JSON.stringify(buildRecordLinkPayload({
-        ...item,
-        references: nextReferences,
-      }));
-      const currentLinksSerialized = JSON.stringify(buildRecordLinkPayload(item));
-      const hasChanges = nextTitle !== (item.title ?? 'Untitled document')
-        || (contentModel.content || '') !== (item.content || '')
-        || nextLinksSerialized !== currentLinksSerialized;
-      if (!hasChanges) {
-        this.docAutosaveState = 'saved';
-        return item;
-      }
-      const pgSession = getPgEditLeaseSession(this, 'document', item.record_id);
-      const pgLeaseToken = pgSession?.lease?.lease_token;
-      if (isSyncedPgRecord(item) && !pgLeaseToken) {
-        this.docAutosaveState = 'error';
-        if (!autosave) this.error = 'Acquire a PG edit lease before saving this document.';
-        return;
+      const recordId = item.record_id;
+      this.pgDocSavePromises = this.pgDocSavePromises || {};
+      const inFlight = this.pgDocSavePromises[recordId];
+      if (inFlight) {
+        await inFlight.catch(() => {});
+        const latest = this.selectedDocument;
+        if (!latest || latest.record_id !== recordId) return null;
+        return this.saveSelectedDocItem(options);
       }
 
-      this.docAutosaveState = autosave ? 'saving' : this.docAutosaveState;
+      const savePromise = this.saveSelectedPgDocItem(item, ownerNpub, options);
+      this.pgDocSavePromises[recordId] = savePromise;
       try {
-        if (isUnsyncedLocalPgRecord(item)) {
-          const localUpdated = {
-            ...item,
-            title: nextTitle,
-            ...contentModel,
-            references: nextReferences,
-            sync_status: isOnlineForPgEdit() ? 'pending' : 'failed',
-            updated_at: new Date().toISOString(),
-          };
-          await upsertDocument(localUpdated);
-          this.patchDocumentLocal(localUpdated);
-          if (!isOnlineForPgEdit()) {
-            this.docAutosaveState = 'saved';
-            this.docEditorSharesDirty = false;
-            return localUpdated;
-          }
-          try {
-            const pgWorkspaceContext = resolveTowerPgWorkspaceContext(this);
-            const contentPayload = await this.prepareDocumentContentForEnvelope({
-              record_id: localUpdated.record_id,
-              owner_npub: pgWorkspaceContext.workspaceOwnerNpub || ownerNpub,
-              title: nextTitle,
-            }, contentModel, [], null, { pgStorageContext: pgWorkspaceContext });
-            const accepted = await createTowerPgDocFromLocal(this, {
-              ...localUpdated,
-              ...contentPayload,
-            });
-            const canonical = {
-              ...accepted,
-              content: contentModel.content,
-              content_format: contentModel.content_format,
-              content_blocks: contentModel.content_blocks,
-              content_storage_object_id: contentPayload.content_storage_object_id,
-              content_storage_format: contentPayload.content_storage_format,
-              content_storage_content_type: contentPayload.content_storage_content_type,
-              content_size_bytes: contentPayload.content_size_bytes,
-              content_sha256_hex: contentPayload.content_sha256_hex,
-              content_storage_status: 'remote',
-              content_storage_error: null,
-              references: nextReferences,
-            };
-            await upsertDocument(canonical);
-            this.patchDocumentLocal(canonical);
-            this.docAutosaveState = 'saved';
-            this.docEditorSharesDirty = false;
-            if (!autosave) await this.refreshDocuments();
-            return canonical;
-          } catch (error) {
-            const failed = { ...localUpdated, sync_status: 'failed', updated_at: new Date().toISOString() };
-            await upsertDocument(failed);
-            this.patchDocumentLocal(failed);
-            if (!autosave) this.error = error?.message || 'Failed to sync local PG document.';
-            this.docAutosaveState = 'error';
-            throw error;
-          }
+        return await savePromise;
+      } finally {
+        if (this.pgDocSavePromises?.[recordId] === savePromise) {
+          delete this.pgDocSavePromises[recordId];
         }
-        const pgWorkspaceContext = resolveTowerPgWorkspaceContext(this);
-        const contentPayload = await this.prepareDocumentContentForEnvelope({
-          record_id: item.record_id,
-          owner_npub: pgWorkspaceContext.workspaceOwnerNpub || ownerNpub,
-          title: nextTitle,
-        }, contentModel, [], item, { pgStorageContext: pgWorkspaceContext });
-        const updated = {
-          ...item,
-          title: nextTitle,
-          ...contentModel,
-          ...contentPayload,
-          references: nextReferences,
-          sync_status: 'pending',
-          updated_at: new Date().toISOString(),
-        };
-        await upsertDocument(updated);
-        this.patchDocumentLocal(updated);
-        const accepted = await updateTowerPgDocFromLocal(this, updated, item);
-        const canonical = {
-          ...accepted,
-          content: contentModel.content,
-          content_format: contentModel.content_format,
-          content_blocks: contentModel.content_blocks,
-          content_storage_object_id: contentPayload.content_storage_object_id,
-          content_storage_format: contentPayload.content_storage_format,
-          content_storage_content_type: contentPayload.content_storage_content_type,
-          content_size_bytes: contentPayload.content_size_bytes,
-          content_sha256_hex: contentPayload.content_sha256_hex,
-          content_storage_status: 'remote',
-          content_storage_error: null,
-          references: nextReferences,
-        };
-        await upsertDocument(canonical);
-        this.patchDocumentLocal(canonical);
-        this.docAutosaveState = 'saved';
-        this.docEditorSharesDirty = false;
-        if (!autosave) await this.refreshDocuments();
-        return canonical;
-      } catch (error) {
-        this.docAutosaveState = 'error';
-        if (!autosave) this.error = error?.message || 'Failed to save PG document.';
-        throw error;
       }
     }
     this.assertCanMutateLockManagedRecord(item, recordFamilyHash('document'), { autosave });
@@ -2622,6 +2524,146 @@ export const docsManagerMixin = {
           title: nextTitle,
           content: this.docEditorContent,
         }, error);
+      }
+      this.docAutosaveState = 'error';
+      throw error;
+    }
+  },
+
+  async saveSelectedPgDocItem(item, ownerNpub, options = {}) {
+    const autosave = options.autosave === true;
+    const allowStaleRetry = options.staleRetry !== false;
+    const nextTitle = this.docEditorTitle.trim() || 'Untitled document';
+    const contentModel = buildDocumentContentModel(this.docEditorBlocks);
+    const nextReferences = mergeDocumentSaveReferences(item, parseRecordReferencesFromText(contentModel.content));
+    const nextLinksSerialized = JSON.stringify(buildRecordLinkPayload({
+      ...item,
+      references: nextReferences,
+    }));
+    const currentLinksSerialized = JSON.stringify(buildRecordLinkPayload(item));
+    const hasChanges = nextTitle !== (item.title ?? 'Untitled document')
+      || (contentModel.content || '') !== (item.content || '')
+      || nextLinksSerialized !== currentLinksSerialized;
+    if (!hasChanges) {
+      this.docAutosaveState = 'saved';
+      return item;
+    }
+    const pgSession = getPgEditLeaseSession(this, 'document', item.record_id);
+    const pgLeaseToken = pgSession?.lease?.lease_token;
+    if (isSyncedPgRecord(item) && !pgLeaseToken) {
+      this.docAutosaveState = 'error';
+      if (!autosave) this.error = 'Acquire a PG edit lease before saving this document.';
+      return null;
+    }
+
+    this.docAutosaveState = autosave ? 'saving' : this.docAutosaveState;
+    try {
+      if (isUnsyncedLocalPgRecord(item)) {
+        const localUpdated = {
+          ...item,
+          title: nextTitle,
+          ...contentModel,
+          references: nextReferences,
+          sync_status: isOnlineForPgEdit() ? 'pending' : 'failed',
+          updated_at: new Date().toISOString(),
+        };
+        await upsertDocument(localUpdated);
+        this.patchDocumentLocal(localUpdated);
+        if (!isOnlineForPgEdit()) {
+          this.docAutosaveState = 'saved';
+          this.docEditorSharesDirty = false;
+          return localUpdated;
+        }
+        try {
+          const pgWorkspaceContext = resolveTowerPgWorkspaceContext(this);
+          const contentPayload = await this.prepareDocumentContentForEnvelope({
+            record_id: localUpdated.record_id,
+            owner_npub: pgWorkspaceContext.workspaceOwnerNpub || ownerNpub,
+            title: nextTitle,
+          }, contentModel, [], null, { pgStorageContext: pgWorkspaceContext });
+          const accepted = await createTowerPgDocFromLocal(this, {
+            ...localUpdated,
+            ...contentPayload,
+          });
+          const canonical = {
+            ...accepted,
+            content: contentModel.content,
+            content_format: contentModel.content_format,
+            content_blocks: contentModel.content_blocks,
+            content_storage_object_id: contentPayload.content_storage_object_id,
+            content_storage_format: contentPayload.content_storage_format,
+            content_storage_content_type: contentPayload.content_storage_content_type,
+            content_size_bytes: contentPayload.content_size_bytes,
+            content_sha256_hex: contentPayload.content_sha256_hex,
+            content_storage_status: 'remote',
+            content_storage_error: null,
+            references: nextReferences,
+          };
+          await upsertDocument(canonical);
+          this.patchDocumentLocal(canonical);
+          this.docAutosaveState = 'saved';
+          this.docEditorSharesDirty = false;
+          if (!autosave) await this.refreshDocuments();
+          return canonical;
+        } catch (error) {
+          const failed = { ...localUpdated, sync_status: 'failed', updated_at: new Date().toISOString() };
+          await upsertDocument(failed);
+          this.patchDocumentLocal(failed);
+          if (!autosave) this.error = error?.message || 'Failed to sync local PG document.';
+          this.docAutosaveState = 'error';
+          throw error;
+        }
+      }
+      const pgWorkspaceContext = resolveTowerPgWorkspaceContext(this);
+      const contentPayload = await this.prepareDocumentContentForEnvelope({
+        record_id: item.record_id,
+        owner_npub: pgWorkspaceContext.workspaceOwnerNpub || ownerNpub,
+        title: nextTitle,
+      }, contentModel, [], item, { pgStorageContext: pgWorkspaceContext });
+      const updated = {
+        ...item,
+        title: nextTitle,
+        ...contentModel,
+        ...contentPayload,
+        references: nextReferences,
+        sync_status: 'pending',
+        updated_at: new Date().toISOString(),
+      };
+      await upsertDocument(updated);
+      this.patchDocumentLocal(updated);
+      const accepted = await updateTowerPgDocFromLocal(this, updated, item);
+      const canonical = {
+        ...accepted,
+        content: contentModel.content,
+        content_format: contentModel.content_format,
+        content_blocks: contentModel.content_blocks,
+        content_storage_object_id: contentPayload.content_storage_object_id,
+        content_storage_format: contentPayload.content_storage_format,
+        content_storage_content_type: contentPayload.content_storage_content_type,
+        content_size_bytes: contentPayload.content_size_bytes,
+        content_sha256_hex: contentPayload.content_sha256_hex,
+        content_storage_status: 'remote',
+        content_storage_error: null,
+        references: nextReferences,
+      };
+      await upsertDocument(canonical);
+      this.patchDocumentLocal(canonical);
+      this.docAutosaveState = 'saved';
+      this.docEditorSharesDirty = false;
+      if (!autosave) await this.refreshDocuments();
+      return canonical;
+    } catch (error) {
+      if (allowStaleRetry && isPgStaleRowVersionError(error)) {
+        await this.refreshDocuments?.();
+        const fresh = this.documents.find((candidate) => candidate.record_id === item.record_id) || null;
+        const freshVersion = Number(fresh?.version || 0);
+        const previousVersion = Number(item.version || 0);
+        if (fresh && freshVersion > previousVersion) {
+          return this.saveSelectedPgDocItem(fresh, ownerNpub, { ...options, staleRetry: false });
+        }
+        if (!autosave) this.error = 'This document changed in Tower. Reload the document and save again.';
+      } else if (!autosave) {
+        this.error = error?.message || 'Failed to save PG document.';
       }
       this.docAutosaveState = 'error';
       throw error;

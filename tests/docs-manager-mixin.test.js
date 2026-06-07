@@ -11,6 +11,7 @@ const {
   releaseRecordCheckoutMock,
   acquireTowerPgEditLeaseMock,
   releaseTowerPgEditLeaseMock,
+  updateTowerPgDocMock,
   uploadStorageObjectMock,
 } = vi.hoisted(() => ({
   acquireRecordCheckoutMock: vi.fn(),
@@ -23,6 +24,7 @@ const {
   prepareTowerPgStorageObjectMock: vi.fn(),
   releaseRecordCheckoutMock: vi.fn(),
   releaseTowerPgEditLeaseMock: vi.fn(),
+  updateTowerPgDocMock: vi.fn(),
   uploadStorageObjectMock: vi.fn(),
 }));
 
@@ -51,6 +53,7 @@ vi.mock('../src/api.js', () => ({
   releaseRecordCheckout: releaseRecordCheckoutMock,
   releaseTowerPgEditLease: releaseTowerPgEditLeaseMock,
   renewTowerPgEditLease: vi.fn(),
+  updateTowerPgDoc: updateTowerPgDocMock,
   updateTowerPgTask: vi.fn(),
   updateTowerPgTaskState: vi.fn(),
   uploadStorageObject: uploadStorageObjectMock,
@@ -1145,6 +1148,93 @@ describe('docsManagerMixin canonical row normalization', () => {
       configurable: true,
       value: { onLine: true },
     });
+  });
+
+  it('refreshes and retries PG document saves after stale row_version conflicts', async () => {
+    const wsDb = openWorkspaceDb('npub1signedinactor');
+    await wsDb.open();
+    await Promise.all(wsDb.tables.map((table) => table.clear()));
+    isTowerPgBackendModeMock.mockReturnValue(true);
+    prepareTowerPgStorageObjectMock
+      .mockResolvedValueOnce({ object_id: 'storage-pg-doc-first', upload_url: '' })
+      .mockResolvedValueOnce({ object_id: 'storage-pg-doc-retry', upload_url: '' });
+    uploadStorageObjectMock.mockResolvedValue({});
+    completeStorageObjectMock.mockResolvedValue({});
+    const stale = new Error('Tower PG API 409 PATCH https://tower.example/docs/doc-1: {"code":"stale_row_version"}');
+    stale.status = 409;
+    stale.responseText = '{"code":"stale_row_version"}';
+    updateTowerPgDocMock
+      .mockRejectedValueOnce(stale)
+      .mockResolvedValueOnce({
+        doc: {
+          id: 'doc-1',
+          workspace_id: 'workspace-1',
+          scope_id: 'scope-1',
+          channel_id: 'channel-1',
+          storage_object_id: 'storage-pg-doc-retry',
+          title: 'Edited title',
+          summary: 'Edited body',
+          metadata: {},
+          row_version: 3,
+        },
+      });
+
+    const store = createStore({
+      workspaceOwnerNpub: 'npub1signedinactor',
+      backendUrl: 'https://tower.example',
+      currentWorkspace: {
+        workspaceId: 'workspace-1',
+        workspaceOwnerNpub: 'npub1pgworkspace',
+        directHttpsUrl: 'https://tower.example',
+        appNpub: 'flightdeck_pg',
+      },
+      documents: [{
+        record_id: 'doc-1',
+        owner_npub: 'npub1pgworkspace',
+        title: 'Original title',
+        content: 'Original body',
+        content_blocks: [{ id: 'block-1', type: 'markdown', text: 'Original body', attrs: {} }],
+        scope_id: 'scope-1',
+        scope_l1_id: 'scope-1',
+        pg_backend: true,
+        pg_record_type: 'doc',
+        pg_channel_id: 'channel-1',
+        sync_status: 'synced',
+        record_state: 'active',
+        version: 1,
+      }],
+      selectedDocType: 'document',
+      selectedDocId: 'doc-1',
+      pgEditLeaseSessions: {
+        'document:doc-1': { lease: { lease_token: 'lease-token' } },
+      },
+      refreshDocuments: vi.fn(async function refreshDocuments() {
+        this.patchDocumentLocal({
+          ...this.documents.find((item) => item.record_id === 'doc-1'),
+          title: 'Server title',
+          content: 'Server body',
+          sync_status: 'synced',
+          version: 2,
+        });
+        return this.documents;
+      }),
+    });
+    store.docEditorTitle = 'Edited title';
+    store.docEditorBlocks = [{ id: 'block-1', type: 'markdown', text: 'Edited body', attrs: {} }];
+
+    const saved = await store.saveSelectedDocItem({ autosave: false });
+
+    expect(updateTowerPgDocMock).toHaveBeenCalledTimes(2);
+    expect(updateTowerPgDocMock.mock.calls[0][2]).toMatchObject({ row_version: 1 });
+    expect(updateTowerPgDocMock.mock.calls[1][2]).toMatchObject({ row_version: 2 });
+    expect(saved).toMatchObject({
+      record_id: 'doc-1',
+      title: 'Edited title',
+      content: 'Edited body',
+      version: 3,
+      sync_status: 'synced',
+    });
+    expect(store.docAutosaveState).toBe('saved');
   });
 
   it('preserves non-writable delivery groups in canonical document rows', () => {

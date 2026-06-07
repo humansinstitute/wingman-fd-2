@@ -11,6 +11,7 @@ vi.mock('../src/api.js', async () => {
   return {
     ...actual,
     createTowerPgChannelGrant: vi.fn(),
+    createTowerPgWorkspaceMember: vi.fn(),
     getTowerPgChannelGrants: vi.fn(),
   };
 });
@@ -29,6 +30,7 @@ vi.mock('../src/pg-read-hydrator.js', async () => {
 
 import {
   createTowerPgChannelGrant,
+  createTowerPgWorkspaceMember,
   getTowerPgChannelGrants,
 } from '../src/api.js';
 import {
@@ -61,6 +63,7 @@ const channelsManagerSource = fs.readFileSync(
 beforeEach(() => {
   vi.clearAllMocks();
   createTowerPgChannelGrant.mockResolvedValue({ grant: { id: 'created-grant' } });
+  createTowerPgWorkspaceMember.mockResolvedValue({ actor: { actor_id: 'actor-new', npub: 'npub1recipient' } });
   getTowerPgChannelGrants.mockResolvedValue({ grants: [] });
   hydrateTowerPgAudioNotes.mockResolvedValue(undefined);
   hydrateTowerPgChannels.mockResolvedValue(undefined);
@@ -115,6 +118,9 @@ function createPgGrantStore(overrides = {}) {
     canAdminWorkspace: false,
     refreshGroups: vi.fn(),
     rememberPeople: vi.fn(),
+    getSenderName: vi.fn(() => ''),
+    pgWorkspaceMembers: [{ actor_id: 'actor-target', npub: 'npub1target' }],
+    publishPgOnboardingAnnouncementForGrant: vi.fn().mockResolvedValue({ status: 'published' }),
     ...overrides,
   });
 }
@@ -795,10 +801,12 @@ describe('channels-manager pure utilities', () => {
     });
 
     it('allows workspace admins to submit a typed actor grant payload', async () => {
+      const publishPgOnboardingAnnouncementForGrant = vi.fn().mockResolvedValue({ status: 'published' });
       const store = createPgGrantStore({
         canAdminWorkspace: true,
         channelGrants: [],
         channelGrantCapacity: 'contributor',
+        publishPgOnboardingAnnouncementForGrant,
       });
 
       await store.createChannelGrant();
@@ -811,6 +819,39 @@ describe('channels-manager pure utilities', () => {
         baseUrl: 'https://tower.example',
         appNpub: 'flightdeck-app',
       });
+      expect(publishPgOnboardingAnnouncementForGrant).toHaveBeenCalledWith({
+        recipientNpub: 'npub1target',
+        grantId: 'workspace-1:channel-1:actor-target',
+        reason: 'added_to_workspace_or_group',
+      });
+    });
+
+    it('publishes onboarding after a Tower PG workspace member grant succeeds', async () => {
+      const publishPgOnboardingAnnouncementForGrant = vi.fn().mockResolvedValue({ status: 'published' });
+      const store = createPgGrantStore({
+        canAdminWorkspace: true,
+        pgWorkspaceMemberNpub: 'npub1recipient',
+        groupEditPending: false,
+        publishPgOnboardingAnnouncementForGrant,
+      });
+
+      await store.addPgWorkspaceMember();
+
+      expect(createTowerPgWorkspaceMember).toHaveBeenCalledWith('workspace-1', {
+        member_npub: 'npub1recipient',
+        role: 'member',
+        kind: 'human',
+      }, {
+        baseUrl: 'https://tower.example',
+        appNpub: 'flightdeck-app',
+      });
+      expect(publishPgOnboardingAnnouncementForGrant).toHaveBeenCalledWith({
+        recipientNpub: 'npub1recipient',
+        grantId: 'workspace-1:workspace:npub1recipient',
+        reason: 'added_to_workspace_or_group',
+      });
+      expect(store.pgWorkspaceMemberNpub).toBe('');
+      expect(store.refreshGroups).toHaveBeenCalledWith({ force: true, minIntervalMs: 0 });
     });
 
     it('allows selected-channel managers to submit group grants', async () => {

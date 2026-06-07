@@ -678,6 +678,17 @@ export const channelsManagerMixin = {
         principal_id: principalId,
         permissions: permissionsForPgChannelCapacity(this.channelGrantCapacity),
       }, { baseUrl, appNpub });
+      if (principalType === 'actor' && typeof this.publishPgOnboardingAnnouncementForGrant === 'function') {
+        const recipientNpub = (this.pgWorkspaceMembers || [])
+          .find((member) => member.actor_id === principalId || member.id === principalId)?.npub || '';
+        if (recipientNpub) {
+          await this.publishPgOnboardingAnnouncementForGrant({
+            recipientNpub,
+            grantId: `${workspaceId}:${channelId}:${principalId}`,
+            reason: 'added_to_workspace_or_group',
+          });
+        }
+      }
       await this.refreshChannelGrants();
       await this.refreshPgChannelAccessMaterialization();
       this.channelGrantsNotice = 'Channel access updated.';
@@ -1441,6 +1452,13 @@ export const channelsManagerMixin = {
           await addTowerPgWorkspaceGroupMember(workspaceId, groupId, {
             member_npub: memberNpub,
           }, { baseUrl, appNpub });
+          if (typeof this.publishPgOnboardingAnnouncementForGrant === 'function') {
+            await this.publishPgOnboardingAnnouncementForGrant({
+              recipientNpub: memberNpub,
+              grantId: `${workspaceId}:${groupId}:${memberNpub}`,
+              reason: 'added_to_workspace_or_group',
+            });
+          }
         }
         await this.refreshGroups({ force: true, minIntervalMs: 0 });
         await this.rememberPeople(members.map((member) => member.npub), 'pg-group');
@@ -1532,6 +1550,13 @@ export const channelsManagerMixin = {
           await addTowerPgWorkspaceGroupMember(workspaceId, group.group_id, {
             member_npub: memberNpub,
           }, { baseUrl, appNpub });
+          if (typeof this.publishPgOnboardingAnnouncementForGrant === 'function') {
+            await this.publishPgOnboardingAnnouncementForGrant({
+              recipientNpub: memberNpub,
+              grantId: `${workspaceId}:${group.group_id}:${memberNpub}`,
+              reason: 'added_to_workspace_or_group',
+            });
+          }
         }
         for (const memberNpub of membersToRemove) {
           const actorId = actorIdByNpub.get(memberNpub)
@@ -1685,6 +1710,13 @@ export const channelsManagerMixin = {
         role: 'member',
         kind: 'human',
       }, { baseUrl, appNpub });
+      if (typeof this.publishPgOnboardingAnnouncementForGrant === 'function') {
+        await this.publishPgOnboardingAnnouncementForGrant({
+          recipientNpub: memberNpub,
+          grantId: `${workspaceId}:workspace:${memberNpub}`,
+          reason: 'added_to_workspace_or_group',
+        });
+      }
       this.pgWorkspaceMemberNpub = '';
       await this.refreshGroups({ force: true, minIntervalMs: 0 });
     } catch (error) {
@@ -1783,8 +1815,18 @@ export const channelsManagerMixin = {
           await addTowerPgWorkspaceGroupMember(workspaceId, groupId, {
             member_npub: inviteeNpub,
           }, { baseUrl, appNpub });
+          let announcementStatus = null;
+          if (typeof this.publishPgOnboardingAnnouncementForGrant === 'function') {
+            announcementStatus = await this.publishPgOnboardingAnnouncementForGrant({
+              recipientNpub: inviteeNpub,
+              grantId: `${workspaceId}:${groupId}:${inviteeNpub}`,
+              reason: 'added_to_workspace_or_group',
+            });
+          }
           await this.refreshGroups({ force: true, minIntervalMs: 0 });
-          this.shareInviteUrl = 'Member added to this PG workspace and group.';
+          this.shareInviteUrl = announcementStatus?.status === 'published'
+            ? 'Member added to this PG workspace and onboarding announcement published.'
+            : 'Member added to this PG workspace and group. Onboarding announcement needs retry.';
           return;
         }
         await this.addEncryptedGroupMember(groupId, inviteeNpub);
