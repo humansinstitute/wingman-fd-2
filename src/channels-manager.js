@@ -116,6 +116,17 @@ function groupSignature(group) {
   ].join('|');
 }
 
+function towerPgErrorCode(error) {
+  const text = String(error?.responseText || error?.message || '');
+  const jsonStart = text.indexOf('{');
+  if (jsonStart < 0) return '';
+  try {
+    return String(JSON.parse(text.slice(jsonStart))?.code || '').trim();
+  } catch {
+    return '';
+  }
+}
+
 function mapTowerPgActor(actor = {}) {
   const actorId = String(actor.actor_id || actor.id || '').trim();
   const npub = String(actor.npub || '').trim();
@@ -1471,7 +1482,9 @@ export const channelsManagerMixin = {
       this.showNewGroupModal = false;
       this.resetNewGroupDraft();
     } catch (error) {
-      this.error = error?.message || 'Failed to create group';
+      this.error = towerPgErrorCode(error) === 'duplicate_group'
+        ? 'A group with this name already exists.'
+        : (error?.message || 'Failed to create group');
     } finally {
       this.groupCreatePending = false;
     }

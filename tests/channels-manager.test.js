@@ -11,6 +11,7 @@ vi.mock('../src/api.js', async () => {
   return {
     ...actual,
     createTowerPgChannelGrant: vi.fn(),
+    createTowerPgWorkspaceGroup: vi.fn(),
     createTowerPgWorkspaceMember: vi.fn(),
     getTowerPgChannelGrants: vi.fn(),
   };
@@ -30,6 +31,7 @@ vi.mock('../src/pg-read-hydrator.js', async () => {
 
 import {
   createTowerPgChannelGrant,
+  createTowerPgWorkspaceGroup,
   createTowerPgWorkspaceMember,
   getTowerPgChannelGrants,
 } from '../src/api.js';
@@ -63,6 +65,7 @@ const channelsManagerSource = fs.readFileSync(
 beforeEach(() => {
   vi.clearAllMocks();
   createTowerPgChannelGrant.mockResolvedValue({ grant: { id: 'created-grant' } });
+  createTowerPgWorkspaceGroup.mockResolvedValue({ group: { id: 'group-new', group_id: 'group-new', name: 'New group' } });
   createTowerPgWorkspaceMember.mockResolvedValue({ actor: { actor_id: 'actor-new', npub: 'npub1recipient' } });
   getTowerPgChannelGrants.mockResolvedValue({ grants: [] });
   hydrateTowerPgAudioNotes.mockResolvedValue(undefined);
@@ -852,6 +855,35 @@ describe('channels-manager pure utilities', () => {
       });
       expect(store.pgWorkspaceMemberNpub).toBe('');
       expect(store.refreshGroups).toHaveBeenCalledWith({ force: true, minIntervalMs: 0 });
+    });
+
+    it('shows a clear message when creating a duplicate Tower PG group', async () => {
+      const duplicate = new Error('Tower PG API 409 POST https://tower.example/groups: {"code":"duplicate_group"}');
+      duplicate.status = 409;
+      duplicate.responseText = '{"code":"duplicate_group"}';
+      createTowerPgWorkspaceGroup.mockRejectedValueOnce(duplicate);
+      const store = createPgGrantStore({
+        canAdminWorkspace: true,
+        newGroupName: 'Managers',
+        newGroupMemberQuery: '',
+        newGroupMembers: [],
+        groupCreatePending: false,
+        showNewGroupModal: true,
+        consumeGroupMemberQuery: vi.fn(() => ({ members: [] })),
+        resetNewGroupDraft: vi.fn(),
+      });
+
+      await store.createSharingGroup();
+
+      expect(createTowerPgWorkspaceGroup).toHaveBeenCalledWith('workspace-1', {
+        name: 'Managers',
+        kind: 'custom',
+      }, {
+        baseUrl: 'https://tower.example',
+        appNpub: 'flightdeck-app',
+      });
+      expect(store.error).toBe('A group with this name already exists.');
+      expect(store.showNewGroupModal).toBe(true);
     });
 
     it('allows selected-channel managers to submit group grants', async () => {
