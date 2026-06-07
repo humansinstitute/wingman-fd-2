@@ -18,6 +18,7 @@ import { reactionsManagerMixin } from './reactions-manager.js';
 import { syncManagerMixin } from './sync-manager.js';
 import { peopleProfilesManagerMixin } from './people-profiles-manager.js';
 import { connectSettingsManagerMixin } from './connect-settings-manager.js';
+import { workspaceSelfIndexManagerMixin } from './workspace-self-index-manager.js';
 import { unreadStoreMixin } from './unread-store.js';
 import { flowsManagerMixin } from './flows-manager.js';
 import { personsManagerMixin } from './persons-manager.js';
@@ -817,6 +818,9 @@ export function initApp() {
     syncQuarantineBusy: false,
     syncQuarantineError: null,
     syncQuarantineNotice: '',
+    pgWorkspaceSelfIndexDiscovering: false,
+    pgWorkspaceSelfIndexError: null,
+    pgWorkspaceSelfIndexSummary: null,
 
     // Legacy workspace settings may still contain trigger rows; no runtime trigger publisher is mounted.
     workspaceTriggers: [],
@@ -1963,6 +1967,7 @@ export function initApp() {
         this.ownerNpub = this.currentWorkspaceOwnerNpub || this.superbasedConnectionConfig?.workspaceOwnerNpub || npub;
         this.resolveChatProfile(npub);
         await this.rememberPeople([npub], 'self');
+        await this.discoverPgWorkspaceSelfIndex();
         await this.loadRemoteWorkspaces();
         if (!this.selectedWorkspaceKey && this.currentWorkspaceOwnerNpub) {
           const legacyMatch = this.knownWorkspaces.find((workspace) => workspace.workspaceOwnerNpub === this.currentWorkspaceOwnerNpub) || null;
@@ -1999,6 +2004,7 @@ export function initApp() {
         await this.rememberPeople([npub], 'self');
         this.updateWorkspaceBootstrapPrompt();
 
+        await this.discoverPgWorkspaceSelfIndex();
         await this.loadRemoteWorkspaces();
         if (!this.selectedWorkspaceKey && this.currentWorkspaceOwnerNpub) {
           const legacyMatch = this.knownWorkspaces.find((workspace) => workspace.workspaceOwnerNpub === this.currentWorkspaceOwnerNpub) || null;
@@ -6457,6 +6463,7 @@ export function initApp() {
     syncManagerMixin,
     peopleProfilesManagerMixin,
     connectSettingsManagerMixin,
+    workspaceSelfIndexManagerMixin,
     channelsManagerMixin,
     scopesManagerMixin,
     docsManagerMixin,

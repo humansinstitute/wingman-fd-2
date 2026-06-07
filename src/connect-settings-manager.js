@@ -475,7 +475,7 @@ export const connectSettingsManagerMixin = {
     return { descriptor: verified, me };
   },
 
-  async rememberVerifiedPgWorkspace(descriptor, me = null) {
+  async rememberVerifiedPgWorkspace(descriptor, me = null, options = {}) {
     const sessionNpub = pgWorkspaceSessionNpubFromMe(me, this.session?.npub || '');
     if (!sessionNpub) throw new Error('Verified workspace descriptor is missing actor identity');
     if (this.session?.npub && sessionNpub !== this.session.npub) {
@@ -487,21 +487,29 @@ export const connectSettingsManagerMixin = {
       verifiedAt: new Date().toISOString(),
     }));
     if (!workspace) throw new Error('Verified workspace descriptor could not be stored');
-    this.backendUrl = normalizeBackendUrl(workspace.directHttpsUrl || this.backendUrl);
-    if (this.backendUrl) setBaseUrl(this.backendUrl);
+    const workspaceBackendUrl = normalizeBackendUrl(workspace.directHttpsUrl || this.backendUrl);
+    if (options.select !== false || !this.backendUrl) {
+      this.backendUrl = workspaceBackendUrl;
+      if (this.backendUrl) setBaseUrl(this.backendUrl);
+    }
     this.addKnownHost({
-      url: this.backendUrl,
-      label: workspace.towerName || workspace.directHttpsUrl || this.backendUrl,
+      url: workspaceBackendUrl,
+      label: workspace.towerName || workspace.directHttpsUrl || workspaceBackendUrl,
       serviceNpub: workspace.towerServiceNpub || workspace.serviceNpub,
       towerName: workspace.towerName,
       towerDescription: workspace.towerDescription,
     });
     this.mergeKnownWorkspaces([workspace]);
-    this.selectedWorkspaceKey = workspace.workspaceKey || '';
-    this.currentWorkspaceOwnerNpub = workspace.workspaceOwnerNpub;
-    this.ownerNpub = workspace.workspaceOwnerNpub;
-    this.superbasedTokenInput = '';
+    if (options.select !== false) {
+      this.selectedWorkspaceKey = workspace.workspaceKey || '';
+      this.currentWorkspaceOwnerNpub = workspace.workspaceOwnerNpub;
+      this.ownerNpub = workspace.workspaceOwnerNpub;
+      this.superbasedTokenInput = '';
+    }
     await this.saveSettings();
+    if (options.publishSelfIndex !== false && typeof this.publishPgWorkspaceSelfIndex === 'function') {
+      await this.publishPgWorkspaceSelfIndex(workspace);
+    }
     return workspace;
   },
 

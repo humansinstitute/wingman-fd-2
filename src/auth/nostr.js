@@ -395,6 +395,50 @@ export async function createNip98AuthHeaderForSecret(url, method, body = null, s
   return `Nostr ${btoa(JSON.stringify(signedEvent))}`;
 }
 
+export async function signNostrEvent(eventTemplate) {
+  const creds = await getStoredCredentials();
+  const authMethod = creds?.method;
+  if (!authMethod) throw new Error('No Nostr session available for event signing.');
+
+  if (authMethod === 'ephemeral' || authMethod === 'secret') {
+    let secret = getMemorySecret();
+    if (!secret && creds.secretHex) {
+      secret = hexToBytes(creds.secretHex);
+      setMemorySecret(secret);
+    }
+    if (!secret) throw new Error('No secret key available for event signing.');
+    const signedEvent = finalizeEvent(eventTemplate, secret);
+    await refreshCredentialExpiry();
+    return signedEvent;
+  }
+
+  if (authMethod === 'extension') {
+    const available = await waitForExtensionSigner();
+    if (!available) throw new Error('No NIP-07 browser extension found.');
+    const currentPubkey = await getExtensionPublicKey();
+    const expectedPubkey = getMemoryPubkey() || creds.pubkey || currentPubkey;
+    if (currentPubkey !== expectedPubkey) {
+      throw new Error('NIP-07 signer pubkey changed since login. Sign in again.');
+    }
+    const signedEvent = await signEventWithExtension({ ...eventTemplate, pubkey: currentPubkey });
+    if (signedEvent?.pubkey !== currentPubkey) {
+      throw new Error('NIP-07 signer returned a different pubkey than the active session. Sign in again.');
+    }
+    setMemoryPubkey(currentPubkey);
+    await refreshCredentialExpiry();
+    return signedEvent;
+  }
+
+  if (authMethod === 'bunker') {
+    const signer = await withBunkerSigner();
+    const signedEvent = await signer.signEvent(eventTemplate);
+    await refreshCredentialExpiry();
+    return signedEvent;
+  }
+
+  throw new Error(`Unsupported event signing method: ${authMethod}`);
+}
+
 async function withBunkerSigner() {
   let signer = getMemoryBunkerSigner();
   if (signer) return signer;

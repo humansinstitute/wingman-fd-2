@@ -230,6 +230,15 @@ export function normalizeWorkspaceEntry(raw = {}) {
     pgDescriptor: raw.pgDescriptor || raw.pg_descriptor || null,
     pgDescriptorVerifiedAt: String(raw.pgDescriptorVerifiedAt || raw.pg_descriptor_verified_at || '').trim() || null,
     pgMe: raw.pgMe || raw.pg_me || null,
+    pgSelfIndexStatus: String(raw.pgSelfIndexStatus || raw.pg_self_index_status || '').trim() || null,
+    pgSelfIndexError: String(raw.pgSelfIndexError || raw.pg_self_index_error || '').trim() || null,
+    pgSelfIndexPublishedAt: String(raw.pgSelfIndexPublishedAt || raw.pg_self_index_published_at || '').trim() || null,
+    pgSelfIndexFailedAt: String(raw.pgSelfIndexFailedAt || raw.pg_self_index_failed_at || '').trim() || null,
+    pgSelfIndexDiscoveredAt: String(raw.pgSelfIndexDiscoveredAt || raw.pg_self_index_discovered_at || '').trim() || null,
+    pgSelfIndexVerifiedAt: String(raw.pgSelfIndexVerifiedAt || raw.pg_self_index_verified_at || '').trim() || null,
+    pgSelfIndexStaleAt: String(raw.pgSelfIndexStaleAt || raw.pg_self_index_stale_at || '').trim() || null,
+    pgSelfIndexEventId: String(raw.pgSelfIndexEventId || raw.pg_self_index_event_id || '').trim() || null,
+    pgSelfIndexRelays: sanitizeRelayUrls(raw.pgSelfIndexRelays ?? raw.pg_self_index_relays),
     capabilities: Array.isArray(raw.capabilities) ? raw.capabilities : [],
     towerName,
     towerDescription,
@@ -271,6 +280,14 @@ function normalizeWorkspacePatch(raw = {}) {
     [['pgDescriptor', 'pg_descriptor'], 'pgDescriptor'],
     [['pgDescriptorVerifiedAt', 'pg_descriptor_verified_at'], 'pgDescriptorVerifiedAt'],
     [['pgMe', 'pg_me'], 'pgMe'],
+    [['pgSelfIndexStatus', 'pg_self_index_status'], 'pgSelfIndexStatus'],
+    [['pgSelfIndexError', 'pg_self_index_error'], 'pgSelfIndexError'],
+    [['pgSelfIndexPublishedAt', 'pg_self_index_published_at'], 'pgSelfIndexPublishedAt'],
+    [['pgSelfIndexFailedAt', 'pg_self_index_failed_at'], 'pgSelfIndexFailedAt'],
+    [['pgSelfIndexDiscoveredAt', 'pg_self_index_discovered_at'], 'pgSelfIndexDiscoveredAt'],
+    [['pgSelfIndexVerifiedAt', 'pg_self_index_verified_at'], 'pgSelfIndexVerifiedAt'],
+    [['pgSelfIndexStaleAt', 'pg_self_index_stale_at'], 'pgSelfIndexStaleAt'],
+    [['pgSelfIndexEventId', 'pg_self_index_event_id'], 'pgSelfIndexEventId'],
     [['capabilities'], 'capabilities'],
     [['towerName', 'tower_name'], 'towerName'],
     [['towerDescription', 'tower_description'], 'towerDescription'],
@@ -291,6 +308,7 @@ function normalizeWorkspacePatch(raw = {}) {
     if (firstOwnValue(raw, keys).found) patch[normalizedKey] = normalized[normalizedKey];
   }
   if (firstOwnValue(raw, ['relayUrls', 'relay_urls']).found) patch.relayUrls = normalized.relayUrls;
+  if (firstOwnValue(raw, ['pgSelfIndexRelays', 'pg_self_index_relays']).found) patch.pgSelfIndexRelays = normalized.pgSelfIndexRelays;
 
   return patch;
 }

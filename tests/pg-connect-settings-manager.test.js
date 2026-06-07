@@ -106,6 +106,27 @@ describe('PG connect settings manager', () => {
     );
   });
 
+  it('publishes a 33356 self-index after a verified PG descriptor is remembered', async () => {
+    const api = await import('../src/api.js');
+    api.getTowerPgWorkspaceDescriptor.mockResolvedValue(descriptor);
+    api.getTowerPgWorkspaceMe.mockResolvedValue({ actor: { npub: 'npub1user' }, membership: { role: 'member' } });
+    const { connectSettingsManagerMixin } = await import('../src/connect-settings-manager.js');
+    const publishPgWorkspaceSelfIndex = vi.fn().mockResolvedValue(null);
+    const store = createStore({ publishPgWorkspaceSelfIndex });
+    Object.defineProperties(store, Object.getOwnPropertyDescriptors(connectSettingsManagerMixin));
+
+    await store.connectWithPgDescriptor(JSON.stringify(descriptor));
+
+    expect(publishPgWorkspaceSelfIndex).toHaveBeenCalledWith(expect.objectContaining({
+      workspaceKey: 'pg:npub1user::tower:npub1tower::workspace:npub1workspace::app:flightdeck_pg',
+      pgBackendMode: true,
+    }));
+    expect(store.knownWorkspaces[0]).toMatchObject({
+      workspaceOwnerNpub: 'npub1owner',
+      pgBackendMode: true,
+    });
+  });
+
   it('does not call Tower PG routes when no Nostr session exists', async () => {
     const api = await import('../src/api.js');
     const { connectSettingsManagerMixin } = await import('../src/connect-settings-manager.js');
