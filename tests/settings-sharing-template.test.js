@@ -25,6 +25,8 @@ describe('settings sharing template', () => {
     expect(html).toContain('@click="$store.chat.addPgWorkspaceMember()"');
     expect(html).toContain('@click="$store.chat.openSettingsTab(\'sharing\')"');
     expect(html).toContain('x-show="$store.chat.groupsLoading">Loading members and groups…</p>');
+    expect(html).toContain('$store.chat.getPgGroupMemberCandidates(group.group_id)');
+    expect(html).toContain('@click="$store.chat.addPgGroupMember(group.group_id)"');
     expect(html).toContain('$store.chat.getPgChildGroupCandidates(group.group_id)');
     expect(html).toContain('@click="$store.chat.addPgChildGroup(group.group_id)"');
     expect(html).toContain('@click="$store.chat.removePgChildGroup(group.group_id, childGroupId)"');

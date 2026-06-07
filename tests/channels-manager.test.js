@@ -10,6 +10,7 @@ vi.mock('../src/api.js', async () => {
   const actual = await vi.importActual('../src/api.js');
   return {
     ...actual,
+    addTowerPgWorkspaceGroupMember: vi.fn(),
     createTowerPgChannelGrant: vi.fn(),
     createTowerPgWorkspaceGroup: vi.fn(),
     createTowerPgWorkspaceMember: vi.fn(),
@@ -31,6 +32,7 @@ vi.mock('../src/pg-read-hydrator.js', async () => {
 });
 
 import {
+  addTowerPgWorkspaceGroupMember,
   createTowerPgChannelGrant,
   createTowerPgWorkspaceGroup,
   createTowerPgWorkspaceMember,
@@ -69,6 +71,7 @@ beforeEach(() => {
   createTowerPgChannelGrant.mockResolvedValue({ grant: { id: 'created-grant' } });
   createTowerPgWorkspaceGroup.mockResolvedValue({ group: { id: 'group-new', group_id: 'group-new', name: 'New group' } });
   createTowerPgWorkspaceMember.mockResolvedValue({ actor: { actor_id: 'actor-new', npub: 'npub1recipient' } });
+  addTowerPgWorkspaceGroupMember.mockResolvedValue({ membership: { id: 'membership-new' } });
   getTowerPgChannelGrants.mockResolvedValue({ grants: [] });
   getTowerPgWorkspaceMembers.mockResolvedValue({ members: [] });
   hydrateTowerPgAudioNotes.mockResolvedValue(undefined);
@@ -126,6 +129,7 @@ function createPgGrantStore(overrides = {}) {
     rememberPeople: vi.fn(),
     getSenderName: vi.fn(() => ''),
     pgWorkspaceMembers: [{ actor_id: 'actor-target', npub: 'npub1target' }],
+    pgGroupMemberDrafts: {},
     publishPgOnboardingAnnouncementForGrant: vi.fn().mockResolvedValue({ status: 'published' }),
     ...overrides,
   });
@@ -857,6 +861,58 @@ describe('channels-manager pure utilities', () => {
         reason: 'added_to_workspace_or_group',
       });
       expect(store.pgWorkspaceMemberNpub).toBe('');
+      expect(store.refreshGroups).toHaveBeenCalledWith({ force: true, minIntervalMs: 0 });
+    });
+
+    it('offers workspace members that are not already in the PG group', () => {
+      const store = createPgGrantStore({
+        groups: [{
+          group_id: 'group-1',
+          owner_npub: 'npub1workspace',
+          member_npubs: ['npub1existing'],
+        }],
+        currentWorkspaceGroups: [{
+          group_id: 'group-1',
+          owner_npub: 'npub1workspace',
+          member_npubs: ['npub1existing'],
+        }],
+        pgWorkspaceMembers: [
+          { actor_id: 'actor-existing', npub: 'npub1existing' },
+          { actor_id: 'actor-new', npub: 'npub1newmember' },
+        ],
+        getSenderName: vi.fn((npub) => npub === 'npub1newmember' ? 'New Member' : npub),
+      });
+
+      expect(store.getPgGroupMemberCandidates('group-1')).toEqual([{
+        npub: 'npub1newmember',
+        label: 'New Member',
+        role: 'member',
+      }]);
+    });
+
+    it('adds an existing workspace member to a Tower PG group', async () => {
+      const publishPgOnboardingAnnouncementForGrant = vi.fn().mockResolvedValue({ status: 'published' });
+      const store = createPgGrantStore({
+        canAdminWorkspace: true,
+        pgGroupMemberDrafts: { 'group-1': 'npub1recipient' },
+        groupEditPending: false,
+        publishPgOnboardingAnnouncementForGrant,
+      });
+
+      await store.addPgGroupMember('group-1');
+
+      expect(addTowerPgWorkspaceGroupMember).toHaveBeenCalledWith('workspace-1', 'group-1', {
+        member_npub: 'npub1recipient',
+      }, {
+        baseUrl: 'https://tower.example',
+        appNpub: 'flightdeck-app',
+      });
+      expect(publishPgOnboardingAnnouncementForGrant).toHaveBeenCalledWith({
+        recipientNpub: 'npub1recipient',
+        grantId: 'workspace-1:group-1:npub1recipient',
+        reason: 'added_to_workspace_or_group',
+      });
+      expect(store.pgGroupMemberDrafts['group-1']).toBe('');
       expect(store.refreshGroups).toHaveBeenCalledWith({ force: true, minIntervalMs: 0 });
     });
 

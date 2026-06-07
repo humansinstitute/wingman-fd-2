@@ -7392,11 +7392,23 @@
                         </div>
                       </div>
                     </template>
-                  </div>
-                  <template x-if="$store.chat.isTowerPgMode">
-                    <div class="group-card-members">
-                      <div class="scope-field">
-                        <label class="scope-field-label">Nested groups</label>
+	                  </div>
+	                  <template x-if="$store.chat.isTowerPgMode">
+	                    <div class="group-card-members">
+	                      <div class="scope-field">
+	                        <label class="scope-field-label">Add workspace member</label>
+	                        <div style="display: flex; gap: 0.5rem; align-items: center;">
+	                          <select class="new-group-input" :value="$store.chat.pgGroupMemberDrafts[group.group_id] || ''" @change="$store.chat.handlePgGroupMemberSelection(group.group_id, $event.target.value)" :disabled="$store.chat.groupActionsLocked || $store.chat.getPgGroupMemberCandidates(group.group_id).length === 0">
+	                            <option value="" x-text="$store.chat.getPgGroupMemberCandidates(group.group_id).length === 0 ? 'No workspace members available…' : 'Select member…'"></option>
+	                            <template x-for="candidate in $store.chat.getPgGroupMemberCandidates(group.group_id)" :key="`${group.group_id}-member-${candidate.npub}`">
+	                              <option :value="candidate.npub" x-text="candidate.label"></option>
+	                            </template>
+	                          </select>
+	                          <button type="button" class="btn-confirm" @click="$store.chat.addPgGroupMember(group.group_id)" :disabled="$store.chat.groupActionsLocked || !($store.chat.pgGroupMemberDrafts[group.group_id] || '')">Add</button>
+	                        </div>
+	                      </div>
+	                      <div class="scope-field">
+	                        <label class="scope-field-label">Nested groups</label>
                         <div class="scope-groups-list" x-show="(group.child_group_ids || []).length > 0">
                           <template x-for="childGroupId in (group.child_group_ids || [])" :key="`${group.group_id}-child-${childGroupId}`">
                             <div class="scope-group-chip">

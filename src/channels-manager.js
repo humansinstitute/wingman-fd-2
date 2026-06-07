@@ -1707,6 +1707,19 @@ export const channelsManagerMixin = {
       );
   },
 
+  getPgGroupMemberCandidates(groupId) {
+    const targetGroupId = String(groupId || '').trim();
+    const group = this.groups.find((item) => item.group_id === targetGroupId || item.group_npub === targetGroupId);
+    const existingMembers = new Set((group?.member_npubs || []).map((member) => String(member || '').trim()).filter(Boolean));
+    return (this.pgWorkspaceMembers || [])
+      .filter((member) => member?.npub && !existingMembers.has(member.npub))
+      .map((member) => ({
+        npub: member.npub,
+        label: this.getPgWorkspaceMemberLabel(member),
+        role: member.role || 'member',
+      }));
+  },
+
   getPgGroupLabel(groupId) {
     const id = String(groupId || '').trim();
     return this.groups.find((group) => group.group_id === id)?.name || id;
@@ -1716,6 +1729,15 @@ export const channelsManagerMixin = {
     this.pgChildGroupDrafts = {
       ...(this.pgChildGroupDrafts || {}),
       [parentGroupId]: String(childGroupId || '').trim(),
+    };
+  },
+
+  handlePgGroupMemberSelection(groupId, memberNpub) {
+    const id = String(groupId || '').trim();
+    if (!id) return;
+    this.pgGroupMemberDrafts = {
+      ...(this.pgGroupMemberDrafts || {}),
+      [id]: String(memberNpub || '').trim(),
     };
   },
 
@@ -1751,6 +1773,39 @@ export const channelsManagerMixin = {
       await this.refreshGroups({ force: true, minIntervalMs: 0 });
     } catch (error) {
       this.error = error?.message || 'Failed to add workspace member';
+    } finally {
+      this.groupEditPending = false;
+    }
+  },
+
+  async addPgGroupMember(groupId) {
+    if (!isTowerPgBackendMode()) return;
+    if (!this.canAdminWorkspace) {
+      this.error = 'Only workspace admins can add group members.';
+      return;
+    }
+    const targetGroupId = String(groupId || '').trim();
+    const memberNpub = String(this.pgGroupMemberDrafts?.[targetGroupId] || '').trim();
+    if (!targetGroupId || !memberNpub) return;
+    this.groupEditPending = true;
+    this.error = null;
+    try {
+      const { workspaceId, baseUrl, appNpub } = resolveTowerPgWorkspaceContext(this);
+      if (!workspaceId || !baseUrl) throw new Error('Flight Deck PG workspace is not connected');
+      await addTowerPgWorkspaceGroupMember(workspaceId, targetGroupId, {
+        member_npub: memberNpub,
+      }, { baseUrl, appNpub });
+      if (typeof this.publishPgOnboardingAnnouncementForGrant === 'function') {
+        await this.publishPgOnboardingAnnouncementForGrant({
+          recipientNpub: memberNpub,
+          grantId: `${workspaceId}:${targetGroupId}:${memberNpub}`,
+          reason: 'added_to_workspace_or_group',
+        });
+      }
+      this.pgGroupMemberDrafts = { ...(this.pgGroupMemberDrafts || {}), [targetGroupId]: '' };
+      await this.refreshGroups({ force: true, minIntervalMs: 0 });
+    } catch (error) {
+      this.error = error?.message || 'Failed to add group member';
     } finally {
       this.groupEditPending = false;
     }

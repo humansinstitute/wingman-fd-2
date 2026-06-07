@@ -750,6 +750,7 @@ export function initApp() {
     shareInviteCopied: false,
     pgWorkspaceMembers: [],
     pgWorkspaceMemberNpub: '',
+    pgGroupMemberDrafts: {},
     pgChildGroupDrafts: {},
     showNewChannelModal: false,
     newChannelMode: 'dm',
