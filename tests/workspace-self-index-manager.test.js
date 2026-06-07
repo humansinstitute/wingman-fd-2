@@ -151,6 +151,36 @@ describe('workspace self-index manager', () => {
     });
   });
 
+  it('backfills known PG workspaces that were connected before 33356 support existed', async () => {
+    publishWorkspaceSelfIndexMock.mockResolvedValue({
+      event: { id: 'event-backfill' },
+      acceptedRelays: ['wss://relay.test'],
+      publishedAt: '2026-06-07T00:00:00.000Z',
+    });
+    const store = await bindStore({
+      knownWorkspaces: [
+        { ...workspace, pgSelfIndexStatus: null },
+        { ...workspace, workspaceKey: 'pg:indexed', pgSelfIndexStatus: 'indexed' },
+        { ...workspace, workspaceKey: 'pg:other-user', pgSessionNpub: 'npub1other', pgSelfIndexStatus: null },
+      ],
+    });
+
+    const summary = await store.ensureKnownPgWorkspacesSelfIndexed();
+
+    expect(summary).toEqual({ queued: 1 });
+    expect(store.knownWorkspaces.find((entry) => entry.workspaceKey === workspace.workspaceKey)).toMatchObject({
+      pgSelfIndexStatus: 'pending',
+      pgSelfIndexError: null,
+    });
+    await Promise.resolve();
+    await store.pgWorkspaceSelfIndexPublishPromise;
+    expect(publishWorkspaceSelfIndexMock).toHaveBeenCalledTimes(1);
+    expect(store.knownWorkspaces.find((entry) => entry.workspaceKey === workspace.workspaceKey)).toMatchObject({
+      pgSelfIndexStatus: 'indexed',
+      pgSelfIndexEventId: 'event-backfill',
+    });
+  });
+
   it('verifies discovered locators through Tower and merges them into knownWorkspaces', async () => {
     const store = await bindStore({ knownWorkspaces: [] });
     const candidate = {

@@ -76,6 +76,22 @@ export const workspaceSelfIndexManagerMixin = {
     return task;
   },
 
+  async ensureKnownPgWorkspacesSelfIndexed() {
+    if (!isTowerPgBackendMode() || !this.session?.npub) return { queued: 0 };
+    const candidates = (this.knownWorkspaces || []).filter((workspace) =>
+      workspace?.pgBackendMode
+      && workspace.pgSessionNpub === this.session.npub
+      && !['pending', 'indexed', 'verified', 'stale'].includes(String(workspace.pgSelfIndexStatus || '').trim())
+    );
+    let queued = 0;
+    for (const workspace of candidates) {
+      const pending = await this.markPgWorkspaceSelfIndexPending(workspace);
+      this.schedulePgWorkspaceSelfIndexPublish(pending || workspace);
+      queued += 1;
+    }
+    return { queued };
+  },
+
   async publishPgWorkspaceSelfIndex(workspace) {
     if (!isTowerPgBackendMode() || !workspace?.pgBackendMode || !this.session?.npub) return null;
     try {
@@ -169,11 +185,13 @@ export const workspaceSelfIndexManagerMixin = {
         }
       }
       this.pgWorkspaceSelfIndexSummary = summary;
+      await this.ensureKnownPgWorkspacesSelfIndexed();
       return summary;
     } catch (error) {
       summary.failed += 1;
       this.pgWorkspaceSelfIndexError = errorMessage(error);
       this.pgWorkspaceSelfIndexSummary = summary;
+      await this.ensureKnownPgWorkspacesSelfIndexed();
       return summary;
     } finally {
       this.pgWorkspaceSelfIndexDiscovering = false;

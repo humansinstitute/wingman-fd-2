@@ -1326,6 +1326,7 @@ export function initApp() {
 
     get canCurrentActorEditSelectedLockManagedRecord() {
       if (!this.selectedDocRequiresCheckout) return true;
+      if (isTowerPgBackendMode() && this.selectedDocument?.pg_backend) return true;
       return typeof this.canCurrentActorAcquireCheckoutRequiredRecord === 'function'
         ? this.canCurrentActorAcquireCheckoutRequiredRecord()
         : false;
