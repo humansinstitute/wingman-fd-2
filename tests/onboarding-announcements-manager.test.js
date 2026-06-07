@@ -64,6 +64,8 @@ function createStore(overrides = {}) {
     backendUrl: 'https://tower.example',
     superbasedTokenInput: 'connection-token',
     pgOnboardingAnnouncementStatuses: [],
+    selectedWorkspaceKey: '',
+    currentWorkspaceOwnerNpub: '',
     verifyPgDescriptor: vi.fn().mockResolvedValue({
       descriptor,
       me: { actor: { npub: 'npub1user' }, membership: { role: 'member' } },
@@ -165,6 +167,8 @@ describe('onboarding announcements manager', () => {
       publishSelfIndex: false,
     });
     expect(summary.verified).toBe(1);
+    expect(store.selectedWorkspaceKey).toBe(workspace.workspaceKey);
+    expect(store.currentWorkspaceOwnerNpub).toBe(workspace.workspaceOwnerNpub);
   });
 
   it('keeps stale onboarding events diagnostic-only when Tower rejects access', async () => {
@@ -189,5 +193,28 @@ describe('onboarding announcements manager', () => {
       eventId: 'event-stale',
       error: 'Tower PG API 403',
     });
+  });
+
+  it('surfaces relay events that were fetched but rejected before import', async () => {
+    queryOnboardingAnnouncementCandidatesMock.mockResolvedValue({
+      events: [{ id: 'event-encrypted' }],
+      candidates: [],
+      rejected: [{
+        eventId: 'event-encrypted',
+        error: 'NIP-44 decrypt failed',
+      }],
+    });
+    const store = await bindStore({ knownWorkspaces: [] });
+
+    const summary = await store.discoverPgOnboardingAnnouncements();
+
+    expect(summary.eventsSeen).toBe(1);
+    expect(summary.discovered).toBe(0);
+    expect(summary.rejected[0]).toMatchObject({
+      eventId: 'event-encrypted',
+      error: 'NIP-44 decrypt failed',
+    });
+    expect(store.pgOnboardingAnnouncementError).toContain('Found 1 onboarding event');
+    expect(store.rememberVerifiedPgWorkspace).not.toHaveBeenCalled();
   });
 });

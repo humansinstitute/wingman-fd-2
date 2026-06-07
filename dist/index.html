@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-CpaYuwbi.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-BfuzgtKj.css">
+  <script type="module" crossorigin src="/assets/index-Cvdjcb5g.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-CJMU4u35.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -796,7 +796,29 @@
                   </button>
                 </template>
               </div>
-              <p class="sidebar-workspace-empty" x-show="$store.chat.knownWorkspaces.length === 0">No workspaces yet.</p>
+              <div class="sidebar-workspace-empty-panel" x-show="$store.chat.knownWorkspaces.length === 0">
+                <p class="sidebar-workspace-empty">No workspaces yet.</p>
+                <p
+                  class="sidebar-workspace-discovery"
+                  x-show="$store.chat.pgOnboardingAnnouncementDiscovering || $store.chat.pgWorkspaceSelfIndexDiscovering"
+                >Checking Nostr workspace events...</p>
+                <p
+                  class="sidebar-workspace-discovery"
+                  x-show="($store.chat.pgOnboardingAnnouncementSummary?.eventsSeen || 0) > 0 || ($store.chat.pgWorkspaceSelfIndexSummary?.eventsSeen || 0) > 0"
+                  x-text="'Nostr events found: ' + (($store.chat.pgOnboardingAnnouncementSummary?.eventsSeen || 0) + ($store.chat.pgWorkspaceSelfIndexSummary?.eventsSeen || 0)) + '. Accepted: ' + (($store.chat.pgOnboardingAnnouncementSummary?.verified || 0) + ($store.chat.pgWorkspaceSelfIndexSummary?.verified || 0)) + '.'"
+                ></p>
+                <p
+                  class="sidebar-workspace-discovery sidebar-workspace-discovery-error"
+                  x-show="$store.chat.pgOnboardingAnnouncementError || $store.chat.pgWorkspaceSelfIndexError"
+                  x-text="$store.chat.pgOnboardingAnnouncementError || $store.chat.pgWorkspaceSelfIndexError"
+                ></p>
+                <button
+                  type="button"
+                  class="sidebar-workspace-discovery-button"
+                  @click="$store.chat.refreshPgNostrWorkspaceDiscovery()"
+                  :disabled="$store.chat.pgOnboardingAnnouncementDiscovering || $store.chat.pgWorkspaceSelfIndexDiscovering"
+                >Check Nostr events</button>
+              </div>
               <button type="button" class="sidebar-workspace-create" @click="$store.chat.openConnectModal()">
                 Add workspace...
               </button>

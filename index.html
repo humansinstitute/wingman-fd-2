@@ -794,7 +794,29 @@
                   </button>
                 </template>
               </div>
-              <p class="sidebar-workspace-empty" x-show="$store.chat.knownWorkspaces.length === 0">No workspaces yet.</p>
+              <div class="sidebar-workspace-empty-panel" x-show="$store.chat.knownWorkspaces.length === 0">
+                <p class="sidebar-workspace-empty">No workspaces yet.</p>
+                <p
+                  class="sidebar-workspace-discovery"
+                  x-show="$store.chat.pgOnboardingAnnouncementDiscovering || $store.chat.pgWorkspaceSelfIndexDiscovering"
+                >Checking Nostr workspace events...</p>
+                <p
+                  class="sidebar-workspace-discovery"
+                  x-show="($store.chat.pgOnboardingAnnouncementSummary?.eventsSeen || 0) > 0 || ($store.chat.pgWorkspaceSelfIndexSummary?.eventsSeen || 0) > 0"
+                  x-text="'Nostr events found: ' + (($store.chat.pgOnboardingAnnouncementSummary?.eventsSeen || 0) + ($store.chat.pgWorkspaceSelfIndexSummary?.eventsSeen || 0)) + '. Accepted: ' + (($store.chat.pgOnboardingAnnouncementSummary?.verified || 0) + ($store.chat.pgWorkspaceSelfIndexSummary?.verified || 0)) + '.'"
+                ></p>
+                <p
+                  class="sidebar-workspace-discovery sidebar-workspace-discovery-error"
+                  x-show="$store.chat.pgOnboardingAnnouncementError || $store.chat.pgWorkspaceSelfIndexError"
+                  x-text="$store.chat.pgOnboardingAnnouncementError || $store.chat.pgWorkspaceSelfIndexError"
+                ></p>
+                <button
+                  type="button"
+                  class="sidebar-workspace-discovery-button"
+                  @click="$store.chat.refreshPgNostrWorkspaceDiscovery()"
+                  :disabled="$store.chat.pgOnboardingAnnouncementDiscovering || $store.chat.pgWorkspaceSelfIndexDiscovering"
+                >Check Nostr events</button>
+              </div>
               <button type="button" class="sidebar-workspace-create" @click="$store.chat.openConnectModal()">
                 Add workspace...
               </button>

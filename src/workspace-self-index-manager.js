@@ -148,12 +148,13 @@ export const workspaceSelfIndexManagerMixin = {
 
   async discoverPgWorkspaceSelfIndex({ candidates = null } = {}) {
     if (!isTowerPgBackendMode() || !this.session?.npub) {
-      return { discovered: 0, verified: 0, stale: 0, failed: 0 };
+      return { discovered: 0, eventsSeen: 0, verified: 0, stale: 0, failed: 0 };
     }
     this.pgWorkspaceSelfIndexDiscovering = true;
     this.pgWorkspaceSelfIndexError = null;
     const summary = {
       discovered: 0,
+      eventsSeen: 0,
       verified: 0,
       stale: 0,
       failed: 0,
@@ -168,8 +169,12 @@ export const workspaceSelfIndexManagerMixin = {
           relayUrls: this.workspaceSelfIndexRelayUrls(),
           appPubkeyHex: flightDeckSelfIndexAppPubkeyHex(APP_NPUB),
         });
+      summary.eventsSeen = discovered.events?.length || discovered.candidates.length || 0;
       summary.discovered = discovered.candidates.length;
       summary.rejected.push(...(discovered.rejected || []));
+      if (summary.eventsSeen > 0 && summary.discovered === 0 && summary.rejected.length > 0) {
+        this.pgWorkspaceSelfIndexError = `Found ${summary.eventsSeen} workspace index event${summary.eventsSeen === 1 ? '' : 's'} but none could be decrypted or accepted. Check this browser's Nostr signer and relay access.`;
+      }
 
       for (const candidate of discovered.candidates) {
         const locator = candidate.locator;
@@ -181,6 +186,10 @@ export const workspaceSelfIndexManagerMixin = {
             select: false,
             publishSelfIndex: false,
           });
+          if (!this.selectedWorkspaceKey && workspace?.workspaceKey) {
+            this.selectedWorkspaceKey = workspace.workspaceKey;
+            this.currentWorkspaceOwnerNpub = workspace.workspaceOwnerNpub || this.currentWorkspaceOwnerNpub;
+          }
           await this.persistWorkspaceSelfIndexPatch(workspace, {
             pgSelfIndexStatus: 'verified',
             pgSelfIndexDiscoveredAt: timestamp(),

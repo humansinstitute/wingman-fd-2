@@ -60,6 +60,8 @@ function createStore(overrides = {}) {
     session: { npub: 'npub1user', pubkey: 'a'.repeat(64) },
     currentWorkspace: null,
     knownWorkspaces: [workspace],
+    selectedWorkspaceKey: '',
+    currentWorkspaceOwnerNpub: '',
     persistWorkspaceSettings: vi.fn().mockResolvedValue(undefined),
     verifyPgDescriptor: vi.fn().mockResolvedValue({
       descriptor,
@@ -242,6 +244,8 @@ describe('workspace self-index manager', () => {
       publishSelfIndex: false,
     });
     expect(summary.verified).toBe(1);
+    expect(store.selectedWorkspaceKey).toBe(workspace.workspaceKey);
+    expect(store.currentWorkspaceOwnerNpub).toBe(workspace.workspaceOwnerNpub);
     expect(store.knownWorkspaces[0]).toMatchObject({
       pgSelfIndexStatus: 'verified',
       pgSelfIndexEventId: 'event-1',
@@ -269,5 +273,28 @@ describe('workspace self-index manager', () => {
       pgSelfIndexStatus: 'stale',
       pgSelfIndexError: 'Tower PG API 403',
     });
+  });
+
+  it('surfaces relay self-index events that were fetched but rejected before import', async () => {
+    queryWorkspaceSelfIndexCandidatesMock.mockResolvedValue({
+      events: [{ id: 'event-self-index' }],
+      candidates: [],
+      rejected: [{
+        eventId: 'event-self-index',
+        error: 'NIP-44 decrypt failed',
+      }],
+    });
+    const store = await bindStore({ knownWorkspaces: [] });
+
+    const summary = await store.discoverPgWorkspaceSelfIndex();
+
+    expect(summary.eventsSeen).toBe(1);
+    expect(summary.discovered).toBe(0);
+    expect(summary.rejected[0]).toMatchObject({
+      eventId: 'event-self-index',
+      error: 'NIP-44 decrypt failed',
+    });
+    expect(store.pgWorkspaceSelfIndexError).toContain('Found 1 workspace index event');
+    expect(store.rememberVerifiedPgWorkspace).not.toHaveBeenCalled();
   });
 });

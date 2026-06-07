@@ -47,6 +47,21 @@ function buildConnectionToken(workspace = {}, backendUrl = '') {
 }
 
 export const onboardingAnnouncementsManagerMixin = {
+  async refreshPgNostrWorkspaceDiscovery() {
+    const onboarding = await this.discoverPgOnboardingAnnouncements?.();
+    const selfIndex = await this.discoverPgWorkspaceSelfIndex?.();
+    await this.loadRemoteWorkspaces?.();
+    if (!this.selectedWorkspaceKey && this.knownWorkspaces?.length > 0) {
+      this.selectedWorkspaceKey = this.knownWorkspaces[0].workspaceKey || '';
+      this.currentWorkspaceOwnerNpub = this.knownWorkspaces[0].workspaceOwnerNpub || this.currentWorkspaceOwnerNpub;
+    }
+    if (this.selectedWorkspaceKey || this.currentWorkspaceOwnerNpub) {
+      await this.selectWorkspace?.(this.selectedWorkspaceKey || this.currentWorkspaceOwnerNpub, { refresh: false });
+    }
+    await this.persistWorkspaceSettings?.();
+    return { onboarding, selfIndex };
+  },
+
   onboardingAnnouncementRelayUrls(workspace = null) {
     return onboardingAnnouncementRelayUrls(
       this.currentWorkspace?.relayUrls || [],
@@ -166,12 +181,13 @@ export const onboardingAnnouncementsManagerMixin = {
 
   async discoverPgOnboardingAnnouncements({ candidates = null } = {}) {
     if (!isTowerPgBackendMode() || !this.session?.npub) {
-      return { discovered: 0, verified: 0, stale: 0, failed: 0, rejected: [] };
+      return { discovered: 0, eventsSeen: 0, verified: 0, stale: 0, failed: 0, rejected: [] };
     }
     this.pgOnboardingAnnouncementDiscovering = true;
     this.pgOnboardingAnnouncementError = null;
     const summary = {
       discovered: 0,
+      eventsSeen: 0,
       verified: 0,
       stale: 0,
       failed: 0,
@@ -186,8 +202,12 @@ export const onboardingAnnouncementsManagerMixin = {
           relayUrls: this.onboardingAnnouncementRelayUrls(),
           appPubkeyHex: flightDeckOnboardingAppPubkeyHex(APP_NPUB),
         });
+      summary.eventsSeen = discovered.events?.length || discovered.candidates.length || 0;
       summary.discovered = discovered.candidates.length;
       summary.rejected.push(...(discovered.rejected || []));
+      if (summary.eventsSeen > 0 && summary.discovered === 0 && summary.rejected.length > 0) {
+        this.pgOnboardingAnnouncementError = `Found ${summary.eventsSeen} onboarding event${summary.eventsSeen === 1 ? '' : 's'} but none could be decrypted or accepted. Check this browser's Nostr signer and relay access.`;
+      }
 
       for (const candidate of discovered.candidates) {
         const locator = candidate.locator;
@@ -195,10 +215,14 @@ export const onboardingAnnouncementsManagerMixin = {
           const { descriptor, me } = await this.verifyPgDescriptor(locator, {
             baseUrl: locator.tower_base_url,
           });
-          await this.rememberVerifiedPgWorkspace(descriptor, me, {
+          const workspace = await this.rememberVerifiedPgWorkspace(descriptor, me, {
             select: false,
             publishSelfIndex: false,
           });
+          if (!this.selectedWorkspaceKey && workspace?.workspaceKey) {
+            this.selectedWorkspaceKey = workspace.workspaceKey;
+            this.currentWorkspaceOwnerNpub = workspace.workspaceOwnerNpub || this.currentWorkspaceOwnerNpub;
+          }
           summary.verified += 1;
           summary.rejected.push({
             eventId: candidate.event?.id || '',

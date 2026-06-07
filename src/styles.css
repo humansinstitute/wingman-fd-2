@@ -1937,6 +1937,47 @@ button:disabled {
   color: var(--muted);
 }
 
+.sidebar-workspace-empty-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.15rem 0;
+}
+
+.sidebar-workspace-discovery {
+  margin: 0;
+  font-size: 0.74rem;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.sidebar-workspace-discovery-error {
+  color: #b45309;
+}
+
+.sidebar-workspace-discovery-button {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.sidebar-workspace-discovery-button:hover {
+  background: #f8fafc;
+}
+
+.sidebar-workspace-discovery-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
 .sidebar-workspace-create {
   width: 100%;
   display: inline-flex;
