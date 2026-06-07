@@ -853,6 +853,8 @@ export function createShellState(options = {}) {
         this.resolveChatProfile(npub);
         await this.rememberPeople([npub], 'self');
         this.filterKnownWorkspacesForActiveSession?.();
+        await this.discoverPgOnboardingAnnouncements?.();
+        await this.discoverPgWorkspaceSelfIndex?.();
         await this.loadRemoteWorkspaces();
         if (!this.selectedWorkspaceKey && this.currentWorkspaceOwnerNpub) {
           const legacyMatch = this.knownWorkspaces.find((workspace) => workspace.workspaceOwnerNpub === this.currentWorkspaceOwnerNpub) || null;
@@ -891,6 +893,8 @@ export function createShellState(options = {}) {
         this.filterKnownWorkspacesForActiveSession?.();
         this.updateWorkspaceBootstrapPrompt();
 
+        await this.discoverPgOnboardingAnnouncements?.();
+        await this.discoverPgWorkspaceSelfIndex?.();
         await this.loadRemoteWorkspaces();
         if (!this.selectedWorkspaceKey && this.currentWorkspaceOwnerNpub) {
           const legacyMatch = this.knownWorkspaces.find((workspace) => workspace.workspaceOwnerNpub === this.currentWorkspaceOwnerNpub) || null;

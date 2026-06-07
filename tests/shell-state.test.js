@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { createShellState, SHELL_STATE_KEYS, SHELL_METHOD_NAMES } from '../src/shell-state.js';
+
+const SHELL_STATE_SOURCE = readFileSync(resolve(process.cwd(), 'src/shell-state.js'), 'utf8');
 
 // ---------------------------------------------------------------------------
 // Shell state boundary tests
@@ -297,6 +301,19 @@ describe('shell lifecycle methods', () => {
 
   it('includes updatePageTitle method', () => {
     expect(SHELL_METHOD_NAMES).toContain('updatePageTitle');
+  });
+
+  it('runs PG Nostr workspace discovery during the active shell login paths', () => {
+    const onboardingCalls = SHELL_STATE_SOURCE.match(/await this\.discoverPgOnboardingAnnouncements\?\.\(\);/g) || [];
+    const selfIndexCalls = SHELL_STATE_SOURCE.match(/await this\.discoverPgWorkspaceSelfIndex\?\.\(\);/g) || [];
+    expect(onboardingCalls).toHaveLength(2);
+    expect(selfIndexCalls).toHaveLength(2);
+    for (const blockName of ['async maybeAutoLogin()', 'async login(method, supplemental = null)']) {
+      const start = SHELL_STATE_SOURCE.indexOf(blockName);
+      const block = SHELL_STATE_SOURCE.slice(start, SHELL_STATE_SOURCE.indexOf('await this.loadRemoteWorkspaces();', start));
+      expect(block).toContain('await this.discoverPgOnboardingAnnouncements?.();');
+      expect(block).toContain('await this.discoverPgWorkspaceSelfIndex?.();');
+    }
   });
 });
 
