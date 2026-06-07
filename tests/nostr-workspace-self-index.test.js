@@ -108,8 +108,16 @@ describe('Nostr kind 33356 workspace self-index', () => {
     });
 
     expect(result.event.kind).toBe(33356);
-    expect(result.acceptedRelays).toContain('wss://relay.test');
-    expect(relaysSeen).toContain('wss://relay.test');
+    const peteRelays = [
+      'wss://wotr.relatr.xyz',
+      'wss://relay.damus.io',
+      'wss://relay.primal.net',
+      'wss://proxy.nostr-relay.app/8c5723f2601334234e1922d2e842d6bbf209283b07120b3f1d38660915f13793',
+      'ws://127.0.0.1:4869',
+    ];
+    expect(result.acceptedRelays).toEqual(peteRelays);
+    expect(relaysSeen).toEqual(peteRelays);
+    expect(relaysSeen).not.toContain('wss://relay.test');
     const encrypted = signedTemplate.content;
     expect(encrypted.startsWith('enc:')).toBe(true);
     const payload = JSON.parse(encrypted.slice(4));

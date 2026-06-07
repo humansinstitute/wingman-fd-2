@@ -66,6 +66,7 @@ async function validPayload(overrides = {}) {
 describe('Nostr kind 33357 onboarding announcements', () => {
   it('builds a valid event with only p/app_pub/protocol cleartext tags', async () => {
     let signedTemplate = null;
+    let relaysSeen = [];
     const result = await publishOnboardingAnnouncement({
       recipientNpub: recipient.npub,
       issuerNpub: issuer.npub,
@@ -82,6 +83,7 @@ describe('Nostr kind 33357 onboarding announcements', () => {
       },
       poolFactory: () => ({
         publish(relays) {
+          relaysSeen = relays;
           return relays.map(() => Promise.resolve('ok'));
         },
         destroy() {},
@@ -90,6 +92,16 @@ describe('Nostr kind 33357 onboarding announcements', () => {
     });
 
     expect(result.event.kind).toBe(ONBOARDING_ANNOUNCEMENT_KIND);
+    const peteRelays = [
+      'wss://wotr.relatr.xyz',
+      'wss://relay.damus.io',
+      'wss://relay.primal.net',
+      'wss://proxy.nostr-relay.app/8c5723f2601334234e1922d2e842d6bbf209283b07120b3f1d38660915f13793',
+      'ws://127.0.0.1:4869',
+    ];
+    expect(result.acceptedRelays).toEqual(peteRelays);
+    expect(relaysSeen).toEqual(peteRelays);
+    expect(relaysSeen).not.toContain('wss://relay.test');
     expect(signedTemplate.tags).toEqual([
       ['p', recipient.pubkey],
       ['app_pub', appPubkeyHex],

@@ -16,10 +16,11 @@ export const WORKSPACE_SELF_INDEX_PAYLOAD_TYPE = 'flightdeck_workspace_self_inde
 export const WORKSPACE_SELF_INDEX_NAMESPACE = 'flightdeck_pg';
 
 const DEFAULT_RELAYS = [
-  'wss://relay.primal.net',
+  'wss://wotr.relatr.xyz',
   'wss://relay.damus.io',
-  'wss://nos.lol',
-  'wss://relay.nostr.band',
+  'wss://relay.primal.net',
+  'wss://proxy.nostr-relay.app/8c5723f2601334234e1922d2e842d6bbf209283b07120b3f1d38660915f13793',
+  'ws://127.0.0.1:4869',
 ];
 
 function trimText(value) {
@@ -34,7 +35,8 @@ function envSelfIndexRelays() {
 }
 
 export function workspaceSelfIndexRelayUrls(...relayLists) {
-  const relays = [...envSelfIndexRelays(), ...relayLists.flat(), ...DEFAULT_RELAYS]
+  const configuredRelays = envSelfIndexRelays();
+  const relays = (configuredRelays.length > 0 ? configuredRelays : DEFAULT_RELAYS)
     .map((entry) => trimText(entry))
     .filter(Boolean);
   return [...new Set(relays)];
