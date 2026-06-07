@@ -1363,7 +1363,13 @@ export function initApp() {
       if (session?.message) return session.message;
       if (this.hasSelectedDocCheckout) {
         const lease = this.selectedDocCheckoutLeaseLabel;
+        if (isTowerPgBackendMode() && this.selectedDocument?.pg_backend) {
+          return lease ? `Edit lease held. ${lease}.` : 'Edit lease held. You can edit this document.';
+        }
         return lease ? `Checkout held. ${lease}.` : 'Checkout held. You can edit this document.';
+      }
+      if (isTowerPgBackendMode() && this.selectedDocument?.pg_backend) {
+        return 'Read mode. Click Edit to acquire an edit lease.';
       }
       return 'Read mode. Acquire checkout to enter edit mode.';
     },

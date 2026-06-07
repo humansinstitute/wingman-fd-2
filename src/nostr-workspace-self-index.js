@@ -230,10 +230,32 @@ export async function publishWorkspaceSelfIndex({
   });
   assertNoCleartextLeaks(unsigned);
   const signed = await signEvent(unsigned);
+  return broadcastWorkspaceSelfIndexEvent({
+    event: signed,
+    relayUrls,
+    workspace,
+    poolFactory,
+    now,
+    payload,
+  });
+}
+
+export async function broadcastWorkspaceSelfIndexEvent({
+  event,
+  relayUrls = [],
+  workspace = {},
+  poolFactory = () => new SimplePool(),
+  now = new Date(),
+  payload = null,
+} = {}) {
+  if (!event || Number(event.kind) !== WORKSPACE_SELF_INDEX_KIND) {
+    throw new Error('A signed kind 33356 workspace self-index event is required.');
+  }
+  assertNoCleartextLeaks(event);
   const relays = workspaceSelfIndexRelayUrls(relayUrls, workspace.relayUrls || []);
   const pool = poolFactory();
   try {
-    const results = await Promise.allSettled(pool.publish(relays, signed, { maxWait: 2500 }));
+    const results = await Promise.allSettled(pool.publish(relays, event, { maxWait: 2500 }));
     const acceptedRelays = [];
     const failedRelays = [];
     results.forEach((result, index) => {
@@ -243,7 +265,7 @@ export async function publishWorkspaceSelfIndex({
     });
     if (acceptedRelays.length === 0) throw new Error('No relay accepted the workspace self-index event.');
     return {
-      event: signed,
+      event,
       payload,
       acceptedRelays,
       failedRelays,

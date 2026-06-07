@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
+  broadcastWorkspaceSelfIndexEventMock,
   publishWorkspaceSelfIndexMock,
   queryWorkspaceSelfIndexCandidatesMock,
 } = vi.hoisted(() => ({
+  broadcastWorkspaceSelfIndexEventMock: vi.fn(),
   publishWorkspaceSelfIndexMock: vi.fn(),
   queryWorkspaceSelfIndexCandidatesMock: vi.fn(),
 }));
@@ -13,6 +15,7 @@ vi.mock('../src/backend-mode.js', () => ({
 }));
 
 vi.mock('../src/nostr-workspace-self-index.js', () => ({
+  broadcastWorkspaceSelfIndexEvent: broadcastWorkspaceSelfIndexEventMock,
   flightDeckSelfIndexAppPubkeyHex: vi.fn(() => 'b'.repeat(64)),
   publishWorkspaceSelfIndex: publishWorkspaceSelfIndexMock,
   queryWorkspaceSelfIndexCandidates: queryWorkspaceSelfIndexCandidatesMock,
@@ -71,6 +74,9 @@ describe('workspace self-index manager', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    publishWorkspaceSelfIndexMock.mockReset();
+    broadcastWorkspaceSelfIndexEventMock.mockReset();
+    queryWorkspaceSelfIndexCandidatesMock.mockReset();
   });
 
   async function bindStore(overrides = {}) {
@@ -94,6 +100,7 @@ describe('workspace self-index manager', () => {
     expect(store.knownWorkspaces[0]).toMatchObject({
       pgSelfIndexStatus: 'indexed',
       pgSelfIndexEventId: 'event-1',
+      pgSelfIndexSignedEvent: { id: 'event-1' },
       pgSelfIndexRelays: ['wss://relay.test'],
     });
     expect(store.persistWorkspaceSettings).toHaveBeenCalled();
@@ -160,8 +167,8 @@ describe('workspace self-index manager', () => {
     const store = await bindStore({
       knownWorkspaces: [
         { ...workspace, pgSelfIndexStatus: null },
-        { ...workspace, workspaceKey: 'pg:indexed', pgSelfIndexStatus: 'indexed' },
-        { ...workspace, workspaceKey: 'pg:other-user', pgSessionNpub: 'npub1other', pgSelfIndexStatus: null },
+        { ...workspace, workspaceKey: 'pg:indexed', workspaceId: 'workspace-indexed', workspaceServiceNpub: 'npub1indexed', pgSelfIndexStatus: 'indexed', pgSelfIndexLastBroadcastAt: new Date().toISOString() },
+        { ...workspace, workspaceKey: 'pg:other-user', workspaceId: 'workspace-other', workspaceServiceNpub: 'npub1otherworkspace', pgSessionNpub: 'npub1other', pgSelfIndexStatus: null },
       ],
     });
 
@@ -178,6 +185,37 @@ describe('workspace self-index manager', () => {
     expect(store.knownWorkspaces.find((entry) => entry.workspaceKey === workspace.workspaceKey)).toMatchObject({
       pgSelfIndexStatus: 'indexed',
       pgSelfIndexEventId: 'event-backfill',
+    });
+  });
+
+  it('rebroadcasts an indexed signed event after the freshness window', async () => {
+    const signedEvent = { kind: 33356, id: 'event-existing', content: 'encrypted' };
+    broadcastWorkspaceSelfIndexEventMock.mockResolvedValue({
+      event: signedEvent,
+      acceptedRelays: ['wss://relay.test'],
+      publishedAt: '2026-06-09T00:00:00.000Z',
+    });
+    const store = await bindStore({
+      knownWorkspaces: [{
+        ...workspace,
+        pgSelfIndexStatus: 'indexed',
+        pgSelfIndexSignedEvent: signedEvent,
+        pgSelfIndexLastBroadcastAt: '2026-06-01T00:00:00.000Z',
+      }],
+    });
+
+    const summary = await store.ensureKnownPgWorkspacesSelfIndexed();
+
+    expect(summary).toEqual({ queued: 1 });
+    await Promise.resolve();
+    await store.pgWorkspaceSelfIndexPublishPromise;
+    expect(broadcastWorkspaceSelfIndexEventMock).toHaveBeenCalledWith(expect.objectContaining({
+      event: signedEvent,
+    }));
+    expect(publishWorkspaceSelfIndexMock).not.toHaveBeenCalled();
+    expect(store.knownWorkspaces[0]).toMatchObject({
+      pgSelfIndexLastBroadcastAt: '2026-06-09T00:00:00.000Z',
+      pgSelfIndexEventId: 'event-existing',
     });
   });
 

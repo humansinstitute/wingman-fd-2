@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   WORKSPACE_SELF_INDEX_KIND,
   WORKSPACE_SELF_INDEX_PROTOCOL,
+  broadcastWorkspaceSelfIndexEvent,
   buildUnsignedWorkspaceSelfIndexEvent,
   decryptWorkspaceSelfIndexEvent,
   flightDeckSelfIndexAppPubkeyHex,
@@ -119,6 +120,41 @@ describe('Nostr kind 33356 workspace self-index', () => {
       workspace_service_npub: 'npub1workspace',
     });
     expect(JSON.stringify(payload)).not.toContain('must-not-appear');
+  });
+
+  it('rebroadcasts a previously signed self-index event without rebuilding content', async () => {
+    const signedEvent = {
+      kind: 33356,
+      pubkey: userPubkeyHex,
+      created_at: 1780710000,
+      tags: [
+        ['d', 'fd-self:opaque'],
+        ['p', userPubkeyHex],
+        ['app_pub', appPubkeyHex],
+        ['protocol', 'workspace-self-index'],
+      ],
+      content: 'encrypted',
+      id: 'event-existing',
+      sig: 'sig-existing',
+    };
+    let eventSeen = null;
+    const result = await broadcastWorkspaceSelfIndexEvent({
+      event: signedEvent,
+      workspace,
+      relayUrls: ['wss://relay.test'],
+      poolFactory: () => ({
+        publish(_relays, event) {
+          eventSeen = event;
+          return [Promise.resolve('ok')];
+        },
+        destroy() {},
+      }),
+      now: new Date('2026-06-09T00:00:00.000Z'),
+    });
+
+    expect(eventSeen).toBe(signedEvent);
+    expect(result.event).toBe(signedEvent);
+    expect(result.publishedAt).toBe('2026-06-09T00:00:00.000Z');
   });
 
   it('decrypts, ignores tombstones, and deduplicates candidates by workspace identity', async () => {

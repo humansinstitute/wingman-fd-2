@@ -1,6 +1,7 @@
 import { APP_NPUB } from './app-identity.js';
 import { isTowerPgBackendMode } from './backend-mode.js';
 import {
+  broadcastWorkspaceSelfIndexEvent,
   flightDeckSelfIndexAppPubkeyHex,
   publishWorkspaceSelfIndex,
   queryWorkspaceSelfIndexCandidates,
@@ -14,6 +15,13 @@ function errorMessage(error) {
 
 function timestamp() {
   return new Date().toISOString();
+}
+
+const SELF_INDEX_REBROADCAST_INTERVAL_MS = 2 * 24 * 60 * 60 * 1000;
+
+function isSelfIndexBroadcastStale(workspace, now = Date.now()) {
+  const last = Date.parse(workspace?.pgSelfIndexLastBroadcastAt || workspace?.pgSelfIndexPublishedAt || '');
+  return !Number.isFinite(last) || (Number(now) - last) >= SELF_INDEX_REBROADCAST_INTERVAL_MS;
 }
 
 export const workspaceSelfIndexManagerMixin = {
@@ -81,7 +89,13 @@ export const workspaceSelfIndexManagerMixin = {
     const candidates = (this.knownWorkspaces || []).filter((workspace) =>
       workspace?.pgBackendMode
       && workspace.pgSessionNpub === this.session.npub
-      && !['pending', 'indexed', 'verified', 'stale'].includes(String(workspace.pgSelfIndexStatus || '').trim())
+      && String(workspace.pgSelfIndexStatus || '').trim() !== 'pending'
+      && String(workspace.pgSelfIndexStatus || '').trim() !== 'stale'
+      && String(workspace.pgSelfIndexStatus || '').trim() !== 'verified'
+      && (
+        String(workspace.pgSelfIndexStatus || '').trim() !== 'indexed'
+        || isSelfIndexBroadcastStale(workspace)
+      )
     );
     let queued = 0;
     for (const workspace of candidates) {
@@ -95,19 +109,30 @@ export const workspaceSelfIndexManagerMixin = {
   async publishPgWorkspaceSelfIndex(workspace) {
     if (!isTowerPgBackendMode() || !workspace?.pgBackendMode || !this.session?.npub) return null;
     try {
-      const result = await publishWorkspaceSelfIndex({
-        workspace,
-        userNpub: this.session.npub,
-        userPubkeyHex: this.session.pubkey,
-        relayUrls: this.workspaceSelfIndexRelayUrls(workspace),
-        appNpub: APP_NPUB,
-        appPubkeyHex: flightDeckSelfIndexAppPubkeyHex(APP_NPUB),
-      });
+      const existingSignedEvent = workspace.pgSelfIndexSignedEvent && isSelfIndexBroadcastStale(workspace)
+        ? workspace.pgSelfIndexSignedEvent
+        : null;
+      const result = existingSignedEvent
+        ? await broadcastWorkspaceSelfIndexEvent({
+          event: existingSignedEvent,
+          workspace,
+          relayUrls: this.workspaceSelfIndexRelayUrls(workspace),
+        })
+        : await publishWorkspaceSelfIndex({
+          workspace,
+          userNpub: this.session.npub,
+          userPubkeyHex: this.session.pubkey,
+          relayUrls: this.workspaceSelfIndexRelayUrls(workspace),
+          appNpub: APP_NPUB,
+          appPubkeyHex: flightDeckSelfIndexAppPubkeyHex(APP_NPUB),
+        });
       await this.persistWorkspaceSelfIndexPatch(workspace, {
         pgSelfIndexStatus: 'indexed',
         pgSelfIndexError: null,
         pgSelfIndexPublishedAt: result.publishedAt,
+        pgSelfIndexLastBroadcastAt: result.publishedAt,
         pgSelfIndexEventId: result.event?.id || null,
+        pgSelfIndexSignedEvent: result.event || null,
         pgSelfIndexRelays: result.acceptedRelays,
       });
       return result;
