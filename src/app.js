@@ -779,6 +779,7 @@ export function initApp() {
     workspaceProfileDirty: false,
     workspaceProfileSaving: false,
     workspaceProfileError: null,
+    workspaceAdvancedOptionsEnabled: false,
     defaultAgentNpub: '',
     defaultAgentQuery: '',
     wingmanHarnessInput: '',

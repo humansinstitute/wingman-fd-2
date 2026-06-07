@@ -5509,12 +5509,12 @@
           <div class="settings-tabs">
             <button x-show="$store.chat.canAdminWorkspace" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'workspace' }" @click="$store.chat.settingsTab = 'workspace'">Workspace</button>
             <button class="settings-tab" :class="{ active: $store.chat.settingsTab === 'connection' }" @click="$store.chat.settingsTab = 'connection'">Connection</button>
-            <button class="settings-tab" :class="{ active: $store.chat.settingsTab === 'flows' }" @click="$store.chat.settingsTab = 'flows'; $store.chat.refreshFlows(); $store.chat.refreshApprovals()">Flows</button>
-            <button x-show="$store.chat.canAdminWorkspace" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'schedules' }" @click="$store.chat.settingsTab = 'schedules'; $store.chat.refreshSchedules()">Schedules</button>
+            <button x-show="$store.chat.workspaceAdvancedOptionsEnabled" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'flows' }" @click="$store.chat.settingsTab = 'flows'; $store.chat.refreshFlows(); $store.chat.refreshApprovals()">Flows</button>
+            <button x-show="$store.chat.canAdminWorkspace && $store.chat.workspaceAdvancedOptionsEnabled" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'schedules' }" @click="$store.chat.settingsTab = 'schedules'; $store.chat.refreshSchedules()">Schedules</button>
             <button x-show="$store.chat.canAdminWorkspace" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'apps' }" @click="$store.chat.settingsTab = 'apps'; $store.chat.refreshWapps()">Apps</button>
             <button x-show="$store.chat.canAdminWorkspace" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'scopes' }" @click="$store.chat.settingsTab = 'scopes'; $store.chat.refreshScopes()">Scopes</button>
-            <button class="settings-tab" :class="{ active: $store.chat.settingsTab === 'data' }" @click="$store.chat.settingsTab = 'data'">Data</button>
-            <button x-show="$store.chat.canAdminWorkspace" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'sharing' }" @click="$store.chat.settingsTab = 'sharing'">Sharing</button>
+            <button x-show="$store.chat.workspaceAdvancedOptionsEnabled" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'data' }" @click="$store.chat.settingsTab = 'data'">Sync</button>
+            <button x-show="$store.chat.canAdminWorkspace" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'sharing' }" @click="$store.chat.settingsTab = 'sharing'">Groups &amp; Members</button>
           </div>
           <div class="settings-tab-content" x-show="$store.chat.canAdminWorkspace && $store.chat.settingsTab === 'workspace'">
           <section class="settings-panel workspace-settings-panel">
@@ -5580,6 +5580,15 @@
               rows="3"
               placeholder="What this workspace is for"
             ></textarea>
+            <label class="settings-field-label settings-checkbox-row" for="workspace-advanced-options-input">
+              <input
+                id="workspace-advanced-options-input"
+                type="checkbox"
+                :checked="$store.chat.workspaceAdvancedOptionsEnabled"
+                @change="$store.chat.setWorkspaceAdvancedOptionsEnabled($event.target.checked)"
+              />
+              <span>Show advanced options</span>
+            </label>
             <p class="error-text" x-show="$store.chat.workspaceProfileError" x-text="$store.chat.workspaceProfileError"></p>
             <div class="settings-actions">
               <button
@@ -6314,7 +6323,7 @@
           </div>
           </div>
 
-          <div class="settings-tab-content" x-show="$store.chat.settingsTab === 'flows'">
+          <div class="settings-tab-content" x-show="$store.chat.workspaceAdvancedOptionsEnabled && $store.chat.settingsTab === 'flows'">
           <div class="flows-section">
             <div class="flows-header">
               <h2>Flows</h2>
@@ -6796,7 +6805,7 @@
           </div>
           </div>
 
-          <div class="settings-tab-content" x-show="$store.chat.canAdminWorkspace && $store.chat.settingsTab === 'schedules'">
+          <div class="settings-tab-content" x-show="$store.chat.canAdminWorkspace && $store.chat.workspaceAdvancedOptionsEnabled && $store.chat.settingsTab === 'schedules'">
           <section class="settings-panel schedules-section">
             <div class="schedules-header">
               <div>
@@ -7152,7 +7161,7 @@
           </section>
           </div>
 
-          <div class="settings-tab-content" x-show="$store.chat.settingsTab === 'data'">
+          <div class="settings-tab-content" x-show="$store.chat.workspaceAdvancedOptionsEnabled && $store.chat.settingsTab === 'data'">
           <section class="settings-panel repair-settings-panel">
             <div class="settings-panel-header">
               <div>
@@ -7297,7 +7306,7 @@
             <div class="groups-header">
               <div>
                 <h2>Workspace members</h2>
-                <p class="groups-subtitle">People who can be added to PG workspace groups.</p>
+                <p class="groups-subtitle">People with access to this PG workspace.</p>
               </div>
             </div>
             <div class="scope-new-grid">

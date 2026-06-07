@@ -790,6 +790,35 @@ describe('getWorkspaceStorageBackendUrl', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Settings tabs
+// ---------------------------------------------------------------------------
+describe('normalizeSettingsTab', () => {
+  it('hides advanced tabs when workspace advanced options are disabled', () => {
+    const { fn, store } = bindMethod('normalizeSettingsTab', {
+      settingsTab: 'flows',
+      canAdminWorkspace: true,
+      workspaceAdvancedOptionsEnabled: false,
+    });
+
+    fn();
+
+    expect(store.settingsTab).toBe('connection');
+  });
+
+  it('keeps advanced tabs when workspace advanced options are enabled', () => {
+    const { fn, store } = bindMethod('normalizeSettingsTab', {
+      settingsTab: 'data',
+      canAdminWorkspace: true,
+      workspaceAdvancedOptionsEnabled: true,
+    });
+
+    fn();
+
+    expect(store.settingsTab).toBe('data');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // mergeKnownWorkspaces
 // ---------------------------------------------------------------------------
 describe('mergeKnownWorkspaces', () => {

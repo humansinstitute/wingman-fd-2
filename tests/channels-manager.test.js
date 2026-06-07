@@ -14,6 +14,7 @@ vi.mock('../src/api.js', async () => {
     createTowerPgWorkspaceGroup: vi.fn(),
     createTowerPgWorkspaceMember: vi.fn(),
     getTowerPgChannelGrants: vi.fn(),
+    getTowerPgWorkspaceMembers: vi.fn(),
   };
 });
 
@@ -34,6 +35,7 @@ import {
   createTowerPgWorkspaceGroup,
   createTowerPgWorkspaceMember,
   getTowerPgChannelGrants,
+  getTowerPgWorkspaceMembers,
 } from '../src/api.js';
 import {
   hydrateTowerPgAudioNotes,
@@ -68,6 +70,7 @@ beforeEach(() => {
   createTowerPgWorkspaceGroup.mockResolvedValue({ group: { id: 'group-new', group_id: 'group-new', name: 'New group' } });
   createTowerPgWorkspaceMember.mockResolvedValue({ actor: { actor_id: 'actor-new', npub: 'npub1recipient' } });
   getTowerPgChannelGrants.mockResolvedValue({ grants: [] });
+  getTowerPgWorkspaceMembers.mockResolvedValue({ members: [] });
   hydrateTowerPgAudioNotes.mockResolvedValue(undefined);
   hydrateTowerPgChannels.mockResolvedValue(undefined);
   hydrateTowerPgDocumentsAndFiles.mockResolvedValue(undefined);
@@ -855,6 +858,34 @@ describe('channels-manager pure utilities', () => {
       });
       expect(store.pgWorkspaceMemberNpub).toBe('');
       expect(store.refreshGroups).toHaveBeenCalledWith({ force: true, minIntervalMs: 0 });
+    });
+
+    it('keeps the current PG actor visible when workspace members have not loaded', async () => {
+      getTowerPgWorkspaceMembers.mockRejectedValueOnce(new Error('forbidden'));
+      const store = createPgGrantStore({
+        currentWorkspace: {
+          workspaceId: 'workspace-1',
+          workspaceOwnerNpub: 'npub1workspace',
+          directHttpsUrl: 'https://tower.example',
+          appNpub: 'flightdeck-app',
+          pgBackendMode: true,
+          pgMe: {
+            actor: { actor_id: 'actor-self', npub: 'npub1self', kind: 'human' },
+            membership: { role: 'owner', joined_at: '2026-06-07T00:00:00.000Z' },
+            permissions: ['workspace.read'],
+          },
+        },
+        pgWorkspaceMembers: [],
+      });
+
+      const members = await store.refreshTowerPgWorkspaceMembers();
+
+      expect(members).toEqual([expect.objectContaining({
+        actor_id: 'actor-self',
+        npub: 'npub1self',
+        role: 'owner',
+      })]);
+      expect(store.pgWorkspaceMembers).toHaveLength(1);
     });
 
     it('shows a clear message when creating a duplicate Tower PG group', async () => {

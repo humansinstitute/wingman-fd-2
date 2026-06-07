@@ -223,10 +223,32 @@ export const workspaceManagerMixin = {
     return ['workspace_shared', 'workspace_admin', 'private'].includes(String(group?.group_kind || '').trim());
   },
 
+  getWorkspaceAdvancedOptionsStorageKey(workspace = this.currentWorkspace) {
+    const workspaceKey = String(workspace?.workspaceKey || this.currentWorkspaceKey || workspace?.workspaceOwnerNpub || this.currentWorkspaceOwnerNpub || '').trim();
+    return workspaceKey ? `flightdeck:workspace-advanced-options:${workspaceKey}` : '';
+  },
+
+  loadWorkspaceAdvancedOptionsPreference(workspace = this.currentWorkspace) {
+    const key = this.getWorkspaceAdvancedOptionsStorageKey(workspace);
+    if (!key || typeof localStorage === 'undefined') return false;
+    return localStorage.getItem(key) === 'true';
+  },
+
+  setWorkspaceAdvancedOptionsEnabled(enabled) {
+    this.workspaceAdvancedOptionsEnabled = Boolean(enabled);
+    const key = this.getWorkspaceAdvancedOptionsStorageKey();
+    if (key && typeof localStorage !== 'undefined') {
+      localStorage.setItem(key, this.workspaceAdvancedOptionsEnabled ? 'true' : 'false');
+    }
+    this.normalizeSettingsTab();
+  },
+
   normalizeSettingsTab() {
+    const advancedTabs = this.workspaceAdvancedOptionsEnabled ? ['flows', 'data'] : [];
+    const adminAdvancedTabs = this.workspaceAdvancedOptionsEnabled ? ['schedules'] : [];
     const visibleTabs = this.canAdminWorkspace
-      ? ['workspace', 'connection', 'flows', 'automation', 'schedules', 'apps', 'scopes', 'data', 'sharing']
-      : ['connection', 'flows', 'data'];
+      ? ['workspace', 'connection', 'apps', 'scopes', 'sharing', ...advancedTabs, ...adminAdvancedTabs]
+      : ['connection', ...advancedTabs];
     if (!visibleTabs.includes(this.settingsTab)) {
       this.settingsTab = 'connection';
     }
@@ -420,6 +442,7 @@ export const workspaceManagerMixin = {
     this.workspaceProfileSlugInput = String(workspace?.slug || '').trim() || slugify(workspace?.name);
     this.workspaceProfileDescriptionInput = String(workspace?.description || '').trim();
     this.workspaceProfileAvatarInput = storedAvatar;
+    this.workspaceAdvancedOptionsEnabled = this.loadWorkspaceAdvancedOptionsPreference(workspace);
     this.setWorkspaceAvatarPreview(storedObjectId ? '' : (this.getWorkspaceAvatar(workspace) || ''));
     if (storedObjectId) {
       this.resolveStorageImageUrl(storedObjectId, { backendUrl })

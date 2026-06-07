@@ -7395,6 +7395,20 @@ button:disabled {
   color: var(--muted);
 }
 
+.settings-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text);
+}
+
+.settings-checkbox-row input {
+  width: 1rem;
+  height: 1rem;
+}
+
 .settings-field-help {
   margin: 0;
   font-size: 0.86rem;

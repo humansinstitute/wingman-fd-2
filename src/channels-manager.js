@@ -476,23 +476,38 @@ export const channelsManagerMixin = {
   async refreshTowerPgWorkspaceMembers(options = {}) {
     const { workspaceId, workspaceOwnerNpub, baseUrl, appNpub } = resolveTowerPgWorkspaceContext(this);
     if (!workspaceId || !baseUrl) return [];
-    const result = await getTowerPgWorkspaceMembers(workspaceId, {
-      baseUrl,
-      appNpub,
-      limit: options.limit || 200,
-    });
-    const members = (result.members || [])
-      .map((entry) => {
-        const actor = mapTowerPgActor(entry.actor || entry);
-        if (!actor?.npub) return null;
-        return {
-          ...actor,
-          workspace_owner_npub: workspaceOwnerNpub,
-          role: String(entry.membership?.role || '').trim() || 'member',
-          joined_at: entry.membership?.joined_at || entry.membership?.created_at || null,
-        };
-      })
-      .filter(Boolean);
+    const currentActor = mapTowerPgActor(this.currentWorkspace?.pgMe?.actor || {});
+    const selfMember = currentActor?.npub
+      ? [{
+        ...currentActor,
+        workspace_owner_npub: workspaceOwnerNpub,
+        role: String(this.currentWorkspace?.pgMe?.membership?.role || '').trim() || 'member',
+        joined_at: this.currentWorkspace?.pgMe?.membership?.joined_at || this.currentWorkspace?.pgMe?.membership?.created_at || null,
+      }]
+      : [];
+    let result = { members: [] };
+    try {
+      result = await getTowerPgWorkspaceMembers(workspaceId, {
+        baseUrl,
+        appNpub,
+        limit: options.limit || 200,
+      });
+    } catch (error) {
+      if (selfMember.length === 0) throw error;
+    }
+    const byNpub = new Map();
+    for (const member of selfMember) byNpub.set(member.npub, member);
+    for (const entry of result.members || []) {
+      const actor = mapTowerPgActor(entry.actor || entry);
+      if (!actor?.npub) continue;
+      byNpub.set(actor.npub, {
+        ...actor,
+        workspace_owner_npub: workspaceOwnerNpub,
+        role: String(entry.membership?.role || '').trim() || 'member',
+        joined_at: entry.membership?.joined_at || entry.membership?.created_at || null,
+      });
+    }
+    const members = [...byNpub.values()];
     this.pgWorkspaceMembers = members;
     if (members.length > 0) {
       await this.rememberPeople(members.map((member) => member.npub), 'pg-workspace-member');

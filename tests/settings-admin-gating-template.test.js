@@ -9,22 +9,25 @@ describe('settings admin gating template', () => {
     const html = readFileSync(INDEX_PATH, 'utf8');
 
     expect(html).toContain('x-show="$store.chat.canAdminWorkspace" class="settings-tab" :class="{ active: $store.chat.settingsTab === \'workspace\' }"');
-    expect(html).toContain('x-show="$store.chat.canAdminWorkspace" class="settings-tab" :class="{ active: $store.chat.settingsTab === \'automation\' }"');
-    expect(html).toContain('x-show="$store.chat.canAdminWorkspace" class="settings-tab" :class="{ active: $store.chat.settingsTab === \'schedules\' }"');
+    expect(html).toContain('x-show="$store.chat.canAdminWorkspace && $store.chat.workspaceAdvancedOptionsEnabled" class="settings-tab" :class="{ active: $store.chat.settingsTab === \'schedules\' }"');
     expect(html).toContain('x-show="$store.chat.canAdminWorkspace" class="settings-tab" :class="{ active: $store.chat.settingsTab === \'scopes\' }"');
     expect(html).toContain('x-show="$store.chat.canAdminWorkspace" class="settings-tab" :class="{ active: $store.chat.settingsTab === \'sharing\' }"');
+    expect(html).toContain('Groups &amp; Members');
     expect(html).toContain('<div class="settings-tab-content" x-show="$store.chat.canAdminWorkspace && $store.chat.settingsTab === \'workspace\'">');
-    expect(html).toContain('<div class="settings-tab-content" x-show="$store.chat.canAdminWorkspace && $store.chat.settingsTab === \'automation\'">');
-    expect(html).toContain('<div class="settings-tab-content" x-show="$store.chat.canAdminWorkspace && $store.chat.settingsTab === \'schedules\'">');
+    expect(html).toContain('<div class="settings-tab-content" x-show="$store.chat.canAdminWorkspace && $store.chat.workspaceAdvancedOptionsEnabled && $store.chat.settingsTab === \'schedules\'">');
     expect(html).toContain('<div class="settings-tab-content" x-show="$store.chat.canAdminWorkspace && $store.chat.settingsTab === \'scopes\'">');
     expect(html).toContain('<div class="settings-tab-content" x-show="$store.chat.canAdminWorkspace && $store.chat.settingsTab === \'sharing\'">');
   });
 
-  it('keeps flows visible as a regular settings tab', () => {
+  it('hides advanced settings tabs behind the workspace advanced checkbox', () => {
     const html = readFileSync(INDEX_PATH, 'utf8');
 
-    expect(html).toContain('class="settings-tab" :class="{ active: $store.chat.settingsTab === \'flows\' }"');
-    expect(html).toContain('<div class="settings-tab-content" x-show="$store.chat.settingsTab === \'flows\'">');
+    expect(html).toContain('x-show="$store.chat.workspaceAdvancedOptionsEnabled" class="settings-tab" :class="{ active: $store.chat.settingsTab === \'flows\' }"');
+    expect(html).toContain('x-show="$store.chat.workspaceAdvancedOptionsEnabled" class="settings-tab" :class="{ active: $store.chat.settingsTab === \'data\' }"');
+    expect(html).toContain('>Sync</button>');
+    expect(html).toContain('<div class="settings-tab-content" x-show="$store.chat.workspaceAdvancedOptionsEnabled && $store.chat.settingsTab === \'flows\'">');
+    expect(html).toContain('<div class="settings-tab-content" x-show="$store.chat.workspaceAdvancedOptionsEnabled && $store.chat.settingsTab === \'data\'">');
+    expect(html).toContain('id="workspace-advanced-options-input"');
   });
 
   it('hides scope management controls behind canAdminWorkspace', () => {
