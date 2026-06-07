@@ -110,7 +110,6 @@ export async function onboardingGrantId({
   workspaceServiceNpub,
   workspaceId,
   reason = 'added_to_workspace_or_group',
-  issuedAt = '',
 } = {}) {
   const input = [
     'v1',
@@ -119,9 +118,15 @@ export async function onboardingGrantId({
     trimText(workspaceServiceNpub),
     trimText(workspaceId),
     trimText(reason),
-    trimText(issuedAt),
   ].join(':');
   return `fd-onboard:${await sha256Hex(input)}`;
+}
+
+async function opaqueGrantId(value) {
+  const text = trimText(value);
+  if (!text) return '';
+  if (/^(fd-onboard|sha256):[0-9a-f]{64}$/i.test(text)) return text;
+  return `fd-onboard:${await sha256Hex(`supplied:${text}`)}`;
 }
 
 export function buildOnboardingAgentConnectPackage({
@@ -166,14 +171,15 @@ export async function buildOnboardingPayload({
   const serviceNpub = trimText(descriptor.towerServiceNpub || workspace?.towerServiceNpub || workspace?.serviceNpub);
   const workspaceServiceNpub = trimText(descriptor.workspaceServiceNpub || workspace?.workspaceServiceNpub);
   const workspaceId = trimText(descriptor.workspaceId || workspace?.workspaceId);
-  const payloadGrantId = grantId || await onboardingGrantId({
-    recipientNpub,
-    towerServiceNpub: serviceNpub,
-    workspaceServiceNpub,
-    workspaceId,
-    reason: grantReason,
-    issuedAt,
-  });
+  const payloadGrantId = grantId
+    ? await opaqueGrantId(grantId)
+    : await onboardingGrantId({
+      recipientNpub,
+      towerServiceNpub: serviceNpub,
+      workspaceServiceNpub,
+      workspaceId,
+      reason: grantReason,
+    });
   const connectPackage = agentConnect || buildAgentConnectPackage({
     backendUrl: directHttpsUrl,
     session: { npub: issuedByNpub },

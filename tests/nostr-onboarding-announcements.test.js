@@ -167,6 +167,14 @@ describe('Nostr kind 33357 onboarding announcements', () => {
     })).toThrow(/stale/);
   });
 
+  it('stores supplied grant ids as opaque values in the encrypted payload', async () => {
+    const payload = await validPayload({ grantId: 'workspace-1:group-1:npub1recipient' });
+
+    expect(payload.grant.grant_id).toMatch(/^fd-onboard:[0-9a-f]{64}$/);
+    expect(payload.grant.grant_id).not.toContain('workspace-1');
+    expect(payload.grant.grant_id).not.toContain('group-1');
+  });
+
   it('decrypts candidates and filters relay queries by p, app_pub, and protocol', async () => {
     const payload = await validPayload();
     const event = await buildUnsignedOnboardingAnnouncementEvent({
