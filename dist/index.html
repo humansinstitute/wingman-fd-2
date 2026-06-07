@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-2x0CYP6s.js"></script>
+  <script type="module" crossorigin src="/assets/index-DGqImpjr.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-BfuzgtKj.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
@@ -5511,12 +5511,12 @@
           <div class="settings-tabs">
             <button x-show="$store.chat.canAdminWorkspace" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'workspace' }" @click="$store.chat.settingsTab = 'workspace'">Workspace</button>
             <button class="settings-tab" :class="{ active: $store.chat.settingsTab === 'connection' }" @click="$store.chat.settingsTab = 'connection'">Connection</button>
-            <button x-show="$store.chat.workspaceAdvancedOptionsEnabled" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'flows' }" @click="$store.chat.settingsTab = 'flows'; $store.chat.refreshFlows(); $store.chat.refreshApprovals()">Flows</button>
-            <button x-show="$store.chat.canAdminWorkspace && $store.chat.workspaceAdvancedOptionsEnabled" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'schedules' }" @click="$store.chat.settingsTab = 'schedules'; $store.chat.refreshSchedules()">Schedules</button>
-            <button x-show="$store.chat.canAdminWorkspace" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'apps' }" @click="$store.chat.settingsTab = 'apps'; $store.chat.refreshWapps()">Apps</button>
-            <button x-show="$store.chat.canAdminWorkspace" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'scopes' }" @click="$store.chat.settingsTab = 'scopes'; $store.chat.refreshScopes()">Scopes</button>
+            <button x-show="$store.chat.workspaceAdvancedOptionsEnabled" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'flows' }" @click="$store.chat.openSettingsTab('flows')">Flows</button>
+            <button x-show="$store.chat.canAdminWorkspace && $store.chat.workspaceAdvancedOptionsEnabled" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'schedules' }" @click="$store.chat.openSettingsTab('schedules')">Schedules</button>
+            <button x-show="$store.chat.canAdminWorkspace" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'apps' }" @click="$store.chat.openSettingsTab('apps')">Apps</button>
+            <button x-show="$store.chat.canAdminWorkspace" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'scopes' }" @click="$store.chat.openSettingsTab('scopes')">Scopes</button>
             <button x-show="$store.chat.workspaceAdvancedOptionsEnabled" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'data' }" @click="$store.chat.settingsTab = 'data'">Sync</button>
-            <button x-show="$store.chat.canAdminWorkspace" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'sharing' }" @click="$store.chat.settingsTab = 'sharing'">Groups &amp; Members</button>
+            <button x-show="$store.chat.canAdminWorkspace" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'sharing' }" @click="$store.chat.openSettingsTab('sharing')">Groups &amp; Members</button>
           </div>
           <div class="settings-tab-content" x-show="$store.chat.canAdminWorkspace && $store.chat.settingsTab === 'workspace'">
           <section class="settings-panel workspace-settings-panel">
@@ -7320,7 +7320,9 @@
             <div class="settings-actions">
               <button type="button" class="btn-confirm" @click="$store.chat.addPgWorkspaceMember()" :disabled="$store.chat.groupActionsLocked || !$store.chat.pgWorkspaceMemberNpub">Add member</button>
             </div>
-            <p class="groups-empty" x-show="($store.chat.pgWorkspaceMembers || []).length === 0">No PG members loaded.</p>
+            <p class="groups-empty" x-show="$store.chat.groupsLoading">Loading members and groups…</p>
+            <p class="groups-empty" x-show="$store.chat.groupsLoadError" x-text="$store.chat.groupsLoadError"></p>
+            <p class="groups-empty" x-show="!$store.chat.groupsLoading && !$store.chat.groupsLoadError && ($store.chat.pgWorkspaceMembers || []).length === 0">No PG members loaded.</p>
             <div class="group-card-members" x-show="($store.chat.pgWorkspaceMembers || []).length > 0">
               <template x-for="member in ($store.chat.pgWorkspaceMembers || [])" :key="member.actor_id || member.npub">
                 <div class="group-member-row" x-init="$store.chat.resolveChatProfile(member.npub)">
@@ -7353,7 +7355,9 @@
               </button>
             </div>
 
-            <p class="groups-empty" x-show="$store.chat.currentWorkspaceGroups.length === 0">No groups yet. Create one to start sharing.</p>
+            <p class="groups-empty" x-show="$store.chat.groupsLoading">Loading groups…</p>
+            <p class="groups-empty" x-show="$store.chat.groupsLoadError" x-text="$store.chat.groupsLoadError"></p>
+            <p class="groups-empty" x-show="!$store.chat.groupsLoading && !$store.chat.groupsLoadError && $store.chat.currentWorkspaceGroups.length === 0">No groups yet. Create one to start sharing.</p>
 
             <ul class="groups-list" x-show="$store.chat.currentWorkspaceGroups.length > 0">
               <template x-for="group in $store.chat.currentWorkspaceGroups" :key="group.group_id">
@@ -7449,7 +7453,7 @@
               </template>
             </select>
 
-            <p class="groups-empty" x-show="$store.chat.currentWorkspaceGroups.length === 0">Create a group first.</p>
+            <p class="groups-empty" x-show="!$store.chat.groupsLoading && !$store.chat.groupsLoadError && $store.chat.currentWorkspaceGroups.length === 0">Create a group first.</p>
 
             <div style="margin-top: 1rem; display: flex; gap: 0.5rem; align-items: center;">
               <button type="button" class="btn-confirm"

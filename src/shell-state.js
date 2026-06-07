@@ -107,6 +107,8 @@ export const SHELL_STATE_KEYS = Object.freeze([
   'hasBootstrappedUnreadTracking',
   'visibilityHandler',
   'lastGroupsRefreshAt',
+  'groupsLoading',
+  'groupsLoadError',
 
   // Shell UI
   'showAvatarMenu',
@@ -283,6 +285,8 @@ export function createShellState(options = {}) {
     hasBootstrappedUnreadTracking: false,
     visibilityHandler: null,
     lastGroupsRefreshAt: 0,
+    groupsLoading: false,
+    groupsLoadError: null,
 
     // ── Shell UI ──────────────────────────────────────────────
     showAvatarMenu: false,
@@ -727,6 +731,7 @@ export function createShellState(options = {}) {
         if (this.settingsTab === 'schedules') this.refreshSchedules();
         if (this.settingsTab === 'apps') this.refreshWapps?.();
         if (this.settingsTab === 'scopes') this.refreshScopes();
+        if (this.settingsTab === 'sharing') this.prepareWorkspaceSharingSettings?.();
         if (this.settingsTab === 'flows') {
           this.refreshFlows();
           this.refreshApprovals();

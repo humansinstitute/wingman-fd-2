@@ -425,6 +425,8 @@ export function initApp() {
     hasBootstrappedUnreadTracking: false,
     visibilityHandler: null,
     lastGroupsRefreshAt: 0,
+    groupsLoading: false,
+    groupsLoadError: null,
     docConnectorFrame: null,
     docConnectorScrollHandler: null,
     docConnectorResizeHandler: null,
@@ -2251,6 +2253,7 @@ export function initApp() {
         if (this.settingsTab === 'schedules') this.refreshSchedules();
         if (this.settingsTab === 'apps') this.refreshWapps?.();
         if (this.settingsTab === 'scopes') this.refreshScopes();
+        if (this.settingsTab === 'sharing') this.prepareWorkspaceSharingSettings?.();
         if (this.settingsTab === 'flows') {
           this.refreshFlows();
           this.refreshApprovals();

@@ -818,6 +818,46 @@ describe('normalizeSettingsTab', () => {
   });
 });
 
+describe('openSettingsTab', () => {
+  it('prepares Groups & Members when opening the sharing tab', () => {
+    const prepareWorkspaceSharingSettings = vi.fn();
+    const { fn, store } = bindMethod('openSettingsTab', {
+      settingsTab: 'connection',
+      canAdminWorkspace: true,
+      workspaceAdvancedOptionsEnabled: false,
+      prepareWorkspaceSharingSettings,
+    });
+
+    fn('sharing');
+
+    expect(store.settingsTab).toBe('sharing');
+    expect(prepareWorkspaceSharingSettings).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('prepareWorkspaceSharingSettings', () => {
+  it('refreshes groups without depending on the member npub input', async () => {
+    const refreshGroups = vi.fn().mockResolvedValue([]);
+    const { fn, store } = bindMethod('prepareWorkspaceSharingSettings', {
+      canAdminWorkspace: true,
+      pgWorkspaceMemberNpub: '',
+      groupsLoading: false,
+      groupsLoadError: 'old error',
+      refreshGroups,
+    });
+
+    await fn();
+
+    expect(refreshGroups).toHaveBeenCalledWith({
+      force: false,
+      maxAgeMs: 30000,
+      minIntervalMs: 5000,
+    });
+    expect(store.groupsLoading).toBe(false);
+    expect(store.groupsLoadError).toBeNull();
+  });
+});
+
 // ---------------------------------------------------------------------------
 // mergeKnownWorkspaces
 // ---------------------------------------------------------------------------

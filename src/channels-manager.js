@@ -728,6 +728,7 @@ export const channelsManagerMixin = {
   async refreshGroups(options = {}) {
     const viewerNpub = this.session?.npub;
     if (!viewerNpub || !this.backendUrl) return;
+    this.groupsLoadError = null;
     const force = options.force === true;
     const minIntervalMs = Number(options.minIntervalMs);
     const maxAgeMs = Number(options.maxAgeMs);
@@ -839,6 +840,7 @@ export const channelsManagerMixin = {
       if (typeof this.normalizeSettingsTab === 'function') this.normalizeSettingsTab();
       return this.groups;
     } catch (error) {
+      this.groupsLoadError = error?.message || 'Failed to load groups';
       flightDeckLog('error', 'groups', 'refreshGroups failed', {
         viewerNpub,
         workspaceOwnerNpub: this.workspaceOwnerNpub || null,

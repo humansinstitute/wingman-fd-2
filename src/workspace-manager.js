@@ -254,6 +254,36 @@ export const workspaceManagerMixin = {
     }
   },
 
+  openSettingsTab(tab) {
+    this.settingsTab = String(tab || 'connection').trim() || 'connection';
+    this.normalizeSettingsTab();
+    if (this.settingsTab === 'schedules') this.refreshSchedules?.();
+    if (this.settingsTab === 'apps') this.refreshWapps?.();
+    if (this.settingsTab === 'scopes') this.refreshScopes?.();
+    if (this.settingsTab === 'sharing') this.prepareWorkspaceSharingSettings?.();
+    if (this.settingsTab === 'flows') {
+      this.refreshFlows?.();
+      this.refreshApprovals?.();
+    }
+  },
+
+  async prepareWorkspaceSharingSettings(options = {}) {
+    if (!this.canAdminWorkspace) return;
+    this.groupsLoading = true;
+    this.groupsLoadError = null;
+    try {
+      await this.refreshGroups?.({
+        force: options.force === true,
+        maxAgeMs: options.maxAgeMs ?? 30_000,
+        minIntervalMs: options.minIntervalMs ?? 5_000,
+      });
+    } catch (error) {
+      this.groupsLoadError = error?.message || 'Failed to load groups';
+    } finally {
+      this.groupsLoading = false;
+    }
+  },
+
   // --- workspace display ---
 
   getWorkspaceByOwner(workspaceOwnerNpub) {
