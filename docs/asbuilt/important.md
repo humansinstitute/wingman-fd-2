@@ -48,7 +48,7 @@ Primary files reviewed for this refresh:
 ## Legacy Naming Still Matters
 
 - The repo still carries older `Coworker` names in live contract surfaces, not just comments. Current examples include:
-  - app namespace env var `VITE_COWORKER_APP_NPUB` in `src/app-identity.js`
+  - PG app namespace env var `FLIGHT_DECK_PG_APP_NPUB` in `src/app-identity.js`; older Coworker env names are not valid for PG workspace identity
   - auth IndexedDB name `CoworkerV4SecureAuth` in `src/auth/secure-store.js`
   - legacy IndexedDB migration source `CoworkerV4` in `src/db.js`
   - hard-reset cleanup targets `CoworkerV4SecureAuth` and `CoworkerV4` in `src/hard-reset.js`

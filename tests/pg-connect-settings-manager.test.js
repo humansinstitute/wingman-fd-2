@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { FLIGHT_DECK_PG_APP_NPUB } from '../src/app-identity.js';
 
-const DEFAULT_PG_APP_NPUB = 'flightdeck_pg';
-const DEFAULT_BUILD_PG_APP_NPUB = 'npub1hd37reqgfcnz3pvzj4grknd2nkzc94p9ercmunrxx22razr2rfxsw6dns5';
+const DEFAULT_BUILD_PG_APP_NPUB = FLIGHT_DECK_PG_APP_NPUB;
 
 vi.mock('../src/backend-mode.js', () => ({
   isTowerPgBackendMode: vi.fn(() => true),

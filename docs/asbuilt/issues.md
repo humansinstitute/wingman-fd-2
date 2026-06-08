@@ -133,7 +133,7 @@ Practical follow-up:
 Evidence:
 
 - `package.json` now uses the package name `wm-fd-2`.
-- `src/app-identity.js` still reads `VITE_COWORKER_APP_NPUB`.
+- `src/app-identity.js` now requires `FLIGHT_DECK_PG_APP_NPUB`; older Coworker app namespace env names must not be used for PG workspace identity.
 - `src/auth/secure-store.js`, `src/db.js`, and `src/hard-reset.js` still depend on `CoworkerV4*` IndexedDB names.
 - `src/auth/nostr.js` still uses `APP_TAG = 'coworker-v4'` and “Authenticate with Coworker”.
 - `src/agent-connect.js` still emits `kind: 'coworker_agent_connect'` and “another Coworker/agent session”.

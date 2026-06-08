@@ -43,7 +43,7 @@ This document classifies every remaining `Coworker` identifier in the Flight Dec
 
 | Identifier | File | Why it needs coordination |
 |---|---|---|
-| `VITE_COWORKER_APP_NPUB` | `src/app-identity.js:3`, `README.md:11` | Vite build-time env var. Used in `.env` files, CI pipelines, and any deploy script that sets the app namespace. Renaming requires updating every deployment environment simultaneously. |
+| `FLIGHT_DECK_PG_APP_NPUB` | `src/app-identity.js`, `README.md` | Required build-time env var for the Flight Deck PG app namespace. Older Coworker env names are not accepted for PG workspace identity. |
 
 ### deploy-config
 
@@ -82,7 +82,7 @@ These appear only in test files and track the current source values. They do not
 1. **Now (safe):** Rename `Authenticate with Coworker` → `Authenticate with Wingman` in `src/auth/nostr.js:89`.
 2. **Keep clean:** Do not re-add `ecosystem.config.cjs`; use Autopilot app registry for app-card process config.
 3. **Coordinated rename:** `coworker_agent_connect` kind and associated docs — requires Yoke + agent updates in the same pass.
-4. **Coordinated rename:** `VITE_COWORKER_APP_NPUB` env var — requires deploy pipeline updates.
+4. **Done:** PG app identity now requires `FLIGHT_DECK_PG_APP_NPUB`.
 5. **Done for this repo:** private package name is `wm-fd-2`.
 6. **localStorage migration (optional):** `coworker:*` localStorage keys — minor UX reset if not migrated.
 7. **Do not rename:** `CoworkerV4SecureAuth`, `CoworkerV4`, `coworker-v4` APP_TAG — these are migration-sensitive. Any rename requires a versioned migration that reads the old name and writes to the new name, and hard-reset must continue to list both old and new names.

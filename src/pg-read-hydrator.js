@@ -67,7 +67,7 @@ export function resolveTowerPgWorkspaceContext(store = {}) {
     || store.workspaceOwnerNpub
   );
   const baseUrl = normalizeBackendUrl(workspace.directHttpsUrl || descriptor.tower_base_url || descriptor.towerBaseUrl || store.backendUrl);
-  const appNpub = trimText(workspace.appNpub || identity.app_npub || identity.appNpub || FLIGHT_DECK_PG_APP_NPUB || 'flightdeck_pg');
+  const appNpub = trimText(workspace.appNpub || identity.app_npub || identity.appNpub || FLIGHT_DECK_PG_APP_NPUB);
   return {
     workspace,
     workspaceId,

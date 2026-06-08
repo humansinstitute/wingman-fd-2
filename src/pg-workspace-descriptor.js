@@ -84,7 +84,7 @@ export function parsePgWorkspaceDescriptor(input) {
   const workspaceServiceNpub = trimText(identity.workspace_service_npub || identity.workspaceServiceNpub || descriptor.workspace_service_npub);
   const workspaceOwnerNpub = trimText(identity.workspace_owner_npub || identity.workspaceOwnerNpub || descriptor.workspace_owner_npub);
   const workspaceId = trimText(identity.workspace_id || identity.workspaceId || descriptor.workspace_id);
-  const appNpub = trimText(identity.app_npub || identity.appNpub || descriptor.app_npub || FLIGHT_DECK_PG_APP_NPUB || 'flightdeck_pg');
+  const appNpub = trimText(identity.app_npub || identity.appNpub || descriptor.app_npub || FLIGHT_DECK_PG_APP_NPUB);
 
   if (!towerBaseUrl) throw new Error('Workspace descriptor must include tower_base_url');
   if (!workspaceId) throw new Error('Workspace descriptor must include identity.workspace_id');
@@ -127,7 +127,7 @@ export function pgWorkspaceIdentityKey(descriptor) {
   const session = trimText(normalized.pgSessionNpub || normalized.sessionNpub);
   const tower = trimText(normalized.towerServiceNpub);
   const workspace = trimText(normalized.workspaceServiceNpub);
-  const app = trimText(normalized.appNpub || FLIGHT_DECK_PG_APP_NPUB || 'flightdeck_pg');
+  const app = trimText(normalized.appNpub || FLIGHT_DECK_PG_APP_NPUB);
   if (!tower || !workspace || !app) return '';
   const identity = `tower:${tower}::workspace:${workspace}::app:${app}`;
   return session ? `pg:${session}::${identity}` : `pg:${identity}`;

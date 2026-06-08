@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { FLIGHT_DECK_PG_APP_NPUB } from '../src/app-identity.js';
 import { generateLocalIdentity } from '../src/auth/nostr.js';
 import {
   ONBOARDING_ANNOUNCEMENT_KIND,
@@ -17,7 +18,7 @@ const issuer = generateLocalIdentity();
 const recipient = generateLocalIdentity();
 const app = generateLocalIdentity();
 const appPubkeyHex = flightDeckOnboardingAppPubkeyHex(app.npub);
-const defaultPgAppNpub = 'npub1hd37reqgfcnz3pvzj4grknd2nkzc94p9ercmunrxx22razr2rfxsw6dns5';
+const defaultPgAppNpub = FLIGHT_DECK_PG_APP_NPUB;
 
 const workspace = {
   workspaceId: 'workspace-1',

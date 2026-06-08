@@ -54,7 +54,7 @@ vi.mock('../src/pg-read-hydrator.js', () => ({
     workspaceId: store.currentWorkspace?.workspaceId || 'workspace-1',
     workspaceOwnerNpub: store.currentWorkspace?.workspaceOwnerNpub || store.workspaceOwnerNpub || 'npub1owner',
     baseUrl: store.currentWorkspace?.directHttpsUrl || store.backendUrl || 'https://tower.example',
-    appNpub: store.currentWorkspace?.appNpub || 'flightdeck_pg',
+    appNpub: store.currentWorkspace?.appNpub || 'npub1testflightdeckpgapp',
   }),
 }));
 

@@ -47,7 +47,7 @@ function buildPgWorkspaceKey({
   const session = String(sessionNpub || '').trim();
   const tower = String(towerServiceNpub || '').trim();
   const workspace = String(workspaceServiceNpub || '').trim();
-  const app = String(appNpub || FLIGHT_DECK_PG_APP_NPUB || 'flightdeck_pg').trim();
+  const app = String(appNpub || FLIGHT_DECK_PG_APP_NPUB).trim();
   if (!tower || !workspace || !app) return '';
   const identity = `tower:${tower}::workspace:${workspace}::app:${app}`;
   return session ? `pg:${session}::${identity}` : `pg:${identity}`;

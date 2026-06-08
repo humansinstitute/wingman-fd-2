@@ -101,15 +101,13 @@ describe('external-contract identifiers', () => {
 // 3. Environment variable / build config
 // ---------------------------------------------------------------------------
 describe('env-var identifiers', () => {
-  it('app-identity.js reads VITE_COWORKER_APP_NPUB', () => {
-    const hits = grepFile('src/app-identity.js', /VITE_COWORKER_APP_NPUB/);
+  it('app-identity.js reads the canonical Flight Deck PG app npub define', () => {
+    const hits = grepFile('src/app-identity.js', /FLIGHT_DECK_PG_APP_NPUB/);
     expect(hits.length).toBeGreaterThanOrEqual(1);
-    // Env var used in .env files, CI, and deploy scripts.
-    // Renaming requires updating every deployment environment.
   });
 
-  it('README.md documents VITE_COWORKER_APP_NPUB', () => {
-    const hits = grepFile('README.md', /VITE_COWORKER_APP_NPUB/);
+  it('README.md documents FLIGHT_DECK_PG_APP_NPUB', () => {
+    const hits = grepFile('README.md', /FLIGHT_DECK_PG_APP_NPUB/);
     expect(hits.length).toBeGreaterThanOrEqual(1);
   });
 });
@@ -189,7 +187,7 @@ describe('compatibility documentation', () => {
     expect(content).toContain('CoworkerV4');
     expect(content).toContain('coworker-v4');
     expect(content).toContain('coworker_agent_connect');
-    expect(content).toContain('VITE_COWORKER_APP_NPUB');
+    expect(content).toContain('FLIGHT_DECK_PG_APP_NPUB');
     expect(content).toContain('wm-fd-2');
   });
 });

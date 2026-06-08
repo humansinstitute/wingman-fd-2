@@ -11,8 +11,8 @@ Run model:
 - Wingman app-card runtime is owned by Autopilot app registry; do not commit generated `ecosystem.config.cjs` files
 
 App namespace:
-- The frontend app namespace comes from `VITE_COWORKER_APP_NPUB`
-- If that env is unset, the fallback is defined in `src/app-identity.js`
+- The frontend app namespace comes from `FLIGHT_DECK_PG_APP_NPUB`
+- Flight Deck refuses to build if that env is unset or is not an `npub`.
 
 Schema workflow:
 - Published record-family manifests live in `../sb-publisher/schemas/flightdeck`
