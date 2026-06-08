@@ -3,10 +3,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const {
   broadcastWorkspaceSelfIndexEventMock,
   publishWorkspaceSelfIndexMock,
+  publishWorkspaceSelfIndexTombstoneMock,
   queryWorkspaceSelfIndexCandidatesMock,
 } = vi.hoisted(() => ({
   broadcastWorkspaceSelfIndexEventMock: vi.fn(),
   publishWorkspaceSelfIndexMock: vi.fn(),
+  publishWorkspaceSelfIndexTombstoneMock: vi.fn(),
   queryWorkspaceSelfIndexCandidatesMock: vi.fn(),
 }));
 
@@ -18,6 +20,7 @@ vi.mock('../src/nostr-workspace-self-index.js', () => ({
   broadcastWorkspaceSelfIndexEvent: broadcastWorkspaceSelfIndexEventMock,
   flightDeckSelfIndexAppPubkeyHex: vi.fn(() => 'b'.repeat(64)),
   publishWorkspaceSelfIndex: publishWorkspaceSelfIndexMock,
+  publishWorkspaceSelfIndexTombstone: publishWorkspaceSelfIndexTombstoneMock,
   queryWorkspaceSelfIndexCandidates: queryWorkspaceSelfIndexCandidatesMock,
   workspaceSelfIndexRelayUrls: vi.fn((...lists) => lists.flat().filter(Boolean)),
 }));
@@ -77,6 +80,7 @@ describe('workspace self-index manager', () => {
     vi.resetModules();
     vi.clearAllMocks();
     publishWorkspaceSelfIndexMock.mockReset();
+    publishWorkspaceSelfIndexTombstoneMock.mockReset();
     broadcastWorkspaceSelfIndexEventMock.mockReset();
     queryWorkspaceSelfIndexCandidatesMock.mockReset();
   });
@@ -219,6 +223,38 @@ describe('workspace self-index manager', () => {
       pgSelfIndexLastBroadcastAt: '2026-06-09T00:00:00.000Z',
       pgSelfIndexEventId: 'event-existing',
     });
+  });
+
+  it('marks a PG workspace deleted after publishing a tombstone self-index', async () => {
+    publishWorkspaceSelfIndexTombstoneMock.mockResolvedValue({
+      event: { id: 'event-tombstone' },
+      acceptedRelays: ['wss://relay.test'],
+      publishedAt: '2026-06-08T00:00:00.000Z',
+    });
+    const store = await bindStore();
+
+    const result = await store.publishPgWorkspaceSelfIndexTombstone(workspace, {
+      towerResult: 'workspace_deleted',
+      reason: 'workspace_deleted',
+      sourceEventId: 'event-33357',
+    });
+
+    expect(result.event.id).toBe('event-tombstone');
+    expect(publishWorkspaceSelfIndexTombstoneMock).toHaveBeenCalledWith(expect.objectContaining({
+      workspace,
+      userNpub: 'npub1user',
+      userPubkeyHex: 'a'.repeat(64),
+      towerResult: 'workspace_deleted',
+      reason: 'workspace_deleted',
+      sourceEventId: 'event-33357',
+    }));
+    expect(store.knownWorkspaces[0]).toMatchObject({
+      pgSelfIndexStatus: 'deleted',
+      pgSelfIndexEventId: 'event-tombstone',
+      pgSelfIndexSignedEvent: { id: 'event-tombstone' },
+      pgSelfIndexRelays: ['wss://relay.test'],
+    });
+    expect(store.persistWorkspaceSettings).toHaveBeenCalled();
   });
 
   it('verifies discovered locators through Tower and merges them into knownWorkspaces', async () => {

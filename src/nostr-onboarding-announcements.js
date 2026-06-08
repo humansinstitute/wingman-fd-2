@@ -14,6 +14,9 @@ import { normalizeBackendUrl } from './utils/state-helpers.js';
 export const ONBOARDING_ANNOUNCEMENT_KIND = 33357;
 export const ONBOARDING_PROTOCOL = 'onboarding';
 export const ONBOARDING_PAYLOAD_TYPE = 'flightdeck_onboarding';
+export const ONBOARDING_ACTION_GRANT = 'grant';
+export const ONBOARDING_ACTION_REVOKED = 'revoked';
+export const ONBOARDING_ACTION_DELETED = 'deleted';
 
 const DEFAULT_RELAYS = [
   'wss://relay.damus.io',
@@ -190,6 +193,7 @@ export async function buildOnboardingPayload({
     type: ONBOARDING_PAYLOAD_TYPE,
     version: 1,
     protocol: ONBOARDING_PROTOCOL,
+    action: ONBOARDING_ACTION_GRANT,
     issued_at: issuedAt,
     expires_at: expiry.toISOString(),
     issued_by_npub: issuedByNpub,
@@ -244,13 +248,16 @@ export function validateOnboardingAnnouncementPayload(payload, {
   if (payload.app?.app_pubkey !== appPubkeyHex) {
     throw new Error('Onboarding announcement payload app_pubkey mismatch.');
   }
-  if (payload.agent_connect?.kind !== 'coworker_agent_connect') {
-    throw new Error('Onboarding announcement payload is missing Agent Connect.');
+  const action = onboardingActionFromPayload(payload);
+  if (action === ONBOARDING_ACTION_GRANT) {
+    if (payload.agent_connect?.kind !== 'coworker_agent_connect') {
+      throw new Error('Onboarding announcement payload is missing Agent Connect.');
+    }
+    if (!trimText(payload.agent_connect?.connection_token)) {
+      throw new Error('Onboarding announcement payload is missing connection_token.');
+    }
   }
-  if (!trimText(payload.agent_connect?.connection_token)) {
-    throw new Error('Onboarding announcement payload is missing connection_token.');
-  }
-  if (payload.expires_at) {
+  if (action === ONBOARDING_ACTION_GRANT && payload.expires_at) {
     const expiryMs = new Date(payload.expires_at).getTime();
     const nowMs = now instanceof Date ? now.getTime() : new Date(now).getTime();
     if (Number.isFinite(expiryMs) && Number.isFinite(nowMs) && expiryMs < nowMs) {
@@ -259,6 +266,18 @@ export function validateOnboardingAnnouncementPayload(payload, {
   }
   parsePgWorkspaceDescriptor(onboardingLocatorFromPayload(payload));
   return payload;
+}
+
+export function onboardingActionFromPayload(payload = {}) {
+  const action = trimText(payload.action || ONBOARDING_ACTION_GRANT).toLowerCase();
+  if (!action || action === ONBOARDING_ACTION_GRANT) return ONBOARDING_ACTION_GRANT;
+  if (action === ONBOARDING_ACTION_REVOKED) return ONBOARDING_ACTION_REVOKED;
+  if (action === ONBOARDING_ACTION_DELETED) return ONBOARDING_ACTION_DELETED;
+  throw new Error('Unsupported onboarding announcement action.');
+}
+
+export function isRevokedOnboardingAction(action) {
+  return action === ONBOARDING_ACTION_REVOKED || action === ONBOARDING_ACTION_DELETED;
 }
 
 function tagValue(event, name) {
@@ -447,17 +466,19 @@ export async function decryptOnboardingAnnouncementEvent({
     now,
   });
   const locator = onboardingLocatorFromPayload(payload);
+  const action = onboardingActionFromPayload(payload);
   return {
     event,
     payload,
     locator,
+    action,
+    revoked: isRevokedOnboardingAction(action),
     grantId: trimText(payload.grant?.grant_id),
     identityKey: [
       appPubkeyHex,
       trimText(locator.identity.tower_service_npub),
       trimText(locator.identity.workspace_id),
       trimText(locator.identity.workspace_service_npub),
-      trimText(payload.grant?.grant_id),
     ].join('::'),
   };
 }

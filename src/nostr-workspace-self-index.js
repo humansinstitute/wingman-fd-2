@@ -159,6 +159,46 @@ export async function buildWorkspaceSelfIndexPayload({
   };
 }
 
+export async function buildWorkspaceSelfIndexTombstonePayload({
+  workspace,
+  userNpub,
+  appNpub = APP_NPUB,
+  appPubkeyHex = flightDeckSelfIndexAppPubkeyHex(appNpub),
+  now = new Date(),
+  towerResult = 'workspace_deleted',
+  reason = 'workspace_deleted',
+  sourceEventId = '',
+} = {}) {
+  const issuedAt = now instanceof Date ? now.toISOString() : new Date(now).toISOString();
+  const locator = buildWorkspaceSelfIndexLocator(workspace);
+  return {
+    type: WORKSPACE_SELF_INDEX_PAYLOAD_TYPE,
+    version: 1,
+    issued_at: issuedAt,
+    updated_at: issuedAt,
+    user_npub: userNpub,
+    app: {
+      app_npub: appNpub,
+      app_pubkey: appPubkeyHex,
+      namespace: WORKSPACE_SELF_INDEX_NAMESPACE,
+    },
+    workspace: locator,
+    verification: {
+      last_checked_at: issuedAt,
+      verified_by: 'flightdeck',
+      tower_result: towerResult,
+      tower_service_npub: locator.tower_service_npub,
+    },
+    state: {
+      deleted: true,
+      status: 'deleted',
+      deleted_at: issuedAt,
+      reason,
+      source_33357_event_id: trimText(sourceEventId) || null,
+    },
+  };
+}
+
 export async function buildUnsignedWorkspaceSelfIndexEvent({
   workspace,
   userNpub,
@@ -218,6 +258,55 @@ export async function publishWorkspaceSelfIndex({
     appNpub,
     appPubkeyHex,
     now,
+  });
+  const plaintext = JSON.stringify(payload);
+  const encrypted = await encryptForNpub(npub, plaintext);
+  const unsigned = await buildUnsignedWorkspaceSelfIndexEvent({
+    workspace,
+    userNpub: npub,
+    userPubkeyHex: pubkeyHex,
+    appPubkeyHex,
+    content: encrypted,
+    createdAt: Math.floor(new Date(now).getTime() / 1000),
+  });
+  assertNoCleartextLeaks(unsigned);
+  const signed = await signEvent(unsigned);
+  return broadcastWorkspaceSelfIndexEvent({
+    event: signed,
+    relayUrls,
+    workspace,
+    poolFactory,
+    now,
+    payload,
+  });
+}
+
+export async function publishWorkspaceSelfIndexTombstone({
+  workspace,
+  userNpub,
+  userPubkeyHex,
+  relayUrls = [],
+  appNpub = APP_NPUB,
+  appPubkeyHex = flightDeckSelfIndexAppPubkeyHex(appNpub),
+  encryptForNpub = personalEncryptForNpub,
+  signEvent = signNostrEvent,
+  poolFactory = () => new SimplePool(),
+  now = new Date(),
+  towerResult = 'workspace_deleted',
+  reason = 'workspace_deleted',
+  sourceEventId = '',
+} = {}) {
+  const pubkeyHex = normalizeNostrPubkeyHex(userPubkeyHex || decodeNpub(userNpub));
+  const npub = userNpub || await pubkeyToNpub(pubkeyHex);
+  const payload = await buildWorkspaceSelfIndexTombstonePayload({
+    workspace,
+    userNpub: npub,
+    appNpub,
+    appPubkeyHex,
+    now,
+    towerResult,
+    reason,
+    sourceEventId,
   });
   const plaintext = JSON.stringify(payload);
   const encrypted = await encryptForNpub(npub, plaintext);

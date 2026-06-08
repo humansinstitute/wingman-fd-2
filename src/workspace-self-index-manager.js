@@ -4,6 +4,7 @@ import {
   broadcastWorkspaceSelfIndexEvent,
   flightDeckSelfIndexAppPubkeyHex,
   publishWorkspaceSelfIndex,
+  publishWorkspaceSelfIndexTombstone,
   queryWorkspaceSelfIndexCandidates,
   workspaceSelfIndexRelayUrls,
 } from './nostr-workspace-self-index.js';
@@ -128,6 +129,44 @@ export const workspaceSelfIndexManagerMixin = {
         });
       await this.persistWorkspaceSelfIndexPatch(workspace, {
         pgSelfIndexStatus: 'indexed',
+        pgSelfIndexError: null,
+        pgSelfIndexPublishedAt: result.publishedAt,
+        pgSelfIndexLastBroadcastAt: result.publishedAt,
+        pgSelfIndexEventId: result.event?.id || null,
+        pgSelfIndexSignedEvent: result.event || null,
+        pgSelfIndexRelays: result.acceptedRelays,
+      });
+      return result;
+    } catch (error) {
+      await this.persistWorkspaceSelfIndexPatch(workspace, {
+        pgSelfIndexStatus: 'failed',
+        pgSelfIndexError: errorMessage(error),
+        pgSelfIndexFailedAt: timestamp(),
+      });
+      return null;
+    }
+  },
+
+  async publishPgWorkspaceSelfIndexTombstone(workspace, {
+    towerResult = 'workspace_deleted',
+    reason = 'workspace_deleted',
+    sourceEventId = '',
+  } = {}) {
+    if (!isTowerPgBackendMode() || !workspace?.pgBackendMode || !this.session?.npub) return null;
+    try {
+      const result = await publishWorkspaceSelfIndexTombstone({
+        workspace,
+        userNpub: this.session.npub,
+        userPubkeyHex: this.session.pubkey,
+        relayUrls: this.workspaceSelfIndexRelayUrls(workspace),
+        appNpub: APP_NPUB,
+        appPubkeyHex: flightDeckSelfIndexAppPubkeyHex(APP_NPUB),
+        towerResult,
+        reason,
+        sourceEventId,
+      });
+      await this.persistWorkspaceSelfIndexPatch(workspace, {
+        pgSelfIndexStatus: 'deleted',
         pgSelfIndexError: null,
         pgSelfIndexPublishedAt: result.publishedAt,
         pgSelfIndexLastBroadcastAt: result.publishedAt,

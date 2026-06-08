@@ -197,6 +197,51 @@ describe('Nostr kind 33357 onboarding announcements', () => {
     })).toThrow(/stale/);
   });
 
+  it('accepts revoked and deleted payloads without Agent Connect credentials', async () => {
+    const payload = await validPayload();
+    delete payload.agent_connect;
+    delete payload.expires_at;
+    payload.action = 'revoked';
+    payload.revocation = {
+      reason: 'workspace_deleted',
+      revoked_at: '2026-06-08T00:00:00.000Z',
+      source: 'tower',
+    };
+
+    expect(validateOnboardingAnnouncementPayload(payload, {
+      recipientNpub: recipient.npub,
+      appPubkeyHex,
+      now: new Date('2026-06-08T00:00:00.000Z'),
+    })).toBe(payload);
+
+    const event = await buildUnsignedOnboardingAnnouncementEvent({
+      recipientNpub: recipient.npub,
+      issuerPubkeyHex: issuer.pubkey,
+      appPubkeyHex,
+      content: `enc:${JSON.stringify(payload)}`,
+      createdAt: 1780710000,
+    });
+    const decoded = await decryptOnboardingAnnouncementEvent({
+      event,
+      userNpub: recipient.npub,
+      userPubkeyHex: recipient.pubkey,
+      appPubkeyHex,
+      decryptFromNpub: async (_senderNpub, ciphertext) => ciphertext.slice(4),
+      now: new Date('2026-06-08T00:00:00.000Z'),
+    });
+    expect(decoded).toMatchObject({
+      action: 'revoked',
+      revoked: true,
+      grantId: expect.stringMatching(/^fd-onboard:/),
+    });
+
+    payload.action = 'deleted';
+    expect(validateOnboardingAnnouncementPayload(payload, {
+      recipientNpub: recipient.npub,
+      appPubkeyHex,
+    })).toBe(payload);
+  });
+
   it('stores supplied grant ids as opaque values in the encrypted payload', async () => {
     const payload = await validPayload({ grantId: 'workspace-1:group-1:npub1recipient' });
 
@@ -258,6 +303,36 @@ describe('Nostr kind 33357 onboarding announcements', () => {
     });
     expect(filterSeen).not.toHaveProperty('#protocol');
     expect(result.candidates).toHaveLength(1);
+  });
+
+  it('deduplicates onboarding candidates by workspace identity instead of grant id', async () => {
+    const olderPayload = await validPayload({ grantId: 'grant-old' });
+    const newerPayload = await validPayload({ grantId: 'grant-new' });
+    const baseEvent = await buildUnsignedOnboardingAnnouncementEvent({
+      recipientNpub: recipient.npub,
+      issuerPubkeyHex: issuer.pubkey,
+      appPubkeyHex,
+      content: '',
+      createdAt: 1,
+    });
+    const result = await queryOnboardingAnnouncementCandidates({
+      userNpub: recipient.npub,
+      userPubkeyHex: recipient.pubkey,
+      appPubkeyHex,
+      decryptFromNpub: async (_sender, ciphertext) => ciphertext.slice(4),
+      poolFactory: () => ({
+        querySync: async () => [
+          { ...baseEvent, id: 'older', created_at: 1, content: `enc:${JSON.stringify(olderPayload)}` },
+          { ...baseEvent, id: 'newer', created_at: 2, content: `enc:${JSON.stringify(newerPayload)}` },
+        ],
+        destroy() {},
+      }),
+      now: new Date('2026-06-08T00:00:00.000Z'),
+    });
+
+    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates[0].event.id).toBe('newer');
+    expect(result.candidates[0].grantId).toBe(newerPayload.grant.grant_id);
   });
 
   it('rejects relay publication when no relay accepts the announcement', async () => {

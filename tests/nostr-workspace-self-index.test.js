@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   WORKSPACE_SELF_INDEX_KIND,
   WORKSPACE_SELF_INDEX_PROTOCOL,
+  buildWorkspaceSelfIndexTombstonePayload,
   broadcastWorkspaceSelfIndexEvent,
   buildUnsignedWorkspaceSelfIndexEvent,
   decryptWorkspaceSelfIndexEvent,
   flightDeckSelfIndexAppPubkeyHex,
   publishWorkspaceSelfIndex,
+  publishWorkspaceSelfIndexTombstone,
   queryWorkspaceSelfIndexCandidates,
 } from '../src/nostr-workspace-self-index.js';
 
@@ -162,6 +164,67 @@ describe('Nostr kind 33356 workspace self-index', () => {
     expect(eventSeen).toBe(signedEvent);
     expect(result.event).toBe(signedEvent);
     expect(result.publishedAt).toBe('2026-06-09T00:00:00.000Z');
+  });
+
+  it('publishes a replacement tombstone with the same deterministic d tag', async () => {
+    const activeEvent = await buildUnsignedWorkspaceSelfIndexEvent({
+      workspace,
+      userNpub: '',
+      userPubkeyHex,
+      appPubkeyHex,
+      content: 'encrypted',
+      createdAt: 1780710000,
+    });
+    const activeDTag = activeEvent.tags.find((tag) => tag[0] === 'd')?.[1];
+    const payload = await buildWorkspaceSelfIndexTombstonePayload({
+      workspace,
+      userNpub: 'npub1user',
+      appPubkeyHex,
+      now: new Date('2026-06-08T00:00:00.000Z'),
+      towerResult: 'workspace_deleted',
+      reason: 'workspace_deleted',
+      sourceEventId: 'event-33357',
+    });
+
+    expect(payload).toMatchObject({
+      state: {
+        deleted: true,
+        status: 'deleted',
+        reason: 'workspace_deleted',
+        source_33357_event_id: 'event-33357',
+      },
+      verification: {
+        tower_result: 'workspace_deleted',
+      },
+    });
+
+    let signedTemplate = null;
+    const result = await publishWorkspaceSelfIndexTombstone({
+      workspace,
+      userPubkeyHex,
+      appPubkeyHex,
+      towerResult: 'workspace_deleted',
+      reason: 'workspace_deleted',
+      sourceEventId: 'event-33357',
+      encryptForNpub: async (_npub, plaintext) => `enc:${plaintext}`,
+      signEvent: async (event) => {
+        signedTemplate = event;
+        return { ...event, id: 'event-tombstone', sig: 'sig' };
+      },
+      poolFactory: () => ({
+        publish(relays) {
+          return relays.map(() => Promise.resolve('ok'));
+        },
+        destroy() {},
+      }),
+      now: new Date('2026-06-08T00:00:00.000Z'),
+    });
+
+    expect(result.event.id).toBe('event-tombstone');
+    expect(signedTemplate.tags.find((tag) => tag[0] === 'd')?.[1]).toBe(activeDTag);
+    const encryptedPayload = JSON.parse(signedTemplate.content.slice(4));
+    expect(encryptedPayload.state.deleted).toBe(true);
+    expect(JSON.stringify(signedTemplate.tags)).not.toContain('tower.example');
   });
 
   it('decrypts, ignores tombstones, and deduplicates candidates by workspace identity', async () => {

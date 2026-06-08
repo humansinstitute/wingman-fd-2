@@ -66,6 +66,13 @@ function createStore(overrides = {}) {
     pgOnboardingAnnouncementStatuses: [],
     selectedWorkspaceKey: '',
     currentWorkspaceOwnerNpub: '',
+    persistWorkspaceSettings: vi.fn().mockResolvedValue(undefined),
+    stopBackgroundSync: vi.fn(),
+    stopWorkspaceLiveQueries: vi.fn(),
+    publishPgWorkspaceSelfIndexTombstone: vi.fn().mockResolvedValue({
+      event: { id: 'event-33356-tombstone' },
+      publishedAt: '2026-06-08T00:00:00.000Z',
+    }),
     verifyPgDescriptor: vi.fn().mockResolvedValue({
       descriptor,
       me: { actor: { npub: 'npub1user' }, membership: { role: 'member' } },
@@ -193,6 +200,110 @@ describe('onboarding announcements manager', () => {
       eventId: 'event-stale',
       error: 'Tower PG API 403',
     });
+  });
+
+  it('confirms revoked onboarding through Tower before hiding a local workspace and publishing a tombstone', async () => {
+    const store = await bindStore({
+      selectedWorkspaceKey: workspace.workspaceKey,
+      currentWorkspaceOwnerNpub: workspace.workspaceOwnerNpub,
+      verifyPgDescriptor: vi.fn().mockRejectedValue(new Error('Tower PG API 410 GET https://tower.example: {"code":"workspace_deleted"}')),
+    });
+    const candidate = {
+      event: { id: 'event-revoked' },
+      action: 'revoked',
+      revoked: true,
+      payload: {
+        action: 'revoked',
+        revocation: { reason: 'workspace_deleted' },
+      },
+      locator: {
+        ...descriptor,
+        tower_base_url: 'https://tower.example',
+      },
+    };
+
+    const summary = await store.discoverPgOnboardingAnnouncements({ candidates: [candidate] });
+
+    expect(store.verifyPgDescriptor).toHaveBeenCalledWith(candidate.locator, {
+      baseUrl: 'https://tower.example',
+    });
+    expect(store.publishPgWorkspaceSelfIndexTombstone).toHaveBeenCalledWith(workspace, {
+      towerResult: 'workspace_deleted',
+      reason: 'workspace_deleted',
+      sourceEventId: 'event-revoked',
+    });
+    expect(store.knownWorkspaces).toHaveLength(0);
+    expect(store.selectedWorkspaceKey).toBe('');
+    expect(store.currentWorkspaceOwnerNpub).toBe('');
+    expect(store.stopBackgroundSync).toHaveBeenCalled();
+    expect(store.stopWorkspaceLiveQueries).toHaveBeenCalled();
+    expect(store.persistWorkspaceSettings).toHaveBeenCalled();
+    expect(summary).toMatchObject({
+      revokedConfirmed: 1,
+      tombstonesPublished: 1,
+    });
+    expect(summary.rejected[0]).toMatchObject({
+      eventId: 'event-revoked',
+      status: 'revocation_confirmed',
+      towerResult: 'workspace_deleted',
+    });
+  });
+
+  it('keeps revoked onboarding diagnostic-only when Tower still confirms membership', async () => {
+    const store = await bindStore({
+      selectedWorkspaceKey: workspace.workspaceKey,
+      currentWorkspaceOwnerNpub: workspace.workspaceOwnerNpub,
+    });
+    const candidate = {
+      event: { id: 'event-unconfirmed' },
+      action: 'deleted',
+      revoked: true,
+      payload: {
+        action: 'deleted',
+        revocation: { reason: 'workspace_deleted' },
+      },
+      locator: {
+        ...descriptor,
+        tower_base_url: 'https://tower.example',
+      },
+    };
+
+    const summary = await store.discoverPgOnboardingAnnouncements({ candidates: [candidate] });
+
+    expect(store.verifyPgDescriptor).toHaveBeenCalled();
+    expect(store.publishPgWorkspaceSelfIndexTombstone).not.toHaveBeenCalled();
+    expect(store.knownWorkspaces).toEqual([workspace]);
+    expect(store.selectedWorkspaceKey).toBe(workspace.workspaceKey);
+    expect(summary).toMatchObject({
+      revokedUnconfirmed: 1,
+      tombstonesPublished: 0,
+    });
+    expect(summary.rejected[0]).toMatchObject({
+      eventId: 'event-unconfirmed',
+      status: 'revocation_unconfirmed',
+      towerResult: 'access_still_valid',
+    });
+  });
+
+  it('continues to import active onboarding grants when action is missing', async () => {
+    const store = await bindStore({ knownWorkspaces: [] });
+    const candidate = {
+      event: { id: 'event-active-legacy' },
+      locator: {
+        ...descriptor,
+        tower_base_url: 'https://tower.example',
+      },
+    };
+
+    const summary = await store.discoverPgOnboardingAnnouncements({ candidates: [candidate] });
+
+    expect(store.verifyPgDescriptor).toHaveBeenCalledWith(candidate.locator, {
+      baseUrl: 'https://tower.example',
+    });
+    expect(store.rememberVerifiedPgWorkspace).toHaveBeenCalled();
+    expect(store.publishPgWorkspaceSelfIndexTombstone).not.toHaveBeenCalled();
+    expect(summary.verified).toBe(1);
+    expect(summary.revokedConfirmed).toBe(0);
   });
 
   it('surfaces relay events that were fetched but rejected before import', async () => {

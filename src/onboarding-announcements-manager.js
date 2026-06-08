@@ -3,6 +3,7 @@ import { buildAgentConnectPackage } from './agent-connect.js';
 import { isTowerPgBackendMode } from './backend-mode.js';
 import {
   flightDeckOnboardingAppPubkeyHex,
+  isRevokedOnboardingAction,
   onboardingAnnouncementRelayUrls,
   publishOnboardingAnnouncement,
   queryOnboardingAnnouncementCandidates,
@@ -44,6 +45,50 @@ function buildConnectionToken(workspace = {}, backendUrl = '') {
     appNpub: APP_NPUB,
     relayUrls: workspace.relayUrls || [],
   });
+}
+
+function locatorIdentity(locator = {}) {
+  const identity = locator.identity || locator;
+  return {
+    towerBaseUrl: trimText(locator.tower_base_url || locator.towerBaseUrl),
+    towerServiceNpub: trimText(identity.tower_service_npub || identity.towerServiceNpub),
+    workspaceId: trimText(identity.workspace_id || identity.workspaceId),
+    workspaceServiceNpub: trimText(identity.workspace_service_npub || identity.workspaceServiceNpub),
+    appNpub: trimText(identity.app_npub || identity.appNpub),
+  };
+}
+
+function sameLocatorWorkspace(workspace = {}, locator = {}) {
+  const identity = locatorIdentity(locator);
+  if (!workspace?.pgBackendMode) return false;
+  if (identity.workspaceId && trimText(workspace.workspaceId) !== identity.workspaceId) return false;
+  if (identity.workspaceServiceNpub && trimText(workspace.workspaceServiceNpub) !== identity.workspaceServiceNpub) return false;
+  if (identity.towerServiceNpub && trimText(workspace.towerServiceNpub || workspace.serviceNpub) !== identity.towerServiceNpub) return false;
+  if (identity.appNpub && trimText(workspace.appNpub) !== identity.appNpub) return false;
+  return Boolean(identity.workspaceId || identity.workspaceServiceNpub);
+}
+
+function revocationReason(candidate = {}) {
+  const explicit = trimText(candidate.payload?.revocation?.reason || candidate.payload?.grant?.reason);
+  if (explicit) return explicit;
+  return candidate.action === 'deleted' ? 'workspace_deleted' : 'access_revoked';
+}
+
+function confirmedRevocationFromError(error) {
+  const message = errorMessage(error);
+  if (/\b404\b/.test(message)) return { confirmed: true, towerResult: 'workspace_not_found' };
+  if (/\b410\b/.test(message)) return { confirmed: true, towerResult: 'workspace_deleted' };
+  if (/\b40[13]\b/.test(message)) return { confirmed: true, towerResult: 'access_revoked' };
+  return { confirmed: false, towerResult: 'tower_unconfirmed' };
+}
+
+function meConfirmsMembership(me = null) {
+  if (!me) return false;
+  if (me.membership === false || me.member === false) return false;
+  if (me.membership == null && me.member == null && me.actor == null) return false;
+  const state = trimText(me.membership?.state || me.membership?.status || me.status).toLowerCase();
+  if (['revoked', 'removed', 'deleted', 'disabled', 'inactive'].includes(state)) return false;
+  return true;
 }
 
 export const onboardingAnnouncementsManagerMixin = {
@@ -181,7 +226,17 @@ export const onboardingAnnouncementsManagerMixin = {
 
   async discoverPgOnboardingAnnouncements({ candidates = null } = {}) {
     if (!isTowerPgBackendMode() || !this.session?.npub) {
-      return { discovered: 0, eventsSeen: 0, verified: 0, stale: 0, failed: 0, rejected: [] };
+      return {
+        discovered: 0,
+        eventsSeen: 0,
+        verified: 0,
+        revokedConfirmed: 0,
+        revokedUnconfirmed: 0,
+        tombstonesPublished: 0,
+        stale: 0,
+        failed: 0,
+        rejected: [],
+      };
     }
     this.pgOnboardingAnnouncementDiscovering = true;
     this.pgOnboardingAnnouncementError = null;
@@ -189,6 +244,9 @@ export const onboardingAnnouncementsManagerMixin = {
       discovered: 0,
       eventsSeen: 0,
       verified: 0,
+      revokedConfirmed: 0,
+      revokedUnconfirmed: 0,
+      tombstonesPublished: 0,
       stale: 0,
       failed: 0,
       rejected: [],
@@ -211,6 +269,23 @@ export const onboardingAnnouncementsManagerMixin = {
 
       for (const candidate of discovered.candidates) {
         const locator = candidate.locator;
+        if (isRevokedOnboardingAction(candidate.action) || candidate.revoked) {
+          const result = await this.handlePgOnboardingRevocationCandidate(candidate);
+          if (result?.confirmed) {
+            summary.revokedConfirmed += 1;
+            if (result.tombstonePublished) summary.tombstonesPublished += 1;
+          } else {
+            summary.revokedUnconfirmed += 1;
+          }
+          summary.rejected.push({
+            eventId: candidate.event?.id || '',
+            status: result?.status || 'revocation_unconfirmed',
+            workspaceId: locator?.identity?.workspace_id || locator?.workspace_id || '',
+            towerResult: result?.towerResult || 'tower_unconfirmed',
+            error: result?.error || null,
+          });
+          continue;
+        }
         try {
           const { descriptor, me } = await this.verifyPgDescriptor(locator, {
             baseUrl: locator.tower_base_url,
@@ -247,6 +322,102 @@ export const onboardingAnnouncementsManagerMixin = {
       return summary;
     } finally {
       this.pgOnboardingAnnouncementDiscovering = false;
+    }
+  },
+
+  findKnownPgWorkspaceForOnboardingLocator(locator = {}) {
+    return (this.knownWorkspaces || []).find((workspace) => sameLocatorWorkspace(workspace, locator)) || null;
+  },
+
+  async removeConfirmedRevokedPgWorkspace(workspace) {
+    if (!workspace?.workspaceKey) return null;
+    const removedCurrent = this.selectedWorkspaceKey === workspace.workspaceKey
+      || this.currentWorkspaceOwnerNpub === workspace.workspaceOwnerNpub;
+    this.knownWorkspaces = (this.knownWorkspaces || []).filter((entry) => entry.workspaceKey !== workspace.workspaceKey);
+    if (removedCurrent) {
+      this.selectedWorkspaceKey = '';
+      this.currentWorkspaceOwnerNpub = '';
+      if (typeof this.stopBackgroundSync === 'function') this.stopBackgroundSync();
+      if (typeof this.stopWorkspaceLiveQueries === 'function') this.stopWorkspaceLiveQueries();
+    }
+    if (typeof this.persistWorkspaceSettings === 'function') {
+      await this.persistWorkspaceSettings();
+    }
+    return { removedCurrent };
+  },
+
+  async handlePgOnboardingRevocationCandidate(candidate = {}) {
+    const locator = candidate.locator || {};
+    const workspace = this.findKnownPgWorkspaceForOnboardingLocator(locator);
+    const reason = revocationReason(candidate);
+    try {
+      const { me } = await this.verifyPgDescriptor(locator, {
+        baseUrl: locator.tower_base_url,
+      });
+      if (meConfirmsMembership(me)) {
+        return {
+          confirmed: false,
+          status: 'revocation_unconfirmed',
+          towerResult: 'access_still_valid',
+          error: 'Tower still confirms access for this revoked onboarding event.',
+        };
+      }
+      if (!workspace) {
+        return {
+          confirmed: true,
+          status: 'revocation_confirmed_missing_membership',
+          towerResult: 'recipient_not_member',
+          tombstonePublished: false,
+        };
+      }
+      const tombstone = typeof this.publishPgWorkspaceSelfIndexTombstone === 'function'
+        ? await this.publishPgWorkspaceSelfIndexTombstone(workspace, {
+          towerResult: 'recipient_not_member',
+          reason,
+          sourceEventId: candidate.event?.id || '',
+        })
+        : null;
+      await this.removeConfirmedRevokedPgWorkspace(workspace);
+      return {
+        confirmed: true,
+        status: 'revocation_confirmed',
+        towerResult: 'recipient_not_member',
+        tombstonePublished: Boolean(tombstone),
+      };
+    } catch (error) {
+      const confirmed = confirmedRevocationFromError(error);
+      if (!confirmed.confirmed) {
+        return {
+          confirmed: false,
+          status: 'revocation_unconfirmed',
+          towerResult: confirmed.towerResult,
+          error: errorMessage(error),
+        };
+      }
+      if (!workspace) {
+        return {
+          confirmed: true,
+          status: 'revocation_confirmed_no_local_workspace',
+          towerResult: confirmed.towerResult,
+          tombstonePublished: false,
+          error: errorMessage(error),
+        };
+      }
+      const tombstone = typeof this.publishPgWorkspaceSelfIndexTombstone === 'function'
+        ? await this.publishPgWorkspaceSelfIndexTombstone(workspace, {
+          towerResult: confirmed.towerResult,
+          reason,
+          sourceEventId: candidate.event?.id || '',
+        })
+        : null;
+      await this.removeConfirmedRevokedPgWorkspace(workspace);
+      return {
+        confirmed: true,
+        status: 'revocation_confirmed',
+        towerResult: confirmed.towerResult,
+        tombstonePublished: Boolean(tombstone),
+        error: errorMessage(error),
+      };
     }
   },
 };
