@@ -7,6 +7,7 @@ import {
   buildUnsignedOnboardingAnnouncementEvent,
   decryptOnboardingAnnouncementEvent,
   flightDeckOnboardingAppPubkeyHex,
+  onboardingLocatorFromPayload,
   publishOnboardingAnnouncement,
   queryOnboardingAnnouncementCandidates,
   validateOnboardingAnnouncementPayload,
@@ -93,7 +94,6 @@ describe('Nostr kind 33357 onboarding announcements', () => {
 
     expect(result.event.kind).toBe(ONBOARDING_ANNOUNCEMENT_KIND);
     const peteRelays = [
-      'wss://wotr.relatr.xyz',
       'wss://relay.damus.io',
       'wss://relay.primal.net',
       'wss://proxy.nostr-relay.app/8c5723f2601334234e1922d2e842d6bbf209283b07120b3f1d38660915f13793',
@@ -130,6 +130,7 @@ describe('Nostr kind 33357 onboarding announcements', () => {
         owner_npub: 'npub1owner',
         workspace_service_npub: 'npub1workspace',
         workspace_id: 'workspace-1',
+        app_npub: 'flightdeck_pg',
       },
       agent_connect: {
         kind: 'coworker_agent_connect',
@@ -144,6 +145,22 @@ describe('Nostr kind 33357 onboarding announcements', () => {
     expect(JSON.stringify(payload)).not.toContain('group_id');
     expect(JSON.stringify(payload)).not.toContain('task_id');
     expect(JSON.stringify(payload)).not.toContain('doc_id');
+  });
+
+  it('keeps the routing app separate from the PG workspace app namespace', async () => {
+    const payload = await validPayload();
+
+    expect(payload.app.app_npub).toBe(app.npub);
+    expect(payload.workspace.app_npub).toBe('flightdeck_pg');
+    expect(onboardingLocatorFromPayload(payload).identity.app_npub).toBe('flightdeck_pg');
+  });
+
+  it('defaults older onboarding payloads without a workspace app namespace to Flight Deck PG', async () => {
+    const payload = await validPayload();
+    delete payload.workspace.app_npub;
+
+    expect(payload.app.app_npub).toBe(app.npub);
+    expect(onboardingLocatorFromPayload(payload).identity.app_npub).toBe('flightdeck_pg');
   });
 
   it('rejects invalid encrypted payload fields', async () => {

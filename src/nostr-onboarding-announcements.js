@@ -16,7 +16,6 @@ export const ONBOARDING_PROTOCOL = 'onboarding';
 export const ONBOARDING_PAYLOAD_TYPE = 'flightdeck_onboarding';
 
 const DEFAULT_RELAYS = [
-  'wss://wotr.relatr.xyz',
   'wss://relay.damus.io',
   'wss://relay.primal.net',
   'wss://proxy.nostr-relay.app/8c5723f2601334234e1922d2e842d6bbf209283b07120b3f1d38660915f13793',
@@ -211,6 +210,7 @@ export async function buildOnboardingPayload({
       owner_npub: trimText(descriptor.workspaceOwnerNpub || workspace?.workspaceOwnerNpub) || null,
       workspace_service_npub: workspaceServiceNpub || null,
       workspace_id: workspaceId || null,
+      app_npub: trimText(descriptor.appNpub || workspace?.appNpub || FLIGHT_DECK_PG_APP_NPUB) || null,
       label: trimText(descriptor.label || workspace?.name) || null,
       descriptor_url: trimText(descriptor.links?.descriptor) || null,
       me_url: trimText(descriptor.links?.me) || null,
@@ -407,7 +407,7 @@ export function onboardingLocatorFromPayload(payload = {}) {
       workspace_service_npub: trimText(workspace.workspace_service_npub),
       workspace_owner_npub: trimText(workspace.owner_npub),
       workspace_id: trimText(workspace.workspace_id),
-      app_npub: trimText(payload.app?.app_npub) || FLIGHT_DECK_PG_APP_NPUB,
+      app_npub: trimText(workspace.app_npub) || FLIGHT_DECK_PG_APP_NPUB,
     },
     label: trimText(workspace.label),
     description: '',
