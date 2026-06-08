@@ -191,16 +191,27 @@ describe('Nostr kind 33356 workspace self-index', () => {
       { ...baseEvent, id: 'deleted', created_at: 3, content: `enc:${JSON.stringify(deletedPayload)}` },
     ];
 
+    let filterSeen = null;
     const result = await queryWorkspaceSelfIndexCandidates({
       userPubkeyHex,
       appPubkeyHex,
       decryptFromNpub: async (_npub, ciphertext) => ciphertext.slice(4),
       poolFactory: () => ({
-        querySync: async () => events,
+        querySync: async (_relays, filter) => {
+          filterSeen = filter;
+          return events;
+        },
         destroy() {},
       }),
     });
 
+    expect(filterSeen).toMatchObject({
+      kinds: [33356],
+      authors: [userPubkeyHex],
+      '#p': [userPubkeyHex],
+      '#app_pub': [appPubkeyHex],
+    });
+    expect(filterSeen).not.toHaveProperty('#protocol');
     expect(result.candidates).toHaveLength(1);
     expect(result.candidates[0].event.id).toBe('newer');
     expect(result.candidates[0].locator.workspace_id).toBe('workspace-1');

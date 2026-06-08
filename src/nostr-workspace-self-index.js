@@ -293,7 +293,6 @@ export async function queryWorkspaceSelfIndexEvents({
     authors: [pubkeyHex],
     '#p': [pubkeyHex],
     '#app_pub': [appPubkeyHex],
-    '#protocol': [WORKSPACE_SELF_INDEX_PROTOCOL],
     limit: 100,
   };
   const pool = poolFactory();

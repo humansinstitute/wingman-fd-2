@@ -384,7 +384,6 @@ export async function queryOnboardingAnnouncementEvents({
     kinds: [ONBOARDING_ANNOUNCEMENT_KIND],
     '#p': [recipientHex],
     '#app_pub': [appPubkeyHex],
-    '#protocol': [ONBOARDING_PROTOCOL],
     limit: 100,
   };
   const pool = poolFactory();

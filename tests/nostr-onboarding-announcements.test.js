@@ -187,7 +187,7 @@ describe('Nostr kind 33357 onboarding announcements', () => {
     expect(payload.grant.grant_id).not.toContain('group-1');
   });
 
-  it('decrypts candidates and filters relay queries by p, app_pub, and protocol', async () => {
+  it('decrypts candidates and filters relay queries by p and app_pub', async () => {
     const payload = await validPayload();
     const event = await buildUnsignedOnboardingAnnouncementEvent({
       recipientNpub: recipient.npub,
@@ -237,8 +237,8 @@ describe('Nostr kind 33357 onboarding announcements', () => {
       kinds: [33357],
       '#p': [recipient.pubkey],
       '#app_pub': [appPubkeyHex],
-      '#protocol': ['onboarding'],
     });
+    expect(filterSeen).not.toHaveProperty('#protocol');
     expect(result.candidates).toHaveLength(1);
   });
 

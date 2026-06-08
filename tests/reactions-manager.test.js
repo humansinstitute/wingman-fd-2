@@ -270,6 +270,35 @@ describe('reactionsManagerMixin', () => {
     expect(mocks.outboundReaction).not.toHaveBeenCalled();
   });
 
+  it('ignores missing PG reaction targets while refreshing visible task reactions', async () => {
+    mocks.isTowerPgBackendMode.mockReturnValue(true);
+    const missingTarget = new Error('Tower PG API 404: {"error":"reaction_target_not_found"}');
+    missingTarget.status = 404;
+    missingTarget.responseText = '{"error":"reaction_target_not_found"}';
+    mocks.getReactionsByTargets.mockResolvedValue([]);
+    mocks.getTowerPgReactions.mockRejectedValueOnce(missingTarget);
+
+    const store = createStore({
+      currentWorkspace: {
+        workspaceId: 'workspace-1',
+        workspaceOwnerNpub: 'npub1owner',
+        directHttpsUrl: 'https://tower.example',
+        appNpub: 'flightdeck_pg',
+      },
+      tasks: [{ record_id: 'task-missing', pg_backend: true }],
+    });
+
+    await expect(store.refreshReactionsForVisibleTargets()).resolves.toBeUndefined();
+
+    expect(mocks.getTowerPgReactions).toHaveBeenCalledWith('workspace-1', {
+      targetType: 'task',
+      targetId: 'task-missing',
+      baseUrl: 'https://tower.example',
+      appNpub: 'flightdeck_pg',
+    });
+    expect(store.reactionRows).toEqual([]);
+  });
+
   it('soft-deletes an active own reaction and inherits task comment groups', async () => {
     mocks.getReactionByIdentity.mockResolvedValue({
       record_id: 'reaction-existing',

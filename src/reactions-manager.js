@@ -76,6 +76,13 @@ async function resolvePgReactionTarget(targetId, familyHash) {
   return null;
 }
 
+function isMissingPgReactionTargetError(error) {
+  if (!error || error.status !== 404) return false;
+  const responseText = String(error.responseText || '');
+  return responseText.includes('reaction_target_not_found')
+    || responseText.includes('Flight Deck PG reaction target was not found');
+}
+
 export const reactionsManagerMixin = {
   get reactionEmojiOptions() {
     return REACTION_EMOJI_OPTIONS;
@@ -168,12 +175,18 @@ export const reactionsManagerMixin = {
     if (isTowerPgBackendMode()) {
       const context = resolveTowerPgWorkspaceContext(this);
       const collectPg = async (targetType, targetId, familyHash) => {
-        const result = await getTowerPgReactions(context.workspaceId, {
-          targetType,
-          targetId,
-          baseUrl: context.baseUrl,
-          appNpub: context.appNpub,
-        });
+        let result;
+        try {
+          result = await getTowerPgReactions(context.workspaceId, {
+            targetType,
+            targetId,
+            baseUrl: context.baseUrl,
+            appNpub: context.appNpub,
+          });
+        } catch (error) {
+          if (isMissingPgReactionTargetError(error)) return;
+          throw error;
+        }
         for (const reaction of Array.isArray(result?.reactions) ? result.reactions : []) {
           const now = new Date().toISOString();
           pgReactions.push({
