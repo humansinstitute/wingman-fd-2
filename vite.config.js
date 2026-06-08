@@ -1,9 +1,53 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import fs from 'node:fs';
 import path from 'node:path';
+import { getPublicKey, nip19 } from 'nostr-tools';
 
 const DIST_DIR = path.resolve(__dirname, 'dist');
 const DIST_ASSETS_DIR = path.join(DIST_DIR, 'assets');
+const DEFAULT_APP_NPUB = 'npub1hd37reqgfcnz3pvzj4grknd2nkzc94p9ercmunrxx22razr2rfxsw6dns5';
+
+function trimText(value) {
+  return String(value ?? '').trim();
+}
+
+function isNpub(value) {
+  return /^npub1[023456789acdefghjklmnpqrstuvwxyz]+$/i.test(trimText(value));
+}
+
+function deriveNpubFromNsec(value) {
+  const text = trimText(value);
+  if (!text) return '';
+  try {
+    const decoded = nip19.decode(text);
+    if (decoded.type !== 'nsec') return '';
+    return nip19.npubEncode(getPublicKey(decoded.data));
+  } catch {
+    return '';
+  }
+}
+
+function flightDeckIdentityPlugin() {
+  return {
+    name: 'flightdeck-identity',
+    config(_config, env) {
+      const loadedEnv = loadEnv(env.mode, process.cwd(), '');
+      const explicitPgAppNpub = trimText(
+        loadedEnv.VITE_FLIGHT_DECK_PG_APP_NPUB
+        || loadedEnv.VITE_FLIGHTDECK_PG_APP_NPUB
+      );
+      const explicitAppNpub = trimText(loadedEnv.VITE_COWORKER_APP_NPUB);
+      const derivedNpub = deriveNpubFromNsec(loadedEnv.FLIGHTDECK_NSEC);
+      const pgAppNpub = [explicitPgAppNpub, explicitAppNpub, derivedNpub, DEFAULT_APP_NPUB]
+        .find(isNpub) || DEFAULT_APP_NPUB;
+      return {
+        define: {
+          __FLIGHT_DECK_PG_APP_NPUB__: JSON.stringify(pgAppNpub),
+        },
+      };
+    },
+  };
+}
 
 function readBuildMeta(metaPath) {
   try {
@@ -249,7 +293,7 @@ self.addEventListener('fetch', (event) => {
 
 export default defineConfig({
   root: '.',
-  plugins: [buildVersionPlugin(), staleDistAssetFallbackPlugin()],
+  plugins: [flightDeckIdentityPlugin(), buildVersionPlugin(), staleDistAssetFallbackPlugin()],
   server: {
     host: true,
     strictPort: true,

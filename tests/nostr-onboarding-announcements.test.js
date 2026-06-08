@@ -17,6 +17,7 @@ const issuer = generateLocalIdentity();
 const recipient = generateLocalIdentity();
 const app = generateLocalIdentity();
 const appPubkeyHex = flightDeckOnboardingAppPubkeyHex(app.npub);
+const defaultPgAppNpub = 'npub1hd37reqgfcnz3pvzj4grknd2nkzc94p9ercmunrxx22razr2rfxsw6dns5';
 
 const workspace = {
   workspaceId: 'workspace-1',
@@ -130,7 +131,7 @@ describe('Nostr kind 33357 onboarding announcements', () => {
         owner_npub: 'npub1owner',
         workspace_service_npub: 'npub1workspace',
         workspace_id: 'workspace-1',
-        app_npub: 'flightdeck_pg',
+        app_npub: defaultPgAppNpub,
       },
       agent_connect: {
         kind: 'coworker_agent_connect',
@@ -151,16 +152,16 @@ describe('Nostr kind 33357 onboarding announcements', () => {
     const payload = await validPayload();
 
     expect(payload.app.app_npub).toBe(app.npub);
-    expect(payload.workspace.app_npub).toBe('flightdeck_pg');
-    expect(onboardingLocatorFromPayload(payload).identity.app_npub).toBe('flightdeck_pg');
+    expect(payload.workspace.app_npub).toBe(defaultPgAppNpub);
+    expect(onboardingLocatorFromPayload(payload).identity.app_npub).toBe(defaultPgAppNpub);
   });
 
-  it('defaults older onboarding payloads without a workspace app namespace to Flight Deck PG', async () => {
+  it('defaults older onboarding payloads without a workspace app namespace to the configured PG app npub', async () => {
     const payload = await validPayload();
     delete payload.workspace.app_npub;
 
     expect(payload.app.app_npub).toBe(app.npub);
-    expect(onboardingLocatorFromPayload(payload).identity.app_npub).toBe('flightdeck_pg');
+    expect(onboardingLocatorFromPayload(payload).identity.app_npub).toBe(defaultPgAppNpub);
   });
 
   it('rejects invalid encrypted payload fields', async () => {
