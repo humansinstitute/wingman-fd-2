@@ -129,6 +129,49 @@ describe('PG connect settings manager', () => {
     });
   });
 
+  it('does not republish a fresh 33356 self-index when a verified PG descriptor is refreshed', async () => {
+    const api = await import('../src/api.js');
+    api.getTowerPgWorkspaceDescriptor.mockResolvedValue(descriptor);
+    api.getTowerPgWorkspaceMe.mockResolvedValue({ actor: { npub: 'npub1user' }, membership: { role: 'member' } });
+    const { connectSettingsManagerMixin } = await import('../src/connect-settings-manager.js');
+    const publishPgWorkspaceSelfIndex = vi.fn().mockResolvedValue(null);
+    const shouldQueuePgWorkspaceSelfIndexPublish = vi.fn(() => false);
+    const store = createStore({
+      publishPgWorkspaceSelfIndex,
+      shouldQueuePgWorkspaceSelfIndexPublish,
+      knownWorkspaces: [{
+        workspaceKey: 'pg:npub1user::tower:npub1tower::workspace:npub1workspace::app:flightdeck_pg',
+        workspaceOwnerNpub: 'npub1owner',
+        directHttpsUrl: 'https://tower.example',
+        towerServiceNpub: 'npub1tower',
+        workspaceServiceNpub: 'npub1workspace',
+        workspaceId: 'workspace-1',
+        appNpub: 'flightdeck_pg',
+        pgSessionNpub: 'npub1user',
+        pgBackendMode: true,
+        pgSelfIndexStatus: 'indexed',
+        pgSelfIndexLastBroadcastAt: '2026-06-08T00:00:00.000Z',
+        pgSelfIndexEventId: 'event-indexed',
+        pgSelfIndexSignedEvent: { id: 'event-indexed' },
+      }],
+    });
+    Object.defineProperties(store, Object.getOwnPropertyDescriptors(connectSettingsManagerMixin));
+
+    await store.connectWithPgDescriptor(JSON.stringify(descriptor));
+    await Promise.resolve();
+
+    expect(shouldQueuePgWorkspaceSelfIndexPublish).toHaveBeenCalledWith(expect.objectContaining({
+      pgSelfIndexStatus: 'indexed',
+      pgSelfIndexEventId: 'event-indexed',
+    }));
+    expect(publishPgWorkspaceSelfIndex).not.toHaveBeenCalled();
+    expect(store.knownWorkspaces[0]).toMatchObject({
+      pgSelfIndexStatus: 'indexed',
+      pgSelfIndexEventId: 'event-indexed',
+      pgSelfIndexSignedEvent: { id: 'event-indexed' },
+    });
+  });
+
   it('opens a verified PG workspace without waiting for relay self-index publish', async () => {
     const api = await import('../src/api.js');
     api.getTowerPgWorkspaceDescriptor.mockResolvedValue(descriptor);

@@ -281,15 +281,15 @@ describe('Nostr kind 33357 onboarding announcements', () => {
       },
     });
 
-    let filterSeen = null;
+    const queryCalls = [];
     const result = await queryOnboardingAnnouncementCandidates({
       userNpub: recipient.npub,
       userPubkeyHex: recipient.pubkey,
       appPubkeyHex,
       decryptFromNpub: async (_sender, ciphertext) => ciphertext.slice(4),
       poolFactory: () => ({
-        querySync: async (_relays, filter) => {
-          filterSeen = filter;
+        querySync: async (relays, filter) => {
+          queryCalls.push({ relays, filter });
           return [{ ...event, id: 'event-1' }];
         },
         destroy() {},
@@ -297,12 +297,27 @@ describe('Nostr kind 33357 onboarding announcements', () => {
       now: new Date('2026-06-08T00:00:00.000Z'),
     });
 
-    expect(filterSeen).toMatchObject({
+    expect(queryCalls).toHaveLength(2);
+    expect(queryCalls[0].relays).toEqual([
+      'wss://relay.damus.io',
+      'wss://proxy.nostr-relay.app/8c5723f2601334234e1922d2e842d6bbf209283b07120b3f1d38660915f13793',
+      'ws://127.0.0.1:4869',
+    ]);
+    expect(queryCalls[0].filter).toMatchObject({
       kinds: [33357],
       '#p': [recipient.pubkey],
       '#app_pub': [appPubkeyHex],
     });
-    expect(filterSeen).not.toHaveProperty('#protocol');
+    expect(queryCalls[0].filter).not.toHaveProperty('#protocol');
+    expect(queryCalls[1]).toMatchObject({
+      relays: ['wss://relay.primal.net'],
+      filter: {
+        kinds: [33357],
+        '#p': [recipient.pubkey],
+      },
+    });
+    expect(queryCalls[1].filter).not.toHaveProperty('#app_pub');
+    expect(queryCalls[1].filter).not.toHaveProperty('#protocol');
     expect(result.candidates).toHaveLength(1);
   });
 

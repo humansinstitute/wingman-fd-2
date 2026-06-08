@@ -22,8 +22,20 @@ const DEFAULT_RELAYS = [
   'ws://127.0.0.1:4869',
 ];
 
+const RELAYS_WITH_UNINDEXED_APP_PUB_FILTERS = new Set([
+  'wss://relay.primal.net',
+]);
+
 function trimText(value) {
   return String(value ?? '').trim();
+}
+
+function trimUrl(value) {
+  return trimText(value).replace(/\/+$/, '');
+}
+
+function normalizeRelayIdentity(value) {
+  return trimUrl(value).toLowerCase();
 }
 
 function envSelfIndexRelays() {
@@ -46,6 +58,41 @@ export function normalizeNostrPubkeyHex(value) {
   if (/^[0-9a-f]{64}$/i.test(text)) return text.toLowerCase();
   if (text.startsWith('npub1')) return decodeNpub(text).toLowerCase();
   throw new Error('Nostr pubkey must be hex or npub.');
+}
+
+function dedupeEvents(events = []) {
+  const seen = new Set();
+  const deduped = [];
+  for (const event of events || []) {
+    const key = event?.id || JSON.stringify(event || {});
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(event);
+  }
+  return deduped;
+}
+
+async function queryWithRelayCompatibleFilters(pool, relays, filter, options = {}) {
+  const strictRelays = [];
+  const appPubFallbackRelays = [];
+  for (const relay of relays || []) {
+    if (RELAYS_WITH_UNINDEXED_APP_PUB_FILTERS.has(normalizeRelayIdentity(relay))) {
+      appPubFallbackRelays.push(relay);
+    } else {
+      strictRelays.push(relay);
+    }
+  }
+
+  const events = [];
+  if (strictRelays.length > 0) {
+    events.push(...(await pool.querySync(strictRelays, filter, options) || []));
+  }
+  if (appPubFallbackRelays.length > 0) {
+    const fallbackFilter = { ...filter };
+    delete fallbackFilter['#app_pub'];
+    events.push(...(await pool.querySync(appPubFallbackRelays, fallbackFilter, options) || []));
+  }
+  return dedupeEvents(events);
 }
 
 export function flightDeckSelfIndexAppPubkeyHex(appNpub = APP_NPUB) {
@@ -385,7 +432,7 @@ export async function queryWorkspaceSelfIndexEvents({
   };
   const pool = poolFactory();
   try {
-    return await pool.querySync(relays, filter, { maxWait });
+    return await queryWithRelayCompatibleFilters(pool, relays, filter, { maxWait });
   } finally {
     if (typeof pool.destroy === 'function') pool.destroy();
     else if (typeof pool.close === 'function') pool.close(relays);

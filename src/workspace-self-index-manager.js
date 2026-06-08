@@ -19,10 +19,25 @@ function timestamp() {
 }
 
 const SELF_INDEX_REBROADCAST_INTERVAL_MS = 2 * 24 * 60 * 60 * 1000;
+const SELF_INDEX_INACTIVE_STATUSES = new Set([
+  'pending',
+  'publishing',
+  'stale',
+  'verified',
+  'deleted',
+]);
 
 function isSelfIndexBroadcastStale(workspace, now = Date.now()) {
   const last = Date.parse(workspace?.pgSelfIndexLastBroadcastAt || workspace?.pgSelfIndexPublishedAt || '');
   return !Number.isFinite(last) || (Number(now) - last) >= SELF_INDEX_REBROADCAST_INTERVAL_MS;
+}
+
+function shouldQueueSelfIndexPublish(workspace, now = Date.now()) {
+  if (!workspace?.pgBackendMode) return false;
+  const status = String(workspace.pgSelfIndexStatus || '').trim();
+  if (SELF_INDEX_INACTIVE_STATUSES.has(status)) return false;
+  if (status === 'indexed' && !isSelfIndexBroadcastStale(workspace, now)) return false;
+  return true;
 }
 
 export const workspaceSelfIndexManagerMixin = {
@@ -56,8 +71,13 @@ export const workspaceSelfIndexManagerMixin = {
     return updated;
   },
 
+  shouldQueuePgWorkspaceSelfIndexPublish(workspace, now = Date.now()) {
+    return shouldQueueSelfIndexPublish(workspace, now);
+  },
+
   async markPgWorkspaceSelfIndexPending(workspace) {
     if (!isTowerPgBackendMode() || !workspace?.pgBackendMode || !this.session?.npub) return workspace || null;
+    if (!this.shouldQueuePgWorkspaceSelfIndexPublish(workspace)) return workspace || null;
     return this.persistWorkspaceSelfIndexPatch(workspace, {
       pgSelfIndexStatus: 'pending',
       pgSelfIndexError: null,
@@ -67,6 +87,8 @@ export const workspaceSelfIndexManagerMixin = {
 
   schedulePgWorkspaceSelfIndexPublish(workspace) {
     if (!isTowerPgBackendMode() || !workspace?.pgBackendMode || !this.session?.npub) return null;
+    const status = String(workspace.pgSelfIndexStatus || '').trim();
+    if (status !== 'pending' && !this.shouldQueuePgWorkspaceSelfIndexPublish(workspace)) return null;
     const task = Promise.resolve()
       .then(() => this.publishPgWorkspaceSelfIndex(workspace))
       .catch(async (error) => {
@@ -90,13 +112,7 @@ export const workspaceSelfIndexManagerMixin = {
     const candidates = (this.knownWorkspaces || []).filter((workspace) =>
       workspace?.pgBackendMode
       && workspace.pgSessionNpub === this.session.npub
-      && String(workspace.pgSelfIndexStatus || '').trim() !== 'pending'
-      && String(workspace.pgSelfIndexStatus || '').trim() !== 'stale'
-      && String(workspace.pgSelfIndexStatus || '').trim() !== 'verified'
-      && (
-        String(workspace.pgSelfIndexStatus || '').trim() !== 'indexed'
-        || isSelfIndexBroadcastStale(workspace)
-      )
+      && this.shouldQueuePgWorkspaceSelfIndexPublish(workspace)
     );
     let queued = 0;
     for (const workspace of candidates) {

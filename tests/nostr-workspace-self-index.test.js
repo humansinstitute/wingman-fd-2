@@ -253,27 +253,43 @@ describe('Nostr kind 33356 workspace self-index', () => {
       { ...baseEvent, id: 'deleted', created_at: 3, content: `enc:${JSON.stringify(deletedPayload)}` },
     ];
 
-    let filterSeen = null;
+    const queryCalls = [];
     const result = await queryWorkspaceSelfIndexCandidates({
       userPubkeyHex,
       appPubkeyHex,
       decryptFromNpub: async (_npub, ciphertext) => ciphertext.slice(4),
       poolFactory: () => ({
-        querySync: async (_relays, filter) => {
-          filterSeen = filter;
+        querySync: async (relays, filter) => {
+          queryCalls.push({ relays, filter });
           return events;
         },
         destroy() {},
       }),
     });
 
-    expect(filterSeen).toMatchObject({
+    expect(queryCalls).toHaveLength(2);
+    expect(queryCalls[0].relays).toEqual([
+      'wss://relay.damus.io',
+      'wss://proxy.nostr-relay.app/8c5723f2601334234e1922d2e842d6bbf209283b07120b3f1d38660915f13793',
+      'ws://127.0.0.1:4869',
+    ]);
+    expect(queryCalls[0].filter).toMatchObject({
       kinds: [33356],
       authors: [userPubkeyHex],
       '#p': [userPubkeyHex],
       '#app_pub': [appPubkeyHex],
     });
-    expect(filterSeen).not.toHaveProperty('#protocol');
+    expect(queryCalls[0].filter).not.toHaveProperty('#protocol');
+    expect(queryCalls[1]).toMatchObject({
+      relays: ['wss://relay.primal.net'],
+      filter: {
+        kinds: [33356],
+        authors: [userPubkeyHex],
+        '#p': [userPubkeyHex],
+      },
+    });
+    expect(queryCalls[1].filter).not.toHaveProperty('#app_pub');
+    expect(queryCalls[1].filter).not.toHaveProperty('#protocol');
     expect(result.candidates).toHaveLength(1);
     expect(result.candidates[0].event.id).toBe('newer');
     expect(result.candidates[0].locator.workspace_id).toBe('workspace-1');

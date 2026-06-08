@@ -77,6 +77,47 @@ function pgErrorMessage(error, fallback = 'Flight Deck PG connection failed') {
   return error?.message || String(error || fallback);
 }
 
+const PG_SELF_INDEX_STATE_KEYS = [
+  'pgSelfIndexStatus',
+  'pgSelfIndexError',
+  'pgSelfIndexPublishedAt',
+  'pgSelfIndexFailedAt',
+  'pgSelfIndexDiscoveredAt',
+  'pgSelfIndexVerifiedAt',
+  'pgSelfIndexStaleAt',
+  'pgSelfIndexEventId',
+  'pgSelfIndexLastBroadcastAt',
+  'pgSelfIndexSignedEvent',
+  'pgSelfIndexRelays',
+];
+
+function findExistingPgWorkspace(workspaces = [], candidate = {}) {
+  return (Array.isArray(workspaces) ? workspaces : []).find((workspace) => {
+    if (workspace?.workspaceKey && candidate.workspaceKey && workspace.workspaceKey === candidate.workspaceKey) return true;
+    return Boolean(
+      workspace?.pgBackendMode
+      && candidate.pgBackendMode
+      && workspace.pgSessionNpub === candidate.pgSessionNpub
+      && workspace.towerServiceNpub === candidate.towerServiceNpub
+      && workspace.workspaceServiceNpub === candidate.workspaceServiceNpub
+      && workspace.appNpub === candidate.appNpub
+    );
+  }) || null;
+}
+
+function preservePgSelfIndexState(candidate = {}, existing = null) {
+  if (!existing) return candidate;
+  const next = { ...candidate };
+  for (const key of PG_SELF_INDEX_STATE_KEYS) {
+    const value = next[key];
+    const isEmptyArray = Array.isArray(value) && value.length === 0;
+    if ((value == null || value === '' || isEmptyArray) && existing[key] != null && existing[key] !== '') {
+      next[key] = existing[key];
+    }
+  }
+  return next;
+}
+
 async function fetchTowerDiscovery(url, fallbackLabel = '') {
   const cleanUrl = trimUrl(url);
   if (!cleanUrl) throw new Error('URL is required');
@@ -487,6 +528,7 @@ export const connectSettingsManagerMixin = {
       verifiedAt: new Date().toISOString(),
     }));
     if (!workspace) throw new Error('Verified workspace descriptor could not be stored');
+    workspace = preservePgSelfIndexState(workspace, findExistingPgWorkspace(this.knownWorkspaces, workspace));
     const workspaceBackendUrl = normalizeBackendUrl(workspace.directHttpsUrl || this.backendUrl);
     if (options.select !== false || !this.backendUrl) {
       this.backendUrl = workspaceBackendUrl;
@@ -508,12 +550,15 @@ export const connectSettingsManagerMixin = {
     }
     await this.saveSettings();
     if (options.publishSelfIndex !== false && typeof this.publishPgWorkspaceSelfIndex === 'function') {
-      if (typeof this.markPgWorkspaceSelfIndexPending === 'function') {
+      const shouldPublishSelfIndex = typeof this.shouldQueuePgWorkspaceSelfIndexPublish === 'function'
+        ? this.shouldQueuePgWorkspaceSelfIndexPublish(workspace)
+        : true;
+      if (shouldPublishSelfIndex && typeof this.markPgWorkspaceSelfIndexPending === 'function') {
         workspace = await this.markPgWorkspaceSelfIndexPending(workspace) || workspace;
       }
-      if (typeof this.schedulePgWorkspaceSelfIndexPublish === 'function') {
+      if (shouldPublishSelfIndex && typeof this.schedulePgWorkspaceSelfIndexPublish === 'function') {
         this.schedulePgWorkspaceSelfIndexPublish(workspace);
-      } else {
+      } else if (shouldPublishSelfIndex) {
         Promise.resolve()
           .then(() => this.publishPgWorkspaceSelfIndex(workspace))
           .catch(() => {});
