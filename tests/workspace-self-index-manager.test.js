@@ -66,6 +66,7 @@ function createStore(overrides = {}) {
     selectedWorkspaceKey: '',
     currentWorkspaceOwnerNpub: '',
     persistWorkspaceSettings: vi.fn().mockResolvedValue(undefined),
+    selectWorkspace: vi.fn().mockResolvedValue(undefined),
     verifyPgDescriptor: vi.fn().mockResolvedValue({
       descriptor,
       me: { actor: { npub: 'npub1user' }, membership: { role: 'member' } },
@@ -276,12 +277,16 @@ describe('workspace self-index manager', () => {
       actor: { npub: 'npub1user' },
       membership: { role: 'member' },
     }, {
-      select: false,
+      select: true,
       publishSelfIndex: false,
     });
     expect(summary.verified).toBe(1);
     expect(store.selectedWorkspaceKey).toBe(workspace.workspaceKey);
     expect(store.currentWorkspaceOwnerNpub).toBe(workspace.workspaceOwnerNpub);
+    expect(store.selectWorkspace).toHaveBeenCalledWith(workspace.workspaceKey, {
+      pgVerified: true,
+      refresh: false,
+    });
     expect(store.knownWorkspaces[0]).toMatchObject({
       pgSelfIndexStatus: 'verified',
       pgSelfIndexEventId: 'event-1',
@@ -309,6 +314,7 @@ describe('workspace self-index manager', () => {
       pgSelfIndexStatus: 'stale',
       pgSelfIndexError: 'Tower PG API 403',
     });
+    expect(store.pgWorkspaceSelfIndexError).toContain('Tower PG API 403');
   });
 
   it('surfaces relay self-index events that were fetched but rejected before import', async () => {

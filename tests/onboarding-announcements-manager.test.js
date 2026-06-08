@@ -69,6 +69,7 @@ function createStore(overrides = {}) {
     persistWorkspaceSettings: vi.fn().mockResolvedValue(undefined),
     stopBackgroundSync: vi.fn(),
     stopWorkspaceLiveQueries: vi.fn(),
+    selectWorkspace: vi.fn().mockResolvedValue(undefined),
     publishPgWorkspaceSelfIndexTombstone: vi.fn().mockResolvedValue({
       event: { id: 'event-33356-tombstone' },
       publishedAt: '2026-06-08T00:00:00.000Z',
@@ -170,12 +171,15 @@ describe('onboarding announcements manager', () => {
       actor: { npub: 'npub1user' },
       membership: { role: 'member' },
     }, {
-      select: false,
-      publishSelfIndex: false,
+      select: true,
     });
     expect(summary.verified).toBe(1);
     expect(store.selectedWorkspaceKey).toBe(workspace.workspaceKey);
     expect(store.currentWorkspaceOwnerNpub).toBe(workspace.workspaceOwnerNpub);
+    expect(store.selectWorkspace).toHaveBeenCalledWith(workspace.workspaceKey, {
+      pgVerified: true,
+      refresh: false,
+    });
   });
 
   it('keeps stale onboarding events diagnostic-only when Tower rejects access', async () => {
@@ -200,6 +204,7 @@ describe('onboarding announcements manager', () => {
       eventId: 'event-stale',
       error: 'Tower PG API 403',
     });
+    expect(store.pgOnboardingAnnouncementError).toContain('Tower PG API 403');
   });
 
   it('confirms revoked onboarding through Tower before hiding a local workspace and publishing a tombstone', async () => {

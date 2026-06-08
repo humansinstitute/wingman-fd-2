@@ -221,13 +221,18 @@ export const workspaceSelfIndexManagerMixin = {
           const { descriptor, me } = await this.verifyPgDescriptor(locator, {
             baseUrl: locator.tower_base_url,
           });
+          const shouldSelectWorkspace = !this.selectedWorkspaceKey;
           const workspace = await this.rememberVerifiedPgWorkspace(descriptor, me, {
-            select: false,
+            select: shouldSelectWorkspace,
             publishSelfIndex: false,
           });
-          if (!this.selectedWorkspaceKey && workspace?.workspaceKey) {
+          if (shouldSelectWorkspace && workspace?.workspaceKey) {
             this.selectedWorkspaceKey = workspace.workspaceKey;
             this.currentWorkspaceOwnerNpub = workspace.workspaceOwnerNpub || this.currentWorkspaceOwnerNpub;
+            await this.selectWorkspace?.(workspace.workspaceKey || workspace.workspaceOwnerNpub, {
+              pgVerified: true,
+              refresh: false,
+            });
           }
           await this.persistWorkspaceSelfIndexPatch(workspace, {
             pgSelfIndexStatus: 'verified',
@@ -256,6 +261,13 @@ export const workspaceSelfIndexManagerMixin = {
             });
           }
         }
+      }
+      if (summary.discovered > 0 && summary.verified === 0 && summary.stale > 0) {
+        const lastError = [...summary.rejected].reverse().find((entry) => entry?.error)?.error;
+        this.pgWorkspaceSelfIndexError = [
+          `Found ${summary.discovered} workspace index event${summary.discovered === 1 ? '' : 's'}, but Tower did not verify current access`,
+          lastError ? `: ${lastError}` : '.',
+        ].join('');
       }
       this.pgWorkspaceSelfIndexSummary = summary;
       await this.ensureKnownPgWorkspacesSelfIndexed();

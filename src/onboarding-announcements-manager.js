@@ -290,13 +290,17 @@ export const onboardingAnnouncementsManagerMixin = {
           const { descriptor, me } = await this.verifyPgDescriptor(locator, {
             baseUrl: locator.tower_base_url,
           });
+          const shouldSelectWorkspace = !this.selectedWorkspaceKey;
           const workspace = await this.rememberVerifiedPgWorkspace(descriptor, me, {
-            select: false,
-            publishSelfIndex: false,
+            select: shouldSelectWorkspace,
           });
-          if (!this.selectedWorkspaceKey && workspace?.workspaceKey) {
+          if (shouldSelectWorkspace && workspace?.workspaceKey) {
             this.selectedWorkspaceKey = workspace.workspaceKey;
             this.currentWorkspaceOwnerNpub = workspace.workspaceOwnerNpub || this.currentWorkspaceOwnerNpub;
+            await this.selectWorkspace?.(workspace.workspaceKey || workspace.workspaceOwnerNpub, {
+              pgVerified: true,
+              refresh: false,
+            });
           }
           summary.verified += 1;
           summary.rejected.push({
@@ -312,6 +316,13 @@ export const onboardingAnnouncementsManagerMixin = {
             error: errorMessage(error),
           });
         }
+      }
+      if (summary.discovered > 0 && summary.verified === 0 && summary.stale > 0) {
+        const lastError = [...summary.rejected].reverse().find((entry) => entry?.error)?.error;
+        this.pgOnboardingAnnouncementError = [
+          `Found ${summary.discovered} onboarding event${summary.discovered === 1 ? '' : 's'}, but Tower did not verify current access`,
+          lastError ? `: ${lastError}` : '.',
+        ].join('');
       }
       this.pgOnboardingAnnouncementSummary = summary;
       return summary;
