@@ -574,7 +574,10 @@ export const filesManagerMixin = {
       const bytes = new Uint8Array(await initial.file.arrayBuffer());
       const contentType = normalizeString(initial.file.type) || 'application/octet-stream';
       this.patchFileUploadItem(id, { status: 'preparing', progress: 18, size_bytes: bytes.byteLength, content_type: contentType });
-      const prepared = await prepareStorageObject(buildStoragePrepareBody({
+      const prepareStorage = typeof this.prepareStorageObjectForCurrentWorkspace === 'function'
+        ? this.prepareStorageObjectForCurrentWorkspace.bind(this)
+        : prepareStorageObject;
+      const prepared = await prepareStorage(buildStoragePrepareBody({
         ownerNpub: this.workspaceOwnerNpub,
         contentType,
         sizeBytes: initial.file.size || bytes.byteLength,

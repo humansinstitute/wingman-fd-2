@@ -650,7 +650,10 @@ export const workspaceManagerMixin = {
       throw new Error('Workspace admin group is not configured yet.');
     }
     try {
-      const prepared = await prepareStorageObject(buildStoragePrepareBody({
+      const prepareStorage = typeof this.prepareStorageObjectForCurrentWorkspace === 'function'
+        ? this.prepareStorageObjectForCurrentWorkspace.bind(this)
+        : prepareStorageObject;
+      const prepared = await prepareStorage(buildStoragePrepareBody({
         ownerNpub: workspaceOwnerNpub,
         ownerGroupId: settingsGroupId,
         accessGroupIds: settingsGroupId ? [settingsGroupId] : [],

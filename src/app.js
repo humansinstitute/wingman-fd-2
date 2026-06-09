@@ -157,6 +157,7 @@ import {
   registerWorkspaceKey,
   setBaseUrl,
   prepareStorageObject,
+  prepareTowerPgStorageObject,
   uploadStorageObject,
   completeStorageObject,
 } from './api.js';
@@ -6283,6 +6284,18 @@ export function initApp() {
         .join('');
     },
 
+    async prepareStorageObjectForCurrentWorkspace(body) {
+      if (isTowerPgBackendMode() && this.currentWorkspace?.pgBackendMode) {
+        const workspaceId = String(this.currentWorkspace?.workspaceId || '').trim();
+        if (!workspaceId) throw new Error('Tower PG workspace id is required for file upload.');
+        return prepareTowerPgStorageObject(workspaceId, body, {
+          baseUrl: this.backendUrl,
+          appNpub: this.currentWorkspace?.appNpub || undefined,
+        });
+      }
+      return prepareStorageObject(body);
+    },
+
     async handleInlineImagePaste(event, options = {}) {
       const clipboardItems = [...(event?.clipboardData?.items || [])];
       const imageItem = clipboardItems.find((item) => String(item?.type || '').startsWith('image/'));
@@ -6311,7 +6324,7 @@ export function initApp() {
       try {
         const bytes = new Uint8Array(await file.arrayBuffer());
         const fileName = this.defaultPastedImageName(file, options.fileLabel || 'inline');
-        const prepared = await prepareStorageObject(buildStoragePrepareBody({
+        const prepared = await this.prepareStorageObjectForCurrentWorkspace(buildStoragePrepareBody({
           ownerNpub,
           ownerGroupId: options.ownerGroupId,
           accessGroupIds: options.accessGroupIds ?? options.accessGroupNpubs ?? [],
@@ -6362,7 +6375,7 @@ export function initApp() {
         }
         const bytes = new Uint8Array(await file.arrayBuffer());
         const fileName = String(file.name || '').trim() || this.defaultPastedImageName(file, options.fileLabel || 'file');
-        const prepared = await prepareStorageObject(buildStoragePrepareBody({
+        const prepared = await this.prepareStorageObjectForCurrentWorkspace(buildStoragePrepareBody({
           ownerNpub,
           ownerGroupId: pgContext ? null : options.ownerGroupId,
           accessGroupIds: pgContext ? [] : options.accessGroupIds ?? options.accessGroupNpubs ?? [],
