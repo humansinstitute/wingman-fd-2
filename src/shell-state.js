@@ -501,6 +501,7 @@ export function createShellState(options = {}) {
     async bootstrapSelectedWorkspace(options = {}) {
       if (!this.selectedWorkspaceKey && !this.currentWorkspaceOwnerNpub) return;
       if (isTowerPgBackendMode()) {
+        await this.refreshGroups?.({ force: true, minIntervalMs: 0 });
         await this.refreshScopes?.();
         await this.refreshChannels?.();
         await this.refreshTasks?.();

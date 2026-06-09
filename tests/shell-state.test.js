@@ -359,7 +359,7 @@ describe('shell PG bootstrap guard', () => {
     await expect(shell.ensureWorkspaceSessionKey()).resolves.toBeNull();
   });
 
-  it('uses PG hydration instead of encrypted group refresh during PG workspace bootstrap', async () => {
+  it('loads PG groups and PG workspace records during PG workspace bootstrap', async () => {
     const shell = createShellState();
     shell.selectedWorkspaceKey = 'pg:workspace';
     shell.currentWorkspaceOwnerNpub = 'npub1workspace';
@@ -384,7 +384,7 @@ describe('shell PG bootstrap guard', () => {
     expect(shell.refreshTasks).toHaveBeenCalled();
     expect(shell.refreshDocuments).toHaveBeenCalled();
     expect(shell.refreshAudioNotes).toHaveBeenCalled();
-    expect(shell.refreshGroups).not.toHaveBeenCalled();
+    expect(shell.refreshGroups).toHaveBeenCalledWith({ force: true, minIntervalMs: 0 });
     expect(shell.refreshWorkspaceKeyMappings).not.toHaveBeenCalled();
   });
 });

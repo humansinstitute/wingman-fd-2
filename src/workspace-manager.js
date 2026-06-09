@@ -1045,6 +1045,7 @@ export const workspaceManagerMixin = {
       }
       await this.refreshWorkspaceSettings();
       if (isTowerPgBackendMode() && workspace.pgBackendMode) {
+        await this.refreshGroups?.({ force: true, minIntervalMs: 0 });
         await this.refreshScopes?.();
         await this.refreshChannels?.();
         await this.refreshTasks?.();

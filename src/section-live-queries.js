@@ -93,6 +93,16 @@ function buildWorkspaceSpecs(store) {
   // populated regardless of which section the user is viewing.
   const alwaysOn = [
     {
+      key: 'ws:scopes',
+      query: () => getScopesByOwner(ownerNpub),
+      onNext: (scopes) => store.applyScopes(scopes),
+    },
+    {
+      key: 'ws:channels',
+      query: () => getChannelsByOwner(ownerNpub),
+      onNext: (channels) => store.applyChannels(channels),
+    },
+    {
       key: 'ws:flows',
       query: () => getFlowsByOwner(ownerNpub),
       onNext: (flows) => store.applyFlows(flows),
@@ -129,11 +139,6 @@ function buildWorkspaceSpecs(store) {
           onNext: (schedules) => store.applySchedules(schedules),
         },
         {
-          key: 'status:scopes',
-          query: () => getScopesByOwner(ownerNpub),
-          onNext: (scopes) => store.applyScopes(scopes),
-        },
-        {
           key: 'status:approvals',
           query: () => getApprovalsByStatus('pending'),
           onNext: (approvals) => { store.approvals = approvals; },
@@ -143,11 +148,6 @@ function buildWorkspaceSpecs(store) {
     case 'chat':
       sectionSpecs = [
         {
-          key: 'chat:channels',
-          query: () => getChannelsByOwner(ownerNpub),
-          onNext: (channels) => store.applyChannels(channels),
-        },
-        {
           key: 'chat:audio-notes',
           query: () => getAudioNotesByOwner(ownerNpub),
           onNext: (audioNotes) => store.applyAudioNotes(audioNotes),
@@ -156,11 +156,6 @@ function buildWorkspaceSpecs(store) {
       break;
     case 'files':
       sectionSpecs = [
-        {
-          key: 'files:channels',
-          query: () => getChannelsByOwner(ownerNpub),
-          onNext: (channels) => store.applyChannels(channels),
-        },
         {
           key: 'files:messages',
           query: () => getMessagesByOwner(ownerNpub),
@@ -191,11 +186,6 @@ function buildWorkspaceSpecs(store) {
           query: () => getTasksByOwner(ownerNpub),
           onNext: (tasks) => store.applyTasks(tasks),
         },
-        {
-          key: 'files:scopes',
-          query: () => getScopesByOwner(ownerNpub),
-          onNext: (scopes) => store.applyScopes(scopes),
-        },
       ];
       break;
     case 'docs':
@@ -210,11 +200,6 @@ function buildWorkspaceSpecs(store) {
           query: () => getWindowedDocumentsByOwner(ownerNpub),
           onNext: (documents) => store.applyDocuments(documents),
         },
-        {
-          key: 'docs:scopes',
-          query: () => getScopesByOwner(ownerNpub),
-          onNext: (scopes) => store.applyScopes(scopes),
-        },
       ];
       break;
     case 'tasks':
@@ -223,11 +208,6 @@ function buildWorkspaceSpecs(store) {
           key: 'tasks:tasks',
           query: () => getTasksByOwner(ownerNpub),
           onNext: (tasks) => store.applyTasks(tasks),
-        },
-        {
-          key: 'tasks:scopes',
-          query: () => getScopesByOwner(ownerNpub),
-          onNext: (scopes) => store.applyScopes(scopes),
         },
         {
           key: 'tasks:documents',
@@ -243,11 +223,6 @@ function buildWorkspaceSpecs(store) {
           query: () => getWindowedReportsByOwner(ownerNpub),
           onNext: (reports) => store.applyReports(reports),
         },
-        {
-          key: 'reports:scopes',
-          query: () => getScopesByOwner(ownerNpub),
-          onNext: (scopes) => store.applyScopes(scopes),
-        },
       ];
       break;
     case 'settings':
@@ -256,11 +231,6 @@ function buildWorkspaceSpecs(store) {
           key: 'settings:schedules',
           query: () => getSchedulesByOwner(ownerNpub),
           onNext: (schedules) => store.applySchedules(schedules),
-        },
-        {
-          key: 'settings:scopes',
-          query: () => getScopesByOwner(ownerNpub),
-          onNext: (scopes) => store.applyScopes(scopes),
         },
         {
           key: 'settings:wapps',
