@@ -741,6 +741,22 @@ describe('createBotDm', () => {
     await fn();
     expect(store.error).toBe('Set backend URL first');
   });
+
+  it('does not create encrypted bot DM channels in PG mode', async () => {
+    isTowerPgBackendMode.mockReturnValue(true);
+    const { fn, store } = bindMethod('createBotDm', {
+      session: { npub: 'npub1me' },
+      ownerNpub: 'npub1owner',
+      currentWorkspaceOwnerNpub: 'npub1owner',
+      botNpub: 'npub1bot',
+      backendUrl: 'https://tower.example',
+    });
+
+    await fn();
+
+    expect(store.error).toBe('Agent DMs are not available for Tower PG workspaces yet.');
+    expect(store.createEncryptedGroup).not.toHaveBeenCalled();
+  });
 });
 
 // ---------------------------------------------------------------------------

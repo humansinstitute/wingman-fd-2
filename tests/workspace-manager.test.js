@@ -628,6 +628,41 @@ describe('workspace profile editing', () => {
   });
 });
 
+describe('PG workspace settings guard', () => {
+  it('does not queue encrypted harness settings writes in PG mode', async () => {
+    const flushAndBackgroundSync = vi.fn();
+    const { fn, store } = bindMethod('saveHarnessSettings', {
+      canAdminWorkspace: true,
+      session: { npub: 'npub1admin' },
+      currentWorkspaceOwnerNpub: 'npub1workspace',
+      backendUrl: 'https://tower.example',
+      wingmanHarnessInput: 'https://harness.example',
+      flushAndBackgroundSync,
+    });
+
+    await fn();
+
+    expect(store.wingmanHarnessError).toBe('Shared automation settings are not available for Tower PG workspaces yet.');
+    expect(flushAndBackgroundSync).not.toHaveBeenCalled();
+  });
+
+  it('does not queue encrypted channel-order writes in PG mode', async () => {
+    const flushAndBackgroundSync = vi.fn();
+    const { fn, store } = bindMethod('saveWorkspaceChannelOrder', {
+      session: { npub: 'npub1admin' },
+      currentWorkspaceOwnerNpub: 'npub1workspace',
+      channels: [{ record_id: 'ch-a' }, { record_id: 'ch-b' }],
+      flushAndBackgroundSync,
+    });
+
+    await fn(['ch-b', 'ch-a']);
+
+    expect(store.channelOrder).toEqual(['ch-b', 'ch-a']);
+    expect(store.error).toBe('Channel order persistence is not available for Tower PG workspaces yet.');
+    expect(flushAndBackgroundSync).not.toHaveBeenCalled();
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Workspace settings row
 // ---------------------------------------------------------------------------

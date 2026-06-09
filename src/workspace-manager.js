@@ -785,6 +785,12 @@ export const workspaceManagerMixin = {
       this.wingmanHarnessError = msg;
       return;
     }
+    if (isTowerPgBackendMode()) {
+      const msg = 'Shared automation settings are not available for Tower PG workspaces yet.';
+      if (triggerOnly) throw new Error(msg);
+      this.wingmanHarnessError = msg;
+      return;
+    }
 
     let normalizedUrl;
     if (triggerOnly) {
@@ -880,6 +886,10 @@ export const workspaceManagerMixin = {
     const normalizedOrder = normalizeChannelOrder(order, this.channels || []);
     this.channelOrder = normalizedOrder;
     this.channels = sortChannelsByOrder(this.channels || [], normalizedOrder);
+    if (isTowerPgBackendMode()) {
+      this.error = 'Channel order persistence is not available for Tower PG workspaces yet.';
+      return null;
+    }
 
     const existing = await getWorkspaceSettings(workspaceOwnerNpub);
     const now = new Date().toISOString();

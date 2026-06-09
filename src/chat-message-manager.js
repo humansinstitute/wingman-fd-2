@@ -656,6 +656,10 @@ export const chatMessageManagerMixin = {
       this.error = 'Set backend URL first';
       return;
     }
+    if (isTowerPgBackendMode()) {
+      this.error = 'Agent DMs are not available for Tower PG workspaces yet.';
+      return;
+    }
 
     try {
       const targetLabel = this.getSenderName?.(targetNpub) || 'bot';
