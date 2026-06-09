@@ -1,37 +1,9 @@
-const fs = require('node:fs');
 const path = require('node:path');
 
 const { test, expect } = require('playwright/test');
 
-function readFirstEnvValue(candidates) {
-  for (const candidate of candidates) {
-    if (!fs.existsSync(candidate.filePath)) continue;
-    const lines = fs.readFileSync(candidate.filePath, 'utf8').split(/\r?\n/);
-    for (const line of lines) {
-      if (!line.startsWith(`${candidate.key}=`)) continue;
-      const value = line.slice(candidate.key.length + 1).trim();
-      if (value) return value;
-    }
-  }
-  return '';
-}
-
 function resolveTestingNsec() {
-  return String(
-    process.env.PLAYWRIGHT_TEST_NSEC
-    || process.env.TESTING_NSEC
-    || readFirstEnvValue([
-      {
-        filePath: '/Users/mini/code/wingmanbefree/wingman-tower/.env',
-        key: 'COWORKER_APP_NSEC',
-      },
-      {
-        filePath: '/Users/mini/code/wingmanbefree/sb-publisher/.env',
-        key: 'SB_PUBLISHER_NSEC',
-      },
-    ])
-    || ''
-  ).trim();
+  return String(process.env.TESTING_NSEC || '').trim();
 }
 
 const testingNsec = resolveTestingNsec();
@@ -90,7 +62,7 @@ async function openWorkspaceSettings(page) {
 }
 
 test.describe('workspace profile', () => {
-  test.skip(!testingNsec, 'No testing nsec found in PLAYWRIGHT_TEST_NSEC, TESTING_NSEC, or /wingmanbefree env files.');
+  test.skip(!testingNsec, 'TESTING_NSEC is not set.');
 
   test('logs in, creates a workspace, and updates the name and avatar', async ({ page }) => {
     const workspaceName = `PW Workspace ${Date.now()}`;

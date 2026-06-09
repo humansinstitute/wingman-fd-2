@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { getSectionLiveQueryPlan } from '../src/section-live-queries.js';
+import { getSectionLiveQueryPlan, sectionLiveQueryMixin } from '../src/section-live-queries.js';
 
 describe('section live query plan', () => {
   it('keeps only chat list and active detail subscriptions hot on the chat route', () => {
@@ -119,5 +119,40 @@ describe('section live query plan', () => {
       'opportunities:selected-opportunity:opp-1',
       'opportunities:comments:opp-1',
     ]);
+  });
+
+  it('kicks Tower PG hydration when a workspace is restored from cache', async () => {
+    const store = {
+      currentWorkspace: {
+        pgBackendMode: true,
+        workspaceKey: 'pg:npub1user::tower:npub1tower::workspace:npub1workspace::app:flightdeck_pg',
+        workspaceId: 'workspace-1',
+      },
+      currentWorkspaceKey: 'pg:npub1user::tower:npub1tower::workspace:npub1workspace::app:flightdeck_pg',
+      workspaceOwnerNpub: 'npub1owner',
+      session: { npub: 'npub1user' },
+      backendUrl: 'https://tower.example',
+      navSection: 'tasks',
+      startSharedLiveQueries: vi.fn(),
+      createLiveSubscription: vi.fn(() => ({ unsubscribe() {} })),
+      stopLiveSubscription: vi.fn(),
+      initUnreadTracking: vi.fn(),
+      refreshGroups: vi.fn(async () => []),
+      refreshScopes: vi.fn(async () => []),
+      refreshChannels: vi.fn(async () => []),
+      refreshTasks: vi.fn(async () => []),
+      refreshDocuments: vi.fn(async () => []),
+      refreshAudioNotes: vi.fn(async () => []),
+    };
+
+    sectionLiveQueryMixin.startWorkspaceLiveQueries.call(store);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(store.refreshGroups).toHaveBeenCalledWith({ force: true, minIntervalMs: 0 });
+    expect(store.refreshScopes).toHaveBeenCalledTimes(1);
+    expect(store.refreshChannels).toHaveBeenCalledTimes(1);
+    expect(store.refreshTasks).toHaveBeenCalledTimes(1);
+    expect(store.refreshDocuments).toHaveBeenCalledTimes(1);
+    expect(store.refreshAudioNotes).toHaveBeenCalledTimes(1);
   });
 });

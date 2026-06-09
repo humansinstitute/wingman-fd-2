@@ -1,4 +1,19 @@
 const { defineConfig } = require('playwright/test');
+const fs = require('node:fs');
+const path = require('node:path');
+
+function loadLocalTestingEnv() {
+  const envPath = path.resolve(__dirname, '.env');
+  if (!fs.existsSync(envPath)) return;
+  const lines = fs.readFileSync(envPath, 'utf8').split(/\r?\n/);
+  for (const line of lines) {
+    const match = line.match(/^(TESTING_NSEC|TESTING_MEMBER_NSEC)=(.*)$/);
+    if (!match || process.env[match[1]]) continue;
+    process.env[match[1]] = match[2].trim();
+  }
+}
+
+loadLocalTestingEnv();
 
 const port = process.env.PLAYWRIGHT_PORT || '4173';
 const baseURL = process.env.PLAYWRIGHT_BASE_URL || `http://127.0.0.1:${port}`;

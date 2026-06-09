@@ -26,6 +26,8 @@ import {
   getOpportunityById,
 } from './db.js';
 import { recordFamilyHash } from './translators/chat.js';
+import { isTowerPgBackendMode } from './backend-mode.js';
+import { flightDeckLog } from './logging.js';
 
 const SECTION_STATE = new WeakMap();
 
@@ -38,6 +40,8 @@ function getSectionState(store) {
       detail: new Map(),
       workspaceKey: '',
       workspaceOwnerNpub: '',
+      pgHydratingWorkspaceKeys: new Set(),
+      pgHydratedWorkspaceKeys: new Set(),
     };
     SECTION_STATE.set(store, state);
   }
@@ -72,6 +76,39 @@ function stopBucket(store, bucket) {
     stopSubscription(store, subscription);
   }
   bucket.clear();
+}
+
+function scheduleTowerPgWorkspaceHydration(store, state) {
+  if (!isTowerPgBackendMode()) return;
+  if (!store?.currentWorkspace?.pgBackendMode) return;
+  if (!store?.session?.npub) return;
+  if (!store?.backendUrl) return;
+  const workspaceKey = String(store.currentWorkspaceKey || store.currentWorkspace?.workspaceKey || '').trim();
+  if (!workspaceKey) return;
+  if (state.pgHydratingWorkspaceKeys.has(workspaceKey) || state.pgHydratedWorkspaceKeys.has(workspaceKey)) return;
+
+  state.pgHydratingWorkspaceKeys.add(workspaceKey);
+  Promise.resolve()
+    .then(async () => {
+      if (String(store.currentWorkspaceKey || '') !== workspaceKey) return;
+      await store.refreshGroups?.({ force: true, minIntervalMs: 0 });
+      await store.refreshScopes?.();
+      await store.refreshChannels?.();
+      await store.refreshTasks?.();
+      await store.refreshDocuments?.();
+      await store.refreshAudioNotes?.();
+      state.pgHydratedWorkspaceKeys.add(workspaceKey);
+    })
+    .catch((error) => {
+      state.pgHydratedWorkspaceKeys.delete(workspaceKey);
+      flightDeckLog('warn', 'pg', 'Tower PG workspace hydration failed after live-query startup', {
+        workspaceKey,
+        error: error?.message || String(error),
+      });
+    })
+    .finally(() => {
+      state.pgHydratingWorkspaceKeys.delete(workspaceKey);
+    });
 }
 
 function buildSharedSpecs() {
@@ -505,6 +542,8 @@ export const sectionLiveQueryMixin = {
       this.hasBootstrappedUnreadTracking = true;
       this.initUnreadTracking();
     }
+
+    scheduleTowerPgWorkspaceHydration(this, state);
   },
 
   stopWorkspaceLiveQueries() {

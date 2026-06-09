@@ -1,46 +1,14 @@
-const fs = require('node:fs');
 const crypto = require('node:crypto');
 
 const { test, expect } = require('playwright/test');
 const { finalizeEvent, getPublicKey, nip19, nip44 } = require('nostr-tools');
 
-function readFirstEnvValue(candidates) {
-  for (const candidate of candidates) {
-    if (!fs.existsSync(candidate.filePath)) continue;
-    const lines = fs.readFileSync(candidate.filePath, 'utf8').split(/\r?\n/);
-    for (const line of lines) {
-      if (!line.startsWith(`${candidate.key}=`)) continue;
-      const value = line.slice(candidate.key.length + 1).trim();
-      if (value) return value;
-    }
-  }
-  return '';
-}
-
 function resolveAdminNsec() {
-  return String(
-    process.env.PLAYWRIGHT_TEST_NSEC
-    || process.env.TESTING_NSEC
-    || readFirstEnvValue([
-      {
-        filePath: '/Users/mini/code/wingmanbefree/wingman-tower/.env',
-        key: 'COWORKER_APP_NSEC',
-      },
-      {
-        filePath: '/Users/mini/code/wingmanbefree/sb-publisher/.env',
-        key: 'SB_PUBLISHER_NSEC',
-      },
-    ])
-    || ''
-  ).trim();
+  return String(process.env.TESTING_NSEC || '').trim();
 }
 
 function resolveMemberNsec() {
-  return String(
-    process.env.PLAYWRIGHT_MEMBER_NSEC
-    || process.env.AGENT_NSEC
-    || ''
-  ).trim();
+  return String(process.env.TESTING_MEMBER_NSEC || '').trim();
 }
 
 function hexToBytes(hex) {
@@ -224,8 +192,8 @@ const memberNsec = resolveMemberNsec();
 const backendUrl = String(process.env.PLAYWRIGHT_SUPERBASED_URL || 'https://sb4.otherstuff.studio').trim();
 
 test.describe('workspace admin gating', () => {
-  test.skip(!adminNsec, 'No admin testing nsec found in PLAYWRIGHT_TEST_NSEC, TESTING_NSEC, or /wingmanbefree env files.');
-  test.skip(!memberNsec, 'No member testing nsec found in PLAYWRIGHT_MEMBER_NSEC or AGENT_NSEC.');
+  test.skip(!adminNsec, 'TESTING_NSEC is not set.');
+  test.skip(!memberNsec, 'TESTING_MEMBER_NSEC is not set.');
 
   test('shared-only member does not see admin-only settings or scope creation controls', async ({ page, browser }) => {
     const adminSecret = decodeSecret(adminNsec);
