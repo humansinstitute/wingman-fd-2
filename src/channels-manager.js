@@ -53,6 +53,7 @@ import {
   wrapKnownGroupKeyForMember,
 } from './crypto/group-keys.js';
 import { sameListBySignature, toRaw } from './utils/state-helpers.js';
+import { isTaskUnscoped, matchesTaskBoardScope } from './task-board-scopes.js';
 import { buildSuperBasedConnectionToken } from './superbased-token.js';
 import { APP_NPUB } from './app-identity.js';
 import { flightDeckLog } from './logging.js';
@@ -99,6 +100,21 @@ export function filterChannelsForViewer(channels, viewerNpub, workspaceOwnerNpub
     if (!Array.isArray(participants) || participants.length === 0) return true;
     return false;
   });
+}
+
+export function filterChannelsByScope(channels, selectedBoardId, selectedBoardScope, scopesMap = new Map()) {
+  const liveChannels = (Array.isArray(channels) ? channels : [])
+    .filter((channel) => channel && channel.record_state !== 'deleted');
+  if (!selectedBoardId || selectedBoardId === '__all__' || selectedBoardId === '__recent__') {
+    return liveChannels;
+  }
+  if (selectedBoardId === '__unscoped__') {
+    return liveChannels.filter((channel) => isTaskUnscoped(channel, scopesMap));
+  }
+  if (!selectedBoardScope) return liveChannels;
+  return liveChannels.filter((channel) =>
+    matchesTaskBoardScope(channel, selectedBoardScope, scopesMap, { includeDescendants: true }),
+  );
 }
 
 function groupSignature(group) {
@@ -461,6 +477,31 @@ function pgMeActorNpub(workspace = {}) {
 
 export const channelsManagerMixin = {
   // --- channels ---
+
+  get scopeFilteredChannels() {
+    return filterChannelsByScope(
+      this.channels,
+      this.selectedBoardId,
+      this.selectedBoardScope,
+      this.scopesMap,
+    );
+  },
+
+  ensureSelectedChatChannelInScope({ syncRoute = true } = {}) {
+    const visibleChannels = Array.isArray(this.scopeFilteredChannels) ? this.scopeFilteredChannels : [];
+    const selectedVisible = this.selectedChannelId
+      && visibleChannels.some((channel) => channel.record_id === this.selectedChannelId);
+    if (selectedVisible) return this.selectedChannelId;
+    const nextChannelId = visibleChannels[0]?.record_id || null;
+    if (nextChannelId) {
+      this.selectChannel(nextChannelId, { syncRoute });
+      return nextChannelId;
+    }
+    this.selectedChannelId = null;
+    this.closeThread?.({ syncRoute: false });
+    if (syncRoute) this.syncRoute?.();
+    return null;
+  },
 
   async loadLocalChannels(options = {}) {
     const ownerNpub = this.workspaceOwnerNpub;

@@ -670,7 +670,15 @@ export function createShellState(options = {}) {
         }
 
         if (this.navSection === 'chat') {
-          const channelId = route.params.channelid || this.selectedChannelId || this.channels[0]?.record_id || null;
+          const visibleChannels = Array.isArray(this.scopeFilteredChannels) ? this.scopeFilteredChannels : [];
+          const isVisibleChannel = (channelId) => visibleChannels.some((channel) => channel.record_id === channelId);
+          const routeChannelId = route.params.channelid || null;
+          const selectedVisibleChannelId = this.selectedChannelId && isVisibleChannel(this.selectedChannelId)
+            ? this.selectedChannelId
+            : null;
+          const channelId = routeChannelId && isVisibleChannel(routeChannelId)
+            ? routeChannelId
+            : selectedVisibleChannelId || visibleChannels[0]?.record_id || null;
           if (channelId) {
             await this.selectChannel(channelId, { syncRoute: false });
             if (route.params.threadid) this.openThread(route.params.threadid, { syncRoute: false });
@@ -746,8 +754,11 @@ export function createShellState(options = {}) {
         this.selectedDocCommentId = null;
       }
       if (section === 'chat') {
-        if (!this.selectedChannelId && this.channels.length > 0) {
-          this.selectChannel(this.channels[0].record_id);
+        const visibleChannels = Array.isArray(this.scopeFilteredChannels) ? this.scopeFilteredChannels : [];
+        const selectedVisible = this.selectedChannelId
+          && visibleChannels.some((channel) => channel.record_id === this.selectedChannelId);
+        if (!selectedVisible) {
+          this.ensureSelectedChatChannelInScope();
         } else if (this.selectedChannelId) {
           this.scheduleChatFeedScrollToBottom();
         }

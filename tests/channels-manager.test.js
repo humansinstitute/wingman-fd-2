@@ -54,6 +54,7 @@ import {
   computeGroupMemberDiff,
   parseGroupMemberQueryNpubs,
   filterChannelsForViewer,
+  filterChannelsByScope,
   aggregatePgChannelGrants,
   canManagePgChannelGrantsFromRows,
   channelsManagerMixin,
@@ -138,6 +139,78 @@ function createPgGrantStore(overrides = {}) {
 describe('channels-manager pure utilities', () => {
   it('does not call retired trigger diagnostics during ordinary group refresh', () => {
     expect(channelsManagerSource).not.toContain('refreshAgentChat' + 'TriggerDiagnostics');
+  });
+
+  describe('filterChannelsByScope', () => {
+    const scopesMap = new Map([
+      ['scope-a', { record_id: 'scope-a', level: 'l1', title: 'Scope A' }],
+      ['scope-a-child', { record_id: 'scope-a-child', level: 'l2', title: 'Child', l1_id: 'scope-a' }],
+      ['scope-b', { record_id: 'scope-b', level: 'l1', title: 'Scope B' }],
+    ]);
+    const channels = [
+      { record_id: 'ch-a', title: 'A', scope_id: 'scope-a', scope_l1_id: 'scope-a' },
+      { record_id: 'ch-a-child', title: 'A Child', scope_id: 'scope-a-child', scope_l1_id: 'scope-a', scope_l2_id: 'scope-a-child' },
+      { record_id: 'ch-b', title: 'B', scope_id: 'scope-b', scope_l1_id: 'scope-b' },
+      { record_id: 'ch-unscoped', title: 'Unscoped' },
+      { record_id: 'ch-deleted', title: 'Deleted', scope_id: 'scope-a', record_state: 'deleted' },
+    ];
+
+    it('returns live channels for all and recent boards', () => {
+      expect(filterChannelsByScope(channels, '__all__', null, scopesMap).map((channel) => channel.record_id)).toEqual([
+        'ch-a',
+        'ch-a-child',
+        'ch-b',
+        'ch-unscoped',
+      ]);
+      expect(filterChannelsByScope(channels, '__recent__', null, scopesMap).map((channel) => channel.record_id)).toEqual([
+        'ch-a',
+        'ch-a-child',
+        'ch-b',
+        'ch-unscoped',
+      ]);
+    });
+
+    it('includes descendant channels for the selected scope', () => {
+      expect(filterChannelsByScope(channels, 'scope-a', scopesMap.get('scope-a'), scopesMap).map((channel) => channel.record_id)).toEqual([
+        'ch-a',
+        'ch-a-child',
+      ]);
+    });
+
+    it('returns only unscoped channels for the unscoped board', () => {
+      expect(filterChannelsByScope(channels, '__unscoped__', null, scopesMap).map((channel) => channel.record_id)).toEqual([
+        'ch-unscoped',
+      ]);
+    });
+  });
+
+  it('reconciles the selected chat channel to the filtered scope channel set', () => {
+    const scopesMap = new Map([
+      ['scope-a', { record_id: 'scope-a', level: 'l1', title: 'Scope A' }],
+      ['scope-b', { record_id: 'scope-b', level: 'l1', title: 'Scope B' }],
+    ]);
+    const store = applyChannelMixin({
+      channels: [
+        { record_id: 'ch-a', title: 'A', scope_id: 'scope-a', scope_l1_id: 'scope-a' },
+        { record_id: 'ch-b', title: 'B', scope_id: 'scope-b', scope_l1_id: 'scope-b' },
+      ],
+      selectedBoardId: 'scope-a',
+      selectedBoardScope: scopesMap.get('scope-a'),
+      scopesMap,
+      selectedChannelId: 'ch-b',
+      selectChannel: vi.fn(function selectChannel(recordId) {
+        this.selectedChannelId = recordId;
+      }),
+      closeThread: vi.fn(),
+      syncRoute: vi.fn(),
+    });
+
+    expect(store.scopeFilteredChannels.map((channel) => channel.record_id)).toEqual(['ch-a']);
+
+    store.ensureSelectedChatChannelInScope({ syncRoute: false });
+
+    expect(store.selectChannel).toHaveBeenCalledWith('ch-a', { syncRoute: false });
+    expect(store.selectedChannelId).toBe('ch-a');
   });
 
   it('opens channel settings for an explicit PG context channel id', () => {

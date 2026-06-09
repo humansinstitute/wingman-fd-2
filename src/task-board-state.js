@@ -1644,6 +1644,9 @@ export const taskBoardStateMixin = {
     this.clearSelectedTasks();
     this.normalizeTaskFilterTags();
     this.closeBoardPicker();
+    if (this.navSection === 'chat') {
+      this.ensureSelectedChatChannelInScope?.({ syncRoute: false });
+    }
     if (this.showTaskDetail) this.closeTaskDetail();
     else this.syncRoute();
   },

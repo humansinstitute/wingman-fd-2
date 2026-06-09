@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-CHK4052M.js"></script>
+  <script type="module" crossorigin src="/assets/index-AjJ_2lB_.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-oYEIghrk.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
@@ -2432,7 +2432,7 @@
           <div class="chat-section">
             <div class="chat-channel-header" x-show="$store.chat.navSection === 'chat'" x-cloak>
               <div class="chat-channel-tab-scroll" role="tablist" aria-label="Chat channels">
-                <template x-for="ch in $store.chat.channels" :key="ch.record_id">
+                <template x-for="ch in $store.chat.scopeFilteredChannels" :key="ch.record_id">
                   <div
                     class="chat-channel-tab-item"
                     draggable="true"

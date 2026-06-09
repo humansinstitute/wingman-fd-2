@@ -2430,7 +2430,7 @@
           <div class="chat-section">
             <div class="chat-channel-header" x-show="$store.chat.navSection === 'chat'" x-cloak>
               <div class="chat-channel-tab-scroll" role="tablist" aria-label="Chat channels">
-                <template x-for="ch in $store.chat.channels" :key="ch.record_id">
+                <template x-for="ch in $store.chat.scopeFilteredChannels" :key="ch.record_id">
                   <div
                     class="chat-channel-tab-item"
                     draggable="true"
