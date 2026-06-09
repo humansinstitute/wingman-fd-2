@@ -2073,7 +2073,7 @@ button:disabled {
 .status-section {
   width: 100%;
   max-width: none;
-  padding: 2.4rem 0 2rem 0;
+  padding: 0 0 2rem 0;
 }
 
 .sidebar-focus-panel {
@@ -4733,17 +4733,7 @@ button:disabled {
 }
 
 .files-work-context-bar {
-  margin-bottom: 0;
-  padding: 0 1.5rem;
-  border-bottom: 1px solid var(--border);
-}
-
-.files-work-context-bar .chat-channel-header {
-  border-bottom: 0;
-}
-
-.files-work-context-bar .pg-context-thread-strip {
-  border-bottom: 0;
+  margin-bottom: 0.75rem;
 }
 
 .pg-context-thread-strip {
@@ -5173,11 +5163,11 @@ button:disabled {
 }
 
 .docs-view {
-  margin-top: 0.5rem;
+  margin-top: 0;
   background: var(--surface);
   border: none;
   border-radius: 0;
-  padding: 0.5rem 0 0;
+  padding: 0;
 }
 
 .docs-toolbar,

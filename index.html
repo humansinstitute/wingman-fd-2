@@ -828,6 +828,51 @@
       <div class="main-content">
         <template x-if="$store.chat.navSection === 'status'">
           <div class="status-section">
+          <div class="pg-work-context-bar" x-show="$store.chat.showPgTaskBoardZoomControls" x-cloak>
+            <div class="chat-channel-header">
+              <div class="chat-channel-tab-scroll" role="tablist" aria-label="Workspace channels">
+                <template x-for="channel in $store.chat.pgContextChannels" :key="channel.record_id">
+                  <div
+                    class="chat-channel-tab-item"
+                    :class="{ active: $store.chat.pgContextSelectedChannelId === channel.record_id && !$store.chat.pgContextSelectedThreadId }"
+                  >
+                    <button
+                      type="button"
+                      class="chat-channel-tab"
+                      role="tab"
+                      :aria-selected="$store.chat.pgContextSelectedChannelId === channel.record_id && !$store.chat.pgContextSelectedThreadId"
+                      @click="$store.chat.selectPgChannelContext(channel.record_id)"
+                    >
+                      <span class="channel-hash">#</span>
+                      <span class="chat-channel-tab-label" x-text="$store.chat.getChannelLabel(channel)"></span>
+                    </button>
+                  </div>
+                </template>
+              </div>
+              <button type="button" class="chat-channel-tab-add" @click="$store.chat.openNewChannelModal()" title="New channel" aria-label="New channel">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path d="M12 5v14M5 12h14" stroke-linecap="round"></path>
+                </svg>
+              </button>
+            </div>
+            <div class="pg-context-thread-strip" x-show="$store.chat.pgContextSelectedChannelId && $store.chat.pgContextThreads.length > 0">
+              <template x-for="thread in $store.chat.pgContextThreads" :key="thread.id">
+                <button
+                  type="button"
+                  class="pg-thread-summary"
+                  :class="{ 'pg-thread-summary-active': $store.chat.pgContextSelectedThreadId === thread.id }"
+                  @click="$store.chat.selectPgThreadContext(thread.channelId, thread.id)"
+                >
+                  <span class="chat-thread-preview">
+                    <span class="chat-thread-preview-count" x-text="thread.replyCount + ' ' + (thread.replyCount === 1 ? 'reply' : 'replies')"></span>
+                    <span class="chat-thread-preview-link" x-text="thread.label"></span>
+                  </span>
+                  <span class="chat-thread-latest-preview" x-text="thread.latestPreview"></span>
+                </button>
+              </template>
+            </div>
+          </div>
+
           <section class="flightdeck-hero" x-data="{ bpIdx: 0, open: false, query: '' }" @click.outside="open = false; query = ''">
             <h2>Welcome <span x-text="$store.chat.greetingName"></span>, where will we focus today?</h2>
             <div class="flightdeck-hero-scope-row">
