@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('../src/disabled-surfaces.js', () => ({
+  blockDisabledFlightDeckSurface: vi.fn(() => false),
+}));
+
 vi.mock('../src/db.js', () => ({
   addPendingWrite: vi.fn(async () => {}),
   upsertReport: vi.fn(async () => {}),

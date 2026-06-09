@@ -12,18 +12,18 @@ describe('section live query plan', () => {
     });
 
     expect(plan.shared).toEqual(['address-book']);
-    expect(plan.workspace).toEqual(['ws:scopes', 'ws:channels', 'ws:flows', 'ws:opportunities', 'chat:audio-notes']);
+    expect(plan.workspace).toEqual(['ws:scopes', 'ws:channels', 'chat:audio-notes']);
     expect(plan.detail).toEqual(['chat:messages:channel-1', 'chat:reactions:channel-1']);
   });
 
-  it('switches task and report routes to their own workspace slices', () => {
+  it('switches task route to its own workspace slices and keeps disabled reports cold', () => {
     const taskPlan = getSectionLiveQueryPlan({
       workspaceOwnerNpub: 'npub-owner',
       navSection: 'tasks',
       activeTaskId: 'task-1',
       applyAddressBookPeople() {},
     });
-    expect(taskPlan.workspace).toEqual(['ws:scopes', 'ws:channels', 'ws:flows', 'ws:opportunities', 'tasks:tasks', 'tasks:documents']);
+    expect(taskPlan.workspace).toEqual(['ws:scopes', 'ws:channels', 'tasks:tasks', 'tasks:documents']);
     expect(taskPlan.detail).toEqual([
       'tasks:selected-task:task-1',
       'tasks:comments:task-1',
@@ -36,8 +36,8 @@ describe('section live query plan', () => {
       selectedReportId: 'report-1',
       applyAddressBookPeople() {},
     });
-    expect(reportPlan.workspace).toEqual(['ws:scopes', 'ws:channels', 'ws:flows', 'ws:opportunities', 'reports:reports']);
-    expect(reportPlan.detail).toEqual(['reports:selected-report:report-1']);
+    expect(reportPlan.workspace).toEqual(['ws:scopes', 'ws:channels']);
+    expect(reportPlan.detail).toEqual([]);
   });
 
   it('keeps the flight deck route subscribed to the records it renders', () => {
@@ -51,13 +51,8 @@ describe('section live query plan', () => {
     expect(plan.workspace).toEqual([
       'ws:scopes',
       'ws:channels',
-      'ws:flows',
-      'ws:opportunities',
-      'status:reports',
       'status:wapps',
       'status:tasks',
-      'status:schedules',
-      'status:approvals',
     ]);
     expect(plan.detail).toEqual([]);
   });
@@ -70,7 +65,7 @@ describe('section live query plan', () => {
       selectedDocId: null,
       applyAddressBookPeople() {},
     });
-    expect(browserPlan.workspace).toEqual(['ws:scopes', 'ws:channels', 'ws:flows', 'ws:opportunities', 'docs:directories', 'docs:documents']);
+    expect(browserPlan.workspace).toEqual(['ws:scopes', 'ws:channels', 'docs:directories', 'docs:documents']);
     expect(browserPlan.detail).toEqual([]);
 
     const detailPlan = getSectionLiveQueryPlan({
@@ -87,18 +82,18 @@ describe('section live query plan', () => {
     ]);
   });
 
-  it('loads settings schedules, scopes, WApps, and approvals in the settings section', () => {
+  it('keeps disabled settings surfaces cold in the settings section', () => {
     const plan = getSectionLiveQueryPlan({
       workspaceOwnerNpub: 'npub-owner',
       navSection: 'settings',
       applyAddressBookPeople() {},
     });
 
-    expect(plan.workspace).toEqual(['ws:scopes', 'ws:channels', 'ws:flows', 'ws:opportunities', 'settings:schedules', 'settings:wapps', 'settings:approvals']);
+    expect(plan.workspace).toEqual(['ws:scopes', 'ws:channels']);
     expect(plan.detail).toEqual([]);
   });
 
-  it('loads supporting CRM records on the opportunities route', () => {
+  it('keeps disabled CRM records cold on the opportunities route', () => {
     const plan = getSectionLiveQueryPlan({
       workspaceOwnerNpub: 'npub-owner',
       navSection: 'opportunities',
@@ -106,19 +101,8 @@ describe('section live query plan', () => {
       applyAddressBookPeople() {},
     });
 
-    expect(plan.workspace).toEqual([
-      'ws:scopes',
-      'ws:channels',
-      'ws:flows',
-      'ws:opportunities',
-      'opportunities:persons',
-      'opportunities:organisations',
-      'opportunities:tasks',
-    ]);
-    expect(plan.detail).toEqual([
-      'opportunities:selected-opportunity:opp-1',
-      'opportunities:comments:opp-1',
-    ]);
+    expect(plan.workspace).toEqual(['ws:scopes', 'ws:channels']);
+    expect(plan.detail).toEqual([]);
   });
 
   it('kicks Tower PG hydration when a workspace is restored from cache', async () => {

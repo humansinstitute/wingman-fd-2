@@ -75,6 +75,7 @@ import { flightDeckLog } from './logging.js';
 import { APP_NAME, APP_NPUB, DEFAULT_SUPERBASED_URL, FLIGHT_DECK_PG_APP_NPUB } from './app-identity.js';
 import { getRecordWriteFieldsForStore } from './preferred-write-group.js';
 import { pgWorkspaceSessionNpubFromMe } from './pg-workspace-descriptor.js';
+import { blockDisabledFlightDeckSurface, isFlightDeckSurfaceDisabled } from './disabled-surfaces.js';
 
 export function guessDefaultBackendUrl() {
   return DEFAULT_SUPERBASED_URL || '';
@@ -245,10 +246,10 @@ export const workspaceManagerMixin = {
   },
 
   normalizeSettingsTab() {
-    const advancedTabs = this.workspaceAdvancedOptionsEnabled ? ['flows', 'data'] : [];
-    const adminAdvancedTabs = this.workspaceAdvancedOptionsEnabled ? ['schedules'] : [];
+    const advancedTabs = this.workspaceAdvancedOptionsEnabled && !isFlightDeckSurfaceDisabled('flows') ? ['flows', 'data'] : (this.workspaceAdvancedOptionsEnabled ? ['data'] : []);
+    const adminAdvancedTabs = this.workspaceAdvancedOptionsEnabled && !isFlightDeckSurfaceDisabled('schedules') ? ['schedules'] : [];
     const visibleTabs = this.canAdminWorkspace
-      ? ['workspace', 'connection', 'apps', 'scopes', 'sharing', ...advancedTabs, ...adminAdvancedTabs]
+      ? ['workspace', 'connection', ...(isFlightDeckSurfaceDisabled('wappVisibility') ? [] : ['apps']), 'scopes', 'sharing', ...advancedTabs, ...adminAdvancedTabs]
       : ['connection', ...advancedTabs];
     if (!visibleTabs.includes(this.settingsTab)) {
       this.settingsTab = 'connection';
@@ -256,7 +257,19 @@ export const workspaceManagerMixin = {
   },
 
   openSettingsTab(tab) {
-    this.settingsTab = String(tab || 'connection').trim() || 'connection';
+    const requestedTab = String(tab || 'connection').trim() || 'connection';
+    const disabledSurface = requestedTab === 'flows'
+      ? 'flows'
+      : requestedTab === 'schedules'
+        ? 'schedules'
+        : requestedTab === 'apps'
+          ? 'wappVisibility'
+          : '';
+    if (disabledSurface && blockDisabledFlightDeckSurface(this, disabledSurface)) {
+      this.settingsTab = 'connection';
+      return;
+    }
+    this.settingsTab = requestedTab;
     this.normalizeSettingsTab();
     if (this.settingsTab === 'schedules') this.refreshSchedules?.();
     if (this.settingsTab === 'apps') this.refreshWapps?.();

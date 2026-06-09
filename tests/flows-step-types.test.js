@@ -4,6 +4,11 @@ vi.mock('../src/crypto/group-keys.js', () => ({
   hasGroupKey: vi.fn(() => true),
 }));
 
+vi.mock('../src/disabled-surfaces.js', () => ({
+  blockDisabledFlightDeckSurface: vi.fn(() => false),
+  isFlightDeckSurfaceDisabled: vi.fn(() => false),
+}));
+
 import {
   buildFlowEditorForm,
   normalizeStepType,

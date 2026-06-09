@@ -55,13 +55,13 @@ describe('flight deck attention feed template', () => {
     expect(html).not.toContain('<span class="sidebar-label">Calendar</span>');
   });
 
-  it('moves schedules into settings instead of exposing a top-level section', () => {
+  it('keeps schedules hidden while the surface is disabled', () => {
     const html = readFileSync(INDEX_PATH, 'utf8');
 
     expect(html).not.toContain("navigateTo('schedules')");
     expect(html).not.toContain("navSection === 'schedules'");
     expect(html).not.toContain('<span class="sidebar-label">Schedules</span>');
-    expect(html).toContain("settingsTab === 'schedules'");
+    expect(html).toContain('x-show="false" x-cloak class="settings-tab" :class="{ active: $store.chat.settingsTab === \'schedules\' }"');
   });
 
   it('moves scopes into settings instead of exposing a top-level section', () => {
@@ -73,13 +73,13 @@ describe('flight deck attention feed template', () => {
     expect(html).toContain("settingsTab === 'scopes'");
   });
 
-  it('moves flows into settings instead of exposing a top-level section', () => {
+  it('keeps flows hidden while the surface is disabled', () => {
     const html = readFileSync(INDEX_PATH, 'utf8');
 
     expect(html).not.toContain("navigateTo('flows')");
     expect(html).not.toContain("navSection === 'flows'");
     expect(html).not.toContain('<span class="sidebar-label">Flows</span>');
-    expect(html).toContain("settingsTab === 'flows'");
+    expect(html).toContain('x-show="false" x-cloak class="settings-tab" :class="{ active: $store.chat.settingsTab === \'flows\' }"');
   });
 
   it('labels setup without changing the settings route', () => {
@@ -90,15 +90,11 @@ describe('flight deck attention feed template', () => {
     expect(html).not.toContain('<span class="sidebar-label">Settings</span>');
   });
 
-  it('orders opportunities below people and above setup in the sidebar', () => {
+  it('hides people and opportunities in the sidebar', () => {
     const html = readFileSync(INDEX_PATH, 'utf8');
-    const peopleIndex = html.indexOf('<span class="sidebar-label">People</span>');
-    const opportunitiesIndex = html.indexOf('<span class="sidebar-label">Opportunities</span>');
-    const setupIndex = html.indexOf('<span class="sidebar-label">Setup</span>');
 
-    expect(peopleIndex).toBeGreaterThan(-1);
-    expect(opportunitiesIndex).toBeGreaterThan(peopleIndex);
-    expect(setupIndex).toBeGreaterThan(opportunitiesIndex);
+    expect(html).toContain('<li x-show="false" x-cloak :class="{ active: $store.chat.navSection === \'people\' }"');
+    expect(html).toContain('<li x-show="false" x-cloak :class="{ active: $store.chat.navSection === \'opportunities\' }"');
   });
 
   it('exposes files as a top-level sidebar section', () => {
@@ -111,12 +107,12 @@ describe('flight deck attention feed template', () => {
     expect(html).toContain('x-for="row in $store.chat.filteredFileBrowserRows"');
   });
 
-  it('removes reports from the sidebar and routes report cards into reports', () => {
+  it('keeps reports hidden from the sidebar and Flight Deck cards', () => {
     const html = readFileSync(INDEX_PATH, 'utf8');
 
     expect(html).not.toContain('<span class="sidebar-label">Reports</span>');
+    expect(html).toContain('<section class="flightdeck-reports-section" x-show="false" x-cloak>');
     expect(html).toContain('class="flightdeck-report-card flightdeck-report-card-link"');
-    expect(html).toContain('@click="$store.chat.selectedReportId = report.record_id; $store.chat.navigateTo(\'reports\')"');
   });
 
   it('renders chat channels as in-view tabs instead of sidebar rows', () => {

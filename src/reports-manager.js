@@ -2,6 +2,7 @@ import { addPendingWrite, upsertReport } from './db.js';
 import { outboundReport } from './translators/reports.js';
 import { getRecordWriteFieldsForStore } from './preferred-write-group.js';
 import { toRaw } from './utils/state-helpers.js';
+import { blockDisabledFlightDeckSurface } from './disabled-surfaces.js';
 
 export function buildDeletedReportRow(report, nowIso = new Date().toISOString()) {
   const previousVersion = Number.isFinite(Number(report?.version)) ? Number(report.version) : 1;
@@ -37,6 +38,7 @@ export const reportsManagerMixin = {
   },
 
   openReportDeleteConfirm(report) {
+    if (blockDisabledFlightDeckSurface(this, 'reports')) return;
     if (!report?.record_id) return;
     this.reportDeleteConfirmReport = report;
     this.reportDeleteError = '';
@@ -59,6 +61,7 @@ export const reportsManagerMixin = {
   },
 
   async deleteReport(recordId) {
+    if (blockDisabledFlightDeckSurface(this, 'reports')) return null;
     const targetId = String(recordId || '').trim();
     const report = (this.reports || []).find((item) => item?.record_id === targetId);
     if (!targetId || !report || !this.session?.npub) return null;

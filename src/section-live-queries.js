@@ -27,6 +27,7 @@ import {
 } from './db.js';
 import { recordFamilyHash } from './translators/chat.js';
 import { isTowerPgBackendMode } from './backend-mode.js';
+import { isFlightDeckSurfaceDisabled } from './disabled-surfaces.js';
 import { flightDeckLog } from './logging.js';
 
 const SECTION_STATE = new WeakMap();
@@ -127,9 +128,6 @@ function buildWorkspaceSpecs(store) {
   const ownerNpub = String(store?.workspaceOwnerNpub || '').trim();
   if (!ownerNpub) return [];
 
-  // Flows are loaded eagerly (not section-gated) because flow linkage
-  // resolution in addTask/saveEditingTask depends on store.flows being
-  // populated regardless of which section the user is viewing.
   const alwaysOn = [
     {
       key: 'ws:scopes',
@@ -141,27 +139,12 @@ function buildWorkspaceSpecs(store) {
       query: () => getChannelsByOwner(ownerNpub),
       onNext: (channels) => store.applyChannels(channels),
     },
-    {
-      key: 'ws:flows',
-      query: () => getFlowsByOwner(ownerNpub),
-      onNext: (flows) => store.applyFlows(flows),
-    },
-    {
-      key: 'ws:opportunities',
-      query: () => getOpportunitiesByOwner(ownerNpub),
-      onNext: (opportunities) => store.applyOpportunities(opportunities),
-    },
   ];
 
   let sectionSpecs;
   switch (store?.navSection) {
     case 'status':
       sectionSpecs = [
-        {
-          key: 'status:reports',
-          query: () => getWindowedReportsByOwner(ownerNpub),
-          onNext: (reports) => store.applyReports(reports),
-        },
         {
           key: 'status:wapps',
           query: () => getManageableWappsByOwner(ownerNpub),
@@ -171,16 +154,6 @@ function buildWorkspaceSpecs(store) {
           key: 'status:tasks',
           query: () => getTasksByOwner(ownerNpub),
           onNext: (tasks) => store.applyTasks(tasks),
-        },
-        {
-          key: 'status:schedules',
-          query: () => getSchedulesByOwner(ownerNpub),
-          onNext: (schedules) => store.applySchedules(schedules),
-        },
-        {
-          key: 'status:approvals',
-          query: () => getApprovalsByStatus('pending'),
-          onNext: (approvals) => { store.approvals = approvals; },
         },
       ];
       break;
@@ -255,69 +228,54 @@ function buildWorkspaceSpecs(store) {
         },
       ];
       break;
-    case 'reports':
-      sectionSpecs = [
-        {
-          key: 'reports:reports',
-          query: () => getWindowedReportsByOwner(ownerNpub),
-          onNext: (reports) => store.applyReports(reports),
-        },
-      ];
-      break;
     case 'settings':
-      sectionSpecs = [
-        {
-          key: 'settings:schedules',
-          query: () => getSchedulesByOwner(ownerNpub),
-          onNext: (schedules) => store.applySchedules(schedules),
-        },
-        {
-          key: 'settings:wapps',
-          query: () => getManageableWappsByOwner(ownerNpub),
-          onNext: (wapps) => store.applyWapps(wapps),
-        },
-        {
-          key: 'settings:approvals',
-          query: () => getApprovalsByStatus('pending'),
-          onNext: (approvals) => { store.approvals = approvals; },
-        },
-      ];
-      break;
-    case 'people':
-      sectionSpecs = [
-        {
-          key: 'people:persons',
-          query: () => getPersonsByOwner(ownerNpub),
-          onNext: (persons) => store.applyPersons(persons),
-        },
-        {
-          key: 'people:organisations',
-          query: () => getOrganisationsByOwner(ownerNpub),
-          onNext: (orgs) => store.applyOrganisations(orgs),
-        },
-      ];
-      break;
-    case 'opportunities':
-      sectionSpecs = [
-        {
-          key: 'opportunities:persons',
-          query: () => getPersonsByOwner(ownerNpub),
-          onNext: (persons) => store.applyPersons(persons),
-        },
-        {
-          key: 'opportunities:organisations',
-          query: () => getOrganisationsByOwner(ownerNpub),
-          onNext: (organisations) => store.applyOrganisations(organisations),
-        },
-        {
-          key: 'opportunities:tasks',
-          query: () => getTasksByOwner(ownerNpub),
-          onNext: (tasks) => store.applyTasks(tasks),
-        },
-      ];
+      sectionSpecs = [];
       break;
     default:
       sectionSpecs = [];
+  }
+
+  if (!isFlightDeckSurfaceDisabled('flows')) {
+    alwaysOn.push({
+      key: 'ws:flows',
+      query: () => getFlowsByOwner(ownerNpub),
+      onNext: (flows) => store.applyFlows(flows),
+    });
+  }
+  if (!isFlightDeckSurfaceDisabled('opportunities')) {
+    alwaysOn.push({
+      key: 'ws:opportunities',
+      query: () => getOpportunitiesByOwner(ownerNpub),
+      onNext: (opportunities) => store.applyOpportunities(opportunities),
+    });
+  }
+  if (store?.navSection === 'status' && !isFlightDeckSurfaceDisabled('reports')) {
+    sectionSpecs.push({
+      key: 'status:reports',
+      query: () => getWindowedReportsByOwner(ownerNpub),
+      onNext: (reports) => store.applyReports(reports),
+    });
+  }
+  if (store?.navSection === 'status' && !isFlightDeckSurfaceDisabled('schedules')) {
+    sectionSpecs.push({
+      key: 'status:schedules',
+      query: () => getSchedulesByOwner(ownerNpub),
+      onNext: (schedules) => store.applySchedules(schedules),
+    });
+  }
+  if ((store?.navSection === 'status' || store?.navSection === 'settings') && !isFlightDeckSurfaceDisabled('approvals')) {
+    sectionSpecs.push({
+      key: `${store.navSection}:approvals`,
+      query: () => getApprovalsByStatus('pending'),
+      onNext: (approvals) => { store.approvals = approvals; },
+    });
+  }
+  if (store?.navSection === 'settings' && !isFlightDeckSurfaceDisabled('wappVisibility')) {
+    sectionSpecs.push({
+      key: 'settings:wapps',
+      query: () => getManageableWappsByOwner(ownerNpub),
+      onNext: (wapps) => store.applyWapps(wapps),
+    });
   }
 
   return [...alwaysOn, ...sectionSpecs];
@@ -453,6 +411,7 @@ function buildDetailSpecs(store) {
       ];
     }
     case 'reports': {
+      if (isFlightDeckSurfaceDisabled('reports')) return [];
       const reportId = String(store?.selectedReportId || '').trim();
       if (!reportId) return [];
       return [
@@ -467,6 +426,7 @@ function buildDetailSpecs(store) {
       ];
     }
     case 'opportunities': {
+      if (isFlightDeckSurfaceDisabled('opportunities')) return [];
       const opportunityId = String(store?.activeOpportunityId || '').trim();
       if (!opportunityId) return [];
       return [

@@ -465,7 +465,7 @@ describe('command palette defaults and search', () => {
     expect(store.commandPaletteGroups.map((group) => group.label)).toEqual(['Shortcuts', 'Recent']);
   });
 
-  it('groups searched scopes, records, threads, approvals, and commands by target type', () => {
+  it('groups searched enabled records and omits disabled surface results', () => {
     const store = createStore();
     store.commandPaletteIndex = store.buildCommandPaletteIndex({
       scopes: [{ record_id: 'scope-a', title: 'Apollo scope', level: 'l2', updated_at: '2026-05-05T00:00:00Z' }],
@@ -485,16 +485,14 @@ describe('command palette defaults and search', () => {
 
     const groupLabels = store.commandPaletteGroups.map((group) => group.label);
 
-    expect(groupLabels).toEqual(expect.arrayContaining([
+    expect(groupLabels).toEqual([
       'Scopes',
       'Docs',
       'Tasks',
       'Chat channels',
       'Chat threads',
-      'Flows',
-      'Approvals',
-      'Flight Deck',
-    ]));
+    ]);
+    expect(groupLabels).not.toEqual(expect.arrayContaining(['Flows', 'Approvals', 'Flight Deck']));
   });
 });
 

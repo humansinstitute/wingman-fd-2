@@ -16,6 +16,10 @@ import {
   getPreferredRecordWriteGroupForStore,
   getRecordWriteFieldsForStore,
 } from './preferred-write-group.js';
+import {
+  blockDisabledFlightDeckSurface,
+  isFlightDeckSurfaceDisabled,
+} from './disabled-surfaces.js';
 
 function hasScopePatch(patch = {}) {
   return Object.prototype.hasOwnProperty.call(patch, 'scope_id')
@@ -28,6 +32,10 @@ function hasScopePatch(patch = {}) {
 
 export const personsManagerMixin = {
   applyPersons(persons) {
+    if (isFlightDeckSurfaceDisabled('people')) {
+      this.persons = [];
+      return;
+    }
     const rows = (Array.isArray(persons) ? persons : []).filter(
       (p) => p.record_state !== 'deleted',
     );
@@ -38,6 +46,10 @@ export const personsManagerMixin = {
   },
 
   applyOrganisations(orgs) {
+    if (isFlightDeckSurfaceDisabled('people')) {
+      this.organisations = [];
+      return;
+    }
     const rows = (Array.isArray(orgs) ? orgs : []).filter(
       (o) => o.record_state !== 'deleted',
     );
@@ -122,6 +134,7 @@ export const personsManagerMixin = {
   // --- Person CRUD ---
 
   async createPerson({ title, description = '', contacts = [], tags = '', organisation_links = [], scope_id = null }) {
+    if (blockDisabledFlightDeckSurface(this, 'people')) return null;
     if (!title || !this.session?.npub) return null;
 
     const now = new Date().toISOString();
@@ -169,6 +182,7 @@ export const personsManagerMixin = {
   },
 
   async updatePerson(personId, patch = {}) {
+    if (blockDisabledFlightDeckSurface(this, 'people')) return null;
     const person = this.persons.find((p) => p.record_id === personId);
     if (!person || !this.session?.npub) return null;
 
@@ -210,6 +224,7 @@ export const personsManagerMixin = {
   },
 
   async deletePerson(personId) {
+    if (blockDisabledFlightDeckSurface(this, 'people')) return null;
     const person = this.persons.find((p) => p.record_id === personId);
     if (!person || !this.session?.npub) return;
 
@@ -248,6 +263,7 @@ export const personsManagerMixin = {
   // --- Organisation CRUD ---
 
   async createOrganisation({ title, description = '', positioning = '', contacts = [], tags = '', person_links = [], scope_id = null }) {
+    if (blockDisabledFlightDeckSurface(this, 'people')) return null;
     if (!title || !this.session?.npub) return null;
 
     const now = new Date().toISOString();
@@ -296,6 +312,7 @@ export const personsManagerMixin = {
   },
 
   async updateOrganisation(orgId, patch = {}) {
+    if (blockDisabledFlightDeckSurface(this, 'people')) return null;
     const org = this.organisations.find((o) => o.record_id === orgId);
     if (!org || !this.session?.npub) return null;
 
@@ -337,6 +354,7 @@ export const personsManagerMixin = {
   },
 
   async deleteOrganisation(orgId) {
+    if (blockDisabledFlightDeckSurface(this, 'people')) return null;
     const org = this.organisations.find((o) => o.record_id === orgId);
     if (!org || !this.session?.npub) return;
 
@@ -375,6 +393,7 @@ export const personsManagerMixin = {
   // --- Bi-directional linking ---
 
   async linkPersonToOrg(personId, orgId, role = '') {
+    if (blockDisabledFlightDeckSurface(this, 'people')) return null;
     const person = this.persons.find((p) => p.record_id === personId);
     const org = this.organisations.find((o) => o.record_id === orgId);
     if (!person || !org || !this.session?.npub) return;
@@ -394,6 +413,7 @@ export const personsManagerMixin = {
   },
 
   async unlinkPersonFromOrg(personId, orgId) {
+    if (blockDisabledFlightDeckSurface(this, 'people')) return null;
     const person = this.persons.find((p) => p.record_id === personId);
     const org = this.organisations.find((o) => o.record_id === orgId);
     if (!person || !org || !this.session?.npub) return;
@@ -408,12 +428,14 @@ export const personsManagerMixin = {
   // --- Augment toggle ---
 
   async toggleAugmentPerson(personId) {
+    if (blockDisabledFlightDeckSurface(this, 'people')) return null;
     const person = this.persons.find((p) => p.record_id === personId);
     if (!person || !this.session?.npub) return;
     await this.updatePerson(personId, { augment_please: !person.augment_please });
   },
 
   async toggleAugmentOrganisation(orgId) {
+    if (blockDisabledFlightDeckSurface(this, 'people')) return null;
     const org = this.organisations.find((o) => o.record_id === orgId);
     if (!org || !this.session?.npub) return;
     await this.updateOrganisation(orgId, { augment_please: !org.augment_please });

@@ -85,7 +85,7 @@ describe('approval detail modal is globally accessible', () => {
 // 2. Click handlers on approval cards set the right store properties
 // ---------------------------------------------------------------------------
 
-describe('approval card click handlers wire to modal state', () => {
+describe('approval card click handlers are disabled with the approvals surface', () => {
   it('status page attention cards can open approval details', () => {
     const statusRanges = findSectionBoundaries('status');
     expect(statusRanges.length).toBeGreaterThan(0);
@@ -97,10 +97,10 @@ describe('approval card click handlers wire to modal state', () => {
     expect(appContent).toContain('showApprovalDetail = true');
   });
 
-  it('flows settings tab approval cards set activeApprovalId and showApprovalDetail', () => {
-    const start = indexContent.indexOf('<div class="settings-tab-content" x-show="$store.chat.settingsTab === \'flows\'">');
+  it('flows settings tab approval cards remain parked behind x-show=false', () => {
+    const start = indexContent.indexOf('<div class="settings-tab-content" x-show="false">');
     expect(start).toBeGreaterThan(-1);
-    const end = indexContent.indexOf('<div class="settings-tab-content" x-show="$store.chat.canAdminWorkspace && $store.chat.settingsTab === \'schedules\'">', start);
+    const end = indexContent.indexOf('<div class="settings-tab-content" x-show="false">', start + 1);
     expect(end).toBeGreaterThan(start);
     const flowsHtml = indexContent.slice(start, end);
 
@@ -115,8 +115,8 @@ describe('approval card click handlers wire to modal state', () => {
 // ---------------------------------------------------------------------------
 
 describe('approval detail modal visibility binding', () => {
-  it('overlay uses x-show="$store.chat.showApprovalDetail"', () => {
-    expect(indexContent).toMatch(/approval-detail-overlay[^>]*x-show="\$store\.chat\.showApprovalDetail"/);
+  it('overlay is hidden while approvals are disabled', () => {
+    expect(indexContent).toMatch(/approval-detail-overlay[^>]*x-show="false"/);
   });
 
   it('overlay can be dismissed by clicking backdrop', () => {

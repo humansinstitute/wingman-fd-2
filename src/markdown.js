@@ -1,6 +1,7 @@
 import { Marked } from 'marked';
 import { buildSectionUrl, parseRouteLocation } from './route-helpers.js';
 import { normalizeRecordLinkType } from './record-links.js';
+import { isFlightDeckSurfaceDisabled } from './disabled-surfaces.js';
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -49,7 +50,7 @@ function normalizeFlightDeckRoute(url) {
   const needsWorkspaceSlug = !route.workspaceSlug && Boolean(workspaceSlug) && route.section !== 'status';
 
   if (params.docid && section !== 'docs') section = 'docs';
-  else if (params.reportid && section !== 'reports') section = 'reports';
+  else if (params.reportid && section !== 'reports' && !isFlightDeckSurfaceDisabled('reports')) section = 'reports';
   else if ((params.taskid || params.view) && section !== 'tasks') section = 'tasks';
   else if ((params.channelid || params.threadid) && section !== 'chat') section = 'chat';
   else if (!needsWorkspaceSlug && (!workspacekey || params.workspacekey === workspacekey)) return url.href;

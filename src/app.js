@@ -78,6 +78,11 @@ import {
 import { renderMarkdownToHtml } from './markdown.js';
 import { resolveChannelLabel } from './channel-labels.js';
 import { buildFlightDeckDocumentTitle } from './page-title.js';
+import {
+  blockDisabledFlightDeckSurface,
+  isFlightDeckSurfaceDisabled,
+  normalizeEnabledFlightDeckSection,
+} from './disabled-surfaces.js';
 import { getRunningBuildId } from './version-check.js';
 import { filterDocItemsByScope } from './docs-scope-filter.js';
 import { sectionLiveQueryMixin } from './section-live-queries.js';
@@ -1789,8 +1794,9 @@ export function initApp() {
 
     getRoutePath(section = this.navSection) {
       const slug = this.currentWorkspaceSlug;
+      const enabledSection = normalizeEnabledFlightDeckSection(section);
       const page = (() => {
-        switch (section) {
+        switch (enabledSection) {
           case 'status': return 'flight-deck';
           case 'tasks': return 'tasks';
           case 'chat': return 'chat';
@@ -1816,6 +1822,9 @@ export function initApp() {
       // Always preserve scopeid across all sections so browser history
       // retains the active scope when navigating between tasks/chat/docs/etc.
       if (this.selectedBoardId) url.searchParams.set('scopeid', this.selectedBoardId);
+
+      const enabledSection = normalizeEnabledFlightDeckSection(this.navSection);
+      if (enabledSection !== this.navSection) this.navSection = enabledSection;
 
       if (this.navSection === 'chat') {
         if (this.selectedChannelId) url.searchParams.set('channelid', this.selectedChannelId);
@@ -1878,7 +1887,7 @@ export function initApp() {
           // This is handled by syncRoute(true) at the bottom
         }
 
-        this.navSection = route.section;
+        this.navSection = normalizeEnabledFlightDeckSection(route.section);
         this.mobileNavOpen = false;
 
         // Restore scopeid from URL for all sections so browser history
@@ -1892,7 +1901,7 @@ export function initApp() {
           this.persistSelectedBoardId(this.selectedBoardId);
         }
 
-        if (route.section === 'chat') {
+        if (this.navSection === 'chat') {
           const channelId = route.params.channelid || this.selectedChannelId || this.channels[0]?.record_id || null;
           if (channelId) {
             await this.selectChannel(channelId, { syncRoute: false });
@@ -1902,7 +1911,7 @@ export function initApp() {
             this.selectedChannelId = null;
             this.closeThread({ syncRoute: false });
           }
-        } else if (route.section === 'docs') {
+        } else if (this.navSection === 'docs') {
           this.selectedDocCommentId = route.params.commentid || null;
           if (route.params.docid) {
             this.openDoc(route.params.docid, { syncRoute: false, commentId: route.params.commentid || null });
@@ -1915,15 +1924,15 @@ export function initApp() {
             this.currentFolderId = null;
             this.loadDocEditorFromSelection();
           }
-        } else if (route.section === 'reports') {
+        } else if (this.navSection === 'reports') {
           this.selectedReportId = route.params.reportid || this.selectedReport?.record_id || null;
-        } else if (route.section === 'opportunities') {
+        } else if (this.navSection === 'opportunities') {
           if (route.params.opportunityid) {
             this.openOpportunityDetail(route.params.opportunityid);
           } else {
             this.closeOpportunityDetail({ syncRoute: false });
           }
-        } else if (route.section === 'tasks') {
+        } else if (this.navSection === 'tasks') {
           // Scope already restored above; apply task-specific params
           if (!route.params.scopeid && !route.params.groupid) {
             this.selectedBoardId = this.readStoredTaskBoardId() || this.preferredTaskBoardId;
@@ -2234,6 +2243,12 @@ export function initApp() {
     },
 
     navigateTo(section, options = {}) {
+      const enabledSection = normalizeEnabledFlightDeckSection(section);
+      if (enabledSection !== section) {
+        const surfaceId = section === 'reports' ? 'reports' : section === 'people' ? 'people' : section === 'opportunities' ? 'opportunities' : '';
+        if (surfaceId) blockDisabledFlightDeckSurface(this, surfaceId);
+        section = enabledSection;
+      }
       const pgTaskBoardFromChat = section === 'tasks'
         && this.navSection === 'chat'
         && isTowerPgBackendMode()
@@ -3185,6 +3200,7 @@ export function initApp() {
     },
 
     openNewScheduleModal() {
+      if (blockDisabledFlightDeckSurface(this, 'schedules')) return;
       this.error = null;
       try {
         this.cancelEditSchedule();
@@ -3241,6 +3257,10 @@ export function initApp() {
     },
 
     async applySchedules(schedules = []) {
+      if (isFlightDeckSurfaceDisabled('schedules')) {
+        this.schedules = [];
+        return;
+      }
       const normalizedSchedules = [];
       for (const schedule of (Array.isArray(schedules) ? schedules : [])) {
         const normalized = this.normalizeScheduleRowGroupRefs(schedule);
@@ -3253,12 +3273,17 @@ export function initApp() {
     },
 
     async refreshSchedules() {
+      if (isFlightDeckSurfaceDisabled('schedules')) {
+        this.schedules = [];
+        return;
+      }
       const ownerNpub = this.workspaceOwnerNpub;
       if (!ownerNpub) return;
       await this.applySchedules(await getSchedulesByOwner(ownerNpub));
     },
 
     async addSchedule() {
+      if (blockDisabledFlightDeckSurface(this, 'schedules')) return;
       const title = String(this.newScheduleTitle || '').trim();
       if (!title) {
         this.error = 'Schedule title is required.';
@@ -3336,6 +3361,7 @@ export function initApp() {
     },
 
     async startEditSchedule(scheduleId) {
+      if (blockDisabledFlightDeckSurface(this, 'schedules')) return;
       const schedule = this.schedules.find((item) => item.record_id === scheduleId);
       if (!schedule) return;
       this.editingScheduleId = scheduleId;
@@ -3351,6 +3377,7 @@ export function initApp() {
     },
 
     async saveEditingSchedule() {
+      if (blockDisabledFlightDeckSurface(this, 'schedules')) return;
       if (!this.editingScheduleDraft || !this.session?.npub) return;
       this.error = null;
       const current = await getScheduleById(this.editingScheduleDraft.record_id);
@@ -3410,6 +3437,7 @@ export function initApp() {
     },
 
     async toggleSchedule(scheduleId) {
+      if (blockDisabledFlightDeckSurface(this, 'schedules')) return;
       const schedule = this.schedules.find((item) => item.record_id === scheduleId);
       if (!schedule) return;
       this.editingScheduleDraft = toRaw({
@@ -3425,6 +3453,7 @@ export function initApp() {
     },
 
     async deleteSchedule(scheduleId) {
+      if (blockDisabledFlightDeckSurface(this, 'schedules')) return;
       const schedule = this.schedules.find((item) => item.record_id === scheduleId);
       if (!schedule || !this.session?.npub) return;
       const updated = toRaw({

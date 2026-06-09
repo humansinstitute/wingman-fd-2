@@ -2,6 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { wappsManagerMixin } from '../src/wapps-manager.js';
 import { ALL_TASK_BOARD_ID, UNSCOPED_TASK_BOARD_ID } from '../src/task-board-state.js';
 
+vi.mock('../src/disabled-surfaces.js', () => ({
+  blockDisabledFlightDeckSurface: vi.fn(() => false),
+}));
+
 function createStore(overrides = {}) {
   const store = {
     workspaceOwnerNpub: 'npub_workspace',

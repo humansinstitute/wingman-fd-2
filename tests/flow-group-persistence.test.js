@@ -18,6 +18,11 @@ vi.mock('../src/crypto/group-keys.js', () => ({
   hasGroupKey: vi.fn(() => true),
 }));
 
+vi.mock('../src/disabled-surfaces.js', () => ({
+  blockDisabledFlightDeckSurface: vi.fn(() => false),
+  isFlightDeckSurfaceDisabled: vi.fn(() => false),
+}));
+
 const mockUpsertFlow = vi.fn(async () => {});
 const mockAddPendingWrite = vi.fn(async () => {});
 const mockOutboundFlow = vi.fn(async (payload) => ({

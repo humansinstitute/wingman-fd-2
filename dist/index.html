@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-CRkY3hnu.js"></script>
+  <script type="module" crossorigin src="/assets/index-PvVB4TLp.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-oYEIghrk.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
@@ -670,7 +670,7 @@
             </span>
             <span class="sidebar-label">Files</span>
           </li>
-          <li :class="{ active: $store.chat.navSection === 'people' }" @click="$store.chat.navigateTo('people')">
+          <li x-show="false" x-cloak :class="{ active: $store.chat.navSection === 'people' }" @click="$store.chat.navigateTo('people')">
             <span class="sidebar-icon" aria-hidden="true">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                 <path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"></path>
@@ -681,7 +681,7 @@
             </span>
             <span class="sidebar-label">People</span>
           </li>
-          <li :class="{ active: $store.chat.navSection === 'opportunities' }" @click="$store.chat.navigateTo('opportunities')">
+          <li x-show="false" x-cloak :class="{ active: $store.chat.navSection === 'opportunities' }" @click="$store.chat.navigateTo('opportunities')">
             <span class="sidebar-icon" aria-hidden="true">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                 <circle cx="12" cy="12" r="8"></circle>
@@ -968,7 +968,7 @@
             </div>
           </section>
 
-          <section class="flightdeck-reports-section" x-show="$store.chat.flightDeckReports.length > 0" x-cloak>
+          <section class="flightdeck-reports-section" x-show="false" x-cloak>
             <div class="flightdeck-reports-header">
               <h3>Reports</h3>
             </div>
@@ -1195,7 +1195,7 @@
           </div>
         </template>
 
-        <template x-if="$store.chat.navSection === 'reports'">
+        <template x-if="false && $store.chat.navSection === 'reports'">
           <div class="reports-section">
           <div class="reports-workspace">
             <aside class="reports-list-pane">
@@ -2139,7 +2139,7 @@
                   <!-- Flow linkage -->
                   <div
                     class="task-field task-field-wide"
-                    x-show="$store.chat.isTaskDetailEditing() || $store.chat.getEditingTaskFlowInfo()"
+                    x-show="false"
                     x-data="{ flowExpanded: false, get flowInfo() { return $store.chat.getEditingTaskFlowInfo(); } }"
                   >
                     <label class="task-field-label">Flow</label>
@@ -4593,7 +4593,7 @@
 
         <div
           class="flow-start-confirm-overlay"
-          x-show="$store.chat.showChatThreadFlowDispatchModal"
+          x-show="false"
           x-transition.opacity
           @click.self="$store.chat.handleChatThreadFlowDispatchOverlayClick()"
           x-cloak
@@ -4770,7 +4770,7 @@
         </div>
 
         <!-- Approval detail modal (global — reachable from status and flows sections) -->
-        <div class="approval-detail-overlay" x-show="$store.chat.showApprovalDetail" x-transition.opacity @click.self="$store.chat.showApprovalDetail = false; $store.chat.approvalPreviewExpanded = false" x-cloak
+        <div class="approval-detail-overlay" x-show="false" x-transition.opacity @click.self="$store.chat.showApprovalDetail = false; $store.chat.approvalPreviewExpanded = false" x-cloak
           x-data="{
             get approval() {
               const id = $store.chat.activeApprovalId;
@@ -4993,7 +4993,7 @@
         </div>
 
         <!-- Approval history modal -->
-        <div class="approval-history-overlay" x-show="$store.chat.showApprovalHistory" x-cloak @click.self="$store.chat.showApprovalHistory = false" style="display:none">
+        <div class="approval-history-overlay" x-show="false" x-cloak @click.self="$store.chat.showApprovalHistory = false" style="display:none">
           <div class="approval-history-modal">
             <div class="approval-history-header">
               <h2>Approval History</h2>
@@ -5036,7 +5036,7 @@
           </div>
         </div>
 
-        <template x-if="$store.chat.navSection === 'people'">
+        <template x-if="false && $store.chat.navSection === 'people'">
           <div class="people-section">
             <!-- Sub-tab bar -->
             <div class="people-subtabs">
@@ -5466,7 +5466,7 @@
           </div>
         </template>
 
-        <template x-if="$store.chat.navSection === 'opportunities'">
+        <template x-if="false && $store.chat.navSection === 'opportunities'">
           <div class="people-section opportunity-section">
             <template x-if="!$store.chat.showOpportunityEditor">
               <div class="people-list-view">
@@ -5831,9 +5831,9 @@
           <div class="settings-tabs">
             <button x-show="$store.chat.canAdminWorkspace" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'workspace' }" @click="$store.chat.settingsTab = 'workspace'">Workspace</button>
             <button class="settings-tab" :class="{ active: $store.chat.settingsTab === 'connection' }" @click="$store.chat.settingsTab = 'connection'">Connection</button>
-            <button x-show="$store.chat.workspaceAdvancedOptionsEnabled" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'flows' }" @click="$store.chat.openSettingsTab('flows')">Flows</button>
-            <button x-show="$store.chat.canAdminWorkspace && $store.chat.workspaceAdvancedOptionsEnabled" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'schedules' }" @click="$store.chat.openSettingsTab('schedules')">Schedules</button>
-            <button x-show="$store.chat.canAdminWorkspace" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'apps' }" @click="$store.chat.openSettingsTab('apps')">Apps</button>
+            <button x-show="false" x-cloak class="settings-tab" :class="{ active: $store.chat.settingsTab === 'flows' }" @click="$store.chat.openSettingsTab('flows')">Flows</button>
+            <button x-show="false" x-cloak class="settings-tab" :class="{ active: $store.chat.settingsTab === 'schedules' }" @click="$store.chat.openSettingsTab('schedules')">Schedules</button>
+            <button x-show="false" x-cloak class="settings-tab" :class="{ active: $store.chat.settingsTab === 'apps' }" @click="$store.chat.openSettingsTab('apps')">Apps</button>
             <button x-show="$store.chat.canAdminWorkspace" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'scopes' }" @click="$store.chat.openSettingsTab('scopes')">Scopes</button>
             <button x-show="$store.chat.workspaceAdvancedOptionsEnabled" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'data' }" @click="$store.chat.settingsTab = 'data'">Sync</button>
             <button x-show="$store.chat.canAdminWorkspace" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'sharing' }" @click="$store.chat.openSettingsTab('sharing')">Groups &amp; Members</button>
@@ -6645,7 +6645,7 @@
           </div>
           </div>
 
-          <div class="settings-tab-content" x-show="$store.chat.workspaceAdvancedOptionsEnabled && $store.chat.settingsTab === 'flows'">
+          <div class="settings-tab-content" x-show="false">
           <div class="flows-section">
             <div class="flows-header">
               <h2>Flows</h2>
@@ -7127,7 +7127,7 @@
           </div>
           </div>
 
-          <div class="settings-tab-content" x-show="$store.chat.canAdminWorkspace && $store.chat.workspaceAdvancedOptionsEnabled && $store.chat.settingsTab === 'schedules'">
+          <div class="settings-tab-content" x-show="false">
           <section class="settings-panel schedules-section">
             <div class="schedules-header">
               <div>
@@ -7374,7 +7374,7 @@
           </section>
           </div>
 
-          <div class="settings-tab-content" x-show="$store.chat.canAdminWorkspace && $store.chat.settingsTab === 'apps'">
+          <div class="settings-tab-content" x-show="false">
           <section class="settings-panel wapp-visibility-section">
             <div class="settings-panel-header">
               <div>
@@ -8062,7 +8062,7 @@
 
         <div
           class="doc-modal-backdrop"
-          x-show="$store.chat.reportDeleteConfirmReport"
+          x-show="false"
           x-cloak
           @click.self="$store.chat.closeReportDeleteConfirm()"
           @keydown.escape.window="$store.chat.closeReportDeleteConfirm()"
@@ -8092,7 +8092,7 @@
           </div>
         </div>
 
-        <div class="doc-modal-backdrop" x-show="$store.chat.reportModalReport" x-cloak @click.self="$store.chat.closeReportModal()">
+        <div class="doc-modal-backdrop" x-show="false" x-cloak @click.self="$store.chat.closeReportModal()">
           <div class="doc-modal-card report-fullscreen-modal">
             <div class="report-fullscreen-header">
               <div>

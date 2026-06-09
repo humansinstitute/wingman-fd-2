@@ -7,11 +7,12 @@ describe('scopeid preservation across section navigation', () => {
 
   describe('parseRouteLocation reads scopeid from all sections', () => {
     const sections = ['tasks', 'chat', 'docs', 'reports', 'opportunities', 'people', 'settings'];
+    const disabledSections = new Set(['reports', 'opportunities', 'people']);
 
     for (const section of sections) {
       it(`reads scopeid from ${section} URL`, () => {
         const route = parseRouteLocation(`${base}/be-free/${section}?scopeid=scope-123`);
-        expect(route.section).toBe(section);
+        expect(route.section).toBe(disabledSections.has(section) ? 'status' : section);
         expect(route.params.scopeid).toBe('scope-123');
       });
     }
@@ -113,6 +114,7 @@ describe('scopeid preservation across section navigation', () => {
 
   describe('round-trip: buildSectionUrl → parseRouteLocation preserves scopeid', () => {
     const sections = ['tasks', 'chat', 'docs', 'reports'];
+    const disabledSections = new Set(['reports']);
 
     for (const section of sections) {
       it(`round-trips scopeid through ${section}`, () => {
@@ -122,7 +124,7 @@ describe('scopeid preservation across section navigation', () => {
           scopeid: 'scope-round-trip',
         });
         const route = parseRouteLocation(`${base}${url}`);
-        expect(route.section).toBe(section);
+        expect(route.section).toBe(disabledSections.has(section) ? 'status' : section);
         expect(route.params.scopeid).toBe('scope-round-trip');
         expect(route.workspaceSlug).toBe('be-free');
       });

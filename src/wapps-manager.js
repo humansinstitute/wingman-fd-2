@@ -3,6 +3,7 @@ import { addPendingWrite, getManageableWappsByOwner, getWappById, upsertWapp } f
 import { outboundWapp } from './translators/wapps.js';
 import { getRecordWriteFieldsForStore } from './preferred-write-group.js';
 import { toRaw } from './utils/state-helpers.js';
+import { blockDisabledFlightDeckSurface } from './disabled-surfaces.js';
 
 const WAPP_SCHEDULE_DAY_OPTIONS = [
   { value: 1, label: 'Mon' },
@@ -325,6 +326,7 @@ export const wappsManagerMixin = {
   },
 
   startEditWappVisibility(wappId) {
+    if (blockDisabledFlightDeckSurface(this, 'wappVisibility')) return;
     const targetId = normalizeRecordId(wappId);
     const wapp = (this.wapps || []).find((item) => normalizeRecordId(item?.record_id) === targetId);
     if (!wapp) return;
@@ -341,6 +343,7 @@ export const wappsManagerMixin = {
   },
 
   toggleEditingWappVisibilityDay(day) {
+    if (blockDisabledFlightDeckSurface(this, 'wappVisibility')) return;
     if (!this.editingWappVisibilityDraft) return;
     const value = Number(day);
     const days = normalizeScheduleDays(this.editingWappVisibilityDraft.days);
@@ -350,6 +353,7 @@ export const wappsManagerMixin = {
   },
 
   async saveEditingWappVisibility() {
+    if (blockDisabledFlightDeckSurface(this, 'wappVisibility')) return null;
     const draft = this.editingWappVisibilityDraft;
     const recordId = normalizeRecordId(draft?.record_id || this.editingWappVisibilityId);
     if (!recordId || !this.session?.npub) return;

@@ -44,6 +44,10 @@ import { normalizeArtifactRef, resolveArtifactRef } from './approval-helpers.js'
 import { commentBelongsToDocBlock } from './doc-comment-anchors.js';
 import { renderMarkdownToHtml } from './markdown.js';
 import {
+  blockDisabledFlightDeckSurface,
+  isFlightDeckSurfaceDisabled,
+} from './disabled-surfaces.js';
+import {
   getRecordWriteFieldsForStore,
 } from './preferred-write-group.js';
 import {
@@ -322,6 +326,10 @@ export const flowsManagerMixin = {
   // --- apply / refresh from Dexie ---
 
   applyFlows(flows) {
+    if (isFlightDeckSurfaceDisabled('flows')) {
+      this.flows = [];
+      return;
+    }
     const next = (Array.isArray(flows) ? flows : []).filter(
       (f) => f.record_state !== 'deleted',
     ).map((flow) => ({
@@ -332,6 +340,10 @@ export const flowsManagerMixin = {
   },
 
   async refreshFlows() {
+    if (isFlightDeckSurfaceDisabled('flows')) {
+      this.flows = [];
+      return;
+    }
     const ownerNpub = this.workspaceOwnerNpub;
     if (!ownerNpub) return;
     const rows = await getFlowsByOwner(ownerNpub);
@@ -339,6 +351,10 @@ export const flowsManagerMixin = {
   },
 
   async refreshApprovals() {
+    if (isFlightDeckSurfaceDisabled('approvals')) {
+      this.approvals = [];
+      return;
+    }
     const ownerNpub = this.workspaceOwnerNpub;
     if (!ownerNpub) return;
     this.approvals = await getAllApprovals();
@@ -381,6 +397,7 @@ export const flowsManagerMixin = {
   },
 
   openFlowEditor(flowId = null) {
+    if (blockDisabledFlightDeckSurface(this, 'flows')) return;
     this.editingFlowId = flowId || null;
     this.showFlowEditor = true;
     this.flowDetailMode = flowId ? 'view' : 'edit';
@@ -406,6 +423,7 @@ export const flowsManagerMixin = {
   },
 
   async enterFlowEditMode() {
+    if (blockDisabledFlightDeckSurface(this, 'flows')) return false;
     if (!this.editingFlowId || !this.session?.npub || this.flowCheckoutPending) return false;
     const flow = this.flows.find((entry) => entry.record_id === this.editingFlowId)
       || await getFlowById(this.editingFlowId);
@@ -717,6 +735,7 @@ export const flowsManagerMixin = {
 
   /** Add a comment to the currently previewed record. */
   async addApprovalPreviewComment() {
+    if (blockDisabledFlightDeckSurface(this, 'approvals')) return;
     const body = String(this.approvalPreviewCommentBody || '').trim();
     const record = this.approvalPreviewRecord;
     if (!body || !record || !this.session?.npub) return;
@@ -770,6 +789,7 @@ export const flowsManagerMixin = {
   // --- flow CRUD ---
 
   async createFlow({ title, description = '', steps = [], next_flow_id = null, scope_id = null, scope_l1_id = null, scope_l2_id = null, scope_l3_id = null, scope_l4_id = null, scope_l5_id = null, group_ids = [], write_group_ref = null }) {
+    if (blockDisabledFlightDeckSurface(this, 'flows')) return null;
     if (!title || !this.session?.npub) return null;
 
     const now = new Date().toISOString();
@@ -842,6 +862,7 @@ export const flowsManagerMixin = {
   },
 
   async updateFlow(flowId, patch = {}, options = {}) {
+    if (blockDisabledFlightDeckSurface(this, 'flows')) return null;
     const flow = this.flows.find((f) => f.record_id === flowId);
     if (!flow || !this.session?.npub) return null;
     if (!options.allowWithoutCheckout && !this.isFlowDetailEditing?.()) {
@@ -931,6 +952,7 @@ export const flowsManagerMixin = {
   },
 
   async deleteFlow(flowId) {
+    if (blockDisabledFlightDeckSurface(this, 'flows')) return null;
     const flow = this.flows.find((f) => f.record_id === flowId);
     if (!flow || !this.session?.npub) return;
     const checkoutPolicyConfig = this.getFlowCheckoutPolicyConfig();
@@ -989,6 +1011,7 @@ export const flowsManagerMixin = {
   // --- manual flow start ---
 
   async startFlowRun(flowId, runContext = '') {
+    if (blockDisabledFlightDeckSurface(this, 'flows')) return null;
     const flow = this.flows.find((f) => f.record_id === flowId);
     if (!flow || !this.session?.npub) return null;
     if (!Array.isArray(flow.steps) || flow.steps.length === 0) return null;
@@ -1037,6 +1060,7 @@ export const flowsManagerMixin = {
     resolvedScopeAssignment = null,
     kickoffDescription = '',
   } = {}) {
+    if (blockDisabledFlightDeckSurface(this, 'flows')) return null;
     const flow = this.flows.find((entry) => entry.record_id === flowId);
     if (!flow || !this.session?.npub) return null;
     if (!Array.isArray(flow.steps) || flow.steps.length === 0) return null;
@@ -1089,6 +1113,7 @@ export const flowsManagerMixin = {
   // --- approval actions ---
 
   async approveApproval(approvalId, decisionNote = null) {
+    if (blockDisabledFlightDeckSurface(this, 'approvals')) return null;
     const approval = this.approvals.find((a) => a.record_id === approvalId);
     if (!approval || !this.session?.npub) return null;
 
@@ -1118,6 +1143,7 @@ export const flowsManagerMixin = {
   },
 
   async rejectApproval(approvalId, decisionNote = null) {
+    if (blockDisabledFlightDeckSurface(this, 'approvals')) return null;
     const approval = this.approvals.find((a) => a.record_id === approvalId);
     if (!approval || !this.session?.npub) return null;
 
@@ -1132,6 +1158,7 @@ export const flowsManagerMixin = {
   },
 
   async improveApproval(approvalId, decisionNote = '') {
+    if (blockDisabledFlightDeckSurface(this, 'approvals')) return null;
     const approval = this.approvals.find((a) => a.record_id === approvalId);
     if (!approval || !this.session?.npub) return null;
     try {
@@ -1212,6 +1239,7 @@ export const flowsManagerMixin = {
   },
 
   async archiveApproval(approvalId, decisionNote = null) {
+    if (blockDisabledFlightDeckSurface(this, 'approvals')) return null;
     const approval = this.approvals.find((a) => a.record_id === approvalId);
     if (!approval || !this.session?.npub) return null;
 
@@ -1239,6 +1267,7 @@ export const flowsManagerMixin = {
   },
 
   async deleteApproval(approvalId, options = {}) {
+    if (blockDisabledFlightDeckSurface(this, 'approvals')) return null;
     const approval = this.approvals.find((a) => a.record_id === approvalId);
     if (!approval || !this.session?.npub) return null;
 
@@ -1285,6 +1314,7 @@ export const flowsManagerMixin = {
   },
 
   async deletePendingApprovalsByScope() {
+    if (blockDisabledFlightDeckSurface(this, 'approvals')) return 0;
     const approvals = [...this.pendingApprovalsByScope];
     if (approvals.length === 0) return 0;
     for (const approval of approvals) {
@@ -1295,6 +1325,7 @@ export const flowsManagerMixin = {
   },
 
   async _patchApproval(approval, patch) {
+    if (blockDisabledFlightDeckSurface(this, 'approvals')) return null;
     const checkoutPolicyConfig = this.getApprovalCheckoutPolicyConfig();
     if (approval?.record_id) {
       try {
@@ -1382,6 +1413,7 @@ export const flowsManagerMixin = {
   // --- standalone approval creation ---
 
   async createApproval({ title, flow_id = null, flow_run_id = null, flow_step = null, task_ids = [], approval_mode = 'manual', brief = '', confidence_score = null, artifact_refs = [], scope_id = null, scope_l1_id = null, scope_l2_id = null, scope_l3_id = null, scope_l4_id = null, scope_l5_id = null, group_ids = [], write_group_ref = null }) {
+    if (blockDisabledFlightDeckSurface(this, 'approvals')) return null;
     if (!title || !this.session?.npub) return null;
 
     const now = new Date().toISOString();

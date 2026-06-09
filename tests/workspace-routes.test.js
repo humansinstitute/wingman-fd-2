@@ -137,10 +137,10 @@ describe('parseRouteLocation', () => {
     expect(route.params.taskid).toBe('xyz');
   });
 
-  it('extracts opportunity query params alongside slug', () => {
+  it('normalizes disabled opportunity route to status while keeping query params', () => {
     const route = parseRouteLocation(`${base}/be-free/opportunities?opportunityid=opp-1`);
     expect(route.workspaceSlug).toBe('be-free');
-    expect(route.section).toBe('opportunities');
+    expect(route.section).toBe('status');
     expect(route.params.opportunityid).toBe('opp-1');
   });
 
@@ -154,20 +154,29 @@ describe('parseRouteLocation', () => {
     expect(route.params.channelid).toBe('chan-1');
   });
 
-  it('extracts report query params alongside slug', () => {
+  it('normalizes disabled report route to status while keeping query params', () => {
     const route = parseRouteLocation(`${base}/be-free/reports?scopeid=abc&reportid=report-1`);
     expect(route.workspaceSlug).toBe('be-free');
-    expect(route.section).toBe('reports');
+    expect(route.section).toBe('status');
     expect(route.params.scopeid).toBe('abc');
     expect(route.params.reportid).toBe('report-1');
   });
 
-  it('parses all known page sections', () => {
-    const pages = ['chat', 'tasks', 'docs', 'files', 'reports', 'opportunities', 'people', 'settings'];
+  it('parses enabled known page sections', () => {
+    const pages = ['chat', 'tasks', 'docs', 'files', 'settings'];
     for (const page of pages) {
       const route = parseRouteLocation(`${base}/my-ws/${page}`);
       expect(route.workspaceSlug).toBe('my-ws');
       expect(route.section).toBe(page);
+    }
+  });
+
+  it('normalizes disabled page sections to status', () => {
+    const pages = ['reports', 'opportunities', 'people'];
+    for (const page of pages) {
+      const route = parseRouteLocation(`${base}/my-ws/${page}`);
+      expect(route.workspaceSlug).toBe('my-ws');
+      expect(route.section).toBe('status');
     }
   });
 

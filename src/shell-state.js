@@ -23,6 +23,7 @@ import {
   markWorkspaceKeyRegistered,
 } from './crypto/workspace-keys.js';
 import { parseRouteLocation } from './route-helpers.js';
+import { normalizeEnabledFlightDeckSection } from './disabled-surfaces.js';
 import {
   normalizeBackendUrl,
 } from './utils/state-helpers.js';
@@ -543,8 +544,9 @@ export function createShellState(options = {}) {
 
     getRoutePath(section = this.navSection) {
       const slug = this.currentWorkspaceSlug;
+      const enabledSection = normalizeEnabledFlightDeckSection(section);
       const page = (() => {
-        switch (section) {
+        switch (enabledSection) {
           case 'status': return 'flight-deck';
           case 'tasks': return 'tasks';
           case 'chat': return 'chat';
@@ -567,6 +569,9 @@ export function createShellState(options = {}) {
       url.search = '';
       if (this.currentWorkspaceKey) url.searchParams.set('workspacekey', this.currentWorkspaceKey);
       if (this.selectedBoardId) url.searchParams.set('scopeid', this.selectedBoardId);
+
+      const enabledSection = normalizeEnabledFlightDeckSection(this.navSection);
+      if (enabledSection !== this.navSection) this.navSection = enabledSection;
 
       if (this.navSection === 'chat') {
         if (this.selectedChannelId) url.searchParams.set('channelid', this.selectedChannelId);
@@ -623,7 +628,7 @@ export function createShellState(options = {}) {
           }
         }
 
-        this.navSection = route.section;
+        this.navSection = normalizeEnabledFlightDeckSection(route.section);
         this.mobileNavOpen = false;
 
         if (route.params.scopeid || route.params.groupid) {
@@ -635,7 +640,7 @@ export function createShellState(options = {}) {
           this.persistSelectedBoardId(this.selectedBoardId);
         }
 
-        if (route.section === 'chat') {
+        if (this.navSection === 'chat') {
           const channelId = route.params.channelid || this.selectedChannelId || this.channels[0]?.record_id || null;
           if (channelId) {
             await this.selectChannel(channelId, { syncRoute: false });
@@ -645,7 +650,7 @@ export function createShellState(options = {}) {
             this.selectedChannelId = null;
             this.closeThread({ syncRoute: false });
           }
-        } else if (route.section === 'docs') {
+        } else if (this.navSection === 'docs') {
           this.selectedDocCommentId = route.params.commentid || null;
           if (route.params.docid) {
             this.openDoc(route.params.docid, { syncRoute: false, commentId: route.params.commentid || null });
@@ -658,15 +663,15 @@ export function createShellState(options = {}) {
             this.currentFolderId = null;
             this.loadDocEditorFromSelection();
           }
-        } else if (route.section === 'reports') {
+        } else if (this.navSection === 'reports') {
           this.selectedReportId = route.params.reportid || this.selectedReport?.record_id || null;
-        } else if (route.section === 'opportunities') {
+        } else if (this.navSection === 'opportunities') {
           if (route.params.opportunityid) {
             this.openOpportunityDetail(route.params.opportunityid);
           } else {
             this.closeOpportunityDetail({ syncRoute: false });
           }
-        } else if (route.section === 'tasks') {
+        } else if (this.navSection === 'tasks') {
           if (!route.params.scopeid && !route.params.groupid) {
             this.selectedBoardId = this.readStoredTaskBoardId() || this.preferredTaskBoardId;
             this.validateSelectedBoardId();
@@ -692,6 +697,7 @@ export function createShellState(options = {}) {
     // ── Navigation ────────────────────────────────────────────
 
     navigateTo(section, options = {}) {
+      section = normalizeEnabledFlightDeckSection(section);
       this.clearInactiveSectionData(section);
       this.navSection = section;
       this.mobileNavOpen = false;

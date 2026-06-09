@@ -73,6 +73,7 @@ import {
 } from './preferred-write-group.js';
 import { resolveFlightDeckRecordCheckoutPolicy } from './record-checkout-policy.js';
 import { isTowerPgBackendMode } from './backend-mode.js';
+import { isFlightDeckSurfaceDisabled } from './disabled-surfaces.js';
 
 const PG_RECORD_SYNC_DISABLED_MESSAGE = 'Tower PG mode active; encrypted record sync is disabled.';
 const PG_RECORD_REPAIR_DISABLED_MESSAGE = 'Tower PG mode active; encrypted record repair is not available because encrypted record sync is disabled.';
@@ -127,7 +128,7 @@ export const syncManagerMixin = {
   // --- repair UI ---
 
   get repairFamilyOptions() {
-    return SYNC_FAMILY_OPTIONS;
+    return SYNC_FAMILY_OPTIONS.filter((family) => !this.isStatusFamilyDisabled(family.id));
   },
 
   isRepairFamilySelected(familyId) {
@@ -147,7 +148,7 @@ export const syncManagerMixin = {
   selectAllRepairFamilies() {
     this.repairError = null;
     this.repairNotice = '';
-    this.repairSelectedFamilyIds = SYNC_FAMILY_OPTIONS.map((family) => family.id);
+    this.repairSelectedFamilyIds = this.repairFamilyOptions.map((family) => family.id);
   },
 
   clearRepairFamilies() {
@@ -230,6 +231,7 @@ export const syncManagerMixin = {
   },
 
   getLocalRecordsForStatusFamily(familyId) {
+    if (this.isStatusFamilyDisabled(familyId)) return [];
     switch (familyId) {
       case 'settings': {
         const record = this.buildWorkspaceSettingsStatusRecord();
@@ -263,6 +265,26 @@ export const syncManagerMixin = {
         return this.opportunities || [];
       default:
         return [];
+    }
+  },
+
+  isStatusFamilyDisabled(familyId) {
+    switch (String(familyId || '').trim()) {
+      case 'flow':
+        return isFlightDeckSurfaceDisabled('flows');
+      case 'approval':
+        return isFlightDeckSurfaceDisabled('approvals');
+      case 'schedule':
+        return isFlightDeckSurfaceDisabled('schedules');
+      case 'report':
+        return isFlightDeckSurfaceDisabled('reports');
+      case 'person':
+      case 'organisation':
+        return isFlightDeckSurfaceDisabled('people');
+      case 'opportunity':
+        return isFlightDeckSurfaceDisabled('opportunities');
+      default:
+        return false;
     }
   },
 
@@ -2830,7 +2852,7 @@ export const syncManagerMixin = {
   },
 
   async refreshStateForFamilies(familyIds = [], options = {}) {
-    const selected = new Set(familyIds);
+    const selected = new Set(familyIds.filter((familyId) => !this.isStatusFamilyDisabled(familyId)));
     if (selected.has('settings')) {
       await this.refreshWorkspaceSettings({ overwriteInput: !this.wingmanHarnessDirty });
     }

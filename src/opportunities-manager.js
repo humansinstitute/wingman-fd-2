@@ -26,6 +26,10 @@ import {
   getRecordWriteFieldsForStore,
   getPreferredRecordWriteGroupForStore,
 } from './preferred-write-group.js';
+import {
+  blockDisabledFlightDeckSurface,
+  isFlightDeckSurfaceDisabled,
+} from './disabled-surfaces.js';
 
 const FORECAST_TERMINAL_STAGES = new Set(['won', 'lost', 'abandoned']);
 const INTEGER_FORMATTER = new Intl.NumberFormat();
@@ -148,6 +152,7 @@ export const opportunitiesManagerMixin = {
   },
 
   hydrateOpportunities(opportunities = [], context = {}) {
+    if (isFlightDeckSurfaceDisabled('opportunities')) return [];
     const persons = Array.isArray(context.persons) ? context.persons : this.persons;
     const organisations = Array.isArray(context.organisations) ? context.organisations : this.organisations;
     const tasks = Array.isArray(context.tasks) ? context.tasks : this.tasks;
@@ -220,6 +225,10 @@ export const opportunitiesManagerMixin = {
   },
 
   applyOpportunities(opportunities = []) {
+    if (isFlightDeckSurfaceDisabled('opportunities')) {
+      this.opportunities = [];
+      return;
+    }
     const hydrated = this.hydrateOpportunities(opportunities);
     this.opportunities = hydrated;
     this.persons = this.hydratePersonsWithOpportunityLinks(this.persons, hydrated);
@@ -236,12 +245,17 @@ export const opportunitiesManagerMixin = {
   },
 
   async refreshOpportunities() {
+    if (isFlightDeckSurfaceDisabled('opportunities')) {
+      this.opportunities = [];
+      return;
+    }
     const ownerNpub = this.workspaceOwnerNpub;
     if (!ownerNpub) return;
     await this.applyOpportunities(await getOpportunitiesByOwner(ownerNpub));
   },
 
   async applySelectedOpportunity(opportunity = null) {
+    if (isFlightDeckSurfaceDisabled('opportunities')) return null;
     const recordId = String(this.activeOpportunityId || '').trim();
     if (!recordId) return;
     const nextRows = this.opportunities.filter((item) => item?.record_id !== recordId);
@@ -269,6 +283,10 @@ export const opportunitiesManagerMixin = {
   },
 
   async loadOpportunityComments(opportunityId) {
+    if (isFlightDeckSurfaceDisabled('opportunities')) {
+      this.opportunityComments = [];
+      return [];
+    }
     this.startOpportunityCommentsLiveQuery?.();
     const comments = await getCommentsByTarget(opportunityId);
     this.applyOpportunityComments(comments);
@@ -308,6 +326,7 @@ export const opportunitiesManagerMixin = {
   },
 
   openNewOpportunity(seed = {}) {
+    if (blockDisabledFlightDeckSurface(this, 'opportunities')) return;
     this.activeOpportunityId = null;
     this.editingOpportunity = this.createOpportunityDraft(seed);
     this.showOpportunityEditor = true;
@@ -323,6 +342,7 @@ export const opportunitiesManagerMixin = {
   },
 
   openOpportunityDetail(opportunityId) {
+    if (blockDisabledFlightDeckSurface(this, 'opportunities')) return;
     const opportunity = this.opportunities.find((item) => item.record_id === opportunityId) || null;
     this.activeOpportunityId = opportunityId;
     this.editingOpportunity = opportunity ? this.createOpportunityDraft(opportunity) : null;
@@ -510,6 +530,7 @@ export const opportunitiesManagerMixin = {
   },
 
   async enterOpportunityEditMode() {
+    if (blockDisabledFlightDeckSurface(this, 'opportunities')) return false;
     if (!this.editingOpportunity || !this.session?.npub || this.opportunityCheckoutPending) return false;
     if (!this.editingOpportunity.record_id) {
       this.opportunityDetailMode = 'edit';
@@ -714,6 +735,7 @@ export const opportunitiesManagerMixin = {
   },
 
   forkOpportunity(opportunityId = null) {
+    if (blockDisabledFlightDeckSurface(this, 'opportunities')) return null;
     const targetId = String(opportunityId || this.editingOpportunity?.record_id || '').trim();
     if (!targetId) return;
     const current = this.opportunities.find((item) => item.record_id === targetId)
@@ -749,6 +771,7 @@ export const opportunitiesManagerMixin = {
   },
 
   async queueOpportunityWrite(updatedOpportunity, previousOpportunity = null, options = {}) {
+    if (blockDisabledFlightDeckSurface(this, 'opportunities')) return null;
     const familyHash = opportunityFamilyHash('opportunity');
     const fallbackWriteGroupRef = getPreferredRecordWriteGroupForStore(this, updatedOpportunity)
       || this.getWorkspaceSettingsGroupRef?.()
@@ -855,6 +878,7 @@ export const opportunitiesManagerMixin = {
   },
 
   async saveEditingOpportunity() {
+    if (blockDisabledFlightDeckSurface(this, 'opportunities')) return null;
     if (!this.editingOpportunity || !this.session?.npub) return null;
     if (this.opportunitySaving) return null;
     this.opportunitySaving = true;
@@ -974,6 +998,7 @@ export const opportunitiesManagerMixin = {
   },
 
   async deleteOpportunity(opportunityId) {
+    if (blockDisabledFlightDeckSurface(this, 'opportunities')) return null;
     const existing = await getOpportunityById(opportunityId);
     if (!existing || !this.session?.npub) return;
     const updated = {
@@ -992,6 +1017,7 @@ export const opportunitiesManagerMixin = {
   },
 
   async addOpportunityComment(opportunityId) {
+    if (blockDisabledFlightDeckSurface(this, 'opportunities')) return null;
     const body = String(this.newOpportunityCommentBody || '').trim();
     if (!body || !opportunityId || !this.session?.npub) return;
     const opportunity = this.opportunities.find((item) => item.record_id === opportunityId) || await getOpportunityById(opportunityId);

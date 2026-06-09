@@ -9,6 +9,7 @@ import {
   getScopesByOwner,
   getTasksByOwner,
 } from './db.js';
+import { isFlightDeckSurfaceDisabled } from './disabled-surfaces.js';
 import { ALL_TASK_BOARD_ID } from './task-board-state.js';
 
 const COMMAND_GROUP_LABELS = Object.freeze({
@@ -452,19 +453,18 @@ export const commandPaletteMixin = {
         directories,
         documents,
         tasks,
-        reports,
         scopes,
-        flows,
-        approvals,
       ] = await Promise.all([
         getChannelsByOwner(ownerNpub),
         getDirectoriesByOwner(ownerNpub),
         getDocumentsByOwner(ownerNpub),
         getTasksByOwner(ownerNpub),
-        getReportsByOwner(ownerNpub),
         getScopesByOwner(ownerNpub),
-        getFlowsByOwner(ownerNpub),
-        getAllApprovals(),
+      ]);
+      const [reports, flows, approvals] = await Promise.all([
+        isFlightDeckSurfaceDisabled('reports') ? [] : getReportsByOwner(ownerNpub),
+        isFlightDeckSurfaceDisabled('flows') ? [] : getFlowsByOwner(ownerNpub),
+        isFlightDeckSurfaceDisabled('approvals') ? [] : getAllApprovals(),
       ]);
       const channelMessages = await Promise.all(
         channels.map((channel) => getMessagesByChannel(channel.record_id)),
@@ -583,46 +583,52 @@ export const commandPaletteMixin = {
       }));
     }
 
-    for (const flow of records.flows || []) {
-      items.push(buildItem({
-        id: `flow:${flow.record_id}`,
-        group: 'flow',
-        title: flow.title || 'Untitled flow',
-        subtitle: flow.scope_id ? this.getTaskBoardLabel?.(flow) : 'Flow',
-        action: 'open-flow',
-        recordId: flow.record_id,
-        scopeId: scopeIdFromRecord(flow),
-        updatedTs: recordUpdatedTs(flow),
-        searchText: compactText([flow.description, flow.trigger_type]),
-      }));
+    if (!isFlightDeckSurfaceDisabled('flows')) {
+      for (const flow of records.flows || []) {
+        items.push(buildItem({
+          id: `flow:${flow.record_id}`,
+          group: 'flow',
+          title: flow.title || 'Untitled flow',
+          subtitle: flow.scope_id ? this.getTaskBoardLabel?.(flow) : 'Flow',
+          action: 'open-flow',
+          recordId: flow.record_id,
+          scopeId: scopeIdFromRecord(flow),
+          updatedTs: recordUpdatedTs(flow),
+          searchText: compactText([flow.description, flow.trigger_type]),
+        }));
+      }
     }
 
-    for (const approval of records.approvals || []) {
-      items.push(buildItem({
-        id: `approval:${approval.record_id}`,
-        group: 'approval',
-        title: approval.title || 'Untitled approval',
-        subtitle: compactText([approval.status || 'approval', approval.approval_mode]),
-        action: 'open-approval',
-        recordId: approval.record_id,
-        scopeId: scopeIdFromRecord(approval),
-        updatedTs: recordUpdatedTs(approval),
-        searchText: compactText([approval.brief, approval.agent_review_note]),
-      }));
+    if (!isFlightDeckSurfaceDisabled('approvals')) {
+      for (const approval of records.approvals || []) {
+        items.push(buildItem({
+          id: `approval:${approval.record_id}`,
+          group: 'approval',
+          title: approval.title || 'Untitled approval',
+          subtitle: compactText([approval.status || 'approval', approval.approval_mode]),
+          action: 'open-approval',
+          recordId: approval.record_id,
+          scopeId: scopeIdFromRecord(approval),
+          updatedTs: recordUpdatedTs(approval),
+          searchText: compactText([approval.brief, approval.agent_review_note]),
+        }));
+      }
     }
 
-    for (const report of records.reports || []) {
-      items.push(buildItem({
-        id: `report:${report.record_id}`,
-        group: 'report',
-        title: report.title || this.getReportMetricLabel?.(report) || 'Untitled report',
-        subtitle: this.getFlightDeckReportTypeLabel?.(report) || 'Flight Deck report',
-        action: 'open-report',
-        recordId: report.record_id,
-        scopeId: scopeIdFromRecord(report),
-        updatedTs: recordUpdatedTs(report),
-        searchText: compactText([report.declaration_type, report.surface]),
-      }));
+    if (!isFlightDeckSurfaceDisabled('reports')) {
+      for (const report of records.reports || []) {
+        items.push(buildItem({
+          id: `report:${report.record_id}`,
+          group: 'report',
+          title: report.title || this.getReportMetricLabel?.(report) || 'Untitled report',
+          subtitle: this.getFlightDeckReportTypeLabel?.(report) || 'Flight Deck report',
+          action: 'open-report',
+          recordId: report.record_id,
+          scopeId: scopeIdFromRecord(report),
+          updatedTs: recordUpdatedTs(report),
+          searchText: compactText([report.declaration_type, report.surface]),
+        }));
+      }
     }
 
     return items.sort(sortByFreshness);
@@ -710,6 +716,7 @@ export const commandPaletteMixin = {
         this.syncRoute();
         return;
       case 'open-flow':
+        if (isFlightDeckSurfaceDisabled('flows')) return;
         this.navigateTo('settings', { syncRoute: false });
         this.settingsTab = 'flows';
         await this.refreshFlows();
@@ -718,6 +725,7 @@ export const commandPaletteMixin = {
         this.syncRoute();
         return;
       case 'open-approval':
+        if (isFlightDeckSurfaceDisabled('approvals')) return;
         this.navigateTo('status', { syncRoute: false });
         await this.refreshApprovals();
         this.activeApprovalId = item.recordId;
@@ -725,6 +733,7 @@ export const commandPaletteMixin = {
         this.syncRoute();
         return;
       case 'open-report':
+        if (isFlightDeckSurfaceDisabled('reports')) return;
         await this.refreshReports();
         this.navigateTo('status', { syncRoute: false });
         this.openReportModalById?.(item.recordId);
@@ -747,7 +756,7 @@ export const commandPaletteMixin = {
       this.currentFolderId = null;
     } else if (section === 'chat') {
       await this.refreshChannels?.();
-    } else if (section === 'reports') {
+    } else if (section === 'reports' && !isFlightDeckSurfaceDisabled('reports')) {
       await this.refreshReports?.();
       this.selectedReportId = this.selectedReport?.record_id || null;
     }

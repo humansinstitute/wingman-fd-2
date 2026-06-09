@@ -18,6 +18,11 @@
 import { describe, it, expect, vi } from 'vitest';
 import { buildFlowEditorForm, flowsManagerMixin } from '../src/flows-manager.js';
 
+vi.mock('../src/disabled-surfaces.js', () => ({
+  blockDisabledFlightDeckSurface: vi.fn(() => false),
+  isFlightDeckSurfaceDisabled: vi.fn(() => false),
+}));
+
 vi.mock('../src/db.js', () => ({
   upsertFlow: vi.fn(async () => {}),
   getFlowById: vi.fn(async () => null),
