@@ -21,6 +21,7 @@ import {
   getReadCursorsByPrefix,
   getTasksByOwner,
   getSyncState,
+  isWorkspaceDbOpenForKey,
 } from './db.js';
 
 // ---------------------------------------------------------------------------
@@ -184,6 +185,7 @@ export const unreadStoreMixin = {
    * Boot unread tracking — call after workspace DB is open and session.npub is available.
    */
   async initUnreadTracking() {
+    if (!isWorkspaceDbOpenForKey(this.currentWorkspaceKey)) return;
     await this.refreshUnreadFlags();
   },
 
@@ -200,6 +202,7 @@ export const unreadStoreMixin = {
   async refreshUnreadFlags() {
     const viewerNpub = this.session?.npub;
     if (!viewerNpub) return;
+    if (!isWorkspaceDbOpenForKey(this.currentWorkspaceKey)) return;
 
     try {
       // Try reading the worker-computed summary first
@@ -334,6 +337,7 @@ export const unreadStoreMixin = {
   async markSectionRead(section) {
     const viewerNpub = this.session?.npub;
     if (!viewerNpub) return;
+    if (!isWorkspaceDbOpenForKey(this.currentWorkspaceKey)) return;
 
     const keyMap = {
       chat: 'chat:nav',

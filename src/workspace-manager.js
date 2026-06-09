@@ -1065,8 +1065,8 @@ export const workspaceManagerMixin = {
         this.scopesLoaded = false;
       }
 
-      this.startWorkspaceLiveQueries();
       await this.loadLocalWorkspaceCoreData?.({ syncRoute: false });
+      this.startWorkspaceLiveQueries();
       this.selectedBoardId = this.readStoredTaskBoardId() || null;
       this.validateSelectedBoardId();
       this.normalizeSettingsTab();

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { openWorkspaceDb } from '../src/db.js';
 import { getSectionLiveQueryPlan, sectionLiveQueryMixin } from '../src/section-live-queries.js';
 
 describe('section live query plan', () => {
@@ -130,6 +131,7 @@ describe('section live query plan', () => {
       refreshAudioNotes: vi.fn(async () => []),
     };
 
+    openWorkspaceDb(store.currentWorkspaceKey);
     sectionLiveQueryMixin.startWorkspaceLiveQueries.call(store);
     await new Promise((resolve) => setTimeout(resolve, 0));
 

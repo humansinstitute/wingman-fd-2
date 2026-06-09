@@ -24,6 +24,7 @@ import {
   getOrganisationsByOwner,
   getOpportunitiesByOwner,
   getOpportunityById,
+  isWorkspaceDbOpenForKey,
 } from './db.js';
 import { recordFamilyHash } from './translators/chat.js';
 import { isTowerPgBackendMode } from './backend-mode.js';
@@ -86,6 +87,7 @@ function scheduleTowerPgWorkspaceHydration(store, state) {
   if (!store?.backendUrl) return;
   const workspaceKey = String(store.currentWorkspaceKey || store.currentWorkspace?.workspaceKey || '').trim();
   if (!workspaceKey) return;
+  if (!isWorkspaceDbOpenForKey(workspaceKey)) return;
   if (state.pgHydratingWorkspaceKeys.has(workspaceKey) || state.pgHydratedWorkspaceKeys.has(workspaceKey)) return;
 
   state.pgHydratingWorkspaceKeys.add(workspaceKey);
@@ -97,10 +99,23 @@ function scheduleTowerPgWorkspaceHydration(store, state) {
       await store.refreshGroups?.({ force: true, minIntervalMs: 0 });
       await store.refreshScopes?.();
       await store.refreshChannels?.();
-      await store.refreshTasks?.();
-      await store.refreshDocuments?.();
-      await store.refreshAudioNotes?.();
       state.pgHydratedWorkspaceKeys.add(workspaceKey);
+      const optionalRefreshes = [
+        ['tasks', () => store.refreshTasks?.()],
+        ['documents', () => store.refreshDocuments?.()],
+        ['audio-notes', () => store.refreshAudioNotes?.()],
+      ];
+      await Promise.all(optionalRefreshes.map(async ([label, refresh]) => {
+        try {
+          await refresh();
+        } catch (error) {
+          flightDeckLog('debug', 'pg', 'optional Tower PG hydration refresh failed', {
+            workspaceKey,
+            surface: label,
+            error: error?.message || String(error),
+          });
+        }
+      }));
     })
     .catch((error) => {
       state.pgHydratedWorkspaceKeys.delete(workspaceKey);
@@ -492,6 +507,11 @@ export const sectionLiveQueryMixin = {
     }
 
     if (!ownerNpub) {
+      stopBucket(this, state.workspace);
+      stopBucket(this, state.detail);
+      return;
+    }
+    if (!isWorkspaceDbOpenForKey(workspaceKey)) {
       stopBucket(this, state.workspace);
       stopBucket(this, state.detail);
       return;

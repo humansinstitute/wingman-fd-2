@@ -192,6 +192,11 @@ export function hasWorkspaceDb() {
   return _currentWorkspaceDb !== null;
 }
 
+export function isWorkspaceDbOpenForKey(workspaceDbKey) {
+  const key = String(workspaceDbKey || '').trim();
+  return Boolean(key && _currentWorkspaceDb && _currentWorkspaceDbKey === key);
+}
+
 export async function deleteWorkspaceDb(workspaceDbKey) {
   if (!workspaceDbKey) throw new Error('workspaceDbKey is required to delete a workspace database');
   if (_currentWorkspaceDbKey === workspaceDbKey && _currentWorkspaceDb) {

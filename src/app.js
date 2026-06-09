@@ -151,6 +151,7 @@ import {
   getChannelById,
   getAddressBookPeople,
   clearRuntimeData,
+  isWorkspaceDbOpenForKey,
 } from './db.js';
 import {
   registerWorkspaceKey,
@@ -2679,6 +2680,7 @@ export function initApp() {
     async refreshStatusRecentChanges(options = {}) {
       // Skip if not on status section (unless forced)
       if (this.navSection !== 'status' && !options.force) return;
+      if (!isWorkspaceDbOpenForKey(this.currentWorkspaceKey)) return;
       // Skip if we already have cached data and no new records were pulled
       if (this.statusRecentChanges.length > 0 && !options.force && !options.hasNewData) return;
       const sinceIso = new Date(Date.now() - this.getStatusRangeMs()).toISOString();
