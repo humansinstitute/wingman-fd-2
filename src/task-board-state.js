@@ -358,6 +358,15 @@ function getTaskPgThreadId(task = {}) {
   return String(task?.pg_thread_id || task?.thread_id || '').trim() || null;
 }
 
+function getMessagePgThreadId(message = {}) {
+  return String(message?.pg_thread_id || message?.thread_id || '').trim() || null;
+}
+
+function getBoardChannel(store, boardContext) {
+  const channelId = boardContext?.channelId || store?.selectedChannelId || null;
+  return (store?.channels || []).find((channel) => channel?.record_id === channelId && channel.record_state !== 'deleted') || null;
+}
+
 function getDerivedSelectedBoardScope(store, scopesMap) {
   const selectedBoardId = store?.selectedBoardId;
   const boardContext = parsePgTaskBoardId(selectedBoardId);
@@ -1180,7 +1189,8 @@ export const taskBoardStateMixin = {
 
   get flightDeckScopeOptions() {
     return this.taskBoards.filter((board) =>
-      board.level !== 'system' || board.id === ALL_TASK_BOARD_ID || board.id === RECENT_TASK_BOARD_ID
+      (board.zoom === 'scope' || board.level === 'system')
+      && (board.level !== 'system' || board.id === ALL_TASK_BOARD_ID || board.id === RECENT_TASK_BOARD_ID)
     );
   },
 
@@ -1207,6 +1217,9 @@ export const taskBoardStateMixin = {
     if (this.selectedBoardScope) {
       return String(this.selectedBoardScope.title || '').trim() || 'Untitled scope';
     }
+    if (this.pgContextScope) {
+      return String(this.pgContextScope.title || '').trim() || 'Untitled scope';
+    }
     if (this.selectedBoardId === ALL_TASK_BOARD_ID) return 'All work';
     if (this.selectedBoardId === RECENT_TASK_BOARD_ID) return 'Recent work';
     if (this.selectedBoardIsUnscoped) return 'Unscoped work';
@@ -1216,6 +1229,9 @@ export const taskBoardStateMixin = {
   get focusScopeMeta() {
     if (this.selectedBoardScope) {
       return formatFocusedScopeMeta(this.selectedBoardScope, this.scopesMap);
+    }
+    if (this.pgContextScope) {
+      return formatFocusedScopeMeta(this.pgContextScope, this.scopesMap);
     }
     if (this.selectedBoardId === ALL_TASK_BOARD_ID) return 'Every scope';
     if (this.selectedBoardId === RECENT_TASK_BOARD_ID) return 'Tasks updated in the last 24 hours';
@@ -1249,6 +1265,87 @@ export const taskBoardStateMixin = {
     return isPgWorkspaceStore(this) && (this.channels || []).some((channel) => channel?.record_id && channel.record_state !== 'deleted');
   },
 
+  get pgContextScopeId() {
+    if (!isPgWorkspaceStore(this)) return null;
+    const board = parsePgTaskBoardId(this.selectedBoardId);
+    if (board.type === 'scope') {
+      if (board.scopeId === ALL_TASK_BOARD_ID || board.scopeId === RECENT_TASK_BOARD_ID || board.scopeId === UNSCOPED_TASK_BOARD_ID) return null;
+      return board.scopeId || null;
+    }
+    const channel = getBoardChannel(this, board);
+    return getPgChannelScopeId(channel);
+  },
+
+  get pgContextScope() {
+    return this.pgContextScopeId ? this.scopesMap.get(this.pgContextScopeId) || null : null;
+  },
+
+  get pgContextChannels() {
+    if (!this.showPgTaskBoardZoomControls) return [];
+    const scopeId = this.pgContextScopeId;
+    return (this.channels || [])
+      .filter((channel) => {
+        if (!channel?.record_id || channel.record_state === 'deleted') return false;
+        return !scopeId || getPgChannelScopeId(channel) === scopeId;
+      })
+      .sort((left, right) => String(this.getChannelLabel?.(left) || left.title || '').localeCompare(String(this.getChannelLabel?.(right) || right.title || '')));
+  },
+
+  get pgContextSelectedChannelId() {
+    const board = parsePgTaskBoardId(this.selectedBoardId);
+    if (board.channelId) return board.channelId;
+    if (this.selectedChannelId && this.pgContextChannels.some((channel) => channel.record_id === this.selectedChannelId)) return this.selectedChannelId;
+    return null;
+  },
+
+  get pgContextThreads() {
+    const channelId = this.pgContextSelectedChannelId;
+    if (!channelId) return [];
+    const channel = (this.channels || []).find((entry) => entry.record_id === channelId) || null;
+    const rows = (this.messages || []).filter((message) => message?.channel_id === channelId && message.record_state !== 'deleted');
+    const taskRows = (this.tasks || []).filter((task) => getTaskPgChannelId(task) === channelId && getTaskPgThreadId(task));
+    const docRows = (this.documents || []).filter((doc) => String(doc?.pg_channel_id || '').trim() === channelId && String(doc?.pg_thread_id || '').trim());
+    const threadIds = new Set();
+
+    for (const message of rows) {
+      const threadId = getMessagePgThreadId(message) || (message?.pg_record_type === 'thread' ? message.record_id : null);
+      if (threadId) threadIds.add(threadId);
+    }
+    for (const task of taskRows) threadIds.add(getTaskPgThreadId(task));
+    for (const doc of docRows) threadIds.add(String(doc.pg_thread_id || '').trim());
+
+    const threads = [];
+    for (const threadId of threadIds) {
+      const root = rows.find((message) => getMessagePgThreadId(message) === threadId && !message.parent_message_id)
+        || rows.find((message) => message.record_id === threadId)
+        || null;
+      const rootMessageId = root?.record_id || null;
+      const replies = rootMessageId
+        ? rows.filter((message) => message.parent_message_id === rootMessageId)
+        : rows.filter((message) => getMessagePgThreadId(message) === threadId);
+      const latest = [...replies, root].filter(Boolean)
+        .sort((left, right) => String(right.updated_at || '').localeCompare(String(left.updated_at || '')))[0] || null;
+      const title = String(root?.body || latest?.body || '').trim().split('\n')[0] || `Thread ${String(threadId).slice(0, 8)}`;
+      threads.push({
+        id: threadId,
+        channelId,
+        channel,
+        rootMessageId,
+        label: title.length > 72 ? `${title.slice(0, 69)}...` : title,
+        replyCount: Math.max(0, replies.length),
+        latestPreview: String(latest?.body || '').trim(),
+        updatedAt: latest?.updated_at || root?.updated_at || '',
+      });
+    }
+    return threads.sort((left, right) => String(right.updatedAt || '').localeCompare(String(left.updatedAt || '')));
+  },
+
+  get pgContextSelectedThreadId() {
+    const board = parsePgTaskBoardId(this.selectedBoardId);
+    if (board.threadId) return board.threadId;
+    return null;
+  },
+
   get canSelectPgThreadTaskBoard() {
     if (!this.showPgTaskBoardZoomControls) return false;
     const board = parsePgTaskBoardId(this.selectedBoardId);
@@ -1276,6 +1373,19 @@ export const taskBoardStateMixin = {
       const threadId = board.threadId || resolvePgThreadId(this, this.activeThreadId);
       if (channelId && threadId) this.selectBoard(buildPgThreadTaskBoardId(channelId, threadId));
     }
+  },
+
+  selectPgChannelContext(channelId) {
+    const normalizedChannelId = String(channelId || '').trim();
+    if (!normalizedChannelId) return;
+    this.selectBoard(buildPgChannelTaskBoardId(normalizedChannelId));
+  },
+
+  selectPgThreadContext(channelId, threadId) {
+    const normalizedChannelId = String(channelId || '').trim();
+    const normalizedThreadId = String(threadId || '').trim();
+    if (!normalizedChannelId || !normalizedThreadId) return;
+    this.selectBoard(buildPgThreadTaskBoardId(normalizedChannelId, normalizedThreadId));
   },
 
   get preferredTaskBoardId() {

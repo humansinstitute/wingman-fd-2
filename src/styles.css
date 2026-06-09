@@ -1438,6 +1438,12 @@ button:disabled {
   background: #ffffff;
 }
 
+.files-pg-context-strip {
+  padding: 0.85rem 1.5rem 0;
+  border-bottom: 1px solid var(--border);
+  background: #ffffff;
+}
+
 .files-search-input,
 .files-filter-select {
   width: 100%;
@@ -4710,6 +4716,65 @@ button:disabled {
   font-size: 0.85rem;
   line-height: 1.45;
   word-break: break-word;
+}
+
+.pg-context-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.docs-pg-context-strip {
+  margin: -0.35rem 0 1rem;
+  padding-right: 0.9rem;
+}
+
+.pg-context-thread-strip {
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
+  min-width: 0;
+  overflow-x: auto;
+  padding-bottom: 0.15rem;
+}
+
+.pg-thread-summary {
+  display: flex;
+  flex: 0 0 min(280px, 72vw);
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  min-width: 0;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #ffffff;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.pg-thread-summary:hover {
+  border-color: #bfdbfe;
+  background: #f8fafc;
+}
+
+.pg-thread-summary-active {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+.pg-thread-summary .chat-thread-preview {
+  width: 100%;
+  flex-wrap: nowrap;
+}
+
+.pg-thread-summary .chat-thread-preview-link,
+.pg-thread-summary .chat-thread-latest-preview {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chat-post-reply-bar {

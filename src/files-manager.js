@@ -105,6 +105,7 @@ function baseRow({
   source_record_id,
   scope_id = null,
   channel_id = null,
+  thread_id = null,
   content_type = '',
   size_bytes = null,
   updated_at = '',
@@ -121,6 +122,7 @@ function baseRow({
     source_record_id: source_record_id || null,
     scope_id: scope_id || null,
     channel_id: channel_id || null,
+    thread_id: thread_id || null,
     content_type: normalizeString(content_type),
     size_bytes: Number.isFinite(Number(size_bytes)) ? Number(size_bytes) : null,
     updated_at: updated_at || '',
@@ -137,6 +139,8 @@ function commentTargetContext(comment, context) {
     const document = context.documentById.get(targetId);
     return {
       scope_id: getRecordScopeId(document),
+      channel_id: document?.pg_channel_id || null,
+      thread_id: document?.pg_thread_id || null,
       source_label: `Comment on ${document?.title || 'document'}`,
     };
   }
@@ -145,6 +149,8 @@ function commentTargetContext(comment, context) {
     const task = context.taskById.get(targetId);
     return {
       scope_id: getRecordScopeId(task),
+      channel_id: task?.pg_channel_id || null,
+      thread_id: task?.pg_thread_id || null,
       source_label: `Comment on ${task?.title || 'task'}`,
     };
   }
@@ -154,6 +160,7 @@ function commentTargetContext(comment, context) {
     const channel = context.channelById.get(message?.channel_id);
     return {
       channel_id: message?.channel_id || null,
+      thread_id: message?.pg_thread_id || message?.parent_message_id || null,
       source_label: `Comment in ${channel?.title || 'chat'}`,
     };
   }
@@ -171,6 +178,7 @@ function audioTargetContext(note, context) {
     const channel = context.channelById.get(message?.channel_id);
     return {
       channel_id: message?.channel_id || null,
+      thread_id: message?.pg_thread_id || message?.parent_message_id || null,
       source_label: channel?.title ? `Audio in ${channel.title}` : 'Chat audio',
     };
   }
@@ -179,6 +187,8 @@ function audioTargetContext(note, context) {
     const document = context.documentById.get(targetId);
     return {
       scope_id: getRecordScopeId(document),
+      channel_id: document?.pg_channel_id || null,
+      thread_id: document?.pg_thread_id || null,
       source_label: document?.title ? `Audio on ${document.title}` : 'Document audio',
     };
   }
@@ -187,6 +197,8 @@ function audioTargetContext(note, context) {
     const task = context.taskById.get(targetId);
     return {
       scope_id: getRecordScopeId(task),
+      channel_id: task?.pg_channel_id || null,
+      thread_id: task?.pg_thread_id || null,
       source_label: task?.title ? `Audio on ${task.title}` : 'Task audio',
     };
   }
@@ -222,6 +234,8 @@ export function buildFileBrowserRows(store = {}) {
         source_label: document.title || 'Untitled document',
         source_record_id: document.record_id,
         scope_id: scopeId,
+        channel_id: document.pg_channel_id || null,
+        thread_id: document.pg_thread_id || null,
         content_type: document.content_storage_content_type,
         size_bytes: document.content_size_bytes,
         updated_at: document.updated_at,
@@ -236,6 +250,8 @@ export function buildFileBrowserRows(store = {}) {
         source_label: document.title || 'Untitled document',
         source_record_id: document.record_id,
         scope_id: scopeId,
+        channel_id: document.pg_channel_id || null,
+        thread_id: document.pg_thread_id || null,
         content_type: ref.contentType,
         updated_at: document.updated_at,
       }));
@@ -253,6 +269,8 @@ export function buildFileBrowserRows(store = {}) {
         source_label: task.title || 'Untitled task',
         source_record_id: task.record_id,
         scope_id: scopeId,
+        channel_id: task.pg_channel_id || null,
+        thread_id: task.pg_thread_id || null,
         content_type: ref.contentType,
         updated_at: task.updated_at,
       }));
@@ -270,6 +288,7 @@ export function buildFileBrowserRows(store = {}) {
         source_label: channel?.title || 'Chat',
         source_record_id: message.record_id,
         channel_id: message.channel_id || null,
+        thread_id: message.pg_thread_id || message.parent_message_id || null,
         content_type: ref.contentType,
         updated_at: message.updated_at,
         preview: message.body,
@@ -289,6 +308,7 @@ export function buildFileBrowserRows(store = {}) {
         source_record_id: comment.record_id,
         scope_id: target.scope_id || null,
         channel_id: target.channel_id || null,
+        thread_id: target.thread_id || null,
         content_type: ref.contentType,
         updated_at: comment.updated_at,
         preview: comment.body,
@@ -308,6 +328,7 @@ export function buildFileBrowserRows(store = {}) {
       source_record_id: note.record_id,
       scope_id: target.scope_id || null,
       channel_id: target.channel_id || null,
+      thread_id: target.thread_id || note.pg_thread_id || null,
       content_type: note.mime_type || 'audio/webm',
       size_bytes: note.size_bytes,
       updated_at: note.updated_at || note.created_at,
@@ -330,17 +351,26 @@ export function filterFileBrowserRows(rows = [], {
   source = 'all',
   scopeId = 'all',
   channelId = 'all',
+  threadId = 'all',
+  contextChannelId = null,
+  contextThreadId = null,
   scopesMap = null,
 } = {}) {
   const normalizedQuery = normalizeString(query).toLowerCase();
   const normalizedType = normalizeString(type) || 'all';
   const normalizedSource = normalizeString(source) || 'all';
   const normalizedChannel = normalizeString(channelId) || 'all';
+  const normalizedThread = normalizeString(threadId) || 'all';
+  const normalizedContextChannel = normalizeString(contextChannelId);
+  const normalizedContextThread = normalizeString(contextThreadId);
 
   return rows.filter((row) => {
     if (normalizedType !== 'all' && row.kind !== normalizedType) return false;
     if (normalizedSource !== 'all' && row.source_type !== normalizedSource) return false;
     if (normalizedChannel !== 'all' && row.channel_id !== normalizedChannel) return false;
+    if (normalizedThread !== 'all' && row.thread_id !== normalizedThread) return false;
+    if (normalizedContextChannel && row.channel_id !== normalizedContextChannel) return false;
+    if (normalizedContextThread && row.thread_id !== normalizedContextThread) return false;
     if (!matchesScope(row.scope_id, scopeId, scopesMap)) return false;
     if (!normalizedQuery) return true;
     return [
@@ -373,6 +403,9 @@ export const filesManagerMixin = {
       source: this.fileSourceFilter,
       scopeId: this.fileScopeFilter,
       channelId: this.fileChannelFilter,
+      threadId: this.fileThreadFilter,
+      contextChannelId: this.isTowerPgMode ? this.pgContextSelectedChannelId : null,
+      contextThreadId: this.isTowerPgMode ? this.pgContextSelectedThreadId : null,
       scopesMap: this.scopesMap,
     });
   },
@@ -398,6 +431,16 @@ export const filesManagerMixin = {
           id: channel.record_id,
           label: this.getChannelLabel ? this.getChannelLabel(channel) : (channel.title || 'Chat'),
         })),
+    ];
+  },
+
+  get fileThreadOptions() {
+    return [
+      { id: 'all', label: 'All threads' },
+      ...(this.pgContextThreads || []).map((thread) => ({
+        id: thread.id,
+        label: thread.label || `Thread ${String(thread.id || '').slice(0, 8)}`,
+      })),
     ];
   },
 

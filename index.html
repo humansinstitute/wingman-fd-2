@@ -1418,25 +1418,32 @@
             </template>
 
             <div class="task-board-zoom-controls" x-show="$store.chat.showPgTaskBoardZoomControls" x-cloak>
-              <button
-                type="button"
-                class="task-board-zoom-btn"
-                :class="{ 'task-board-zoom-btn-active': $store.chat.taskBoardZoomMode === 'scope' }"
-                @click="$store.chat.selectPgTaskBoardZoom('scope')"
-              >Scope</button>
-              <button
-                type="button"
-                class="task-board-zoom-btn"
-                :class="{ 'task-board-zoom-btn-active': $store.chat.taskBoardZoomMode === 'channel' }"
-                @click="$store.chat.selectPgTaskBoardZoom('channel')"
-              >Channel</button>
-              <button
-                type="button"
-                class="task-board-zoom-btn"
-                :disabled="!$store.chat.canSelectPgThreadTaskBoard"
-                :class="{ 'task-board-zoom-btn-active': $store.chat.taskBoardZoomMode === 'thread' }"
-                @click="$store.chat.selectPgTaskBoardZoom('thread')"
-              >Thread</button>
+              <template x-for="channel in $store.chat.pgContextChannels" :key="channel.record_id">
+                <button
+                  type="button"
+                  class="task-board-zoom-btn"
+                  :class="{ 'task-board-zoom-btn-active': $store.chat.pgContextSelectedChannelId === channel.record_id && !$store.chat.pgContextSelectedThreadId }"
+                  @click="$store.chat.selectPgChannelContext(channel.record_id)"
+                  x-text="$store.chat.getChannelLabel(channel)"
+                ></button>
+              </template>
+            </div>
+
+            <div class="pg-context-thread-strip" x-show="$store.chat.showPgTaskBoardZoomControls && $store.chat.pgContextSelectedChannelId && $store.chat.pgContextThreads.length > 0" x-cloak>
+              <template x-for="thread in $store.chat.pgContextThreads" :key="thread.id">
+                <button
+                  type="button"
+                  class="pg-thread-summary"
+                  :class="{ 'pg-thread-summary-active': $store.chat.pgContextSelectedThreadId === thread.id }"
+                  @click="$store.chat.selectPgThreadContext(thread.channelId, thread.id)"
+                >
+                  <span class="chat-thread-preview">
+                    <span class="chat-thread-preview-count" x-text="thread.replyCount + ' ' + (thread.replyCount === 1 ? 'reply' : 'replies')"></span>
+                    <span class="chat-thread-preview-link" x-text="thread.label"></span>
+                  </span>
+                  <span class="chat-thread-latest-preview" x-text="thread.latestPreview"></span>
+                </button>
+              </template>
             </div>
 
             <button
@@ -2779,7 +2786,7 @@
           >
           <div class="docs-view">
             <div class="docs-toolbar" x-show="!$store.chat.docsEditorOpen">
-              <input class="docs-search-input" type="text" placeholder="Search docs and folders" x-model="$store.chat.docFilter" />
+              <input class="docs-search-input" type="text" :placeholder="$store.chat.isTowerPgMode ? 'Search docs' : 'Search docs and folders'" x-model="$store.chat.docFilter" />
               <button
                 type="button"
                 class="btn-add-folder"
@@ -2809,7 +2816,7 @@
                   <path d="M15.4 6.5l-6.8 4"></path>
                 </svg>
               </button>
-              <button type="button" class="btn-add-folder" @click="$store.chat.openNewDocModal('folder')" title="New folder" aria-label="New folder">
+              <button type="button" class="btn-add-folder" x-show="!$store.chat.isTowerPgMode" @click="$store.chat.openNewDocModal('folder')" title="New folder" aria-label="New folder">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
                   <path d="M12 11v6"></path>
@@ -2824,7 +2831,7 @@
                   <path d="M9 14h6"></path>
                 </svg>
               </button>
-              <div class="doc-actions-menu" x-show="$store.chat.currentFolder" x-data="{ open: false }" @click.outside="open = false">
+              <div class="doc-actions-menu" x-show="$store.chat.currentFolder && !$store.chat.isTowerPgMode" x-data="{ open: false }" @click.outside="open = false">
                 <button type="button" class="doc-actions-toggle" title="More actions" aria-label="More actions" @click="open = !open">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
                     <circle cx="12" cy="5" r="1.8"></circle>
@@ -2844,13 +2851,43 @@
               </div>
             </div>
 
+            <div class="pg-context-strip docs-pg-context-strip" x-show="!$store.chat.docsEditorOpen && $store.chat.showPgTaskBoardZoomControls" x-cloak>
+              <div class="task-board-zoom-controls">
+                <template x-for="channel in $store.chat.pgContextChannels" :key="channel.record_id">
+                  <button
+                    type="button"
+                    class="task-board-zoom-btn"
+                    :class="{ 'task-board-zoom-btn-active': $store.chat.pgContextSelectedChannelId === channel.record_id && !$store.chat.pgContextSelectedThreadId }"
+                    @click="$store.chat.selectPgChannelContext(channel.record_id)"
+                    x-text="$store.chat.getChannelLabel(channel)"
+                  ></button>
+                </template>
+              </div>
+              <div class="pg-context-thread-strip" x-show="$store.chat.pgContextSelectedChannelId && $store.chat.pgContextThreads.length > 0">
+                <template x-for="thread in $store.chat.pgContextThreads" :key="thread.id">
+                  <button
+                    type="button"
+                    class="pg-thread-summary"
+                    :class="{ 'pg-thread-summary-active': $store.chat.pgContextSelectedThreadId === thread.id }"
+                    @click="$store.chat.selectPgThreadContext(thread.channelId, thread.id)"
+                  >
+                    <span class="chat-thread-preview">
+                      <span class="chat-thread-preview-count" x-text="thread.replyCount + ' ' + (thread.replyCount === 1 ? 'reply' : 'replies')"></span>
+                      <span class="chat-thread-preview-link" x-text="thread.label"></span>
+                    </span>
+                    <span class="chat-thread-latest-preview" x-text="thread.latestPreview"></span>
+                  </button>
+                </template>
+              </div>
+            </div>
+
             <div class="task-bulk-bar doc-bulk-bar" x-show="!$store.chat.docsEditorOpen && $store.chat.docSelectionMode">
               <span class="task-bulk-count" x-text="$store.chat.selectedDocCount + ' selected'"></span>
               <div class="task-bulk-actions">
                 <button type="button" class="task-bulk-btn" @click="$store.chat.selectVisibleDocs()" :disabled="$store.chat.bulkDocBusy">Select visible</button>
                 <button type="button" class="task-bulk-btn" @click="$store.chat.clearSelectedDocs()" :disabled="$store.chat.bulkDocBusy || $store.chat.selectedDocCount === 0">Clear</button>
                 <button type="button" class="task-bulk-btn" @click="$store.chat.openBulkDocScopeModal()" :disabled="$store.chat.bulkDocBusy || $store.chat.selectedDocCount === 0">Scope</button>
-                <button type="button" class="task-bulk-btn" @click="$store.chat.applyBulkDocAction('move')" :disabled="$store.chat.bulkDocBusy || $store.chat.selectedDocCount === 0">Move</button>
+                <button type="button" class="task-bulk-btn" x-show="!$store.chat.isTowerPgMode" @click="$store.chat.applyBulkDocAction('move')" :disabled="$store.chat.bulkDocBusy || $store.chat.selectedDocCount === 0">Move</button>
                 <button type="button" class="task-bulk-btn" @click="$store.chat.applyBulkDocAction('delete')" :disabled="$store.chat.bulkDocBusy || $store.chat.selectedDocCount === 0" x-text="$store.chat.bulkDocBusy ? 'Working...' : 'Delete'"></button>
                 <button type="button" class="task-bulk-btn" @click="$store.chat.setDocSelectionMode(false)" :disabled="$store.chat.bulkDocBusy">Done</button>
               </div>
@@ -2858,7 +2895,7 @@
 
             <template x-if="!$store.chat.docsEditorOpen">
               <div class="docs-browser-shell">
-                <div class="folder-breadcrumb-row">
+                <div class="folder-breadcrumb-row" x-show="!$store.chat.isTowerPgMode">
                   <div class="folder-breadcrumbs">
                     <span class="breadcrumb-item breadcrumb-link" @click="$store.chat.navigateToFolder(null)">Docs</span>
                     <template x-for="folder in $store.chat.currentFolderBreadcrumbs" :key="folder.record_id">
@@ -2968,7 +3005,7 @@
 
                 <div class="docs-empty-panel" x-show="($store.chat.filteredDocBrowserItems || []).length === 0">
                   <h2>Docs</h2>
-                  <p>No documents or folders here yet.</p>
+                  <p x-text="$store.chat.isTowerPgMode ? 'No documents here yet.' : 'No documents or folders here yet.'"></p>
                 </div>
               </div>
             </template>
@@ -3902,16 +3939,46 @@
                 <option value="comment">Comments</option>
                 <option value="audio">Audio notes</option>
               </select>
-              <select class="files-filter-select" x-model="$store.chat.fileScopeFilter">
+              <select class="files-filter-select" x-show="!$store.chat.isTowerPgMode" x-model="$store.chat.fileScopeFilter">
                 <template x-for="option in $store.chat.fileScopeOptions" :key="option.id">
                   <option :value="option.id" x-text="option.label"></option>
                 </template>
               </select>
-              <select class="files-filter-select" x-model="$store.chat.fileChannelFilter">
+              <select class="files-filter-select" x-show="!$store.chat.isTowerPgMode" x-model="$store.chat.fileChannelFilter">
                 <template x-for="option in $store.chat.fileChannelOptions" :key="option.id">
                   <option :value="option.id" x-text="option.label"></option>
                 </template>
               </select>
+            </div>
+
+            <div class="pg-context-strip files-pg-context-strip" x-show="$store.chat.showPgTaskBoardZoomControls" x-cloak>
+              <div class="task-board-zoom-controls">
+                <template x-for="channel in $store.chat.pgContextChannels" :key="channel.record_id">
+                  <button
+                    type="button"
+                    class="task-board-zoom-btn"
+                    :class="{ 'task-board-zoom-btn-active': $store.chat.pgContextSelectedChannelId === channel.record_id && !$store.chat.pgContextSelectedThreadId }"
+                    @click="$store.chat.selectPgChannelContext(channel.record_id)"
+                    x-text="$store.chat.getChannelLabel(channel)"
+                  ></button>
+                </template>
+              </div>
+              <div class="pg-context-thread-strip" x-show="$store.chat.pgContextSelectedChannelId && $store.chat.pgContextThreads.length > 0">
+                <template x-for="thread in $store.chat.pgContextThreads" :key="thread.id">
+                  <button
+                    type="button"
+                    class="pg-thread-summary"
+                    :class="{ 'pg-thread-summary-active': $store.chat.pgContextSelectedThreadId === thread.id }"
+                    @click="$store.chat.selectPgThreadContext(thread.channelId, thread.id)"
+                  >
+                    <span class="chat-thread-preview">
+                      <span class="chat-thread-preview-count" x-text="thread.replyCount + ' ' + (thread.replyCount === 1 ? 'reply' : 'replies')"></span>
+                      <span class="chat-thread-preview-link" x-text="thread.label"></span>
+                    </span>
+                    <span class="chat-thread-latest-preview" x-text="thread.latestPreview"></span>
+                  </button>
+                </template>
+              </div>
             </div>
 
             <div class="files-list" x-show="$store.chat.filteredFileBrowserRows.length > 0">

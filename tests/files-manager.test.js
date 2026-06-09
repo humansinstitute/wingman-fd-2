@@ -36,6 +36,7 @@ describe('files manager', () => {
       {
         record_id: 'msg-1',
         channel_id: 'chan-1',
+        pg_thread_id: 'thread-1',
         body: 'Shared ![Chat image](storage://img-chat-1) and [OS Partner Ecosystem Model Notes.pages](storage://file-chat-1)',
         updated_at: '2026-05-03T10:00:00.000Z',
       },
@@ -109,5 +110,15 @@ describe('files manager', () => {
     ]);
     expect(filterFileBrowserRows(rows, { type: 'file' }).map((row) => row.object_id)).toEqual(['file-chat-1']);
     expect(filterFileBrowserRows(rows, { query: 'mockup' }).map((row) => row.object_id)).toEqual(['img-task-1']);
+  });
+
+  it('carries PG thread context into file rows', () => {
+    const rows = buildFileBrowserRows(store);
+
+    expect(filterFileBrowserRows(rows, { contextChannelId: 'chan-1', contextThreadId: 'thread-1' }).map((row) => row.object_id).sort()).toEqual([
+      'audio-obj-1',
+      'file-chat-1',
+      'img-chat-1',
+    ]);
   });
 });

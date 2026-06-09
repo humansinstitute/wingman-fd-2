@@ -70,6 +70,8 @@ import {
   getTaskDropRecordId,
   buildTaskBoardReorderPatches,
   dedupeTasksByRecordId,
+  ALL_TASK_BOARD_ID,
+  RECENT_TASK_BOARD_ID,
   UNSCOPED_TASK_BOARD_ID,
   WEEKDAY_OPTIONS,
 } from './task-board-state.js';
@@ -457,6 +459,7 @@ export function initApp() {
     fileSourceFilter: 'all',
     fileScopeFilter: 'all',
     fileChannelFilter: 'all',
+    fileThreadFilter: 'all',
     reports: [],
     addressBookPeople: [],
     activeThreadId: null,
@@ -1147,6 +1150,25 @@ export function initApp() {
     },
 
     get currentFolderContents() {
+      if (this.isTowerPgMode) {
+        const channelId = String(this.pgContextSelectedChannelId || '').trim();
+        const threadId = String(this.pgContextSelectedThreadId || '').trim();
+        const scopeId = String(this.pgContextScopeId || this.selectedBoardId || '').trim();
+        const docs = this.scopeFilteredDocs.documents
+          .filter((item) => {
+            if (item.record_state === 'deleted') return false;
+            if (channelId && String(item.pg_channel_id || '').trim() !== channelId) return false;
+            if (threadId && String(item.pg_thread_id || '').trim() !== threadId) return false;
+            if (!channelId && !threadId && scopeId && scopeId !== ALL_TASK_BOARD_ID && scopeId !== RECENT_TASK_BOARD_ID && scopeId !== UNSCOPED_TASK_BOARD_ID) {
+              const itemScopeId = String(item.scope_id || item.scope_l1_id || '').trim();
+              if (itemScopeId && itemScopeId !== scopeId) return false;
+            }
+            return true;
+          })
+          .map((item) => ({ type: 'document', item }))
+          .sort((a, b) => String(a.item.title || '').localeCompare(String(b.item.title || '')));
+        return docs;
+      }
       const folderId = this.currentFolderId ?? null;
       const { documents, directories } = this.scopeFilteredDocs;
       const dirs = directories
@@ -1162,6 +1184,13 @@ export function initApp() {
 
     get filteredDocBrowserItems() {
       const query = String(this.docFilter || '').trim().toLowerCase();
+      if (this.isTowerPgMode) {
+        if (!query) return this.currentFolderContents;
+        return this.currentFolderContents.filter((row) =>
+          String(row.item?.title || '').toLowerCase().includes(query)
+          || String(row.item?.content || '').toLowerCase().includes(query)
+        );
+      }
       if (!query) return this.currentFolderContents;
 
       const { documents: activeDocuments, directories: activeDirectories } = this.scopeFilteredDocs;

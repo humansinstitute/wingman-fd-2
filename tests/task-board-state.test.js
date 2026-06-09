@@ -611,6 +611,47 @@ describe('computeBoardScopedTasks', () => {
       false,
     ).map((task) => task.record_id)).toEqual(['t-thread']);
   });
+
+  it('keeps Flight Deck scope options scope-only while deriving PG channel thread context', () => {
+    const store = Object.create(taskBoardStateMixin);
+    Object.defineProperty(store, 'scopesMap', {
+      configurable: true,
+      value: scopesMap,
+    });
+    Object.assign(store, {
+      currentWorkspace: { pgBackendMode: true },
+      selectedBoardId: buildPgThreadTaskBoardId('channel-1', 'thread-1'),
+      selectedChannelId: null,
+      scopes: [product],
+      channels: [
+        { record_id: 'channel-1', title: 'Launch', scope_id: 'scope-product', record_state: 'active' },
+      ],
+      tasks: [
+        { record_id: 'task-1', record_state: 'active', pg_channel_id: 'channel-1', pg_thread_id: 'thread-1' },
+      ],
+      documents: [],
+      messages: [
+        { record_id: 'message-1', channel_id: 'channel-1', parent_message_id: null, pg_thread_id: 'thread-1', body: 'Thread root', updated_at: '2026-06-01T10:00:00.000Z' },
+        { record_id: 'message-2', channel_id: 'channel-1', parent_message_id: 'message-1', pg_thread_id: 'thread-1', body: 'Latest reply', updated_at: '2026-06-01T11:00:00.000Z' },
+      ],
+      getChannelLabel(channel) {
+        return channel.title;
+      },
+    });
+
+    expect(store.flightDeckScopeOptions.map((board) => board.label)).toContain('Product X (L1)');
+    expect(store.flightDeckScopeOptions.map((board) => board.label)).not.toContain('Launch');
+    expect(store.focusScopeTitle).toBe('Product X');
+    expect(store.pgContextThreads).toMatchObject([
+      {
+        id: 'thread-1',
+        channelId: 'channel-1',
+        rootMessageId: 'message-1',
+        label: 'Thread root',
+        replyCount: 1,
+      },
+    ]);
+  });
 });
 
 // --- computeFilteredTasks ---
