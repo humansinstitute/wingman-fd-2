@@ -303,17 +303,21 @@ describe('shell lifecycle methods', () => {
     expect(SHELL_METHOD_NAMES).toContain('updatePageTitle');
   });
 
-  it('runs PG Nostr workspace discovery during the active shell login paths', () => {
-    const onboardingCalls = SHELL_STATE_SOURCE.match(/await this\.discoverPgOnboardingAnnouncements\?\.\(\);/g) || [];
-    const selfIndexCalls = SHELL_STATE_SOURCE.match(/await this\.discoverPgWorkspaceSelfIndex\?\.\(\);/g) || [];
-    expect(onboardingCalls).toHaveLength(2);
-    expect(selfIndexCalls).toHaveLength(2);
-    for (const blockName of ['async maybeAutoLogin()', 'async login(method, supplemental = null)']) {
-      const start = SHELL_STATE_SOURCE.indexOf(blockName);
-      const block = SHELL_STATE_SOURCE.slice(start, SHELL_STATE_SOURCE.indexOf('await this.loadRemoteWorkspaces();', start));
-      expect(block).toContain('await this.discoverPgOnboardingAnnouncements?.();');
-      expect(block).toContain('await this.discoverPgWorkspaceSelfIndex?.();');
-    }
+  it('does not block auto-login on PG Nostr discovery, but keeps manual login strict', () => {
+    const autoLoginStart = SHELL_STATE_SOURCE.indexOf('async maybeAutoLogin()');
+    const loginStart = SHELL_STATE_SOURCE.indexOf('async login(method, supplemental = null)');
+    const autoLoginBlock = SHELL_STATE_SOURCE.slice(autoLoginStart, loginStart);
+    const loginBlock = SHELL_STATE_SOURCE.slice(loginStart, SHELL_STATE_SOURCE.indexOf('async logout()', loginStart));
+
+    expect(autoLoginBlock).toContain('this.discoverPgOnboardingAnnouncements?.().catch?.(() => {});');
+    expect(autoLoginBlock).toContain('this.discoverPgWorkspaceSelfIndex?.().catch?.(() => {});');
+    expect(autoLoginBlock).not.toContain('await this.discoverPgOnboardingAnnouncements?.();');
+    expect(autoLoginBlock).not.toContain('await this.discoverPgWorkspaceSelfIndex?.();');
+    expect(autoLoginBlock).not.toContain('await this.loadRemoteWorkspaces();');
+
+    expect(loginBlock).toContain('await this.discoverPgOnboardingAnnouncements?.();');
+    expect(loginBlock).toContain('await this.discoverPgWorkspaceSelfIndex?.();');
+    expect(loginBlock).toContain('await this.loadRemoteWorkspaces();');
   });
 });
 

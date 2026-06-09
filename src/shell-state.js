@@ -444,42 +444,50 @@ export function createShellState(options = {}) {
       if (this.selectedWorkspaceKey) {
         await this.bootstrapSelectedWorkspace({ runAccessPrune: false });
       }
-      await this.hydrateKnownWorkspaceProfiles();
-      this.ensureBackgroundSync();
       await this.maybeAutoLogin();
-      this.filterKnownWorkspacesForActiveSession?.();
-      this.updateWorkspaceBootstrapPrompt();
-      await this.loadRemoteWorkspaces();
-      if (this.knownWorkspaces.length === 0 && this.superbasedConnectionConfig?.workspaceOwnerNpub && this.session?.npub) {
-        await this.tryRecoverWorkspace();
-      }
-      if (!this.selectedWorkspaceKey && this.currentWorkspaceOwnerNpub) {
-        const legacyMatch = this.knownWorkspaces.find((workspace) => workspace.workspaceOwnerNpub === this.currentWorkspaceOwnerNpub) || null;
-        if (legacyMatch) this.selectedWorkspaceKey = legacyMatch.workspaceKey || '';
-      }
-      if (
-        (!isTowerPgBackendMode() || this.session?.npub)
-        && !this.selectedWorkspaceKey
-        && this.knownWorkspaces.length > 0
-      ) {
-        this.selectedWorkspaceKey = this.knownWorkspaces[0].workspaceKey || '';
-        this.currentWorkspaceOwnerNpub = this.knownWorkspaces[0].workspaceOwnerNpub;
-      }
-      if (
-        (!isTowerPgBackendMode() || this.session?.npub)
-        && (this.selectedWorkspaceKey || this.currentWorkspaceOwnerNpub)
-      ) {
-        await this.selectWorkspace(this.selectedWorkspaceKey || this.currentWorkspaceOwnerNpub, { refresh: false });
-      }
       this.updateWorkspaceBootstrapPrompt();
       if (this.session?.npub && (!this.backendUrl || (!this.selectedWorkspaceKey && !this.showWorkspaceBootstrapModal))) {
         this.openConnectModal();
       }
-      if ((!isTowerPgBackendMode() || this.session?.npub) && this.selectedWorkspaceKey) {
-        await this.bootstrapSelectedWorkspace({ runAccessPrune: true });
-      }
       this.pendingInviteToken = null;
       this.routeSyncPaused = false;
+      Promise.resolve().then(async () => {
+        await this.hydrateKnownWorkspaceProfiles();
+        this.filterKnownWorkspacesForActiveSession?.();
+        this.updateWorkspaceBootstrapPrompt();
+        await this.loadRemoteWorkspaces();
+        if (this.knownWorkspaces.length === 0 && this.superbasedConnectionConfig?.workspaceOwnerNpub && this.session?.npub) {
+          await this.tryRecoverWorkspace();
+        }
+        if (!this.selectedWorkspaceKey && this.currentWorkspaceOwnerNpub) {
+          const legacyMatch = this.knownWorkspaces.find((workspace) => workspace.workspaceOwnerNpub === this.currentWorkspaceOwnerNpub) || null;
+          if (legacyMatch) this.selectedWorkspaceKey = legacyMatch.workspaceKey || '';
+        }
+        if (
+          (!isTowerPgBackendMode() || this.session?.npub)
+          && !this.selectedWorkspaceKey
+          && this.knownWorkspaces.length > 0
+        ) {
+          this.selectedWorkspaceKey = this.knownWorkspaces[0].workspaceKey || '';
+          this.currentWorkspaceOwnerNpub = this.knownWorkspaces[0].workspaceOwnerNpub;
+        }
+        if (
+          (!isTowerPgBackendMode() || this.session?.npub)
+          && (this.selectedWorkspaceKey || this.currentWorkspaceOwnerNpub)
+        ) {
+          await this.selectWorkspace(this.selectedWorkspaceKey || this.currentWorkspaceOwnerNpub, { refresh: false });
+        }
+        this.updateWorkspaceBootstrapPrompt();
+        if (this.session?.npub && (!this.backendUrl || (!this.selectedWorkspaceKey && !this.showWorkspaceBootstrapModal))) {
+          this.openConnectModal();
+        }
+        if ((!isTowerPgBackendMode() || this.session?.npub) && this.selectedWorkspaceKey) {
+          await this.bootstrapSelectedWorkspace({ runAccessPrune: true });
+        }
+        this.ensureBackgroundSync();
+      }).catch((error) => {
+        console.debug('startup remote workspace refresh failed:', error?.message || error);
+      });
     },
 
     async ensureWorkspaceSessionKey() {
@@ -877,9 +885,8 @@ export function createShellState(options = {}) {
         this.resolveChatProfile(npub);
         await this.rememberPeople([npub], 'self');
         this.filterKnownWorkspacesForActiveSession?.();
-        await this.discoverPgOnboardingAnnouncements?.();
-        await this.discoverPgWorkspaceSelfIndex?.();
-        await this.loadRemoteWorkspaces();
+        this.discoverPgOnboardingAnnouncements?.().catch?.(() => {});
+        this.discoverPgWorkspaceSelfIndex?.().catch?.(() => {});
         if (!this.selectedWorkspaceKey && this.currentWorkspaceOwnerNpub) {
           const legacyMatch = this.knownWorkspaces.find((workspace) => workspace.workspaceOwnerNpub === this.currentWorkspaceOwnerNpub) || null;
           if (legacyMatch) this.selectedWorkspaceKey = legacyMatch.workspaceKey || '';
