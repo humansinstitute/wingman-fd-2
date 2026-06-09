@@ -992,7 +992,7 @@ export const workspaceManagerMixin = {
   async selectWorkspace(workspaceKeyOrOwner, options = {}) {
     let workspace = this.getWorkspaceByKey(workspaceKeyOrOwner) || this.getWorkspaceByOwner(workspaceKeyOrOwner);
     if (!workspace) return;
-    if (isTowerPgBackendMode() && workspace.pgBackendMode && !options.pgVerified) {
+    if (isTowerPgBackendMode() && workspace.pgBackendMode && !options.pgVerified && !options.skipPgVerification) {
       try {
         workspace = await this.verifyPgWorkspaceForSelection(workspace);
       } catch (error) {
@@ -1009,6 +1009,7 @@ export const workspaceManagerMixin = {
     }
 
     const previousWorkspaceKey = this.currentWorkspaceKey;
+    const nextWorkspaceKey = workspace.workspaceKey || workspace.workspaceOwnerNpub;
     this.selectedWorkspaceKey = workspace.workspaceKey || '';
     this.workspaceSwitchPendingNpub = workspace.workspaceOwnerNpub;
     this.workspaceSwitchPendingKey = workspace.workspaceKey || '';
@@ -1066,9 +1067,13 @@ export const workspaceManagerMixin = {
         this.hasForcedTaskFamilyBackfill = false;
         this.docCommentBackfillAttemptsByDocId = {};
         this.scopesLoaded = false;
+        this.localWorkspaceCoreLoadedForKey = '';
       }
 
-      await this.loadLocalWorkspaceCoreData?.({ syncRoute: false });
+      if (this.localWorkspaceCoreLoadedForKey !== nextWorkspaceKey) {
+        await this.loadLocalWorkspaceCoreData?.({ syncRoute: false });
+        this.localWorkspaceCoreLoadedForKey = nextWorkspaceKey;
+      }
       this.startWorkspaceLiveQueries();
       this.selectedBoardId = this.readStoredTaskBoardId() || null;
       this.validateSelectedBoardId();

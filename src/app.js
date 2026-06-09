@@ -107,7 +107,6 @@ import {
 import { getShortNpub, getInitials } from './utils/naming.js';
 import {
   hasWorkspaceDb,
-  migrateFromLegacyDb,
   getSettings,
   saveSettings,
   getWorkspaceSettings,
@@ -776,6 +775,7 @@ export function initApp() {
     knownWorkspaces: [],
     workspaceProfileRowsByKey: {},
     selectedWorkspaceKey: '',
+    localWorkspaceCoreLoadedForKey: '',
     currentWorkspaceOwnerNpub: '',
     showWorkspaceSwitcherMenu: false,
     workspaceSwitchPendingKey: '',
@@ -1500,7 +1500,6 @@ export function initApp() {
       this.initRouteSync();
       this.routeSyncPaused = true; // pause until applyRouteFromLocation restores the URL
       this.initDocCommentConnector();
-      await migrateFromLegacyDb();
       this.startSharedLiveQueries();
       const settings = await getSettings();
       if (settings) {
@@ -1549,6 +1548,23 @@ export function initApp() {
       }
       if (!this.backendUrl) this.backendUrl = guessDefaultBackendUrl();
       if (this.backendUrl) setBaseUrl(this.backendUrl);
+      if (!this.selectedWorkspaceKey && this.currentWorkspaceOwnerNpub) {
+        const legacyMatch = this.knownWorkspaces.find((workspace) => workspace.workspaceOwnerNpub === this.currentWorkspaceOwnerNpub) || null;
+        if (legacyMatch) this.selectedWorkspaceKey = legacyMatch.workspaceKey || '';
+      }
+      if (!this.selectedWorkspaceKey && this.knownWorkspaces.length > 0) {
+        this.selectedWorkspaceKey = this.knownWorkspaces[0].workspaceKey || '';
+        this.currentWorkspaceOwnerNpub = this.knownWorkspaces[0].workspaceOwnerNpub;
+      }
+      if (this.selectedWorkspaceKey || this.currentWorkspaceOwnerNpub) {
+        await this.selectWorkspace(this.selectedWorkspaceKey || this.currentWorkspaceOwnerNpub, {
+          refresh: false,
+          skipPgVerification: isTowerPgBackendMode(),
+        });
+      }
+      if (this.selectedWorkspaceKey) {
+        await this.bootstrapSelectedWorkspace({ runAccessPrune: false });
+      }
       await this.hydrateKnownWorkspaceProfiles();
       this.ensureBackgroundSync();
       await this.maybeAutoLogin();
@@ -1626,7 +1642,11 @@ export function initApp() {
           this.runAccessPruneOnLogin().catch(() => {});
         }
       } else {
-        await this.loadLocalWorkspaceCoreData?.({ syncRoute: false });
+        const workspaceKey = this.currentWorkspaceKey || this.selectedWorkspaceKey || this.currentWorkspaceOwnerNpub;
+        if (this.localWorkspaceCoreLoadedForKey !== workspaceKey) {
+          await this.loadLocalWorkspaceCoreData?.({ syncRoute: false });
+          this.localWorkspaceCoreLoadedForKey = workspaceKey;
+        }
         this.startWorkspaceLiveQueries?.();
       }
       this.selectedBoardId = this.readStoredTaskBoardId();
@@ -2135,6 +2155,7 @@ export function initApp() {
       this.chatProfiles = {};
       this.workspaceProfileRowsByKey = {};
       this.selectedWorkspaceKey = '';
+      this.localWorkspaceCoreLoadedForKey = '';
       this.currentWorkspaceOwnerNpub = '';
       this.workspaceSwitchPendingKey = '';
       this.workspaceSwitchPendingNpub = '';

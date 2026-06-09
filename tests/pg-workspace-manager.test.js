@@ -224,6 +224,54 @@ describe('PG workspace manager mode', () => {
     expect(store.currentWorkspaceOwnerNpub).toBe('npub1owner');
   });
 
+  it('can restore a cached PG workspace locally before remote verification', async () => {
+    const workspace = {
+      workspaceKey: 'pg:npub1user::tower:npub1tower::workspace:npub1workspace::app:flightdeck_pg',
+      workspaceOwnerNpub: 'npub1owner',
+      directHttpsUrl: 'https://tower.example',
+      pgSessionNpub: 'npub1user',
+      pgBackendMode: true,
+    };
+    const loadLocalWorkspaceCoreData = vi.fn().mockResolvedValue({ scopes: [], channels: [] });
+    const store = await buildStore({
+      knownWorkspaces: [workspace],
+      selectedWorkspaceKey: workspace.workspaceKey,
+      verifyPgDescriptor: vi.fn(),
+      rememberVerifiedPgWorkspace: vi.fn(),
+      loadLocalWorkspaceCoreData,
+    });
+
+    await store.selectWorkspace(workspace.workspaceKey, { refresh: false, skipPgVerification: true });
+
+    expect(store.verifyPgDescriptor).not.toHaveBeenCalled();
+    expect(loadLocalWorkspaceCoreData).toHaveBeenCalledWith({ syncRoute: false });
+    expect(store.localWorkspaceCoreLoadedForKey).toBe(workspace.workspaceKey);
+    expect(store.selectedWorkspaceKey).toBe(workspace.workspaceKey);
+    expect(store.currentWorkspaceOwnerNpub).toBe('npub1owner');
+  });
+
+  it('does not reload local PG core data when selecting the same already-loaded workspace', async () => {
+    const workspace = {
+      workspaceKey: 'pg:npub1user::tower:npub1tower::workspace:npub1workspace::app:flightdeck_pg',
+      workspaceOwnerNpub: 'npub1owner',
+      directHttpsUrl: 'https://tower.example',
+      pgSessionNpub: 'npub1user',
+      pgBackendMode: true,
+    };
+    const loadLocalWorkspaceCoreData = vi.fn().mockResolvedValue({ scopes: [], channels: [] });
+    const store = await buildStore({
+      knownWorkspaces: [workspace],
+      selectedWorkspaceKey: workspace.workspaceKey,
+      localWorkspaceCoreLoadedForKey: workspace.workspaceKey,
+      loadLocalWorkspaceCoreData,
+    });
+
+    await store.selectWorkspace(workspace.workspaceKey, { refresh: false, pgVerified: true });
+
+    expect(loadLocalWorkspaceCoreData).not.toHaveBeenCalled();
+    expect(store.startWorkspaceLiveQueries).toHaveBeenCalled();
+  });
+
   it('rejects a cached PG workspace scoped to a different signer before Tower calls', async () => {
     const workspace = {
       workspaceKey: 'pg:npub1other::tower:npub1tower::workspace:npub1workspace::app:flightdeck_pg',

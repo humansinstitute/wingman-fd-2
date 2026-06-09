@@ -382,6 +382,7 @@ describe('shell PG bootstrap guard', () => {
     await shell.bootstrapSelectedWorkspace({ runAccessPrune: true });
 
     expect(shell.loadLocalWorkspaceCoreData).toHaveBeenCalledWith({ syncRoute: false });
+    expect(shell.localWorkspaceCoreLoadedForKey).toBe('pg:workspace');
     expect(shell.startWorkspaceLiveQueries).toHaveBeenCalled();
     expect(shell.refreshScopes).not.toHaveBeenCalled();
     expect(shell.refreshChannels).not.toHaveBeenCalled();
@@ -390,6 +391,26 @@ describe('shell PG bootstrap guard', () => {
     expect(shell.refreshAudioNotes).not.toHaveBeenCalled();
     expect(shell.refreshGroups).not.toHaveBeenCalled();
     expect(shell.refreshWorkspaceKeyMappings).not.toHaveBeenCalled();
+  });
+
+  it('does not reload cached PG workspace navigation after the selector already loaded it', async () => {
+    const shell = createShellState();
+    shell.selectedWorkspaceKey = 'pg:workspace';
+    shell.currentWorkspaceOwnerNpub = 'npub1workspace';
+    shell.localWorkspaceCoreLoadedForKey = 'pg:workspace';
+    shell.loadLocalWorkspaceCoreData = vi.fn(async () => ({ scopes: [], channels: [] }));
+    shell.startWorkspaceLiveQueries = vi.fn();
+    shell.readStoredTaskBoardId = vi.fn(() => null);
+    shell.readStoredCollapsedSections = vi.fn(() => ({}));
+    shell.validateSelectedBoardId = vi.fn();
+    shell.applyRouteFromLocation = vi.fn(async () => {});
+    shell.refreshSyncStatus = vi.fn(async () => {});
+    shell.refreshStatusRecentChanges = vi.fn(async () => {});
+
+    await shell.bootstrapSelectedWorkspace({ runAccessPrune: true });
+
+    expect(shell.loadLocalWorkspaceCoreData).not.toHaveBeenCalled();
+    expect(shell.startWorkspaceLiveQueries).toHaveBeenCalled();
   });
 });
 
