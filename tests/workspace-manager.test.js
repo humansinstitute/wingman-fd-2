@@ -566,6 +566,66 @@ describe('workspace profile editing', () => {
       globalThis.window = originalWindow;
     }
   });
+
+  it('saveWorkspaceProfile uses the Tower PG workspace route for PG workspaces', async () => {
+    const updateTowerPgWorkspaceSpy = vi.spyOn(api, 'updateTowerPgWorkspace').mockResolvedValue({
+      name: 'Testing Space',
+      slug: 'testing-space',
+      description: 'PG profile',
+      avatar_url: null,
+    });
+    const updateWorkspaceSpy = vi.spyOn(api, 'updateWorkspace').mockResolvedValue({});
+
+    const persistWorkspaceSettings = vi.fn().mockResolvedValue(undefined);
+    const syncWorkspaceProfileDraft = vi.fn();
+    const mergeKnownWorkspaces = vi.fn();
+    const originalWindow = globalThis.window;
+    globalThis.window = {
+      confirm: vi.fn(() => true),
+    };
+
+    try {
+      const { fn } = bindMethod('saveWorkspaceProfile', {
+        canAdminWorkspace: true,
+        currentWorkspace: {
+          workspaceKey: 'pg:workspace',
+          workspaceOwnerNpub: 'npub1owner',
+          workspaceId: 'workspace-1',
+          directHttpsUrl: 'https://tower.example',
+          appNpub: 'flightdeck_pg',
+          name: 'This Works',
+          slug: 'thisworks',
+          pgBackendMode: true,
+        },
+        workspaceProfileNameInput: 'Testing Space',
+        workspaceProfileSlugInput: 'testing-space',
+        workspaceProfileDescriptionInput: 'PG profile',
+        workspaceProfileAvatarInput: '',
+        persistWorkspaceSettings,
+        syncWorkspaceProfileDraft,
+        mergeKnownWorkspaces,
+      });
+
+      await fn();
+
+      expect(updateTowerPgWorkspaceSpy).toHaveBeenCalledWith('workspace-1', {
+        name: 'Testing Space',
+        slug: 'testing-space',
+        description: 'PG profile',
+        avatar_url: null,
+      }, {
+        baseUrl: 'https://tower.example',
+        appNpub: 'flightdeck_pg',
+      });
+      expect(updateWorkspaceSpy).not.toHaveBeenCalled();
+      expect(persistWorkspaceSettings).toHaveBeenCalledTimes(1);
+      expect(syncWorkspaceProfileDraft).toHaveBeenCalledWith({ force: true });
+    } finally {
+      updateTowerPgWorkspaceSpy.mockRestore();
+      updateWorkspaceSpy.mockRestore();
+      globalThis.window = originalWindow;
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

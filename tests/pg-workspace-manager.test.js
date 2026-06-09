@@ -25,6 +25,7 @@ vi.mock('../src/api.js', () => ({
   listTowerPgWorkspaces: vi.fn(),
   publishWorkspaceAppSchema: vi.fn(),
   recoverWorkspace: vi.fn(),
+  updateTowerPgWorkspace: vi.fn(),
   updateWorkspace: vi.fn(),
   registerWorkspaceApp: vi.fn(),
   prepareStorageObject: vi.fn(),

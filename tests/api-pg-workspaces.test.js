@@ -83,6 +83,39 @@ describe('Tower PG API helpers', () => {
     expect(createNip98AuthHeaderForSecret).not.toHaveBeenCalled();
   });
 
+  it('updates Tower PG workspace profile metadata with browser NIP-98 auth', async () => {
+    const { createNip98AuthHeader, createNip98AuthHeaderForSecret } = await import('../src/auth/nostr.js');
+    const api = await import('../src/api.js');
+    api.setBaseUrl('https://tower.example');
+
+    await api.updateTowerPgWorkspace('workspace-1', {
+      name: 'Testing Space',
+      slug: 'testing-space',
+      description: 'Workspace profile',
+      avatar_url: null,
+    }, { appNpub: 'flightdeck_pg' });
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1',
+      expect.objectContaining({
+        method: 'PATCH',
+        headers: expect.objectContaining({
+          Authorization: 'NIP98 PATCH https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1',
+          'x-flightdeck-pg-app-npub': 'flightdeck_pg',
+          'Content-Type': 'application/json',
+        }),
+        body: JSON.stringify({
+          name: 'Testing Space',
+          slug: 'testing-space',
+          description: 'Workspace profile',
+          avatar_url: null,
+        }),
+      }),
+    );
+    expect(createNip98AuthHeader).toHaveBeenCalledTimes(1);
+    expect(createNip98AuthHeaderForSecret).not.toHaveBeenCalled();
+  });
+
   it('reads Tower PG scope, channel, thread, message, and task lists with browser NIP-98 auth', async () => {
     const { createNip98AuthHeader, createNip98AuthHeaderForSecret } = await import('../src/auth/nostr.js');
     const api = await import('../src/api.js');

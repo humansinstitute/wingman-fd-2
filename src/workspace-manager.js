@@ -25,6 +25,7 @@ import {
   listTowerPgWorkspaces,
   publishWorkspaceAppSchema,
   recoverWorkspace,
+  updateTowerPgWorkspace,
   updateWorkspace,
   registerWorkspaceApp,
   prepareStorageObject,
@@ -712,12 +713,18 @@ export const workspaceManagerMixin = {
         return;
       }
 
-      const response = await updateWorkspace(workspaceOwnerNpub, {
+      const requestBody = {
         name,
         slug: newSlug,
         description,
         avatar_url: avatarUrl,
-      });
+      };
+      const response = workspace.pgBackendMode
+        ? await updateTowerPgWorkspace(workspace.workspaceId, requestBody, {
+          baseUrl: workspace.directHttpsUrl || this.currentWorkspaceBackendUrl,
+          appNpub: workspace.appNpub || FLIGHT_DECK_PG_APP_NPUB,
+        })
+        : await updateWorkspace(workspaceOwnerNpub, requestBody);
       const savedSlug = String(response?.slug || '').trim() || newSlug;
       this.workspaceProfileRowsByKey = {
         ...(this.workspaceProfileRowsByKey || {}),
@@ -1236,7 +1243,9 @@ export const workspaceManagerMixin = {
             appNpub: entry.identity?.app_npub || FLIGHT_DECK_PG_APP_NPUB,
             pgSessionNpub: this.session.npub,
             name: entry.label,
+            slug: entry.slug,
             description: entry.description,
+            avatarUrl: entry.avatar_url,
             capabilities: entry.capabilities || [],
             pgBackendMode: true,
           }))
