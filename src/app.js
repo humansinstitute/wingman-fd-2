@@ -1616,11 +1616,8 @@ export function initApp() {
           this.runAccessPruneOnLogin().catch(() => {});
         }
       } else {
-        await this.refreshScopes();
-        await this.refreshChannels();
-        await this.refreshTasks();
-        await this.refreshDocuments();
-        await this.refreshAudioNotes();
+        await this.loadLocalWorkspaceCoreData?.({ syncRoute: false });
+        this.startWorkspaceLiveQueries?.();
       }
       this.selectedBoardId = this.readStoredTaskBoardId();
       this.collapsedSections = this.readStoredCollapsedSections();

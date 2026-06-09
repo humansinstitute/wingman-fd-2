@@ -142,6 +142,7 @@ describe('PG workspace manager mode', () => {
   it('selects PG workspaces without encrypted workspace key or app schema setup', async () => {
     const api = await import('../src/api.js');
     const refreshGroups = vi.fn().mockResolvedValue([]);
+    const loadLocalWorkspaceCoreData = vi.fn().mockResolvedValue({ scopes: [], channels: [] });
     const workspace = {
       workspaceKey: 'pg:npub1user::tower:npub1tower::workspace:npub1workspace::app:flightdeck_pg',
       workspaceOwnerNpub: 'npub1owner',
@@ -153,6 +154,7 @@ describe('PG workspace manager mode', () => {
       knownWorkspaces: [workspace],
       selectedWorkspaceKey: workspace.workspaceKey,
       refreshGroups,
+      loadLocalWorkspaceCoreData,
       refreshScopes: vi.fn().mockResolvedValue([]),
       refreshChannels: vi.fn().mockResolvedValue([]),
       refreshTasks: vi.fn().mockResolvedValue([]),
@@ -164,7 +166,9 @@ describe('PG workspace manager mode', () => {
     await store.selectWorkspace(workspace.workspaceKey, { pgVerified: true });
 
     expect(store.ensureWorkspaceSessionKey).not.toHaveBeenCalled();
-    expect(refreshGroups).toHaveBeenCalledWith({ force: true, minIntervalMs: 0 });
+    expect(loadLocalWorkspaceCoreData).toHaveBeenCalledWith({ syncRoute: false });
+    expect(store.startWorkspaceLiveQueries).toHaveBeenCalled();
+    expect(refreshGroups).not.toHaveBeenCalled();
     expect(api.registerWorkspaceApp).not.toHaveBeenCalled();
     expect(api.publishWorkspaceAppSchema).not.toHaveBeenCalled();
   });

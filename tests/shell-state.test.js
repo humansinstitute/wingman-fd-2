@@ -359,10 +359,12 @@ describe('shell PG bootstrap guard', () => {
     await expect(shell.ensureWorkspaceSessionKey()).resolves.toBeNull();
   });
 
-  it('loads PG groups and PG workspace records during PG workspace bootstrap', async () => {
+  it('loads cached PG workspace navigation before scheduling PG hydration', async () => {
     const shell = createShellState();
     shell.selectedWorkspaceKey = 'pg:workspace';
     shell.currentWorkspaceOwnerNpub = 'npub1workspace';
+    shell.loadLocalWorkspaceCoreData = vi.fn(async () => ({ scopes: [], channels: [] }));
+    shell.startWorkspaceLiveQueries = vi.fn();
     shell.refreshScopes = vi.fn(async () => {});
     shell.refreshChannels = vi.fn(async () => {});
     shell.refreshTasks = vi.fn(async () => {});
@@ -379,12 +381,14 @@ describe('shell PG bootstrap guard', () => {
 
     await shell.bootstrapSelectedWorkspace({ runAccessPrune: true });
 
-    expect(shell.refreshScopes).toHaveBeenCalled();
-    expect(shell.refreshChannels).toHaveBeenCalled();
-    expect(shell.refreshTasks).toHaveBeenCalled();
-    expect(shell.refreshDocuments).toHaveBeenCalled();
-    expect(shell.refreshAudioNotes).toHaveBeenCalled();
-    expect(shell.refreshGroups).toHaveBeenCalledWith({ force: true, minIntervalMs: 0 });
+    expect(shell.loadLocalWorkspaceCoreData).toHaveBeenCalledWith({ syncRoute: false });
+    expect(shell.startWorkspaceLiveQueries).toHaveBeenCalled();
+    expect(shell.refreshScopes).not.toHaveBeenCalled();
+    expect(shell.refreshChannels).not.toHaveBeenCalled();
+    expect(shell.refreshTasks).not.toHaveBeenCalled();
+    expect(shell.refreshDocuments).not.toHaveBeenCalled();
+    expect(shell.refreshAudioNotes).not.toHaveBeenCalled();
+    expect(shell.refreshGroups).not.toHaveBeenCalled();
     expect(shell.refreshWorkspaceKeyMappings).not.toHaveBeenCalled();
   });
 });

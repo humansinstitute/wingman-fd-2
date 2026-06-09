@@ -137,6 +137,7 @@ describe('section live query plan', () => {
       createLiveSubscription: vi.fn(() => ({ unsubscribe() {} })),
       stopLiveSubscription: vi.fn(),
       initUnreadTracking: vi.fn(),
+      loadLocalWorkspaceCoreData: vi.fn(async () => ({ scopes: [], channels: [] })),
       refreshGroups: vi.fn(async () => []),
       refreshScopes: vi.fn(async () => []),
       refreshChannels: vi.fn(async () => []),
@@ -148,6 +149,7 @@ describe('section live query plan', () => {
     sectionLiveQueryMixin.startWorkspaceLiveQueries.call(store);
     await new Promise((resolve) => setTimeout(resolve, 0));
 
+    expect(store.loadLocalWorkspaceCoreData).toHaveBeenCalledWith({ syncRoute: false });
     expect(store.refreshGroups).toHaveBeenCalledWith({ force: true, minIntervalMs: 0 });
     expect(store.refreshScopes).toHaveBeenCalledTimes(1);
     expect(store.refreshChannels).toHaveBeenCalledTimes(1);

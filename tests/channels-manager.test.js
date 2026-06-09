@@ -655,6 +655,27 @@ describe('channels-manager pure utilities', () => {
       expect(store.selectedChannelId).toBe('ch-general');
     });
 
+    it('does not hide cached Tower PG channels while PG groups are still hydrating', async () => {
+      const store = createStore({
+        currentWorkspace: { pgBackendMode: true },
+        session: { npub: 'npub1viewer' },
+        workspaceOwnerNpub: 'npub1workspace',
+        groups: [],
+      });
+
+      await channelsManagerMixin.applyChannels.call(store, [
+        {
+          record_id: 'pg-channel',
+          title: 'PG Channel',
+          group_ids: ['pg-group-not-yet-loaded'],
+          participant_npubs: [],
+        },
+      ], { syncRoute: false });
+
+      expect(store.channels.map((channel) => channel.record_id)).toEqual(['pg-channel']);
+      expect(store.selectedChannelId).toBe('pg-channel');
+    });
+
     it('preserves saved channel order through an empty channel batch', async () => {
       const store = createStore({ channelOrder: ['ch3', 'ch1'] });
 

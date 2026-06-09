@@ -462,15 +462,19 @@ function pgMeActorNpub(workspace = {}) {
 export const channelsManagerMixin = {
   // --- channels ---
 
+  async loadLocalChannels(options = {}) {
+    const ownerNpub = this.workspaceOwnerNpub;
+    if (!ownerNpub) return [];
+    const channels = await getChannelsByOwner(ownerNpub);
+    await this.applyChannels(channels, options);
+    return channels;
+  },
+
   async refreshChannels() {
     if (isTowerPgBackendMode()) {
       return hydrateTowerPgChannels(this);
     }
-    const ownerNpub = this.workspaceOwnerNpub;
-    if (!ownerNpub) return;
-    const channels = await getChannelsByOwner(ownerNpub);
-    await this.applyChannels(channels);
-    return channels;
+    return this.loadLocalChannels();
   },
 
   async refreshTowerPgWorkspaceMembers(options = {}) {
@@ -977,7 +981,10 @@ export const channelsManagerMixin = {
 
   async applyChannels(channels = [], options = {}) {
     const allChannels = Array.isArray(channels) ? channels : [];
-    const visibleChannels = filterChannelsForViewer(allChannels, this.session?.npub, this.workspaceOwnerNpub, this.groups);
+    const pgChannelVisibilityAuthoritative = Boolean(isTowerPgBackendMode() || this.currentWorkspace?.pgBackendMode);
+    const visibleChannels = pgChannelVisibilityAuthoritative
+      ? allChannels
+      : filterChannelsForViewer(allChannels, this.session?.npub, this.workspaceOwnerNpub, this.groups);
     const savedChannelOrder = Array.isArray(this.channelOrder)
       ? this.channelOrder.map((id) => String(id || '').trim()).filter(Boolean)
       : [];

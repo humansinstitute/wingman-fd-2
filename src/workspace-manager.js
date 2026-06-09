@@ -567,6 +567,14 @@ export const workspaceManagerMixin = {
     return row;
   },
 
+  async loadLocalWorkspaceCoreData(options = {}) {
+    const [scopes, channels] = await Promise.all([
+      typeof this.loadLocalScopes === 'function' ? this.loadLocalScopes() : Promise.resolve([]),
+      typeof this.loadLocalChannels === 'function' ? this.loadLocalChannels(options) : Promise.resolve([]),
+    ]);
+    return { scopes, channels };
+  },
+
   getWorkspaceSettingsGroupNpub() {
     return resolveWorkspaceSettingsGroupNpub({
       memberPrivateGroup: this.memberPrivateGroup,
@@ -1035,6 +1043,7 @@ export const workspaceManagerMixin = {
       }
 
       this.startWorkspaceLiveQueries();
+      await this.loadLocalWorkspaceCoreData?.({ syncRoute: false });
       this.selectedBoardId = this.readStoredTaskBoardId() || null;
       this.validateSelectedBoardId();
       this.normalizeSettingsTab();
@@ -1051,14 +1060,6 @@ export const workspaceManagerMixin = {
         });
       }
       await this.refreshWorkspaceSettings();
-      if (isTowerPgBackendMode() && workspace.pgBackendMode) {
-        await this.refreshGroups?.({ force: true, minIntervalMs: 0 });
-        await this.refreshScopes?.();
-        await this.refreshChannels?.();
-        await this.refreshTasks?.();
-        await this.refreshDocuments?.();
-        await this.refreshAudioNotes?.();
-      }
       this.syncWorkspaceProfileDraft({ force: true });
     } finally {
       if (this.workspaceSwitchPendingKey === workspace.workspaceKey) {

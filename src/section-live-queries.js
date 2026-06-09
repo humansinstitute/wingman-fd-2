@@ -91,6 +91,8 @@ function scheduleTowerPgWorkspaceHydration(store, state) {
   Promise.resolve()
     .then(async () => {
       if (String(store.currentWorkspaceKey || '') !== workspaceKey) return;
+      await store.loadLocalWorkspaceCoreData?.({ syncRoute: false });
+      if (String(store.currentWorkspaceKey || '') !== workspaceKey) return;
       await store.refreshGroups?.({ force: true, minIntervalMs: 0 });
       await store.refreshScopes?.();
       await store.refreshChannels?.();

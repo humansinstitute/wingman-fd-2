@@ -231,15 +231,19 @@ export const scopesManagerMixin = {
     this.scopesLoaded = true;
   },
 
+  async loadLocalScopes() {
+    const ownerNpub = this.workspaceOwnerNpub;
+    if (!ownerNpub) return [];
+    const scopes = await getScopesByOwner(ownerNpub);
+    await this.applyScopes(scopes);
+    return scopes;
+  },
+
   async refreshScopes() {
     if (isTowerPgBackendMode()) {
       return hydrateTowerPgScopes(this);
     }
-    const ownerNpub = this.workspaceOwnerNpub;
-    if (!ownerNpub) return;
-    const scopes = await getScopesByOwner(ownerNpub);
-    await this.applyScopes(scopes);
-    return scopes;
+    return this.loadLocalScopes();
   },
 
   resolveScopeRecord(scopeOrId) {
