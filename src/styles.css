@@ -6801,6 +6801,10 @@ button:disabled {
 .channel-settings-modal {
   position: relative;
   isolation: isolate;
+  width: min(92vw, 560px);
+  max-height: min(86vh, 760px);
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .channel-settings-modal .channel-scope-field {
@@ -6844,9 +6848,21 @@ button:disabled {
 
 .channel-grant-grid {
   display: grid;
-  grid-template-columns: minmax(7rem, 0.7fr) minmax(12rem, 1.4fr) minmax(9rem, 0.9fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 0.5rem;
   align-items: center;
+}
+
+.channel-grant-grid .new-group-input,
+.channel-grant-grid .channel-grant-capacity {
+  min-width: 0;
+  width: 100%;
+}
+
+.channel-grant-grid .btn-confirm {
+  justify-self: start;
+  max-width: 100%;
+  white-space: normal;
 }
 
 .channel-access-error {

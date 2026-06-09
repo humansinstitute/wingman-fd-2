@@ -140,6 +140,25 @@ describe('channels-manager pure utilities', () => {
     expect(channelsManagerSource).not.toContain('refreshAgentChat' + 'TriggerDiagnostics');
   });
 
+  it('opens channel settings for an explicit PG context channel id', () => {
+    const store = createPgGrantStore({
+      channels: [
+        { record_id: 'channel-1', title: 'Old channel' },
+        { record_id: 'channel-2', title: 'Target channel' },
+      ],
+      selectedChannelId: 'channel-1',
+      closeScopePicker: vi.fn(),
+      closeChannelScopePicker: vi.fn(),
+      preparePgChannelAccessPanel: vi.fn(),
+    });
+
+    channelsManagerMixin.openChannelSettings.call(store, 'channel-2');
+
+    expect(store.selectedChannelId).toBe('channel-2');
+    expect(store.showChannelSettingsModal).toBe(true);
+    expect(store.preparePgChannelAccessPanel).toHaveBeenCalledOnce();
+  });
+
   // --- mapGroupEntry ---
   describe('mapGroupEntry', () => {
     it('maps a group with id field', () => {

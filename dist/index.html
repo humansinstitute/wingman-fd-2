@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-BfTMgpw_.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-BQBTHeKz.css">
+  <script type="module" crossorigin src="/assets/index-DAorCHyW.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-C5srMrqm.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -848,6 +848,21 @@
                       <span class="channel-hash">#</span>
                       <span class="chat-channel-tab-label" x-text="$store.chat.getChannelLabel(channel)"></span>
                     </button>
+                    <div class="chat-channel-menu chat-channel-tab-menu" x-show="$store.chat.pgContextSelectedChannelId === channel.record_id" x-cloak>
+                      <button
+                        type="button"
+                        class="chat-channel-menu-button"
+                        title="Channel settings"
+                        aria-label="Channel settings"
+                        @click.stop.prevent="$store.chat.openChannelSettings(channel.record_id)"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                          <circle cx="12" cy="5" r="1"></circle>
+                          <circle cx="12" cy="12" r="1"></circle>
+                          <circle cx="12" cy="19" r="1"></circle>
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                 </template>
               </div>
@@ -1393,6 +1408,21 @@
                       <span class="channel-hash">#</span>
                       <span class="chat-channel-tab-label" x-text="$store.chat.getChannelLabel(channel)"></span>
                     </button>
+                    <div class="chat-channel-menu chat-channel-tab-menu" x-show="$store.chat.pgContextSelectedChannelId === channel.record_id" x-cloak>
+                      <button
+                        type="button"
+                        class="chat-channel-menu-button"
+                        title="Channel settings"
+                        aria-label="Channel settings"
+                        @click.stop.prevent="$store.chat.openChannelSettings(channel.record_id)"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                          <circle cx="12" cy="5" r="1"></circle>
+                          <circle cx="12" cy="12" r="1"></circle>
+                          <circle cx="12" cy="19" r="1"></circle>
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                 </template>
               </div>
@@ -2865,6 +2895,21 @@
                         <span class="channel-hash">#</span>
                         <span class="chat-channel-tab-label" x-text="$store.chat.getChannelLabel(channel)"></span>
                       </button>
+                      <div class="chat-channel-menu chat-channel-tab-menu" x-show="$store.chat.pgContextSelectedChannelId === channel.record_id" x-cloak>
+                        <button
+                          type="button"
+                          class="chat-channel-menu-button"
+                          title="Channel settings"
+                          aria-label="Channel settings"
+                          @click.stop.prevent="$store.chat.openChannelSettings(channel.record_id)"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="5" r="1"></circle>
+                            <circle cx="12" cy="12" r="1"></circle>
+                            <circle cx="12" cy="19" r="1"></circle>
+                          </svg>
+                        </button>
+                      </div>
                     </div>
                   </template>
                 </div>
@@ -4011,6 +4056,21 @@
                         <span class="channel-hash">#</span>
                         <span class="chat-channel-tab-label" x-text="$store.chat.getChannelLabel(channel)"></span>
                       </button>
+                      <div class="chat-channel-menu chat-channel-tab-menu" x-show="$store.chat.pgContextSelectedChannelId === channel.record_id" x-cloak>
+                        <button
+                          type="button"
+                          class="chat-channel-menu-button"
+                          title="Channel settings"
+                          aria-label="Channel settings"
+                          @click.stop.prevent="$store.chat.openChannelSettings(channel.record_id)"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="5" r="1"></circle>
+                            <circle cx="12" cy="12" r="1"></circle>
+                            <circle cx="12" cy="19" r="1"></circle>
+                          </svg>
+                        </button>
+                      </div>
                     </div>
                   </template>
                 </div>

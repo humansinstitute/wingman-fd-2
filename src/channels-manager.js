@@ -583,8 +583,11 @@ export const channelsManagerMixin = {
     this.channelGrantsNotice = '';
   },
 
-  openChannelSettings() {
-    if (!this.selectedChannel) return;
+  openChannelSettings(channelId = null) {
+    const normalizedChannelId = String(channelId || '').trim();
+    if (normalizedChannelId) this.selectedChannelId = normalizedChannelId;
+    const selectedChannel = this.selectedChannel || this.channels?.find((channel) => channel?.record_id === this.selectedChannelId);
+    if (!selectedChannel) return;
     this.closeScopePicker();
     this.closeChannelScopePicker();
     this.channelDeleteConfirmArmed = false;

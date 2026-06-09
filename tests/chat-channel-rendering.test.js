@@ -51,6 +51,16 @@ describe('Chat channel rendering hooks', () => {
     expect(html.match(/class="pg-work-context-bar/g) || []).toHaveLength(4);
   });
 
+  it('renders the channel settings menu in every PG work context bar', () => {
+    const contextBars = html.match(/<div class="pg-work-context-bar[\s\S]*?<div class="pg-context-thread-strip"/g) || [];
+
+    expect(contextBars).toHaveLength(4);
+    for (const contextBar of contextBars) {
+      expect(contextBar).toContain('class="chat-channel-menu chat-channel-tab-menu"');
+      expect(contextBar).toContain('@click.stop.prevent="$store.chat.openChannelSettings(channel.record_id)"');
+    }
+  });
+
   it('adds Get it done actions to every chat message surface', () => {
     const matches = html.match(/Get it done/g) || [];
     expect(matches.length).toBeGreaterThanOrEqual(3);
