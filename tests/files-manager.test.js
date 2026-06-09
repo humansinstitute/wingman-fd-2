@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  buildFileUploadQueueItem,
   buildFileBrowserRows,
   filterFileBrowserRows,
 } from '../src/files-manager.js';
@@ -120,5 +121,24 @@ describe('files manager', () => {
       'file-chat-1',
       'img-chat-1',
     ]);
+  });
+
+  it('builds upload queue items from browser files', () => {
+    const item = buildFileUploadQueueItem({
+      name: 'Plan.pdf',
+      type: 'application/pdf',
+      size: 4096,
+    }, { scopeId: 'scope-1' });
+
+    expect(item).toMatchObject({
+      original_name: 'Plan.pdf',
+      name: 'Plan.pdf',
+      scope_id: 'scope-1',
+      status: 'queued',
+      progress: 0,
+      size_bytes: 4096,
+      content_type: 'application/pdf',
+    });
+    expect(item.id).toBeTruthy();
   });
 });

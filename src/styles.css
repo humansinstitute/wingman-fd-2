@@ -1429,6 +1429,31 @@ button:disabled {
   font-size: 0.82rem;
 }
 
+.files-upload-open-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 36px;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid #1d4ed8;
+  border-radius: var(--radius-sm);
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 0.86rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.files-upload-open-btn:hover {
+  background: #1d4ed8;
+}
+
+.files-upload-open-btn span[aria-hidden="true"] {
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
 .files-toolbar {
   display: grid;
   grid-template-columns: minmax(180px, 1fr) repeat(4, minmax(130px, 170px));
@@ -1455,6 +1480,173 @@ button:disabled {
   outline: none;
   border-color: #2563eb;
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
+}
+
+.files-upload-panel {
+  padding: 0.9rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  background: #ffffff;
+}
+
+.files-upload-input {
+  display: none;
+}
+
+.files-upload-dropzone {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  min-height: 92px;
+  padding: 1rem;
+  border: 1px dashed #94a3b8;
+  border-radius: var(--radius-sm);
+  background: #f8fafc;
+  cursor: pointer;
+}
+
+.files-upload-dropzone:hover,
+.files-upload-dropzone:focus-visible {
+  border-color: #2563eb;
+  background: #eff6ff;
+  outline: none;
+}
+
+.files-upload-drop-icon {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.files-upload-dropzone h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.98rem;
+}
+
+.files-upload-dropzone p {
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.files-upload-error {
+  margin: 0.65rem 0 0;
+  color: #b91c1c;
+  font-size: 0.84rem;
+}
+
+.files-upload-queue {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 0.75rem;
+}
+
+.files-upload-item {
+  padding: 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #ffffff;
+}
+
+.files-upload-item-failed {
+  border-color: #fecaca;
+  background: #fff7f7;
+}
+
+.files-upload-item-done {
+  border-color: #bbf7d0;
+}
+
+.files-upload-item-fields {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(150px, 240px);
+  gap: 0.65rem;
+}
+
+.files-upload-item-fields label span {
+  display: block;
+  margin-bottom: 0.28rem;
+  color: #475569;
+  font-size: 0.74rem;
+  font-weight: 650;
+}
+
+.files-upload-item-fields input,
+.files-upload-item-fields select {
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #ffffff;
+  color: var(--text);
+  font-size: 0.86rem;
+  padding: 0.45rem 0.6rem;
+}
+
+.files-upload-item-fields input:disabled,
+.files-upload-item-fields select:disabled {
+  background: #f8fafc;
+  color: #64748b;
+}
+
+.files-upload-item-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  margin-top: 0.55rem;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.files-upload-progress {
+  height: 7px;
+  margin-top: 0.55rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e2e8f0;
+}
+
+.files-upload-progress span {
+  display: block;
+  height: 100%;
+  min-width: 0;
+  border-radius: inherit;
+  background: #2563eb;
+  transition: width 0.18s ease;
+}
+
+.files-upload-item-failed .files-upload-progress span {
+  background: #dc2626;
+}
+
+.files-upload-item-done .files-upload-progress span {
+  background: #16a34a;
+}
+
+.files-upload-item-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.45rem;
+}
+
+.files-upload-item-footer code {
+  min-width: 0;
+  overflow: hidden;
+  color: #64748b;
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .files-list {
@@ -1607,6 +1799,7 @@ button:disabled {
 @media (max-width: 640px) {
   .files-header,
   .files-toolbar,
+  .files-upload-panel,
   .files-list {
     padding-left: 1rem;
     padding-right: 1rem;
@@ -1618,6 +1811,10 @@ button:disabled {
 
   .file-row {
     grid-template-columns: 48px minmax(0, 1fr);
+  }
+
+  .files-upload-item-fields {
+    grid-template-columns: 1fr;
   }
 
   .file-thumb {

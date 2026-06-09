@@ -4101,6 +4101,15 @@
                 <h2>Files</h2>
                 <p class="files-subtitle" x-text="`${$store.chat.filteredFileBrowserRows.length} of ${$store.chat.fileBrowserRows.length}`"></p>
               </div>
+              <button
+                type="button"
+                class="files-upload-open-btn"
+                x-show="$store.chat.isTowerPgMode"
+                @click="$store.chat.openFileUploadPanel()"
+              >
+                <span aria-hidden="true">+</span>
+                <span>File</span>
+              </button>
             </div>
 
             <div class="files-toolbar">
@@ -4130,6 +4139,78 @@
                 </template>
               </select>
             </div>
+
+            <section class="files-upload-panel" x-show="$store.chat.fileUploadOpen && $store.chat.isTowerPgMode" x-cloak>
+              <input
+                x-ref="filesUploadInput"
+                class="files-upload-input"
+                type="file"
+                multiple
+                @change="$store.chat.handleFileUploadInput($event)"
+              />
+              <div
+                class="files-upload-dropzone"
+                @dragover.prevent
+                @drop.prevent="$store.chat.handleFilesPageDrop($event)"
+                @click="$refs.filesUploadInput.click()"
+                role="button"
+                tabindex="0"
+                @keydown.enter.prevent="$refs.filesUploadInput.click()"
+                @keydown.space.prevent="$refs.filesUploadInput.click()"
+              >
+                <div class="files-upload-drop-icon" aria-hidden="true">+</div>
+                <div>
+                  <h3>Upload files</h3>
+                  <p>Drop files here or click to browse.</p>
+                </div>
+              </div>
+              <p class="files-upload-error" x-show="$store.chat.fileUploadError" x-text="$store.chat.fileUploadError"></p>
+              <div class="files-upload-queue" x-show="$store.chat.fileUploadItems.length > 0">
+                <template x-for="item in $store.chat.fileUploadItems" :key="item.id">
+                  <article class="files-upload-item" :class="{ 'files-upload-item-failed': item.status === 'failed', 'files-upload-item-done': item.status === 'done' }">
+                    <div class="files-upload-item-fields">
+                      <label>
+                        <span>Name</span>
+                        <input
+                          type="text"
+                          x-model="item.name"
+                          :disabled="!$store.chat.canEditFileUploadItem(item)"
+                        />
+                      </label>
+                      <label>
+                        <span>Scope</span>
+                        <select
+                          x-model="item.scope_id"
+                          :disabled="!$store.chat.canEditFileUploadItem(item)"
+                        >
+                          <option value="">Select scope</option>
+                          <template x-for="option in $store.chat.fileUploadScopeOptions" :key="option.id">
+                            <option :value="option.id" x-text="option.label"></option>
+                          </template>
+                        </select>
+                      </label>
+                    </div>
+                    <div class="files-upload-item-meta">
+                      <span x-text="item.original_name"></span>
+                      <span x-show="$store.chat.formatFileSize(item.size_bytes)" x-text="$store.chat.formatFileSize(item.size_bytes)"></span>
+                      <span x-text="$store.chat.fileUploadStatusLabel(item)"></span>
+                    </div>
+                    <div class="files-upload-progress" role="progressbar" :aria-valuenow="item.progress" aria-valuemin="0" aria-valuemax="100">
+                      <span :style="`width: ${Math.max(0, Math.min(100, Number(item.progress) || 0))}%`"></span>
+                    </div>
+                    <div class="files-upload-item-footer">
+                      <code x-show="item.object_id" x-text="item.object_id"></code>
+                      <button
+                        type="button"
+                        class="file-action-btn"
+                        x-show="!$store.chat.isFileUploadBusy(item)"
+                        @click="$store.chat.removeFileUploadItem(item.id)"
+                      >Remove</button>
+                    </div>
+                  </article>
+                </template>
+              </div>
+            </section>
 
             <div class="files-list" x-show="$store.chat.filteredFileBrowserRows.length > 0">
               <template x-for="row in $store.chat.filteredFileBrowserRows" :key="row.id">

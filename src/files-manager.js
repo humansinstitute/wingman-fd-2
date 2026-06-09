@@ -1,4 +1,12 @@
-import { downloadStorageObjectBlob } from './api.js';
+import {
+  completeStorageObject,
+  downloadStorageObjectBlob,
+  prepareStorageObject,
+  uploadStorageObject,
+} from './api.js';
+import { upsertDocument } from './db.js';
+import { createTowerPgFileFromLocal } from './pg-write-adapter.js';
+import { buildStoragePrepareBody } from './storage-payloads.js';
 import { recordFamilyHash } from './translators/chat.js';
 
 const UNSCOPED_TASK_BOARD_ID = '__unscoped__';
@@ -94,6 +102,38 @@ function kindFromContentType(contentType = '') {
   if (normalized.startsWith('audio/')) return 'audio';
   if (normalized.includes('pdf') || normalized.includes('document') || normalized.includes('text/')) return 'document';
   return 'file';
+}
+
+function fileUploadId() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  return `file-upload-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function defaultFileUploadName(file = {}) {
+  return normalizeString(file.name) || 'Untitled file';
+}
+
+async function sha256HexForBytes(bytes) {
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+export function buildFileUploadQueueItem(file, { scopeId = null } = {}) {
+  return {
+    id: fileUploadId(),
+    file,
+    original_name: defaultFileUploadName(file),
+    name: defaultFileUploadName(file),
+    scope_id: normalizeString(scopeId),
+    status: 'queued',
+    progress: 0,
+    error: '',
+    object_id: '',
+    size_bytes: Number.isFinite(Number(file?.size)) ? Number(file.size) : null,
+    content_type: normalizeString(file?.type) || 'application/octet-stream',
+  };
 }
 
 function baseRow({
@@ -384,6 +424,207 @@ export function filterFileBrowserRows(rows = [], {
 }
 
 export const filesManagerMixin = {
+  openFileUploadPanel() {
+    if (!this.isTowerPgMode) {
+      this.error = 'Files page uploads are available for Tower PG workspaces.';
+      return;
+    }
+    this.fileUploadOpen = true;
+    this.fileUploadError = '';
+  },
+
+  closeFileUploadPanel() {
+    if ((this.fileUploadItems || []).some((item) => this.isFileUploadBusy(item))) return;
+    this.fileUploadOpen = false;
+    this.fileUploadError = '';
+  },
+
+  get defaultFileUploadScopeId() {
+    const selectedChannel = (this.channels || []).find((channel) => channel?.record_id === this.pgContextSelectedChannelId);
+    const channelScopeId = getRecordScopeId(selectedChannel);
+    if (channelScopeId) return channelScopeId;
+    if (this.selectedBoardScope?.record_id) return this.selectedBoardScope.record_id;
+    if (this.selectedBoardId && this.scopesMap?.has?.(this.selectedBoardId)) return this.selectedBoardId;
+    const firstChannel = (this.channels || []).find((channel) => channel?.record_state !== 'deleted' && getRecordScopeId(channel));
+    return getRecordScopeId(firstChannel) || '';
+  },
+
+  get fileUploadScopeOptions() {
+    const seen = new Set();
+    const options = [];
+    for (const option of this.flightDeckScopeOptions || []) {
+      const id = normalizeString(option?.id);
+      if (!id || id === 'all' || id === '__all__' || id === UNSCOPED_TASK_BOARD_ID || seen.has(id)) continue;
+      seen.add(id);
+      options.push({ id, label: option.label || id });
+    }
+    for (const channel of this.channels || []) {
+      const scopeId = getRecordScopeId(channel);
+      if (!scopeId || seen.has(scopeId)) continue;
+      seen.add(scopeId);
+      options.push({
+        id: scopeId,
+        label: this.getScopeBreadcrumb?.(scopeId) || this.getTaskBoardLabel?.(scopeId) || scopeId,
+      });
+    }
+    return options;
+  },
+
+  isFileUploadBusy(item = {}) {
+    return ['queued', 'reading', 'preparing', 'uploading', 'completing', 'saving'].includes(item.status);
+  },
+
+  canEditFileUploadItem(item = {}) {
+    return ['queued', 'reading', 'preparing', 'uploading', 'completing'].includes(item.status);
+  },
+
+  fileUploadStatusLabel(item = {}) {
+    switch (item.status) {
+      case 'queued': return 'Queued';
+      case 'reading': return 'Reading';
+      case 'preparing': return 'Preparing';
+      case 'uploading': return 'Uploading';
+      case 'completing': return 'Finalizing';
+      case 'saving': return 'Saving file';
+      case 'done': return 'Uploaded';
+      case 'failed': return item.error || 'Failed';
+      default: return 'Waiting';
+    }
+  },
+
+  patchFileUploadItem(itemId, patch = {}) {
+    const id = normalizeString(itemId);
+    if (!id) return;
+    this.fileUploadItems = (this.fileUploadItems || []).map((item) => (
+      item.id === id ? { ...item, ...patch } : item
+    ));
+  },
+
+  removeFileUploadItem(itemId) {
+    const id = normalizeString(itemId);
+    const item = (this.fileUploadItems || []).find((entry) => entry.id === id);
+    if (item && this.isFileUploadBusy(item)) return;
+    this.fileUploadItems = (this.fileUploadItems || []).filter((entry) => entry.id !== id);
+  },
+
+  clearCompletedFileUploads() {
+    this.fileUploadItems = (this.fileUploadItems || []).filter((item) => this.isFileUploadBusy(item));
+  },
+
+  resolveFileUploadChannel(scopeId) {
+    const requestedScopeId = normalizeString(scopeId) || this.defaultFileUploadScopeId;
+    const channels = (this.channels || []).filter((channel) => channel?.record_state !== 'deleted');
+    const selected = channels.find((channel) => channel.record_id === this.pgContextSelectedChannelId);
+    if (selected?.record_id && (!requestedScopeId || getRecordScopeId(selected) === requestedScopeId)) return selected;
+    return channels.find((channel) => getRecordScopeId(channel) === requestedScopeId) || null;
+  },
+
+  resolveFileUploadThreadId(channelId) {
+    const normalizedChannelId = normalizeString(channelId);
+    if (normalizedChannelId && normalizedChannelId === normalizeString(this.pgContextSelectedChannelId)) {
+      return normalizeString(this.pgContextSelectedThreadId);
+    }
+    return null;
+  },
+
+  async handleFileUploadInput(event) {
+    const files = [...(event?.target?.files || [])].filter(Boolean);
+    if (event?.target) event.target.value = '';
+    await this.enqueueFileUploads(files);
+  },
+
+  async handleFilesPageDrop(event) {
+    const files = [...(event?.dataTransfer?.files || [])].filter(Boolean);
+    if (files.length === 0) return false;
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    this.openFileUploadPanel();
+    await this.enqueueFileUploads(files);
+    return true;
+  },
+
+  async enqueueFileUploads(files = []) {
+    const nextFiles = [...files].filter(Boolean);
+    if (nextFiles.length === 0) return [];
+    if (!this.isTowerPgMode) {
+      this.error = 'Files page uploads are available for Tower PG workspaces.';
+      return [];
+    }
+    if (!this.session?.npub || !this.workspaceOwnerNpub) {
+      this.fileUploadError = 'Sign in and select a workspace before uploading files.';
+      return [];
+    }
+    this.fileUploadOpen = true;
+    this.fileUploadError = '';
+    const defaultScopeId = this.defaultFileUploadScopeId;
+    const items = nextFiles.map((file) => buildFileUploadQueueItem(file, { scopeId: defaultScopeId }));
+    this.fileUploadItems = [...items, ...(this.fileUploadItems || [])];
+    for (const item of items) {
+      void this.startFileUploadItem(item.id);
+    }
+    return items;
+  },
+
+  async startFileUploadItem(itemId) {
+    const id = normalizeString(itemId);
+    const initial = (this.fileUploadItems || []).find((item) => item.id === id);
+    if (!initial?.file) return null;
+    try {
+      this.patchFileUploadItem(id, { status: 'reading', progress: 8, error: '' });
+      const bytes = new Uint8Array(await initial.file.arrayBuffer());
+      const contentType = normalizeString(initial.file.type) || 'application/octet-stream';
+      this.patchFileUploadItem(id, { status: 'preparing', progress: 18, size_bytes: bytes.byteLength, content_type: contentType });
+      const prepared = await prepareStorageObject(buildStoragePrepareBody({
+        ownerNpub: this.workspaceOwnerNpub,
+        contentType,
+        sizeBytes: initial.file.size || bytes.byteLength,
+        fileName: initial.name,
+      }));
+      this.patchFileUploadItem(id, { status: 'uploading', progress: 38, object_id: prepared.object_id || '' });
+      await uploadStorageObject(prepared, bytes, contentType);
+      this.patchFileUploadItem(id, { status: 'completing', progress: 76 });
+      await completeStorageObject(prepared.object_id, {
+        size_bytes: bytes.byteLength,
+        sha256_hex: await sha256HexForBytes(bytes),
+      });
+
+      const latest = (this.fileUploadItems || []).find((item) => item.id === id) || initial;
+      const scopeId = normalizeString(latest.scope_id) || this.defaultFileUploadScopeId;
+      const channel = this.resolveFileUploadChannel(scopeId);
+      if (!channel?.record_id) throw new Error('Select a scope with a channel before uploading this file.');
+      const displayName = normalizeString(latest.name) || defaultFileUploadName(initial.file);
+      const threadId = this.resolveFileUploadThreadId(channel.record_id);
+      this.patchFileUploadItem(id, { status: 'saving', progress: 88, scope_id: scopeId });
+      const acceptedFile = await createTowerPgFileFromLocal(this, {
+        title: displayName,
+        display_name: displayName,
+        storage_object_id: prepared.object_id,
+        content_storage_object_id: prepared.object_id,
+        content: `[${displayName}](storage://${prepared.object_id})`,
+        scope_id: scopeId,
+        pg_channel_id: channel.record_id,
+        pg_thread_id: threadId || null,
+      });
+      await upsertDocument(acceptedFile);
+      if (typeof this.patchDocumentLocal === 'function') this.patchDocumentLocal(acceptedFile);
+      this.patchFileUploadItem(id, {
+        status: 'done',
+        progress: 100,
+        name: displayName,
+        scope_id: scopeId,
+        object_id: prepared.object_id,
+      });
+      this.scheduleStorageImageHydration?.();
+      return acceptedFile;
+    } catch (error) {
+      const message = error?.message || 'File upload failed.';
+      this.patchFileUploadItem(id, { status: 'failed', progress: 100, error: message });
+      this.fileUploadError = message;
+      this.error = message;
+      return null;
+    }
+  },
+
   applyFileMessages(messages = []) {
     this.fileMessages = Array.isArray(messages) ? messages : [];
   },
