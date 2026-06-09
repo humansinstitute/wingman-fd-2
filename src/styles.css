@@ -1438,12 +1438,6 @@ button:disabled {
   background: #ffffff;
 }
 
-.files-pg-context-strip {
-  padding: 0.85rem 1.5rem 0;
-  border-bottom: 1px solid var(--border);
-  background: #ffffff;
-}
-
 .files-search-input,
 .files-filter-select {
   width: 100%;
@@ -4725,9 +4719,31 @@ button:disabled {
   min-width: 0;
 }
 
-.docs-pg-context-strip {
-  margin: -0.35rem 0 1rem;
-  padding-right: 0.9rem;
+.pg-work-context-bar {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin-bottom: 0.75rem;
+  background: #ffffff;
+}
+
+.pg-work-context-bar .pg-context-thread-strip {
+  padding: 0.65rem 0 0.15rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.files-work-context-bar {
+  margin-bottom: 0;
+  padding: 0 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.files-work-context-bar .chat-channel-header {
+  border-bottom: 0;
+}
+
+.files-work-context-bar .pg-context-thread-strip {
+  border-bottom: 0;
 }
 
 .pg-context-thread-strip {

@@ -26,6 +26,26 @@ describe('Chat channel rendering hooks', () => {
     expect(html).toContain('@click="$store.chat.openThread(msg.record_id)"');
   });
 
+  it('renders the PG work context bar first in tasks, docs, and files', () => {
+    const taskSectionIndex = html.indexOf('class="tasks-section"');
+    const taskContextIndex = html.indexOf('class="pg-work-context-bar"', taskSectionIndex);
+    const taskCreateIndex = html.indexOf('class="task-create-bar"', taskSectionIndex);
+    const docsViewIndex = html.indexOf('class="docs-view"');
+    const docsContextIndex = html.indexOf('class="pg-work-context-bar"', docsViewIndex);
+    const docsToolbarIndex = html.indexOf('class="docs-toolbar"', docsViewIndex);
+    const filesSectionIndex = html.indexOf('class="files-section"');
+    const filesContextIndex = html.indexOf('class="pg-work-context-bar files-work-context-bar"', filesSectionIndex);
+    const filesHeaderIndex = html.indexOf('class="files-header"', filesSectionIndex);
+
+    expect(taskContextIndex).toBeGreaterThan(taskSectionIndex);
+    expect(taskContextIndex).toBeLessThan(taskCreateIndex);
+    expect(docsContextIndex).toBeGreaterThan(docsViewIndex);
+    expect(docsContextIndex).toBeLessThan(docsToolbarIndex);
+    expect(filesContextIndex).toBeGreaterThan(filesSectionIndex);
+    expect(filesContextIndex).toBeLessThan(filesHeaderIndex);
+    expect(html.match(/class="pg-work-context-bar/g) || []).toHaveLength(3);
+  });
+
   it('adds Get it done actions to every chat message surface', () => {
     const matches = html.match(/Get it done/g) || [];
     expect(matches.length).toBeGreaterThanOrEqual(3);

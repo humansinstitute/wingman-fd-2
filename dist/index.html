@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-Cmc1jrlI.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-C2ZBpFce.css">
+  <script type="module" crossorigin src="/assets/index-D6r1ddr8.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-DHTjBLxR.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -1330,6 +1330,51 @@
             @keydown.escape.window="$store.chat.chatTaskModalOpen && $store.chat.closeChatTaskModal()"
           >
 
+          <div class="pg-work-context-bar" x-show="!$store.chat.showTaskDetail && $store.chat.showPgTaskBoardZoomControls" x-cloak>
+            <div class="chat-channel-header">
+              <div class="chat-channel-tab-scroll" role="tablist" aria-label="Workspace channels">
+                <template x-for="channel in $store.chat.pgContextChannels" :key="channel.record_id">
+                  <div
+                    class="chat-channel-tab-item"
+                    :class="{ active: $store.chat.pgContextSelectedChannelId === channel.record_id && !$store.chat.pgContextSelectedThreadId }"
+                  >
+                    <button
+                      type="button"
+                      class="chat-channel-tab"
+                      role="tab"
+                      :aria-selected="$store.chat.pgContextSelectedChannelId === channel.record_id && !$store.chat.pgContextSelectedThreadId"
+                      @click="$store.chat.selectPgChannelContext(channel.record_id)"
+                    >
+                      <span class="channel-hash">#</span>
+                      <span class="chat-channel-tab-label" x-text="$store.chat.getChannelLabel(channel)"></span>
+                    </button>
+                  </div>
+                </template>
+              </div>
+              <button type="button" class="chat-channel-tab-add" @click="$store.chat.openNewChannelModal()" title="New channel" aria-label="New channel">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path d="M12 5v14M5 12h14" stroke-linecap="round"></path>
+                </svg>
+              </button>
+            </div>
+            <div class="pg-context-thread-strip" x-show="$store.chat.pgContextSelectedChannelId && $store.chat.pgContextThreads.length > 0">
+              <template x-for="thread in $store.chat.pgContextThreads" :key="thread.id">
+                <button
+                  type="button"
+                  class="pg-thread-summary"
+                  :class="{ 'pg-thread-summary-active': $store.chat.pgContextSelectedThreadId === thread.id }"
+                  @click="$store.chat.selectPgThreadContext(thread.channelId, thread.id)"
+                >
+                  <span class="chat-thread-preview">
+                    <span class="chat-thread-preview-count" x-text="thread.replyCount + ' ' + (thread.replyCount === 1 ? 'reply' : 'replies')"></span>
+                    <span class="chat-thread-preview-link" x-text="thread.label"></span>
+                  </span>
+                  <span class="chat-thread-latest-preview" x-text="thread.latestPreview"></span>
+                </button>
+              </template>
+            </div>
+          </div>
+
           <!-- Task create bar -->
           <form class="task-create-bar" x-show="!$store.chat.showTaskDetail" @submit.prevent="$store.chat.addTask()">
             <input
@@ -1418,36 +1463,6 @@
                 </template>
               </div>
             </template>
-
-            <div class="task-board-zoom-controls" x-show="$store.chat.showPgTaskBoardZoomControls" x-cloak>
-              <template x-for="channel in $store.chat.pgContextChannels" :key="channel.record_id">
-                <button
-                  type="button"
-                  class="task-board-zoom-btn"
-                  :class="{ 'task-board-zoom-btn-active': $store.chat.pgContextSelectedChannelId === channel.record_id && !$store.chat.pgContextSelectedThreadId }"
-                  @click="$store.chat.selectPgChannelContext(channel.record_id)"
-                  x-text="$store.chat.getChannelLabel(channel)"
-                ></button>
-              </template>
-            </div>
-
-            <div class="pg-context-thread-strip" x-show="$store.chat.showPgTaskBoardZoomControls && $store.chat.pgContextSelectedChannelId && $store.chat.pgContextThreads.length > 0" x-cloak>
-              <template x-for="thread in $store.chat.pgContextThreads" :key="thread.id">
-                <button
-                  type="button"
-                  class="pg-thread-summary"
-                  :class="{ 'pg-thread-summary-active': $store.chat.pgContextSelectedThreadId === thread.id }"
-                  @click="$store.chat.selectPgThreadContext(thread.channelId, thread.id)"
-                >
-                  <span class="chat-thread-preview">
-                    <span class="chat-thread-preview-count" x-text="thread.replyCount + ' ' + (thread.replyCount === 1 ? 'reply' : 'replies')"></span>
-                    <span class="chat-thread-preview-link" x-text="thread.label"></span>
-                  </span>
-                  <span class="chat-thread-latest-preview" x-text="thread.latestPreview"></span>
-                </button>
-              </template>
-            </div>
-
             <button
               type="button"
               class="board-descendant-toggle"
@@ -2787,6 +2802,51 @@
             @keydown.escape.window="$store.chat.chatDocModalOpen && $store.chat.closeChatDocModal()"
           >
           <div class="docs-view">
+            <div class="pg-work-context-bar" x-show="!$store.chat.docsEditorOpen && $store.chat.showPgTaskBoardZoomControls" x-cloak>
+              <div class="chat-channel-header">
+                <div class="chat-channel-tab-scroll" role="tablist" aria-label="Workspace channels">
+                  <template x-for="channel in $store.chat.pgContextChannels" :key="channel.record_id">
+                    <div
+                      class="chat-channel-tab-item"
+                      :class="{ active: $store.chat.pgContextSelectedChannelId === channel.record_id && !$store.chat.pgContextSelectedThreadId }"
+                    >
+                      <button
+                        type="button"
+                        class="chat-channel-tab"
+                        role="tab"
+                        :aria-selected="$store.chat.pgContextSelectedChannelId === channel.record_id && !$store.chat.pgContextSelectedThreadId"
+                        @click="$store.chat.selectPgChannelContext(channel.record_id)"
+                      >
+                        <span class="channel-hash">#</span>
+                        <span class="chat-channel-tab-label" x-text="$store.chat.getChannelLabel(channel)"></span>
+                      </button>
+                    </div>
+                  </template>
+                </div>
+                <button type="button" class="chat-channel-tab-add" @click="$store.chat.openNewChannelModal()" title="New channel" aria-label="New channel">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path d="M12 5v14M5 12h14" stroke-linecap="round"></path>
+                  </svg>
+                </button>
+              </div>
+              <div class="pg-context-thread-strip" x-show="$store.chat.pgContextSelectedChannelId && $store.chat.pgContextThreads.length > 0">
+                <template x-for="thread in $store.chat.pgContextThreads" :key="thread.id">
+                  <button
+                    type="button"
+                    class="pg-thread-summary"
+                    :class="{ 'pg-thread-summary-active': $store.chat.pgContextSelectedThreadId === thread.id }"
+                    @click="$store.chat.selectPgThreadContext(thread.channelId, thread.id)"
+                  >
+                    <span class="chat-thread-preview">
+                      <span class="chat-thread-preview-count" x-text="thread.replyCount + ' ' + (thread.replyCount === 1 ? 'reply' : 'replies')"></span>
+                      <span class="chat-thread-preview-link" x-text="thread.label"></span>
+                    </span>
+                    <span class="chat-thread-latest-preview" x-text="thread.latestPreview"></span>
+                  </button>
+                </template>
+              </div>
+            </div>
+
             <div class="docs-toolbar" x-show="!$store.chat.docsEditorOpen">
               <input class="docs-search-input" type="text" :placeholder="$store.chat.isTowerPgMode ? 'Search docs' : 'Search docs and folders'" x-model="$store.chat.docFilter" />
               <button
@@ -2850,36 +2910,6 @@
 	                  >Check status</button>
                   <button type="button" class="doc-actions-delete" @click="$store.chat.deleteCurrentDirectory(); open = false">Delete folder</button>
                 </div>
-              </div>
-            </div>
-
-            <div class="pg-context-strip docs-pg-context-strip" x-show="!$store.chat.docsEditorOpen && $store.chat.showPgTaskBoardZoomControls" x-cloak>
-              <div class="task-board-zoom-controls">
-                <template x-for="channel in $store.chat.pgContextChannels" :key="channel.record_id">
-                  <button
-                    type="button"
-                    class="task-board-zoom-btn"
-                    :class="{ 'task-board-zoom-btn-active': $store.chat.pgContextSelectedChannelId === channel.record_id && !$store.chat.pgContextSelectedThreadId }"
-                    @click="$store.chat.selectPgChannelContext(channel.record_id)"
-                    x-text="$store.chat.getChannelLabel(channel)"
-                  ></button>
-                </template>
-              </div>
-              <div class="pg-context-thread-strip" x-show="$store.chat.pgContextSelectedChannelId && $store.chat.pgContextThreads.length > 0">
-                <template x-for="thread in $store.chat.pgContextThreads" :key="thread.id">
-                  <button
-                    type="button"
-                    class="pg-thread-summary"
-                    :class="{ 'pg-thread-summary-active': $store.chat.pgContextSelectedThreadId === thread.id }"
-                    @click="$store.chat.selectPgThreadContext(thread.channelId, thread.id)"
-                  >
-                    <span class="chat-thread-preview">
-                      <span class="chat-thread-preview-count" x-text="thread.replyCount + ' ' + (thread.replyCount === 1 ? 'reply' : 'replies')"></span>
-                      <span class="chat-thread-preview-link" x-text="thread.label"></span>
-                    </span>
-                    <span class="chat-thread-latest-preview" x-text="thread.latestPreview"></span>
-                  </button>
-                </template>
               </div>
             </div>
 
@@ -3918,6 +3948,51 @@
 
         <template x-if="$store.chat.navSection === 'files'">
           <section class="files-section" x-init="$store.chat.scheduleStorageImageHydration()" x-effect="$store.chat.filteredFileBrowserRows.length; $nextTick(() => $store.chat.scheduleStorageImageHydration())">
+            <div class="pg-work-context-bar files-work-context-bar" x-show="$store.chat.showPgTaskBoardZoomControls" x-cloak>
+              <div class="chat-channel-header">
+                <div class="chat-channel-tab-scroll" role="tablist" aria-label="Workspace channels">
+                  <template x-for="channel in $store.chat.pgContextChannels" :key="channel.record_id">
+                    <div
+                      class="chat-channel-tab-item"
+                      :class="{ active: $store.chat.pgContextSelectedChannelId === channel.record_id && !$store.chat.pgContextSelectedThreadId }"
+                    >
+                      <button
+                        type="button"
+                        class="chat-channel-tab"
+                        role="tab"
+                        :aria-selected="$store.chat.pgContextSelectedChannelId === channel.record_id && !$store.chat.pgContextSelectedThreadId"
+                        @click="$store.chat.selectPgChannelContext(channel.record_id)"
+                      >
+                        <span class="channel-hash">#</span>
+                        <span class="chat-channel-tab-label" x-text="$store.chat.getChannelLabel(channel)"></span>
+                      </button>
+                    </div>
+                  </template>
+                </div>
+                <button type="button" class="chat-channel-tab-add" @click="$store.chat.openNewChannelModal()" title="New channel" aria-label="New channel">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path d="M12 5v14M5 12h14" stroke-linecap="round"></path>
+                  </svg>
+                </button>
+              </div>
+              <div class="pg-context-thread-strip" x-show="$store.chat.pgContextSelectedChannelId && $store.chat.pgContextThreads.length > 0">
+                <template x-for="thread in $store.chat.pgContextThreads" :key="thread.id">
+                  <button
+                    type="button"
+                    class="pg-thread-summary"
+                    :class="{ 'pg-thread-summary-active': $store.chat.pgContextSelectedThreadId === thread.id }"
+                    @click="$store.chat.selectPgThreadContext(thread.channelId, thread.id)"
+                  >
+                    <span class="chat-thread-preview">
+                      <span class="chat-thread-preview-count" x-text="thread.replyCount + ' ' + (thread.replyCount === 1 ? 'reply' : 'replies')"></span>
+                      <span class="chat-thread-preview-link" x-text="thread.label"></span>
+                    </span>
+                    <span class="chat-thread-latest-preview" x-text="thread.latestPreview"></span>
+                  </button>
+                </template>
+              </div>
+            </div>
+
             <div class="files-header">
               <div>
                 <h2>Files</h2>
@@ -3951,36 +4026,6 @@
                   <option :value="option.id" x-text="option.label"></option>
                 </template>
               </select>
-            </div>
-
-            <div class="pg-context-strip files-pg-context-strip" x-show="$store.chat.showPgTaskBoardZoomControls" x-cloak>
-              <div class="task-board-zoom-controls">
-                <template x-for="channel in $store.chat.pgContextChannels" :key="channel.record_id">
-                  <button
-                    type="button"
-                    class="task-board-zoom-btn"
-                    :class="{ 'task-board-zoom-btn-active': $store.chat.pgContextSelectedChannelId === channel.record_id && !$store.chat.pgContextSelectedThreadId }"
-                    @click="$store.chat.selectPgChannelContext(channel.record_id)"
-                    x-text="$store.chat.getChannelLabel(channel)"
-                  ></button>
-                </template>
-              </div>
-              <div class="pg-context-thread-strip" x-show="$store.chat.pgContextSelectedChannelId && $store.chat.pgContextThreads.length > 0">
-                <template x-for="thread in $store.chat.pgContextThreads" :key="thread.id">
-                  <button
-                    type="button"
-                    class="pg-thread-summary"
-                    :class="{ 'pg-thread-summary-active': $store.chat.pgContextSelectedThreadId === thread.id }"
-                    @click="$store.chat.selectPgThreadContext(thread.channelId, thread.id)"
-                  >
-                    <span class="chat-thread-preview">
-                      <span class="chat-thread-preview-count" x-text="thread.replyCount + ' ' + (thread.replyCount === 1 ? 'reply' : 'replies')"></span>
-                      <span class="chat-thread-preview-link" x-text="thread.label"></span>
-                    </span>
-                    <span class="chat-thread-latest-preview" x-text="thread.latestPreview"></span>
-                  </button>
-                </template>
-              </div>
             </div>
 
             <div class="files-list" x-show="$store.chat.filteredFileBrowserRows.length > 0">
