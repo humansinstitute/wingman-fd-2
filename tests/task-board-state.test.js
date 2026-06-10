@@ -652,6 +652,30 @@ describe('computeBoardScopedTasks', () => {
       },
     ]);
   });
+
+  it('reconciles selected channel when selecting a PG scope board outside chat', () => {
+    const store = Object.create(taskBoardStateMixin);
+    Object.assign(store, {
+      currentWorkspace: { pgBackendMode: true },
+      navSection: 'tasks',
+      selectedBoardId: 'scope-marketing',
+      selectedChannelId: 'channel-website',
+      channels: [
+        { record_id: 'channel-website', title: 'Website', scope_id: 'scope-marketing', record_state: 'active' },
+        { record_id: 'channel-standup', title: 'Stand up', scope_id: 'scope-ops', record_state: 'active' },
+      ],
+      showTaskDetail: false,
+      persistSelectedBoardId() {},
+      clearSelectedTasks() {},
+      normalizeTaskFilterTags() {},
+      syncRoute() {},
+    });
+
+    store.selectBoard('scope-ops');
+
+    expect(store.selectedBoardId).toBe('scope-ops');
+    expect(store.selectedChannelId).toBe('channel-standup');
+  });
 });
 
 // --- computeFilteredTasks ---

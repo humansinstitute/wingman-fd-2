@@ -1649,6 +1649,30 @@ export const taskBoardStateMixin = {
     this.boardPickerQuery = '';
   },
 
+  syncSelectedChannelForPgBoard(boardId = this.selectedBoardId) {
+    if (!isPgWorkspaceStore(this)) return;
+    const board = parsePgTaskBoardId(boardId);
+    const channels = Array.isArray(this.channels) ? this.channels : [];
+    const activeChannel = (channelId) => channels.find((channel) => channel?.record_id === channelId && channel.record_state !== 'deleted') || null;
+    if (board.type === 'channel' || board.type === 'thread') {
+      if (activeChannel(board.channelId)) this.selectedChannelId = board.channelId;
+      return;
+    }
+    if (board.type !== 'scope'
+      || !board.scopeId
+      || board.scopeId === ALL_TASK_BOARD_ID
+      || board.scopeId === RECENT_TASK_BOARD_ID
+      || board.scopeId === UNSCOPED_TASK_BOARD_ID) {
+      return;
+    }
+    const selected = activeChannel(this.selectedChannelId);
+    if (selected && getPgChannelScopeId(selected) === board.scopeId) return;
+    const scopedChannel = channels.find((channel) => channel?.record_id
+      && channel.record_state !== 'deleted'
+      && getPgChannelScopeId(channel) === board.scopeId) || null;
+    if (scopedChannel?.record_id) this.selectedChannelId = scopedChannel.record_id;
+  },
+
   selectBoard(boardId) {
     this.selectedBoardId = boardId;
     this.persistSelectedBoardId(boardId);
@@ -1656,6 +1680,7 @@ export const taskBoardStateMixin = {
     this.clearSelectedTasks();
     this.normalizeTaskFilterTags();
     this.closeBoardPicker();
+    this.syncSelectedChannelForPgBoard(boardId);
     if (this.navSection === 'chat') {
       this.ensureSelectedChatChannelInScope?.({ syncRoute: false });
     }

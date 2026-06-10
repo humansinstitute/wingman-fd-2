@@ -131,10 +131,11 @@ describe('PG write adapter', () => {
     }), { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
   });
 
-  it('rejects PG task creation when the selected channel mismatches the task scope', async () => {
+  it('rejects PG task creation when an explicit channel mismatches the task scope', async () => {
     await expect(createTowerPgTaskFromLocal(store({ selectedChannelId: 'channel-1' }), {
       title: 'Task',
       scope_id: 'scope-2',
+      pg_channel_id: 'channel-1',
     })).rejects.toThrow('Selected PG channel does not belong to the requested scope');
   });
 
