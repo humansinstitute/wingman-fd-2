@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-BZlU5diY.js"></script>
+  <script type="module" crossorigin src="/assets/index-CjrWJM6D.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-oYEIghrk.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
@@ -6027,12 +6027,12 @@
               <button
                 type="button"
                 class="preset-connect-btn"
-                @click="$store.chat.connectToPreset($store.chat.presetConnectHost.url)"
-                :disabled="$store.chat.presetConnecting"
+                @click="$store.chat.presetConnectHost?.url && $store.chat.connectToPreset($store.chat.presetConnectHost?.url)"
+                :disabled="$store.chat.presetConnecting || !$store.chat.presetConnectHost?.url"
               >
                 <span
                   x-show="!$store.chat.presetConnecting"
-                  x-text="$store.chat.presetConnectHost.towerName || $store.chat.presetConnectHost.label || $store.chat.presetConnectHost.url"
+                  x-text="$store.chat.presetConnectHost?.towerName || $store.chat.presetConnectHost?.label || $store.chat.presetConnectHost?.url || ''"
                 ></span>
                 <span x-show="$store.chat.presetConnecting">Connecting...</span>
               </button>

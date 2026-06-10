@@ -6025,12 +6025,12 @@
               <button
                 type="button"
                 class="preset-connect-btn"
-                @click="$store.chat.connectToPreset($store.chat.presetConnectHost.url)"
-                :disabled="$store.chat.presetConnecting"
+                @click="$store.chat.presetConnectHost?.url && $store.chat.connectToPreset($store.chat.presetConnectHost?.url)"
+                :disabled="$store.chat.presetConnecting || !$store.chat.presetConnectHost?.url"
               >
                 <span
                   x-show="!$store.chat.presetConnecting"
-                  x-text="$store.chat.presetConnectHost.towerName || $store.chat.presetConnectHost.label || $store.chat.presetConnectHost.url"
+                  x-text="$store.chat.presetConnectHost?.towerName || $store.chat.presetConnectHost?.label || $store.chat.presetConnectHost?.url || ''"
                 ></span>
                 <span x-show="$store.chat.presetConnecting">Connecting...</span>
               </button>

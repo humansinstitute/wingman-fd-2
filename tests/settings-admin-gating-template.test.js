@@ -36,4 +36,15 @@ describe('settings admin gating template', () => {
     expect(html).toContain('<div class="scope-create-bar" x-show="$store.chat.canAdminWorkspace">');
     expect(html).toContain('<div class="scope-card-actions" x-show="$store.chat.canAdminWorkspace && !$store.chat.isTowerPgMode">');
   });
+
+  it('keeps preset connect panel expressions null-safe', () => {
+    const html = readFileSync(INDEX_PATH, 'utf8');
+    const panelStart = html.indexOf('class="preset-connect-panel"');
+    const panelEnd = html.indexOf('<form class="auth-form"', panelStart);
+    const panel = html.slice(panelStart, panelEnd);
+
+    expect(panel).toContain('$store.chat.presetConnectHost?.url');
+    expect(panel).toContain('$store.chat.presetConnectHost?.towerName');
+    expect(panel).not.toMatch(/presetConnectHost\.(url|towerName|label)/);
+  });
 });
