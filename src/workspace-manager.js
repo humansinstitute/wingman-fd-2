@@ -130,7 +130,7 @@ export const workspaceManagerMixin = {
       return `Switching to ${pendingWorkspace?.name || this.getShortNpub(fallbackLabel) || 'workspace'}...`;
     }
     if (this.currentWorkspace?.description) return this.currentWorkspace.description;
-    if (this.activeWorkspaceOwnerNpub) return this.activeWorkspaceOwnerNpub;
+    if (this.activeWorkspaceOwnerNpub) return this.getShortNpub(this.activeWorkspaceOwnerNpub);
     return 'Choose or create a workspace';
   },
 
@@ -336,7 +336,7 @@ export const workspaceManagerMixin = {
 
   getWorkspaceMeta(workspace) {
     const entry = this.getWorkspaceDisplayEntry(workspace);
-    return String(entry?.description || '').trim() || entry?.workspaceOwnerNpub || '';
+    return String(entry?.description || '').trim() || this.getShortNpub(entry?.workspaceOwnerNpub || '');
   },
 
   getWorkspaceStorageBackendUrl(workspace) {

@@ -99,6 +99,18 @@ describe('profile resolution', () => {
     expect(fn('npub1unknown')).toBe('');
   });
 
+  it('getSenderSecondaryLabel prefers nip05 and otherwise compacts npubs', () => {
+    const { store } = bindMethod('getSenderSecondaryLabel', {
+      addressBookPeople: [{
+        npub: 'npub1aliceabcdefghijklmnop',
+        label: 'Alice',
+        nip05: 'alice@example.com',
+      }],
+    });
+    expect(store.getSenderSecondaryLabel('npub1aliceabcdefghijklmnop')).toBe('alice@example.com');
+    expect(store.getSenderSecondaryLabel('npub1bobabcdefghijklmnop')).toBe('npub1b...mnop');
+  });
+
   it('getSenderAvatar returns profile picture', () => {
     const { fn } = bindMethod('getSenderAvatar', {
       chatProfiles: { npub1a: { picture: 'https://img.example.com/a.png' } },
@@ -207,6 +219,16 @@ describe('findPeopleSuggestions', () => {
     const results = fn('alice');
     expect(results).toHaveLength(1);
     expect(results[0].npub).toBe('npub1alice');
+  });
+
+  it('uses compact cached identity text in people suggestion subtitles', () => {
+    const { fn } = bindMethod('findPeopleSuggestions', {
+      addressBookPeople: [
+        { npub: 'npub1aliceabcdefghijklmnop', label: 'Alice' },
+      ],
+    });
+    const [result] = fn('alice');
+    expect(result.subtitle).toBe('npub1a...mnop');
   });
 
   it('excludes specified npubs', () => {
@@ -381,6 +403,7 @@ describe('computed getters', () => {
 
     expect(store.getFlowApproverLabel('npub1alice')).toBe('Alice');
     expect(store.getFlowApproverSubtitle('npub1alice')).toBe('npub1alice');
+    expect(store.getFlowApproverSubtitle('npub1aliceabcdefghijklmnop')).toBe('npub1a...mnop');
     expect(store.getFlowApproverLabel('group:g1')).toBe('Approvers');
     expect(store.getFlowApproverSubtitle('group:g1')).toBe('1 members');
   });

@@ -413,7 +413,7 @@
               <template x-for="ws in $store.chat.connectWorkspaces" :key="ws.workspace_owner_npub || ws.workspaceOwnerNpub">
                 <button type="button" class="connect-workspace-row" @click="$store.chat.connectSelectWorkspace(ws)">
                   <span class="connect-workspace-name" x-text="ws.name || 'Untitled workspace'"></span>
-                  <span class="connect-workspace-meta" x-text="ws.description || (ws.workspace_owner_npub || '')"></span>
+                  <span class="connect-workspace-meta" x-text="ws.description || $store.chat.getShortNpub(ws.workspace_owner_npub || ws.workspaceOwnerNpub || '')"></span>
                 </button>
               </template>
             </div>
@@ -1990,7 +1990,7 @@
                         </button>
                         <div class="docs-share-suggestion-copy">
                           <span class="new-channel-profile-name" x-text="$store.chat.getSenderName($store.chat.editingTask.assigned_to_npub)"></span>
-                          <small x-text="$store.chat.editingTask.assigned_to_npub"></small>
+                          <small x-text="$store.chat.getSenderSecondaryLabel($store.chat.editingTask.assigned_to_npub)"></small>
                         </div>
                         <button type="button" class="task-inline-clear-btn" x-show="$store.chat.isTaskDetailEditing()" @click="$store.chat.clearEditingTaskAssignee()">Clear</button>
                       </div>
@@ -4430,7 +4430,7 @@
                           </button>
                           <div class="docs-share-suggestion-copy">
                             <span class="new-channel-profile-name" x-text="$store.chat.chatGetItDoneAssigneeLabel"></span>
-                            <small x-text="$store.chat.chatGetItDoneAssigneeNpub"></small>
+                            <small x-text="$store.chat.getSenderSecondaryLabel($store.chat.chatGetItDoneAssigneeNpub)"></small>
                           </div>
                           <button type="button" class="task-inline-clear-btn" @click="$store.chat.clearChatGetItDoneAssignee()">Clear</button>
                         </div>
@@ -4803,7 +4803,7 @@
                 <!-- Agent review -->
                 <div class="approval-detail-section" x-show="approval?.agent_review_note">
                   <h3>Agent Review</h3>
-                  <p><strong x-text="approval?.agent_review_by ? 'Reviewed by: ' + approval.agent_review_by.slice(0, 16) + '...' : ''"></strong></p>
+                  <p><strong x-text="approval?.agent_review_by ? 'Reviewed by: ' + $store.chat.getSenderName(approval.agent_review_by) : ''"></strong></p>
                   <p x-text="approval?.agent_review_note"></p>
                 </div>
 
@@ -4841,7 +4841,7 @@
                 <div class="approval-detail-section" x-show="approval?.decision_note">
                   <h3>Decision Note</h3>
                   <p x-text="approval?.decision_note"></p>
-                  <p x-show="approval?.approved_by" x-text="'Decided by: ' + (approval?.approved_by || '').slice(0, 16) + '...'"></p>
+                  <p x-show="approval?.approved_by" x-text="'Decided by: ' + $store.chat.getSenderName(approval?.approved_by)"></p>
                   <p x-show="approval?.approved_at" x-text="'At: ' + (approval?.approved_at || '')"></p>
                 </div>
 
@@ -5846,7 +5846,7 @@
             </div>
             <p class="settings-field-help">
               Current workspace:
-              <span x-text="$store.chat.currentWorkspace?.name || $store.chat.workspaceOwnerNpub || 'None selected'"></span>
+              <span x-text="$store.chat.currentWorkspaceName"></span>
             </p>
             <p class="settings-field-help">
               SuperBased host:
@@ -6014,7 +6014,7 @@
                     @click="$store.chat.selectWorkspace(workspace.workspaceKey || workspace.workspaceOwnerNpub)"
                   >
                     <span class="workspace-selector-name" x-text="workspace.name"></span>
-                    <span class="workspace-selector-meta" x-text="workspace.description || workspace.workspaceOwnerNpub"></span>
+                    <span class="workspace-selector-meta" x-text="$store.chat.getWorkspaceMeta(workspace)"></span>
                   </button>
                 </template>
               </div>
@@ -6084,7 +6084,7 @@
             />
             <p class="settings-field-help">
               Current workspace:
-              <span x-text="$store.chat.currentWorkspace?.name || $store.chat.workspaceOwnerNpub || 'None selected'"></span>
+              <span x-text="$store.chat.currentWorkspaceName"></span>
             </p>
             <p class="error-text" x-show="$store.chat.wingmanHarnessError" x-text="$store.chat.wingmanHarnessError"></p>
             <div class="settings-actions">
@@ -6112,7 +6112,7 @@
                 </button>
                 <div class="docs-share-suggestion-copy">
                   <span class="new-channel-profile-name" x-text="$store.chat.defaultAgentLabel"></span>
-                  <small x-text="$store.chat.defaultAgentNpub"></small>
+                  <small x-text="$store.chat.getSenderSecondaryLabel($store.chat.defaultAgentNpub)"></small>
                 </div>
                 <button type="button" class="task-inline-clear-btn" @click="$store.chat.clearDefaultAgent()">Clear</button>
               </div>
@@ -7654,7 +7654,7 @@
                   </button>
                   <div class="group-member-info">
                     <span x-text="$store.chat.getSenderName(member.npub)"></span>
-                    <small x-text="(member.role || 'member') + ' · ' + member.npub"></small>
+                    <small x-text="(member.role || 'member') + ' · ' + $store.chat.getSenderSecondaryLabel(member.npub)"></small>
                   </div>
                 </div>
               </template>
@@ -7837,7 +7837,7 @@
                     </template>
                     <div class="docs-share-suggestion-copy">
                       <span x-text="suggestion.label"></span>
-                      <small x-text="suggestion.npub"></small>
+                      <small x-text="suggestion.subtitle || $store.chat.getSenderSecondaryLabel(suggestion.npub)"></small>
                     </div>
                   </button>
                 </li>
@@ -7895,7 +7895,7 @@
                     </template>
                     <div class="docs-share-suggestion-copy">
                       <span x-text="suggestion.label"></span>
-                      <small x-text="suggestion.npub"></small>
+                      <small x-text="suggestion.subtitle || $store.chat.getSenderSecondaryLabel(suggestion.npub)"></small>
                     </div>
                   </button>
                 </li>
@@ -8226,15 +8226,15 @@
                   <label class="new-channel-label">Person</label>
                   <template x-if="$store.chat.newChannelDmNpub.startsWith('npub1') && $store.chat.newChannelDmNpub.length >= 63">
                     <div class="new-channel-resolved-profile task-assignee-selected" x-init="$store.chat.resolveChatProfile($store.chat.newChannelDmNpub)">
-                      <template x-if="$store.chat.chatProfiles[$store.chat.newChannelDmNpub]?.picture">
-                        <img class="new-channel-avatar" :src="$store.chat.chatProfiles[$store.chat.newChannelDmNpub]?.picture" />
+                      <template x-if="$store.chat.getSenderAvatar($store.chat.newChannelDmNpub)">
+                        <img class="new-channel-avatar" :src="$store.chat.getSenderAvatar($store.chat.newChannelDmNpub)" />
                       </template>
-                      <template x-if="!$store.chat.chatProfiles[$store.chat.newChannelDmNpub]?.picture">
-                        <div class="new-channel-avatar new-channel-avatar-fallback" x-text="$store.chat.getInitials($store.chat.chatProfiles[$store.chat.newChannelDmNpub]?.name || $store.chat.newChannelDmNpub.slice(0,8))"></div>
+                      <template x-if="!$store.chat.getSenderAvatar($store.chat.newChannelDmNpub)">
+                        <div class="new-channel-avatar new-channel-avatar-fallback" x-text="$store.chat.getInitials($store.chat.getSenderName($store.chat.newChannelDmNpub))"></div>
                       </template>
                       <div class="docs-share-suggestion-copy">
-                        <span class="new-channel-profile-name" x-text="$store.chat.chatProfiles[$store.chat.newChannelDmNpub]?.name || $store.chat.newChannelDmNpub.slice(0,16) + '...'"></span>
-                        <small x-text="$store.chat.newChannelDmNpub"></small>
+                        <span class="new-channel-profile-name" x-text="$store.chat.getSenderName($store.chat.newChannelDmNpub)"></span>
+                        <small x-text="$store.chat.getSenderSecondaryLabel($store.chat.newChannelDmNpub)"></small>
                       </div>
                       <button type="button" class="task-inline-clear-btn" @click="$store.chat.newChannelDmNpub = ''">Clear</button>
                     </div>

@@ -1657,6 +1657,7 @@ export function initApp() {
         }
         this.startWorkspaceLiveQueries?.();
       }
+      await this.refreshAddressBook?.();
       this.selectedBoardId = this.readStoredTaskBoardId();
       this.collapsedSections = this.readStoredCollapsedSections();
       this.validateSelectedBoardId();

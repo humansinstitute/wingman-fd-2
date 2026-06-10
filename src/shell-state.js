@@ -542,6 +542,7 @@ export function createShellState(options = {}) {
           this.runAccessPruneOnLogin().catch(() => {});
         }
       }
+      await this.refreshAddressBook?.();
       this.selectedBoardId = this.readStoredTaskBoardId();
       this.collapsedSections = this.readStoredCollapsedSections();
       this.validateSelectedBoardId();

@@ -197,6 +197,20 @@ export const peopleProfilesManagerMixin = {
     return `${value.slice(0, 6)}...${value.slice(-4)}`;
   },
 
+  getCompactNpub(rawNpub) {
+    const npub = this.resolveDisplayNpub(rawNpub);
+    return npub ? this.getProfileCardShortNpub(npub) : '';
+  },
+
+  getSenderSecondaryLabel(rawNpub) {
+    if (!rawNpub) return '';
+    const npub = this.resolveDisplayNpub(rawNpub);
+    const cached = this.getCachedPerson(npub);
+    return this.chatProfiles[npub]?.nip05
+      || cached?.nip05
+      || this.getCompactNpub(npub);
+  },
+
   get identityCardProfile() {
     return this.getSenderProfile(this.identityCard?.npub);
   },
@@ -325,7 +339,7 @@ export const peopleProfilesManagerMixin = {
       .map((person) => ({
         npub: person.npub,
         label: this.getSenderName(person.npub),
-        subtitle: person.npub,
+        subtitle: this.getSenderSecondaryLabel(person.npub),
         avatarUrl: this.getSenderAvatar(person.npub),
       }));
   },
@@ -348,6 +362,7 @@ export const peopleProfilesManagerMixin = {
       .map((person) => ({
         npub: person.npub,
         label: this.getSenderName(person.npub),
+        subtitle: this.getSenderSecondaryLabel(person.npub),
         avatarUrl: this.getSenderAvatar(person.npub),
       }));
   },
@@ -375,7 +390,7 @@ export const peopleProfilesManagerMixin = {
         key: `person:${person.npub}`,
         token: person.npub,
         label: this.getSenderName(person.npub),
-        subtitle: person.npub,
+        subtitle: this.getSenderSecondaryLabel(person.npub),
         avatarUrl: this.getSenderAvatar(person.npub),
       }));
 
@@ -427,7 +442,7 @@ export const peopleProfilesManagerMixin = {
   getFlowApproverSubtitle(token) {
     const value = String(token || '').trim();
     if (!value) return '';
-    if (value.startsWith('npub1')) return value;
+    if (value.startsWith('npub1')) return this.getSenderSecondaryLabel(value);
     if (value.startsWith('group:')) {
       const groupRef = value.slice(6);
       const group = this.groups.find((candidate) =>
@@ -529,7 +544,7 @@ export const peopleProfilesManagerMixin = {
         key: `person:${person.npub}`,
         npub: person.npub,
         label: this.getSenderName(person.npub),
-        subtitle: person.npub,
+        subtitle: this.getSenderSecondaryLabel(person.npub),
         avatarUrl: this.getSenderAvatar(person.npub),
       }));
 
