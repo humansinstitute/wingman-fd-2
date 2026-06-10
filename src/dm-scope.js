@@ -76,8 +76,12 @@ export function isDmChannel(channel) {
   if (!channel) return false;
   const channelType = String(channel.channel_type || channel.type || '').trim().toLowerCase();
   const pgKind = String(channel.pg_kind || channel.kind || '').trim().toLowerCase();
-  const title = String(channel.title || '').trim().toLowerCase();
+  const scopeId = String(channel.scope_id || channel.scope_l1_id || '').trim();
+  const description = String(channel.description || '').trim().toLowerCase();
+  const title = String(channel.title || channel.name || '').trim().toLowerCase();
   if (channelType === DM_SCOPE_KIND || pgKind === DM_SCOPE_KIND) return true;
+  if (isDmScope(scopeId)) return true;
+  if (description.startsWith(DM_CHANNEL_DESCRIPTION_PREFIX)) return true;
   if (title.startsWith('dm:')) return true;
   return normalizeDmParticipants(channel.participant_npubs).length === 2
     && title.includes('dm');
