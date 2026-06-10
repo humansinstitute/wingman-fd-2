@@ -4079,34 +4079,6 @@ button:disabled {
   color: #fff;
 }
 
-.chat-channel-avatar {
-  width: 1.25rem;
-  height: 1.25rem;
-  flex: 0 0 1.25rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  border-radius: 999px;
-  background: #e5e7eb;
-  color: #374151;
-  font-size: 0.68rem;
-  font-weight: 700;
-  line-height: 1;
-}
-
-.chat-channel-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.chat-channel-tab-item.active .chat-channel-avatar {
-  background: rgba(255, 255, 255, 0.18);
-  color: #fff;
-}
-
 .chat-channel-tab .unread-dot {
   margin-left: 0;
 }

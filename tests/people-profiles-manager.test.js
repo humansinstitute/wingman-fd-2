@@ -214,19 +214,34 @@ describe('profile resolution', () => {
     expect(store.chatProfiles.npub1new.loading).toBe(true);
   });
 
-  it('resolveChatProfile does not retry an already attempted miss', () => {
+  it('resolveChatProfile does not retry a recent miss during the cooldown', () => {
     const { fn, store } = bindMethod('resolveChatProfile', {
       chatProfiles: {
         npub1miss: {
           name: null,
           picture: null,
           loading: false,
-          profileLookupAttempted: true,
+          profileLookupAttemptedAt: Date.now(),
         },
       },
     });
     fn('npub1miss');
     expect(store.chatProfiles.npub1miss.loading).toBe(false);
+  });
+
+  it('resolveChatProfile retries an older miss', () => {
+    const { fn, store } = bindMethod('resolveChatProfile', {
+      chatProfiles: {
+        npub1miss: {
+          name: null,
+          picture: null,
+          loading: false,
+          profileLookupAttemptedAt: Date.now() - 120_000,
+        },
+      },
+    });
+    fn('npub1miss');
+    expect(store.chatProfiles.npub1miss.loading).toBe(true);
   });
 });
 

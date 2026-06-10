@@ -3,10 +3,11 @@ import { cacheProfile, getCachedProfile } from './db.js';
 
 const PROFILE_KIND = 0;
 const RELAYS = [
-  'wss://relay.damus.io',
   'wss://relay.primal.net',
-  'wss://proxy.nostr-relay.app/8c5723f2601334234e1922d2e842d6bbf209283b07120b3f1d38660915f13793',
-  'ws://127.0.0.1:4869',
+  'wss://relay.damus.io',
+  'wss://nos.lol',
+  'wss://relay.nostr.band',
+  'wss://purplepag.es',
 ];
 const FETCH_TIMEOUT_MS = 2500;
 const PER_RELAY_TIMEOUT_MS = 1200;

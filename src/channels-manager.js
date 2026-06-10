@@ -407,7 +407,10 @@ export function aggregatePgChannelGrants(grants = []) {
       grants: [],
       created_at: grant?.created_at || null,
       updated_at: grant?.updated_at || grant?.created_at || null,
+      principal_npub: String(grant?.principal_npub || grant?.actor_npub || grant?.npub || '').trim(),
     };
+    const grantPrincipalNpub = String(grant?.principal_npub || grant?.actor_npub || grant?.npub || '').trim();
+    if (grantPrincipalNpub) existing.principal_npub = grantPrincipalNpub;
     const grantPermissions = Array.isArray(grant?.permissions)
       ? grant.permissions
       : [grant?.permission];
@@ -738,14 +741,19 @@ export const channelsManagerMixin = {
     if (principalType === 'group') {
       return this.getPgGroupLabel(principalId);
     }
-    const member = (this.pgWorkspaceMembers || []).find((entry) => entry.actor_id === principalId || entry.id === principalId);
-    return member ? this.getPgWorkspaceMemberLabel(member) : principalId;
+    const npub = this.getPgChannelGrantPrincipalNpub(grant);
+    if (npub) return this.getSenderName(npub);
+    return principalId;
   },
 
   getPgChannelGrantPrincipalNpub(grant) {
     const principalType = String(grant?.principal_type || '').trim();
     const principalId = String(grant?.principal_id || '').trim();
-    if (principalType !== 'actor' || !principalId) return '';
+    if (principalType !== 'actor') return '';
+    const directNpub = String(grant?.principal_npub || grant?.actor_npub || grant?.npub || '').trim();
+    if (directNpub) return directNpub;
+    if (principalId.startsWith('npub1')) return principalId;
+    if (!principalId) return '';
     const member = (this.pgWorkspaceMembers || []).find((entry) => entry.actor_id === principalId || entry.id === principalId);
     return String(member?.npub || '').trim();
   },
@@ -787,8 +795,9 @@ export const channelsManagerMixin = {
     );
     for (const grant of this.channelGrantRows || []) {
       const principalId = String(grant?.principal_id || '').trim();
-      if (grant?.principal_type !== 'actor' || !principalId) continue;
-      const npub = String(byActorId.get(principalId)?.npub || '').trim();
+      if (grant?.principal_type !== 'actor') continue;
+      const directNpub = String(grant?.principal_npub || grant?.actor_npub || grant?.npub || '').trim();
+      const npub = directNpub || (principalId.startsWith('npub1') ? principalId : String(byActorId.get(principalId)?.npub || '').trim());
       if (npub) participantNpubs.add(npub);
     }
     if (participantNpubs.size <= (channel.participant_npubs || []).length) return;

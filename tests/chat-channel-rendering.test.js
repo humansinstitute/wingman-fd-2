@@ -61,16 +61,15 @@ describe('Chat channel rendering hooks', () => {
     }
   });
 
-  it('renders DM profile avatars in every channel tab bar', () => {
-    const avatarHooks = html.match(/class="chat-channel-avatar"/g) || [];
-    expect(avatarHooks).toHaveLength(5);
-    expect(html).toContain('getChannelDmPeerNpub(channel)');
-    expect(html).toContain('getChannelDmPeerNpub(ch)');
+  it('keeps channel tabs text-only while labels resolve through getChannelLabel', () => {
+    expect(html).not.toContain('class="chat-channel-avatar"');
+    expect(html).not.toContain('getChannelDmPeerNpub');
+    expect(html.match(/getChannelLabel/g)?.length || 0).toBeGreaterThanOrEqual(5);
   });
 
-  it('renders profile avatars in channel access rows', () => {
+  it('resolves profile identities in channel access rows', () => {
     expect(html).toContain('getPgChannelGrantPrincipalNpub(grant)');
-    expect(html).toContain('class="channel-grant-avatar"');
+    expect(html).toContain('getPgChannelGrantPrincipalLabel(grant)');
   });
 
   it('adds Get it done actions to every chat message surface', () => {

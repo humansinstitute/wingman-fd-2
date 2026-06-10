@@ -981,6 +981,7 @@ describe('channels-manager pure utilities', () => {
           id: 'grant-1',
           principal_type: 'actor',
           principal_id: 'actor-1',
+          principal_npub: 'npub1actor',
           permissions: ['channel.read'],
           created_at: '2026-06-01T00:00:00.000Z',
         },
@@ -1003,6 +1004,7 @@ describe('channels-manager pure utilities', () => {
       expect(rows.find((row) => row.key === 'actor:actor-1')).toEqual(expect.objectContaining({
         principal_type: 'actor',
         principal_id: 'actor-1',
+        principal_npub: 'npub1actor',
         capacity: 'viewer',
         permissions: ['audio_note.read', 'channel.read', 'doc.read', 'file.read', 'task.read'],
       }));
@@ -1038,6 +1040,30 @@ describe('channels-manager pure utilities', () => {
           effective_member_npubs: ['npub1nested'],
         }],
       })).toBe(true);
+    });
+
+    it('labels actor grants through resolved npubs and profile names', () => {
+      const getSenderName = vi.fn((npub) => ({ npub1direct: 'Direct Person', npub1member: 'Member Person' }[npub] || npub));
+      const store = createPgGrantStore({
+        getSenderName,
+        pgWorkspaceMembers: [{ actor_id: 'actor-member', id: 'actor-member', npub: 'npub1member' }],
+      });
+
+      expect(store.getPgChannelGrantPrincipalLabel({
+        principal_type: 'actor',
+        principal_id: 'actor-direct',
+        principal_npub: 'npub1direct',
+      })).toBe('Direct Person');
+      expect(store.getPgChannelGrantPrincipalLabel({
+        principal_type: 'actor',
+        principal_id: 'npub1direct',
+      })).toBe('Direct Person');
+      expect(store.getPgChannelGrantPrincipalLabel({
+        principal_type: 'actor',
+        principal_id: 'actor-member',
+      })).toBe('Member Person');
+      expect(getSenderName).toHaveBeenCalledWith('npub1direct');
+      expect(getSenderName).toHaveBeenCalledWith('npub1member');
     });
 
     it('does not treat viewer, contributor, or agent capacity as grant management', () => {

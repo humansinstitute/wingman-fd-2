@@ -19,6 +19,7 @@ const PROFILE_CARD_WIDTH = 320;
 const PROFILE_CARD_HEIGHT = 300;
 const PROFILE_CARD_MARGIN = 12;
 const FULL_NPUB_PATTERN = /^npub1[0-9a-z]{50,}$/i;
+const PROFILE_LOOKUP_RETRY_MS = 60 * 1000;
 
 function getAddressBookPeopleMap(store) {
   const people = Array.isArray(store?.addressBookPeople) ? store.addressBookPeople : EMPTY_ARRAY;
@@ -89,7 +90,8 @@ export const peopleProfilesManagerMixin = {
     const current = this.chatProfiles[npub] || null;
     if (!npub || current?.loading) return;
     if (current?.name || current?.picture) return;
-    if (current?.profileLookupAttempted) return;
+    const lastLookupAt = Number(current?.profileLookupAttemptedAt || 0);
+    if (lastLookupAt && Date.now() - lastLookupAt < PROFILE_LOOKUP_RETRY_MS) return;
     const cached = this.getCachedPerson(npub);
 
     // Cap chatProfiles at 200 entries — evict oldest when full
@@ -111,32 +113,38 @@ export const peopleProfilesManagerMixin = {
         nip05: cached?.nip05 || null,
         about: cached?.bio || null,
         loading: true,
-        profileLookupAttempted: true,
+        profileLookupAttemptedAt: Date.now(),
       },
     };
 
     fetchProfileByNpub(npub)
       .then((profile) => {
+        const profileName = profile?.display_name || profile?.name || null;
+        const profilePicture = profile?.picture || null;
+        const profileNip05 = profile?.nip05 || null;
+        const profileBio = profile?.about || profile?.bio || null;
         this.chatProfiles = {
           ...this.chatProfiles,
           [npub]: {
-            name: profile?.display_name || profile?.name || null,
-            picture: profile?.picture || null,
-            nip05: profile?.nip05 || null,
-            about: profile?.about || profile?.bio || null,
+            name: profileName,
+            picture: profilePicture,
+            nip05: profileNip05,
+            about: profileBio,
             loading: false,
-            profileLookupAttempted: true,
+            profileLookupAttemptedAt: Date.now(),
           },
         };
-        upsertAddressBookPerson({
-          npub,
-          label: profile?.display_name || profile?.name || null,
-          avatar_url: profile?.picture || null,
-          bio: profile?.about || profile?.bio || null,
-          nip05: profile?.nip05 || null,
-          source: 'profile',
-          last_used_at: new Date().toISOString(),
-        }).catch(() => {});
+        if (profileName || profilePicture || profileNip05 || profileBio) {
+          upsertAddressBookPerson({
+            npub,
+            label: profileName,
+            avatar_url: profilePicture,
+            bio: profileBio,
+            nip05: profileNip05,
+            source: 'profile',
+            last_used_at: new Date().toISOString(),
+          }).catch(() => {});
+        }
       })
       .catch(() => {
         this.chatProfiles = {
@@ -147,7 +155,7 @@ export const peopleProfilesManagerMixin = {
             nip05: cached?.nip05 || null,
             about: cached?.bio || null,
             loading: false,
-            profileLookupAttempted: true,
+            profileLookupAttemptedAt: Date.now(),
           },
         };
       });
