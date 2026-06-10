@@ -77,6 +77,7 @@ import {
 } from './task-board-state.js';
 import { renderMarkdownToHtml } from './markdown.js';
 import { resolveChannelLabel, resolveChannelParticipants } from './channel-labels.js';
+import { isDmChannel } from './dm-scope.js';
 import { buildFlightDeckDocumentTitle } from './page-title.js';
 import {
   blockDisabledFlightDeckSurface,
@@ -3119,6 +3120,17 @@ export function initApp() {
       }
       const resolved = resolveChannelParticipants(channel, () => [...derived]);
       return resolved.length > 0 ? resolved : [...derived];
+    },
+
+    getChannelDmPeerNpub(channel) {
+      if (!channel || !isDmChannel(channel)) return '';
+      const viewerNpub = String(this.session?.npub || '').trim();
+      const participants = this.getChannelParticipants(channel)
+        .map((npub) => String(npub || '').trim())
+        .filter(Boolean);
+      const peerNpub = participants.find((npub) => npub !== viewerNpub) || participants[0] || '';
+      if (peerNpub) this.resolveChatProfile?.(peerNpub);
+      return peerNpub;
     },
 
     // rememberPeople, resolveChatProfile — in peopleProfilesManagerMixin

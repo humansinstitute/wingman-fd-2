@@ -843,7 +843,19 @@
                       :aria-selected="$store.chat.pgContextSelectedChannelId === channel.record_id && !$store.chat.pgContextSelectedThreadId"
                       @click="$store.chat.selectPgChannelContext(channel.record_id)"
                     >
-                      <span class="channel-hash">#</span>
+                      <template x-if="$store.chat.getChannelDmPeerNpub(channel)">
+                        <span class="chat-channel-avatar" :title="$store.chat.getSenderName($store.chat.getChannelDmPeerNpub(channel))">
+                          <template x-if="$store.chat.getSenderAvatar($store.chat.getChannelDmPeerNpub(channel))">
+                            <img :src="$store.chat.getSenderAvatar($store.chat.getChannelDmPeerNpub(channel))" alt="" />
+                          </template>
+                          <template x-if="!$store.chat.getSenderAvatar($store.chat.getChannelDmPeerNpub(channel))">
+                            <span x-text="$store.chat.getInitials($store.chat.getSenderName($store.chat.getChannelDmPeerNpub(channel)))"></span>
+                          </template>
+                        </span>
+                      </template>
+                      <template x-if="!$store.chat.getChannelDmPeerNpub(channel)">
+                        <span class="channel-hash">#</span>
+                      </template>
                       <span class="chat-channel-tab-label" x-text="$store.chat.getChannelLabel(channel)"></span>
                     </button>
                     <div class="chat-channel-menu chat-channel-tab-menu" x-show="$store.chat.pgContextSelectedChannelId === channel.record_id" x-cloak>
@@ -1403,7 +1415,19 @@
                       :aria-selected="$store.chat.pgContextSelectedChannelId === channel.record_id && !$store.chat.pgContextSelectedThreadId"
                       @click="$store.chat.selectPgChannelContext(channel.record_id)"
                     >
-                      <span class="channel-hash">#</span>
+                      <template x-if="$store.chat.getChannelDmPeerNpub(channel)">
+                        <span class="chat-channel-avatar" :title="$store.chat.getSenderName($store.chat.getChannelDmPeerNpub(channel))">
+                          <template x-if="$store.chat.getSenderAvatar($store.chat.getChannelDmPeerNpub(channel))">
+                            <img :src="$store.chat.getSenderAvatar($store.chat.getChannelDmPeerNpub(channel))" alt="" />
+                          </template>
+                          <template x-if="!$store.chat.getSenderAvatar($store.chat.getChannelDmPeerNpub(channel))">
+                            <span x-text="$store.chat.getInitials($store.chat.getSenderName($store.chat.getChannelDmPeerNpub(channel)))"></span>
+                          </template>
+                        </span>
+                      </template>
+                      <template x-if="!$store.chat.getChannelDmPeerNpub(channel)">
+                        <span class="channel-hash">#</span>
+                      </template>
                       <span class="chat-channel-tab-label" x-text="$store.chat.getChannelLabel(channel)"></span>
                     </button>
                     <div class="chat-channel-menu chat-channel-tab-menu" x-show="$store.chat.pgContextSelectedChannelId === channel.record_id" x-cloak>
@@ -2451,7 +2475,19 @@
                       :aria-selected="$store.chat.selectedChannelId === ch.record_id"
                       @click="$store.chat.selectChannel(ch.record_id)"
                     >
-                      <span class="channel-hash">#</span>
+                      <template x-if="$store.chat.getChannelDmPeerNpub(ch)">
+                        <span class="chat-channel-avatar" :title="$store.chat.getSenderName($store.chat.getChannelDmPeerNpub(ch))">
+                          <template x-if="$store.chat.getSenderAvatar($store.chat.getChannelDmPeerNpub(ch))">
+                            <img :src="$store.chat.getSenderAvatar($store.chat.getChannelDmPeerNpub(ch))" alt="" />
+                          </template>
+                          <template x-if="!$store.chat.getSenderAvatar($store.chat.getChannelDmPeerNpub(ch))">
+                            <span x-text="$store.chat.getInitials($store.chat.getSenderName($store.chat.getChannelDmPeerNpub(ch)))"></span>
+                          </template>
+                        </span>
+                      </template>
+                      <template x-if="!$store.chat.getChannelDmPeerNpub(ch)">
+                        <span class="channel-hash">#</span>
+                      </template>
                       <span class="chat-channel-tab-label" x-text="$store.chat.getChannelLabel(ch)"></span>
                       <span class="unread-dot unread-dot-channel" x-show="$store.chat.isChannelUnread(ch.record_id)" x-cloak></span>
                     </button>
@@ -2890,7 +2926,19 @@
                         :aria-selected="$store.chat.pgContextSelectedChannelId === channel.record_id && !$store.chat.pgContextSelectedThreadId"
                         @click="$store.chat.selectPgChannelContext(channel.record_id)"
                       >
-                        <span class="channel-hash">#</span>
+                        <template x-if="$store.chat.getChannelDmPeerNpub(channel)">
+                          <span class="chat-channel-avatar" :title="$store.chat.getSenderName($store.chat.getChannelDmPeerNpub(channel))">
+                            <template x-if="$store.chat.getSenderAvatar($store.chat.getChannelDmPeerNpub(channel))">
+                              <img :src="$store.chat.getSenderAvatar($store.chat.getChannelDmPeerNpub(channel))" alt="" />
+                            </template>
+                            <template x-if="!$store.chat.getSenderAvatar($store.chat.getChannelDmPeerNpub(channel))">
+                              <span x-text="$store.chat.getInitials($store.chat.getSenderName($store.chat.getChannelDmPeerNpub(channel)))"></span>
+                            </template>
+                          </span>
+                        </template>
+                        <template x-if="!$store.chat.getChannelDmPeerNpub(channel)">
+                          <span class="channel-hash">#</span>
+                        </template>
                         <span class="chat-channel-tab-label" x-text="$store.chat.getChannelLabel(channel)"></span>
                       </button>
                       <div class="chat-channel-menu chat-channel-tab-menu" x-show="$store.chat.pgContextSelectedChannelId === channel.record_id" x-cloak>
@@ -4051,7 +4099,19 @@
                         :aria-selected="$store.chat.pgContextSelectedChannelId === channel.record_id && !$store.chat.pgContextSelectedThreadId"
                         @click="$store.chat.selectPgChannelContext(channel.record_id)"
                       >
-                        <span class="channel-hash">#</span>
+                        <template x-if="$store.chat.getChannelDmPeerNpub(channel)">
+                          <span class="chat-channel-avatar" :title="$store.chat.getSenderName($store.chat.getChannelDmPeerNpub(channel))">
+                            <template x-if="$store.chat.getSenderAvatar($store.chat.getChannelDmPeerNpub(channel))">
+                              <img :src="$store.chat.getSenderAvatar($store.chat.getChannelDmPeerNpub(channel))" alt="" />
+                            </template>
+                            <template x-if="!$store.chat.getSenderAvatar($store.chat.getChannelDmPeerNpub(channel))">
+                              <span x-text="$store.chat.getInitials($store.chat.getSenderName($store.chat.getChannelDmPeerNpub(channel)))"></span>
+                            </template>
+                          </span>
+                        </template>
+                        <template x-if="!$store.chat.getChannelDmPeerNpub(channel)">
+                          <span class="channel-hash">#</span>
+                        </template>
                         <span class="chat-channel-tab-label" x-text="$store.chat.getChannelLabel(channel)"></span>
                       </button>
                       <div class="chat-channel-menu chat-channel-tab-menu" x-show="$store.chat.pgContextSelectedChannelId === channel.record_id" x-cloak>
@@ -8030,6 +8090,16 @@
                 <template x-for="grant in $store.chat.channelGrantRows" :key="grant.key">
                   <div class="channel-grant-row">
                     <div class="channel-grant-principal">
+                      <template x-if="$store.chat.getPgChannelGrantPrincipalNpub(grant)">
+                        <button type="button" class="identity-avatar-button" @click.stop="$store.chat.openIdentityCard($event, $store.chat.getPgChannelGrantPrincipalNpub(grant))" :title="$store.chat.getSenderName($store.chat.getPgChannelGrantPrincipalNpub(grant))">
+                          <template x-if="$store.chat.getSenderAvatar($store.chat.getPgChannelGrantPrincipalNpub(grant))">
+                            <img class="channel-grant-avatar" :src="$store.chat.getSenderAvatar($store.chat.getPgChannelGrantPrincipalNpub(grant))" alt="" />
+                          </template>
+                          <template x-if="!$store.chat.getSenderAvatar($store.chat.getPgChannelGrantPrincipalNpub(grant))">
+                            <span class="channel-grant-avatar channel-grant-avatar-fallback" x-text="$store.chat.getInitials($store.chat.getPgChannelGrantPrincipalLabel(grant))"></span>
+                          </template>
+                        </button>
+                      </template>
                       <span x-text="$store.chat.getPgChannelGrantPrincipalLabel(grant)"></span>
                       <small x-text="grant.principal_type === 'group' ? 'Group' : 'User'"></small>
                     </div>

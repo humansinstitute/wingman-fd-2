@@ -61,6 +61,18 @@ describe('Chat channel rendering hooks', () => {
     }
   });
 
+  it('renders DM profile avatars in every channel tab bar', () => {
+    const avatarHooks = html.match(/class="chat-channel-avatar"/g) || [];
+    expect(avatarHooks).toHaveLength(5);
+    expect(html).toContain('getChannelDmPeerNpub(channel)');
+    expect(html).toContain('getChannelDmPeerNpub(ch)');
+  });
+
+  it('renders profile avatars in channel access rows', () => {
+    expect(html).toContain('getPgChannelGrantPrincipalNpub(grant)');
+    expect(html).toContain('class="channel-grant-avatar"');
+  });
+
   it('adds Get it done actions to every chat message surface', () => {
     const matches = html.match(/Get it done/g) || [];
     expect(matches.length).toBeGreaterThanOrEqual(3);

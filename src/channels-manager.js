@@ -715,6 +715,7 @@ export const channelsManagerMixin = {
       if (!workspaceId || !baseUrl) throw new Error('Flight Deck PG workspace is not connected');
       const result = await getTowerPgChannelGrants(workspaceId, channelId, { baseUrl, appNpub });
       this.channelGrants = Array.isArray(result?.grants) ? result.grants : [];
+      await this.materializeSelectedDmParticipantsFromChannelGrants();
       return this.channelGrants;
     } catch (error) {
       this.channelGrantsError = error?.message || 'Failed to load channel grants';
@@ -741,6 +742,14 @@ export const channelsManagerMixin = {
     return member ? this.getPgWorkspaceMemberLabel(member) : principalId;
   },
 
+  getPgChannelGrantPrincipalNpub(grant) {
+    const principalType = String(grant?.principal_type || '').trim();
+    const principalId = String(grant?.principal_id || '').trim();
+    if (principalType !== 'actor' || !principalId) return '';
+    const member = (this.pgWorkspaceMembers || []).find((entry) => entry.actor_id === principalId || entry.id === principalId);
+    return String(member?.npub || '').trim();
+  },
+
   getPgChannelGrantCapacityLabel(capacity) {
     const value = String(capacity || '').trim();
     return this.pgChannelGrantCapacityOptions.find((option) => option.value === value)?.label || 'Custom';
@@ -759,6 +768,42 @@ export const channelsManagerMixin = {
       hydrateTowerPgDocumentsAndFiles(this),
       hydrateTowerPgAudioNotes(this),
     ]);
+  },
+
+  async materializeSelectedDmParticipantsFromChannelGrants() {
+    const channelId = String(this.selectedChannelId || '').trim();
+    const channel = this.channels?.find((candidate) => candidate?.record_id === channelId) || null;
+    if (!channel || !isDmChannel(channel)) return;
+    if (!Array.isArray(this.pgWorkspaceMembers) || this.pgWorkspaceMembers.length === 0) {
+      await this.refreshTowerPgWorkspaceMembers({ force: true, limit: 200 }).catch(() => []);
+    }
+    const byActorId = new Map((this.pgWorkspaceMembers || [])
+      .filter((member) => member?.actor_id || member?.id)
+      .map((member) => [String(member.actor_id || member.id), member]));
+    const participantNpubs = new Set(
+      (Array.isArray(channel.participant_npubs) ? channel.participant_npubs : [])
+        .map((npub) => String(npub || '').trim())
+        .filter(Boolean)
+    );
+    for (const grant of this.channelGrantRows || []) {
+      const principalId = String(grant?.principal_id || '').trim();
+      if (grant?.principal_type !== 'actor' || !principalId) continue;
+      const npub = String(byActorId.get(principalId)?.npub || '').trim();
+      if (npub) participantNpubs.add(npub);
+    }
+    if (participantNpubs.size <= (channel.participant_npubs || []).length) return;
+    const nextParticipants = [...participantNpubs];
+    const nextChannel = {
+      ...channel,
+      channel_type: channel.channel_type || 'dm',
+      participant_npubs: nextParticipants,
+      description: channel.description || buildDmChannelDescription(nextParticipants),
+    };
+    await upsertChannel(nextChannel);
+    this.channels = (this.channels || []).map((candidate) =>
+      candidate?.record_id === channelId ? nextChannel : candidate
+    );
+    await this.rememberPeople?.(nextParticipants, 'channel-grants');
   },
 
   async createChannelGrant() {
@@ -1339,8 +1384,7 @@ export const channelsManagerMixin = {
         return;
       }
       const dmDescription = buildDmChannelDescription([memberNpub, targetNpub]);
-      const profileName = this.chatProfiles[targetNpub]?.name || targetNpub.slice(0, 12) + '…';
-      const name = `DM: ${profileName}`;
+      const name = `DM: ${targetNpub}`;
       if (isTowerPgBackendMode()) {
         const { workspaceId, workspaceOwnerNpub, baseUrl, appNpub } = resolveTowerPgWorkspaceContext(this);
         let scopeId = this.dmScopeId;
