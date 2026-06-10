@@ -12,6 +12,7 @@ vi.mock('../src/api.js', async () => {
     ...actual,
     addTowerPgWorkspaceGroupMember: vi.fn(),
     createTowerPgChannelGrant: vi.fn(),
+    createTowerPgScopeChannel: vi.fn(),
     createTowerPgWorkspaceGroup: vi.fn(),
     createTowerPgWorkspaceMember: vi.fn(),
     getTowerPgChannelGrants: vi.fn(),
@@ -34,6 +35,7 @@ vi.mock('../src/pg-read-hydrator.js', async () => {
 import {
   addTowerPgWorkspaceGroupMember,
   createTowerPgChannelGrant,
+  createTowerPgScopeChannel,
   createTowerPgWorkspaceGroup,
   createTowerPgWorkspaceMember,
   getTowerPgChannelGrants,
@@ -59,6 +61,7 @@ import {
   canManagePgChannelGrantsFromRows,
   channelsManagerMixin,
   capacityForPgChannelPermissions,
+  findExistingNamedChannel,
   permissionsForPgChannelCapacity,
 } from '../src/channels-manager.js';
 import { DM_SCOPE_ID, buildDmChannelDescription } from '../src/dm-scope.js';
@@ -71,6 +74,7 @@ const channelsManagerSource = fs.readFileSync(
 beforeEach(() => {
   vi.clearAllMocks();
   createTowerPgChannelGrant.mockResolvedValue({ grant: { id: 'created-grant' } });
+  createTowerPgScopeChannel.mockResolvedValue({ channel: { id: 'channel-new', name: 'New', scope_id: 'scope-a', kind: 'channel' } });
   createTowerPgWorkspaceGroup.mockResolvedValue({ group: { id: 'group-new', group_id: 'group-new', name: 'New group' } });
   createTowerPgWorkspaceMember.mockResolvedValue({ actor: { actor_id: 'actor-new', npub: 'npub1recipient' } });
   addTowerPgWorkspaceGroupMember.mockResolvedValue({ membership: { id: 'membership-new' } });
@@ -221,6 +225,76 @@ describe('channels-manager pure utilities', () => {
 
     expect(store.selectChannel).toHaveBeenCalledWith('ch-a', { syncRoute: false });
     expect(store.selectedChannelId).toBe('ch-a');
+  });
+
+  it('finds an existing named channel by title and scope', () => {
+    const channel = findExistingNamedChannel([
+      { record_id: 'ch-1', title: 'Ops', scope_id: 'scope-a' },
+      { record_id: 'ch-2', title: 'Ops', scope_id: 'scope-b' },
+      { record_id: 'ch-3', title: 'Deleted', scope_id: 'scope-a', record_state: 'deleted' },
+    ], ' ops ', 'scope-a');
+
+    expect(channel?.record_id).toBe('ch-1');
+  });
+
+  it('selects an existing PG channel instead of creating a duplicate by name', async () => {
+    const store = applyChannelMixin({
+      channels: [{ record_id: 'ch-ops', title: 'Ops', scope_id: 'scope-a', record_state: 'active' }],
+      selectedBoardId: 'scope-a',
+      selectedBoardScope: { record_id: 'scope-a', title: 'Scope A', level: 'l1' },
+      scopesMap: new Map([['scope-a', { record_id: 'scope-a', title: 'Scope A', level: 'l1' }]]),
+      scopes: [{ record_id: 'scope-a', title: 'Scope A', level: 'l1', record_state: 'active' }],
+      currentWorkspace: { workspaceId: 'workspace-1', appNpub: 'flightdeck-app' },
+      backendUrl: 'https://tower.example',
+      workspaceOwnerNpub: 'npub1workspace',
+      newChannelName: 'Ops',
+      newChannelGroupId: 'group-1',
+      groups: [{ group_id: 'group-1', group_npub: 'group-1', name: 'Ops' }],
+      resolveGroupId: (groupId) => groupId,
+      selectChannel: vi.fn(),
+      closeNewChannelModal: vi.fn(),
+    });
+
+    await store.createNamedChannel();
+
+    expect(createTowerPgScopeChannel).not.toHaveBeenCalled();
+    expect(store.selectChannel).toHaveBeenCalledWith('ch-ops', { syncRoute: false });
+    expect(store.closeNewChannelModal).toHaveBeenCalled();
+  });
+
+  it('refreshes and selects an existing PG channel when Tower reports a duplicate', async () => {
+    createTowerPgScopeChannel.mockRejectedValueOnce(new Error(
+      'Tower PG API 409 POST https://tower.example/channels: {"error":"Channel name already exists in this scope","code":"duplicate_channel","status":409}',
+    ));
+    const store = applyChannelMixin({
+      channels: [],
+      selectedBoardId: 'scope-a',
+      selectedBoardScope: { record_id: 'scope-a', title: 'Scope A', level: 'l1' },
+      scopesMap: new Map([['scope-a', { record_id: 'scope-a', title: 'Scope A', level: 'l1' }]]),
+      scopes: [{ record_id: 'scope-a', title: 'Scope A', level: 'l1', record_state: 'active' }],
+      currentWorkspace: { workspaceId: 'workspace-1', appNpub: 'flightdeck-app' },
+      backendUrl: 'https://tower.example',
+      workspaceOwnerNpub: 'npub1workspace',
+      newChannelName: 'Ops',
+      newChannelGroupId: 'group-1',
+      groups: [{ group_id: 'group-1', group_npub: 'group-1', name: 'Ops' }],
+      resolveGroupId: (groupId) => groupId,
+      error: null,
+      refreshChannels: vi.fn(async function refreshChannels() {
+        this.channels = [{ record_id: 'ch-ops', title: 'Ops', scope_id: 'scope-a', record_state: 'active' }];
+        return this.channels;
+      }),
+      selectChannel: vi.fn(),
+      closeNewChannelModal: vi.fn(),
+    });
+
+    await store.createNamedChannel();
+
+    expect(hydrateTowerPgChannels).toHaveBeenCalledWith(store);
+    expect(store.refreshChannels).toHaveBeenCalled();
+    expect(store.selectChannel).toHaveBeenCalledWith('ch-ops', { syncRoute: false });
+    expect(store.closeNewChannelModal).toHaveBeenCalled();
+    expect(store.error).toBeNull();
   });
 
   it('opens the new channel modal in DM mode only when the DM scope is selected', () => {

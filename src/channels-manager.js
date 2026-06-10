@@ -130,6 +130,18 @@ export function filterChannelsByScope(channels, selectedBoardId, selectedBoardSc
   );
 }
 
+export function findExistingNamedChannel(channels = [], title = '', scopeId = '') {
+  const targetTitle = String(title || '').trim().toLowerCase();
+  const targetScopeId = String(scopeId || '').trim();
+  if (!targetTitle || !targetScopeId) return null;
+  return (Array.isArray(channels) ? channels : [])
+    .find((channel) =>
+      channel?.record_state !== 'deleted'
+      && String(channel.title || channel.name || '').trim().toLowerCase() === targetTitle
+      && String(channel.scope_id || channel.scope_l1_id || '').trim() === targetScopeId,
+    ) || null;
+}
+
 function groupSignature(group) {
   return [
     String(group?.group_id || ''),
@@ -1462,8 +1474,14 @@ export const channelsManagerMixin = {
       if (isTowerPgBackendMode()) {
         const { workspaceId, workspaceOwnerNpub, baseUrl, appNpub } = resolveTowerPgWorkspaceContext(this);
         const boardScopeId = this.scopesMap?.has?.(this.selectedBoardId) ? this.selectedBoardId : '';
-        const scopeId = this.selectedChannel?.scope_id || this.selectedBoardScope?.record_id || boardScopeId || this.scopes?.[0]?.record_id;
+        const scopeId = this.selectedBoardScope?.record_id || boardScopeId || this.selectedChannel?.scope_id || this.scopes?.[0]?.record_id;
         if (!workspaceId || !baseUrl || !scopeId) throw new Error('Select a PG scope before creating a channel.');
+        const existing = findExistingNamedChannel(this.channels, title, scopeId);
+        if (existing?.record_id) {
+          await this.selectChannel(existing.record_id, { syncRoute: false });
+          this.closeNewChannelModal();
+          return;
+        }
         const result = await createTowerPgScopeChannel(workspaceId, scopeId, {
           name: title,
           kind: 'channel',
@@ -1522,6 +1540,24 @@ export const channelsManagerMixin = {
       await this.selectChannel(channelId, { syncRoute: false });
       this.closeNewChannelModal();
     } catch (e) {
+      if (isTowerPgBackendMode() && towerPgErrorCode(e) === 'duplicate_channel') {
+        try {
+          await hydrateTowerPgChannels(this);
+          if (typeof this.refreshChannels === 'function') await this.refreshChannels();
+          const boardScopeId = this.scopesMap?.has?.(this.selectedBoardId) ? this.selectedBoardId : '';
+          const scopeId = this.selectedBoardScope?.record_id || boardScopeId || this.selectedChannel?.scope_id || this.scopes?.[0]?.record_id;
+          const existing = findExistingNamedChannel(this.channels, title, scopeId);
+          if (existing?.record_id) {
+            await this.selectChannel(existing.record_id, { syncRoute: false });
+            this.closeNewChannelModal();
+            return;
+          }
+        } catch {
+          // Preserve the original duplicate-channel error below.
+        }
+        this.error = 'A channel with that name already exists in this scope.';
+        return;
+      }
       this.error = e.message;
     }
   },
