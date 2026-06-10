@@ -28,6 +28,12 @@ function trimText(value) {
   return String(value ?? '').trim();
 }
 
+function normalizeTextArray(value) {
+  return [...new Set((Array.isArray(value) ? value : [])
+    .map((entry) => trimText(entry))
+    .filter(Boolean))];
+}
+
 function isoTimestamp(value) {
   return trimText(value) || new Date().toISOString();
 }
@@ -119,8 +125,8 @@ export function mapPgChannelToLocal(channel, { workspaceOwnerNpub } = {}) {
     title: trimText(channel?.name || channel?.title) || 'Untitled channel',
     description: trimText(channel?.description),
     channel_type: trimText(channel?.kind),
-    group_ids: [],
-    participant_npubs: [],
+    group_ids: normalizeTextArray(channel?.group_ids || channel?.groupIds),
+    participant_npubs: normalizeTextArray(channel?.participant_npubs || channel?.participantNpubs),
     scope_id: scopeId || null,
     scope_l1_id: scopeId || null,
     scope_l2_id: null,

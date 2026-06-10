@@ -18,6 +18,7 @@ const REMEMBER_PEOPLE_TOUCH_MS = 15 * 60 * 1000;
 const PROFILE_CARD_WIDTH = 320;
 const PROFILE_CARD_HEIGHT = 300;
 const PROFILE_CARD_MARGIN = 12;
+const FULL_NPUB_PATTERN = /^npub1[0-9a-z]{50,}$/i;
 
 function getAddressBookPeopleMap(store) {
   const people = Array.isArray(store?.addressBookPeople) ? store.addressBookPeople : EMPTY_ARRAY;
@@ -27,6 +28,11 @@ function getAddressBookPeopleMap(store) {
   for (const person of people) cached.set(person.npub, person);
   addressBookPeopleMapCache.set(people, cached);
   return cached;
+}
+
+function isFullNpubCandidate(value = '') {
+  const text = String(value || '').trim();
+  return FULL_NPUB_PATTERN.test(text) && !text.includes('...');
 }
 
 // ---------------------------------------------------------------------------
@@ -80,8 +86,10 @@ export const peopleProfilesManagerMixin = {
   resolveChatProfile(rawNpub) {
     // Resolve ws_key_npub → real user npub for profile lookup
     const npub = this.resolveDisplayNpub(rawNpub);
-    if (!npub || this.chatProfiles[npub]?.loading) return;
-    if (this.chatProfiles[npub]?.name || this.chatProfiles[npub]?.picture) return;
+    const current = this.chatProfiles[npub] || null;
+    if (!npub || current?.loading) return;
+    if (current?.name || current?.picture) return;
+    if (current?.profileLookupAttempted) return;
     const cached = this.getCachedPerson(npub);
 
     // Cap chatProfiles at 200 entries — evict oldest when full
@@ -103,6 +111,7 @@ export const peopleProfilesManagerMixin = {
         nip05: cached?.nip05 || null,
         about: cached?.bio || null,
         loading: true,
+        profileLookupAttempted: true,
       },
     };
 
@@ -116,6 +125,7 @@ export const peopleProfilesManagerMixin = {
             nip05: profile?.nip05 || null,
             about: profile?.about || profile?.bio || null,
             loading: false,
+            profileLookupAttempted: true,
           },
         };
         upsertAddressBookPerson({
@@ -137,6 +147,7 @@ export const peopleProfilesManagerMixin = {
             nip05: cached?.nip05 || null,
             about: cached?.bio || null,
             loading: false,
+            profileLookupAttempted: true,
           },
         };
       });
@@ -151,7 +162,10 @@ export const peopleProfilesManagerMixin = {
     if (!rawNpub) return 'Unknown';
     const npub = this.resolveDisplayNpub(rawNpub);
     const cached = this.getCachedPerson(npub);
-    return this.chatProfiles[npub]?.name || cached?.label || this.getShortNpub(npub);
+    const profileName = this.chatProfiles[npub]?.name;
+    if (profileName || cached?.label) return profileName || cached.label;
+    if (isFullNpubCandidate(npub)) this.resolveChatProfile(npub);
+    return this.getShortNpub(npub);
   },
 
   getSenderIdentity(rawNpub) {

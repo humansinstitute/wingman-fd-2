@@ -76,7 +76,7 @@ import {
   WEEKDAY_OPTIONS,
 } from './task-board-state.js';
 import { renderMarkdownToHtml } from './markdown.js';
-import { resolveChannelLabel } from './channel-labels.js';
+import { resolveChannelLabel, resolveChannelParticipants } from './channel-labels.js';
 import { buildFlightDeckDocumentTitle } from './page-title.js';
 import {
   blockDisabledFlightDeckSurface,
@@ -3117,7 +3117,8 @@ export function initApp() {
           derived.add(member);
         }
       }
-      return [...derived];
+      const resolved = resolveChannelParticipants(channel, () => [...derived]);
+      return resolved.length > 0 ? resolved : [...derived];
     },
 
     // rememberPeople, resolveChatProfile — in peopleProfilesManagerMixin

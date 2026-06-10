@@ -74,6 +74,21 @@ describe('profile resolution', () => {
     expect(fn('npub1abcdefgh')).toBe('npub1abc');
   });
 
+  it('getSenderName queues profile resolution for full npub fallbacks', () => {
+    const resolveChatProfile = vi.fn();
+    const { fn } = bindMethod('getSenderName', { resolveChatProfile });
+    const npub = 'npub1alice0000000000000000000000000000000000000000000000000000000';
+    expect(fn(npub)).toBe('npub1ali');
+    expect(resolveChatProfile).toHaveBeenCalledWith(npub);
+  });
+
+  it('getSenderName does not queue profile resolution for compact npub fallbacks', () => {
+    const resolveChatProfile = vi.fn();
+    const { fn } = bindMethod('getSenderName', { resolveChatProfile });
+    expect(fn('npub1alic...000000')).toBe('npub1ali');
+    expect(resolveChatProfile).not.toHaveBeenCalled();
+  });
+
   it('getSenderName returns Unknown for empty', () => {
     const { fn } = bindMethod('getSenderName');
     expect(fn('')).toBe('Unknown');
@@ -197,6 +212,21 @@ describe('profile resolution', () => {
     const { fn, store } = bindMethod('resolveChatProfile');
     fn('npub1new');
     expect(store.chatProfiles.npub1new.loading).toBe(true);
+  });
+
+  it('resolveChatProfile does not retry an already attempted miss', () => {
+    const { fn, store } = bindMethod('resolveChatProfile', {
+      chatProfiles: {
+        npub1miss: {
+          name: null,
+          picture: null,
+          loading: false,
+          profileLookupAttempted: true,
+        },
+      },
+    });
+    fn('npub1miss');
+    expect(store.chatProfiles.npub1miss.loading).toBe(false);
   });
 });
 

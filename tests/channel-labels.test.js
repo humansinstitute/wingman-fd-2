@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveChannelLabel } from '../src/channel-labels.js';
+import { resolveChannelLabel, resolveChannelParticipants } from '../src/channel-labels.js';
 
 describe('channel labels', () => {
   it('prefers the stored title for named channels', () => {
@@ -109,11 +109,32 @@ describe('channel labels', () => {
     expect(label).toBe('Dave');
   });
 
+  it('resolves bare raw npub DM titles through the profile cache fallback', () => {
+    const otherNpub = 'npub1frank0000000000000000000000000000000000000000000000000000000';
+    const channel = {
+      record_id: 'channel-7',
+      title: otherNpub,
+      scope_id: '__dm__',
+      participant_npubs: [],
+    };
+    const label = resolveChannelLabel(
+      channel,
+      {
+        sessionNpub: 'npub_me',
+        getParticipants: (candidate) => resolveChannelParticipants(candidate),
+        getSenderName: (npub) => ({ [otherNpub]: 'Frank' }[npub] || npub),
+      },
+    );
+
+    expect(label).toBe('Frank');
+    expect(resolveChannelParticipants(channel)).toEqual([otherNpub]);
+  });
+
   it('compacts raw npub DM labels when no profile name is cached', () => {
     const otherNpub = 'npub1erin00000000000000000000000000000000000000000000000000000000';
     const label = resolveChannelLabel(
       {
-        record_id: 'channel-7',
+        record_id: 'channel-8',
         title: `DM: ${otherNpub}`,
         channel_type: 'dm',
         participant_npubs: ['npub_me', otherNpub],

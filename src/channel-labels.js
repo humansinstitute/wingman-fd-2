@@ -26,11 +26,12 @@ function participantsFromDescription(description = '') {
 }
 
 function participantsFromTitle(title = '') {
-  const match = String(title || '').trim().match(/^DM:\s*(npub1[0-9a-z]+)/i);
-  return match ? normalizeDmParticipants([match[1]]) : [];
+  const matches = String(title || '').trim().match(/npub1[0-9a-z]{20,}/ig);
+  return matches ? normalizeDmParticipants(matches) : [];
 }
 
-function resolveChannelParticipants(channel, getParticipants, title) {
+export function resolveChannelParticipants(channel, getParticipants, title = null) {
+  const channelTitle = title ?? String(channel?.title || channel?.name || '').trim();
   const explicitParticipants = typeof getParticipants === 'function'
     ? getParticipants(channel)
     : channel?.participant_npubs;
@@ -40,7 +41,7 @@ function resolveChannelParticipants(channel, getParticipants, title) {
   const descriptionParticipants = participantsFromDescription(channel?.description);
   if (descriptionParticipants.length) return descriptionParticipants;
 
-  return participantsFromTitle(title);
+  return participantsFromTitle(channelTitle);
 }
 
 export function resolveChannelLabel(channel, { sessionNpub, getParticipants, getSenderName } = {}) {
