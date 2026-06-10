@@ -118,6 +118,7 @@ export function mapPgChannelToLocal(channel, { workspaceOwnerNpub } = {}) {
     owner_npub: ownerNpub,
     title: trimText(channel?.name || channel?.title) || 'Untitled channel',
     description: trimText(channel?.description),
+    channel_type: trimText(channel?.kind),
     group_ids: [],
     participant_npubs: [],
     scope_id: scopeId || null,

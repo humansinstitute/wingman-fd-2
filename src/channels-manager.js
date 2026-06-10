@@ -26,6 +26,7 @@ import {
   addTowerPgWorkspaceChildGroup,
   addTowerPgWorkspaceGroupMember,
   createTowerPgWorkspaceGroup,
+  createTowerPgWorkspaceScope,
   createTowerPgWorkspaceMember,
   createTowerPgChannelGrant,
   createTowerPgScopeChannel,
@@ -58,6 +59,14 @@ import { buildSuperBasedConnectionToken } from './superbased-token.js';
 import { APP_NPUB } from './app-identity.js';
 import { flightDeckLog } from './logging.js';
 import { isTowerPgBackendMode } from './backend-mode.js';
+import {
+  DM_SCOPE_ID,
+  buildDmChannelDescription,
+  findExistingDmChannel,
+  isDmChannel,
+  isDmScope,
+  resolveDmScope,
+} from './dm-scope.js';
 import {
   hydrateTowerPgAudioNotes,
   hydrateTowerPgChannels,
@@ -108,12 +117,16 @@ export function filterChannelsByScope(channels, selectedBoardId, selectedBoardSc
   if (!selectedBoardId || selectedBoardId === '__all__' || selectedBoardId === '__recent__') {
     return liveChannels;
   }
+  if (isDmScope(selectedBoardId) || isDmScope(selectedBoardScope)) {
+    return liveChannels.filter((channel) => isDmChannel(channel));
+  }
   if (selectedBoardId === '__unscoped__') {
-    return liveChannels.filter((channel) => isTaskUnscoped(channel, scopesMap));
+    return liveChannels.filter((channel) => !isDmChannel(channel) && isTaskUnscoped(channel, scopesMap));
   }
   if (!selectedBoardScope) return liveChannels;
   return liveChannels.filter((channel) =>
-    matchesTaskBoardScope(channel, selectedBoardScope, scopesMap, { includeDescendants: true }),
+    !isDmChannel(channel)
+    && matchesTaskBoardScope(channel, selectedBoardScope, scopesMap, { includeDescendants: true }),
   );
 }
 
@@ -485,6 +498,22 @@ export const channelsManagerMixin = {
       this.selectedBoardScope,
       this.scopesMap,
     );
+  },
+
+  get dmScope() {
+    return resolveDmScope(this.scopes || [], this.workspaceOwnerNpub);
+  },
+
+  get dmScopeId() {
+    return this.dmScope?.record_id || DM_SCOPE_ID;
+  },
+
+  get isDmScopeSelected() {
+    return isDmScope(this.selectedBoardId) || isDmScope(this.selectedBoardScope);
+  },
+
+  get canCreateDmInCurrentScope() {
+    return this.isDmScopeSelected;
   },
 
   ensureSelectedChatChannelInScope({ syncRoute = true } = {}) {
@@ -1205,7 +1234,7 @@ export const channelsManagerMixin = {
   },
 
   openNewChannelModal() {
-    this.newChannelMode = 'dm';
+    this.newChannelMode = this.canCreateDmInCurrentScope ? 'dm' : 'channel';
     this.newChannelDmNpub = '';
     this.newChannelName = '';
     this.newChannelDescription = '';
@@ -1285,15 +1314,52 @@ export const channelsManagerMixin = {
     const memberNpub = this.session?.npub;
     const targetNpub = this.newChannelDmNpub.trim();
     if (!ownerNpub || !memberNpub || !targetNpub) return;
+    if (!this.canCreateDmInCurrentScope) {
+      this.error = 'Select the DMs scope before creating a direct message.';
+      return;
+    }
 
     try {
+      const existing = findExistingDmChannel(this.channels, [memberNpub, targetNpub]);
+      if (existing?.record_id) {
+        await this.selectChannel(existing.record_id, { syncRoute: false });
+        this.closeNewChannelModal();
+        return;
+      }
+      const dmDescription = buildDmChannelDescription([memberNpub, targetNpub]);
       const profileName = this.chatProfiles[targetNpub]?.name || targetNpub.slice(0, 12) + '…';
       const name = `DM: ${profileName}`;
       if (isTowerPgBackendMode()) {
         const { workspaceId, workspaceOwnerNpub, baseUrl, appNpub } = resolveTowerPgWorkspaceContext(this);
-        const boardScopeId = this.scopesMap?.has?.(this.selectedBoardId) ? this.selectedBoardId : '';
-        const scopeId = this.selectedChannel?.scope_id || this.selectedBoardScope?.record_id || boardScopeId || this.scopes?.[0]?.record_id;
-        if (!workspaceId || !baseUrl || !scopeId) throw new Error('Select a PG scope before creating a DM.');
+        let scopeId = this.dmScopeId;
+        if (!workspaceId || !baseUrl) throw new Error('Flight Deck PG workspace is not connected.');
+        if (scopeId === DM_SCOPE_ID) {
+          const createdScope = await createTowerPgWorkspaceScope(workspaceId, {
+            name: 'DMs',
+            description: 'Direct message conversations',
+            kind: 'dm',
+          }, { baseUrl, appNpub });
+          const scopeRow = createdScope?.scope ? createdScope.scope : createdScope;
+          const mappedScope = {
+            record_id: scopeRow.id || scopeRow.record_id,
+            owner_npub: workspaceOwnerNpub,
+            title: scopeRow.name || 'DMs',
+            description: scopeRow.description || 'Direct message conversations',
+            level: 'l1',
+            parent_id: null,
+            l1_id: scopeRow.id || scopeRow.record_id,
+            record_state: 'active',
+            pg_backend: true,
+            pg_kind: 'dm',
+          };
+          if (mappedScope.record_id) {
+            this.scopes = [...(this.scopes || []).filter((scope) => scope.record_id !== mappedScope.record_id), mappedScope];
+            scopeId = mappedScope.record_id;
+            this.selectedBoardId = scopeId;
+            this.persistSelectedBoardId?.(scopeId);
+          }
+        }
+        if (!scopeId || scopeId === DM_SCOPE_ID) throw new Error('Select the DMs scope before creating a DM.');
         const memberResult = await createTowerPgWorkspaceMember(workspaceId, {
           member_npub: targetNpub,
           role: 'member',
@@ -1309,9 +1375,15 @@ export const channelsManagerMixin = {
           || '';
         const result = await createTowerPgScopeChannel(workspaceId, scopeId, {
           name,
+          description: dmDescription,
           kind: 'dm',
         }, { baseUrl, appNpub });
-        const channelRow = mapPgChannelToLocal(result.channel, { workspaceOwnerNpub });
+        const channelRow = {
+          ...mapPgChannelToLocal(result.channel, { workspaceOwnerNpub }),
+          description: result.channel?.description || dmDescription,
+          channel_type: 'dm',
+          participant_npubs: [memberNpub, targetNpub],
+        };
         await upsertChannel(channelRow);
         this.channels = [...this.channels.filter((channel) => channel.record_id !== channelRow.record_id), channelRow];
         if (actorId) {
@@ -1337,8 +1409,12 @@ export const channelsManagerMixin = {
         record_id: channelId,
         owner_npub: ownerNpub,
         title: name,
+        description: dmDescription,
         group_ids: [groupId],
         participant_npubs: [memberNpub, targetNpub],
+        channel_type: 'dm',
+        scope_id: this.dmScopeId,
+        scope_l1_id: this.dmScopeId,
         record_state: 'active',
         version: 1,
         updated_at: now,
@@ -1350,8 +1426,12 @@ export const channelsManagerMixin = {
         record_id: channelId,
         owner_npub: ownerNpub,
         title: name,
+        description: dmDescription,
         group_ids: [groupId],
         participant_npubs: [memberNpub, targetNpub],
+        channel_type: 'dm',
+        scope_id: this.dmScopeId,
+        scope_l1_id: this.dmScopeId,
         record_state: 'active',
         signature_npub: this.signingNpub,
         write_group_ref: groupId,

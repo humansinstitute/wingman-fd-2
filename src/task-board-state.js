@@ -54,6 +54,10 @@ import {
   parsePgTaskBoardId,
   resolvePgThreadId,
 } from './pg-record-context.js';
+import {
+  createVirtualDmScope,
+  findDmScope,
+} from './dm-scope.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -309,6 +313,10 @@ function getCachedScopesMap(store) {
   if (cached) return cached;
   cached = new Map();
   for (const scope of scopes) cached.set(scope.record_id, scope);
+  if (!findDmScope(scopes)) {
+    const dmScope = createVirtualDmScope(store?.workspaceOwnerNpub || store?.ownerNpub || '');
+    cached.set(dmScope.record_id, dmScope);
+  }
   scopesMapCache.set(scopes, cached);
   return cached;
 }
@@ -1062,8 +1070,12 @@ export const taskBoardStateMixin = {
   // --- board computation ---
 
   get taskBoards() {
+    const dmScope = findDmScope(this.scopes) || createVirtualDmScope(this.workspaceOwnerNpub);
+    const boardScopes = findDmScope(this.scopes)
+      ? this.scopes
+      : [...(this.scopes || []), dmScope];
     const scopeBoards = sortTaskBoardScopes(
-      this.scopes.filter((scope) => scope.record_state !== 'deleted'),
+      boardScopes.filter((scope) => scope.record_state !== 'deleted'),
       this.scopesMap,
     ).map((scope) => ({
       id: scope.record_id,

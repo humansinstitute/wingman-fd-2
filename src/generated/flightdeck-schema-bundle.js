@@ -2,7 +2,7 @@
 // Do not edit by hand.
 export const FLIGHT_DECK_SCHEMA_BUNDLE = {
   "bundle_schema_version": 1,
-  "schema_hash": "a05475ed65955ca123327582f00958a9f4086f922322ffb54515d3e3556b8e5f",
+  "schema_hash": "c45734dadb9e25f4edc79dfb9fdc76ca4448d5e36ce1502e19ea656b41a5a5b7",
   "schemas": [
     {
       "collection_space": "agent_chat_trigger",
@@ -447,7 +447,9 @@ export const FLIGHT_DECK_SCHEMA_BUNDLE = {
             "additionalProperties": false,
             "required": [
               "title",
+              "description",
               "participant_npubs",
+              "channel_type",
               "scope_id",
               "scope_l1_id",
               "scope_l2_id",
@@ -460,11 +462,20 @@ export const FLIGHT_DECK_SCHEMA_BUNDLE = {
               "title": {
                 "type": "string"
               },
+              "description": {
+                "type": "string"
+              },
               "participant_npubs": {
                 "type": "array",
                 "items": {
                   "type": "string"
                 }
+              },
+              "channel_type": {
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "scope_id": {
                 "type": [

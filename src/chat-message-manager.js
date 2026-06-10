@@ -44,6 +44,7 @@ import { UNSCOPED_TASK_BOARD_ID } from './task-board-state.js';
 import { sameListBySignature } from './utils/state-helpers.js';
 import { getRecordWriteFieldsForStore } from './preferred-write-group.js';
 import { isTowerPgBackendMode } from './backend-mode.js';
+import { DM_SCOPE_ID, buildDmChannelDescription, findExistingDmChannel } from './dm-scope.js';
 import { createTowerPgMessageFromLocal } from './pg-write-adapter.js';
 import { resolvePgThreadId } from './pg-record-context.js';
 import { buildSectionUrl, parseRouteLocation } from './route-helpers.js';
@@ -662,6 +663,13 @@ export const chatMessageManagerMixin = {
     }
 
     try {
+      const existing = findExistingDmChannel(this.channels, [memberNpub, targetNpub]);
+      if (existing?.record_id) {
+        await this.selectChannel(existing.record_id, { syncRoute: false });
+        return;
+      }
+      const dmScopeId = this.dmScopeId || DM_SCOPE_ID;
+      const dmDescription = buildDmChannelDescription([memberNpub, targetNpub]);
       const targetLabel = this.getSenderName?.(targetNpub) || 'bot';
       const name = `DM: ${memberNpub.slice(0, 12)}… + ${targetLabel}`;
       const group = await this.createEncryptedGroup(name, [targetNpub]);
@@ -673,8 +681,12 @@ export const chatMessageManagerMixin = {
         record_id: channelId,
         owner_npub: ownerNpub,
         title: name,
+        description: dmDescription,
         group_ids: [groupId],
         participant_npubs: [memberNpub, targetNpub],
+        channel_type: 'dm',
+        scope_id: dmScopeId,
+        scope_l1_id: dmScopeId,
         record_state: 'active',
         version: 1,
         updated_at: new Date().toISOString(),
@@ -686,8 +698,12 @@ export const chatMessageManagerMixin = {
         record_id: channelId,
         owner_npub: ownerNpub,
         title: name,
+        description: dmDescription,
         group_ids: [groupId],
         participant_npubs: [memberNpub, targetNpub],
+        channel_type: 'dm',
+        scope_id: dmScopeId,
+        scope_l1_id: dmScopeId,
         record_state: 'active',
         signature_npub: this.signingNpub,
         write_group_ref: groupId,

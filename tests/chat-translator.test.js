@@ -30,6 +30,7 @@ describe('chat translator — inbound', () => {
           record_id: 'ch-1',
           data: {
             title: 'Pete + wm21',
+            description: 'dm:npub_owner|npub_wm21',
             participant_npubs: ['npub_owner', 'npub_wm21'],
           },
         }),
@@ -44,6 +45,7 @@ describe('chat translator — inbound', () => {
     expect(row.record_id).toBe('ch-1');
     expect(row.owner_npub).toBe('npub_owner');
     expect(row.title).toBe('Pete + wm21');
+    expect(row.description).toBe('dm:npub_owner|npub_wm21');
     expect(row.group_ids).toEqual(['gpub_abc']);
     expect(row.participant_npubs).toContain('npub_owner');
     expect(row.participant_npubs).toContain('npub_wm21');
@@ -157,6 +159,7 @@ describe('chat translator — outbound', () => {
       record_id: 'ch-2',
       owner_npub: 'npub_owner',
       title: 'Test channel',
+      description: 'dm:npub_owner|npub_wm21',
       group_ids: ['gpub_xyz'],
       participant_npubs: ['npub_owner', 'npub_wm21'],
     });
@@ -167,6 +170,7 @@ describe('chat translator — outbound', () => {
     expect(envelope.group_payloads[0].group_npub).toBe('gpub_xyz');
     const inner = JSON.parse(envelope.owner_payload.ciphertext);
     expect(inner.app_namespace).toBe(APP_NPUB);
+    expect(inner.data.description).toBe('dm:npub_owner|npub_wm21');
     expect(inner.data.participant_npubs).toEqual(['npub_owner', 'npub_wm21']);
     expect(inner.data.record_state).toBe('active');
   });

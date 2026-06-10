@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-AjJ_2lB_.js"></script>
+  <script type="module" crossorigin src="/assets/index-BwhFMGzT.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-oYEIghrk.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
@@ -8217,13 +8217,13 @@
             </div>
 
             <div class="new-channel-tabs">
-              <button type="button" class="new-channel-tab" :class="{ active: $store.chat.newChannelMode === 'dm' }" @click="$store.chat.newChannelMode = 'dm'">Direct message</button>
-              <button type="button" class="new-channel-tab" :class="{ active: $store.chat.newChannelMode === 'channel' }" @click="$store.chat.newChannelMode = 'channel'">Channel</button>
+              <button type="button" class="new-channel-tab" x-show="$store.chat.canCreateDmInCurrentScope" :class="{ active: $store.chat.newChannelMode === 'dm' }" @click="$store.chat.newChannelMode = 'dm'">Direct message</button>
+              <button type="button" class="new-channel-tab" x-show="!$store.chat.isDmScopeSelected" :class="{ active: $store.chat.newChannelMode === 'channel' }" @click="$store.chat.newChannelMode = 'channel'">Channel</button>
             </div>
 
             <div class="new-channel-body">
               <!-- DM mode -->
-              <template x-if="$store.chat.newChannelMode === 'dm'">
+              <template x-if="$store.chat.newChannelMode === 'dm' && $store.chat.canCreateDmInCurrentScope">
                 <div class="new-channel-dm-form" x-data="{ dmIdx: 0 }">
                   <label class="new-channel-label">Person</label>
                   <template x-if="$store.chat.newChannelDmNpub.startsWith('npub1') && $store.chat.newChannelDmNpub.length >= 63">
@@ -8279,7 +8279,7 @@
               </template>
 
               <!-- Channel mode -->
-              <template x-if="$store.chat.newChannelMode === 'channel'">
+              <template x-if="$store.chat.newChannelMode === 'channel' && !$store.chat.isDmScopeSelected">
                 <div class="new-channel-form">
                   <label class="new-channel-label">Channel name</label>
                   <input class="new-channel-input" type="text" placeholder="e.g. general, design, ops" x-model="$store.chat.newChannelName" />

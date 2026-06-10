@@ -61,6 +61,7 @@ import {
   capacityForPgChannelPermissions,
   permissionsForPgChannelCapacity,
 } from '../src/channels-manager.js';
+import { DM_SCOPE_ID, buildDmChannelDescription } from '../src/dm-scope.js';
 
 const channelsManagerSource = fs.readFileSync(
   path.resolve(import.meta.dirname, '..', 'src', 'channels-manager.js'),
@@ -151,6 +152,7 @@ describe('channels-manager pure utilities', () => {
       { record_id: 'ch-a', title: 'A', scope_id: 'scope-a', scope_l1_id: 'scope-a' },
       { record_id: 'ch-a-child', title: 'A Child', scope_id: 'scope-a-child', scope_l1_id: 'scope-a', scope_l2_id: 'scope-a-child' },
       { record_id: 'ch-b', title: 'B', scope_id: 'scope-b', scope_l1_id: 'scope-b' },
+      { record_id: 'ch-dm', title: 'DM: Alice', channel_type: 'dm', scope_id: DM_SCOPE_ID, scope_l1_id: DM_SCOPE_ID, participant_npubs: ['npub1me', 'npub1alice'] },
       { record_id: 'ch-unscoped', title: 'Unscoped' },
       { record_id: 'ch-deleted', title: 'Deleted', scope_id: 'scope-a', record_state: 'deleted' },
     ];
@@ -160,12 +162,14 @@ describe('channels-manager pure utilities', () => {
         'ch-a',
         'ch-a-child',
         'ch-b',
+        'ch-dm',
         'ch-unscoped',
       ]);
       expect(filterChannelsByScope(channels, '__recent__', null, scopesMap).map((channel) => channel.record_id)).toEqual([
         'ch-a',
         'ch-a-child',
         'ch-b',
+        'ch-dm',
         'ch-unscoped',
       ]);
     });
@@ -180,6 +184,12 @@ describe('channels-manager pure utilities', () => {
     it('returns only unscoped channels for the unscoped board', () => {
       expect(filterChannelsByScope(channels, '__unscoped__', null, scopesMap).map((channel) => channel.record_id)).toEqual([
         'ch-unscoped',
+      ]);
+    });
+
+    it('returns only DM channels for the DM scope', () => {
+      expect(filterChannelsByScope(channels, DM_SCOPE_ID, null, scopesMap).map((channel) => channel.record_id)).toEqual([
+        'ch-dm',
       ]);
     });
   });
@@ -211,6 +221,54 @@ describe('channels-manager pure utilities', () => {
 
     expect(store.selectChannel).toHaveBeenCalledWith('ch-a', { syncRoute: false });
     expect(store.selectedChannelId).toBe('ch-a');
+  });
+
+  it('opens the new channel modal in DM mode only when the DM scope is selected', () => {
+    const dmStore = applyChannelMixin({
+      selectedBoardId: DM_SCOPE_ID,
+      selectedBoardScope: null,
+      scopes: [],
+      workspaceOwnerNpub: 'npub1owner',
+    });
+    dmStore.openNewChannelModal();
+    expect(dmStore.newChannelMode).toBe('dm');
+
+    const channelStore = applyChannelMixin({
+      selectedBoardId: 'scope-a',
+      selectedBoardScope: { record_id: 'scope-a', level: 'l1' },
+      scopes: [{ record_id: 'scope-a', title: 'Scope A', level: 'l1', record_state: 'active' }],
+      workspaceOwnerNpub: 'npub1owner',
+    });
+    channelStore.openNewChannelModal();
+    expect(channelStore.newChannelMode).toBe('channel');
+  });
+
+  it('selects an existing direct message for the same participant pair instead of creating a duplicate', async () => {
+    const store = applyChannelMixin({
+      channels: [{
+        record_id: 'dm-existing',
+        title: 'DM: Alice',
+        channel_type: 'dm',
+        participant_npubs: [],
+        description: buildDmChannelDescription(['npub1bob', 'npub1alice']),
+        scope_id: DM_SCOPE_ID,
+      }],
+      selectedBoardId: DM_SCOPE_ID,
+      selectedBoardScope: null,
+      scopes: [],
+      workspaceOwnerNpub: 'npub1workspace',
+      session: { npub: 'npub1alice' },
+      newChannelDmNpub: 'npub1bob',
+      selectChannel: vi.fn(),
+      closeNewChannelModal: vi.fn(),
+      createEncryptedGroup: vi.fn(),
+    });
+
+    await store.createDmChannel();
+
+    expect(store.selectChannel).toHaveBeenCalledWith('dm-existing', { syncRoute: false });
+    expect(store.closeNewChannelModal).toHaveBeenCalled();
+    expect(store.createEncryptedGroup).not.toHaveBeenCalled();
   });
 
   it('opens channel settings for an explicit PG context channel id', () => {
