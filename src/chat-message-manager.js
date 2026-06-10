@@ -67,6 +67,52 @@ function scheduleUiNextTick(callback) {
   queueMicrotask(callback);
 }
 
+function channelDescriptor(channel = {}) {
+  return [
+    channel.title,
+    channel.name,
+    channel.description,
+  ].map((value) => String(value || '').trim()).filter(Boolean).join(' ');
+}
+
+function resolveAgentDmTargetNpub(channel, botNpub, memberNpub) {
+  const explicit = String(botNpub || '').trim();
+  if (explicit) return explicit;
+  const senderNpub = String(memberNpub || '').trim();
+  const descriptor = channelDescriptor(channel);
+  const candidates = descriptor.match(/\bnpub1[023456789acdefghjklmnpqrstuvwxyz]+\b/gi) || [];
+  return candidates.find((npub) => npub !== senderNpub) || '';
+}
+
+function isAgentDmChannel(channel, targetNpub, memberNpub) {
+  const target = String(targetNpub || '').trim();
+  const senderNpub = String(memberNpub || '').trim();
+  if (!channel || !target || !senderNpub) return false;
+  const channelType = String(channel.channel_type || channel.kind || '').trim();
+  const participants = Array.isArray(channel.participant_npubs)
+    ? channel.participant_npubs.map((npub) => String(npub || '').trim())
+    : [];
+  if (participants.includes(target) && participants.includes(senderNpub)) return true;
+  const descriptor = channelDescriptor(channel);
+  return descriptor.includes(target) && (channelType === 'dm' || /^DM:/i.test(descriptor));
+}
+
+async function ensureTowerPgAgentDmAccess(store, channel) {
+  const targetNpub = resolveAgentDmTargetNpub(channel, store.botNpub, store.session?.npub);
+  if (!isAgentDmChannel(channel, targetNpub, store.session?.npub)) return true;
+  if (typeof store.ensureTowerPgDmChannel !== 'function') {
+    store.error = 'Agent DMs are not available in this workspace view.';
+    return false;
+  }
+  try {
+    await store.ensureTowerPgDmChannel(targetNpub);
+    return true;
+  } catch (error) {
+    store.error = error?.message || 'Failed to prepare agent DM';
+    return false;
+  }
+}
+
 function getChatDerivedState(store) {
   const messages = Array.isArray(store?.messages) ? store.messages : [];
   const activeThreadId = store?.activeThreadId ?? null;
@@ -658,7 +704,19 @@ export const chatMessageManagerMixin = {
       return;
     }
     if (isTowerPgBackendMode()) {
-      this.error = 'Agent DMs are not available for Tower PG workspaces yet.';
+      if (typeof this.ensureTowerPgDmChannel !== 'function') {
+        this.error = 'Agent DMs are not available in this workspace view.';
+        return;
+      }
+      try {
+        const channel = await this.ensureTowerPgDmChannel(targetNpub);
+        if (channel?.record_id) {
+          await this.refreshChannels?.();
+          await this.selectChannel?.(channel.record_id, { syncRoute: false });
+        }
+      } catch (error) {
+        this.error = error?.message || 'Failed to open agent DM';
+      }
       return;
     }
 
@@ -837,6 +895,8 @@ export const chatMessageManagerMixin = {
     const now = new Date().toISOString();
     const body = this.messageInput.trim();
     const pgMode = isTowerPgBackendMode();
+    if (pgMode && !(await ensureTowerPgAgentDmAccess(this, channel))) return;
+
     let channelWriteFields = null;
     let attachments = [];
     if (!pgMode) {
@@ -939,6 +999,8 @@ export const chatMessageManagerMixin = {
     const now = new Date().toISOString();
     const body = this.threadInput.trim();
     const pgMode = isTowerPgBackendMode();
+    if (pgMode && !(await ensureTowerPgAgentDmAccess(this, channel))) return;
+
     let channelWriteFields = null;
     let attachments = [];
     if (!pgMode) {

@@ -388,6 +388,110 @@ const PG_CHANNEL_GRANT_CAPACITY_BY_SIGNATURE = new Map(
     .map(([capacity, permissions]) => [permissionSetSignature(permissions), capacity])
 );
 
+async function ensureTowerPgDmScope(store, { workspaceId, workspaceOwnerNpub, baseUrl, appNpub }) {
+  const existingScope = resolveDmScope(store.scopes || []);
+  if (existingScope?.record_id && existingScope.record_id !== DM_SCOPE_ID) {
+    return existingScope.record_id;
+  }
+  if (store.dmScopeId && store.dmScopeId !== DM_SCOPE_ID) return store.dmScopeId;
+
+  const createdScope = await createTowerPgWorkspaceScope(workspaceId, {
+    name: 'DMs',
+    description: 'Direct message conversations',
+    kind: 'dm',
+  }, { baseUrl, appNpub });
+  const scopeRow = createdScope?.scope ? createdScope.scope : createdScope;
+  const scopeId = scopeRow.id || scopeRow.record_id;
+  if (!scopeId) throw new Error('Tower PG did not return a DMs scope id.');
+
+  const mappedScope = {
+    record_id: scopeId,
+    owner_npub: workspaceOwnerNpub,
+    title: scopeRow.name || 'DMs',
+    description: scopeRow.description || 'Direct message conversations',
+    level: 'l1',
+    parent_id: null,
+    l1_id: scopeId,
+    record_state: 'active',
+    pg_backend: true,
+    pg_kind: 'dm',
+  };
+  store.scopes = [...(store.scopes || []).filter((scope) => scope.record_id !== scopeId), mappedScope];
+  store.selectedBoardId = scopeId;
+  store.persistSelectedBoardId?.(scopeId);
+  return scopeId;
+}
+
+async function ensureTowerPgDmChannelGrant(store, { workspaceId, baseUrl, appNpub, targetNpub, channelId }) {
+  const memberResult = await createTowerPgWorkspaceMember(workspaceId, {
+    member_npub: targetNpub,
+    role: 'member',
+    kind: 'human',
+  }, { baseUrl, appNpub });
+  await store.refreshTowerPgWorkspaceMembers?.({ force: true, limit: 200 });
+  const actorId = memberResult?.actor?.actor_id
+    || memberResult?.actor?.id
+    || store.getPgWorkspaceMemberActorId?.(targetNpub)
+    || '';
+  if (!actorId) throw new Error('Tower PG did not return an actor id for the DM participant.');
+
+  await createTowerPgChannelGrant(workspaceId, channelId, {
+    principal_type: 'actor',
+    principal_id: actorId,
+    permissions: permissionsForPgChannelCapacity('contributor'),
+  }, { baseUrl, appNpub });
+  return actorId;
+}
+
+async function ensureTowerPgDmChannel(store, targetNpub) {
+  const ownerNpub = store.workspaceOwnerNpub;
+  const memberNpub = store.session?.npub;
+  const cleanTargetNpub = String(targetNpub || '').trim();
+  if (!ownerNpub || !memberNpub || !cleanTargetNpub) return null;
+
+  const { workspaceId, workspaceOwnerNpub, baseUrl, appNpub } = resolveTowerPgWorkspaceContext(store);
+  if (!workspaceId || !baseUrl) throw new Error('Flight Deck PG workspace is not connected.');
+
+  const existing = findExistingDmChannel(store.channels || [], [memberNpub, cleanTargetNpub]);
+  if (existing?.record_id) {
+    await ensureTowerPgDmChannelGrant(store, {
+      workspaceId,
+      baseUrl,
+      appNpub,
+      targetNpub: cleanTargetNpub,
+      channelId: existing.record_id,
+    });
+    return existing;
+  }
+
+  const scopeId = await ensureTowerPgDmScope(store, { workspaceId, workspaceOwnerNpub, baseUrl, appNpub });
+  if (!scopeId || scopeId === DM_SCOPE_ID) throw new Error('Select the DMs scope before creating a DM.');
+
+  const dmDescription = buildDmChannelDescription([memberNpub, cleanTargetNpub]);
+  const result = await createTowerPgScopeChannel(workspaceId, scopeId, {
+    name: `DM: ${cleanTargetNpub}`,
+    description: dmDescription,
+    kind: 'dm',
+  }, { baseUrl, appNpub });
+  const channelRow = {
+    ...mapPgChannelToLocal(result.channel, { workspaceOwnerNpub }),
+    description: result.channel?.description || dmDescription,
+    channel_type: 'dm',
+    participant_npubs: [memberNpub, cleanTargetNpub],
+  };
+  await upsertChannel(channelRow);
+  store.channels = [...(store.channels || []).filter((channel) => channel.record_id !== channelRow.record_id), channelRow];
+  await ensureTowerPgDmChannelGrant(store, {
+    workspaceId,
+    baseUrl,
+    appNpub,
+    targetNpub: cleanTargetNpub,
+    channelId: channelRow.record_id,
+  });
+  await store.rememberPeople?.([ownerNpub, cleanTargetNpub], 'chat');
+  return channelRow;
+}
+
 export function capacityForPgChannelPermissions(permissions = []) {
   return PG_CHANNEL_GRANT_CAPACITY_BY_SIGNATURE.get(permissionSetSignature(permissions)) || 'custom';
 }
@@ -505,6 +609,10 @@ function pgMeActorNpub(workspace = {}) {
 
 export const channelsManagerMixin = {
   // --- channels ---
+
+  async ensureTowerPgDmChannel(targetNpub) {
+    return ensureTowerPgDmChannel(this, targetNpub);
+  },
 
   get scopeFilteredChannels() {
     return filterChannelsByScope(
@@ -1388,6 +1496,9 @@ export const channelsManagerMixin = {
     try {
       const existing = findExistingDmChannel(this.channels, [memberNpub, targetNpub]);
       if (existing?.record_id) {
+        if (isTowerPgBackendMode()) {
+          await ensureTowerPgDmChannel(this, targetNpub);
+        }
         await this.selectChannel(existing.record_id, { syncRoute: false });
         this.closeNewChannelModal();
         return;
@@ -1395,70 +1506,7 @@ export const channelsManagerMixin = {
       const dmDescription = buildDmChannelDescription([memberNpub, targetNpub]);
       const name = `DM: ${targetNpub}`;
       if (isTowerPgBackendMode()) {
-        const { workspaceId, workspaceOwnerNpub, baseUrl, appNpub } = resolveTowerPgWorkspaceContext(this);
-        let scopeId = this.dmScopeId;
-        if (!workspaceId || !baseUrl) throw new Error('Flight Deck PG workspace is not connected.');
-        if (scopeId === DM_SCOPE_ID) {
-          const createdScope = await createTowerPgWorkspaceScope(workspaceId, {
-            name: 'DMs',
-            description: 'Direct message conversations',
-            kind: 'dm',
-          }, { baseUrl, appNpub });
-          const scopeRow = createdScope?.scope ? createdScope.scope : createdScope;
-          const mappedScope = {
-            record_id: scopeRow.id || scopeRow.record_id,
-            owner_npub: workspaceOwnerNpub,
-            title: scopeRow.name || 'DMs',
-            description: scopeRow.description || 'Direct message conversations',
-            level: 'l1',
-            parent_id: null,
-            l1_id: scopeRow.id || scopeRow.record_id,
-            record_state: 'active',
-            pg_backend: true,
-            pg_kind: 'dm',
-          };
-          if (mappedScope.record_id) {
-            this.scopes = [...(this.scopes || []).filter((scope) => scope.record_id !== mappedScope.record_id), mappedScope];
-            scopeId = mappedScope.record_id;
-            this.selectedBoardId = scopeId;
-            this.persistSelectedBoardId?.(scopeId);
-          }
-        }
-        if (!scopeId || scopeId === DM_SCOPE_ID) throw new Error('Select the DMs scope before creating a DM.');
-        const memberResult = await createTowerPgWorkspaceMember(workspaceId, {
-          member_npub: targetNpub,
-          role: 'member',
-          kind: 'human',
-        }, { baseUrl, appNpub }).catch((error) => {
-          if (String(error?.message || '').includes('409')) return null;
-          throw error;
-        });
-        await this.refreshTowerPgWorkspaceMembers({ force: true, limit: 200 });
-        const actorId = memberResult?.actor?.actor_id
-          || memberResult?.actor?.id
-          || this.getPgWorkspaceMemberActorId?.(targetNpub)
-          || '';
-        const result = await createTowerPgScopeChannel(workspaceId, scopeId, {
-          name,
-          description: dmDescription,
-          kind: 'dm',
-        }, { baseUrl, appNpub });
-        const channelRow = {
-          ...mapPgChannelToLocal(result.channel, { workspaceOwnerNpub }),
-          description: result.channel?.description || dmDescription,
-          channel_type: 'dm',
-          participant_npubs: [memberNpub, targetNpub],
-        };
-        await upsertChannel(channelRow);
-        this.channels = [...this.channels.filter((channel) => channel.record_id !== channelRow.record_id), channelRow];
-        if (actorId) {
-          await createTowerPgChannelGrant(workspaceId, channelRow.record_id, {
-            principal_type: 'actor',
-            principal_id: actorId,
-            permissions: permissionsForPgChannelCapacity('contributor'),
-          }, { baseUrl, appNpub });
-        }
-        await this.rememberPeople([ownerNpub, targetNpub], 'chat');
+        const channelRow = await ensureTowerPgDmChannel(this, targetNpub);
         await this.refreshChannels();
         await this.selectChannel(channelRow.record_id, { syncRoute: false });
         this.closeNewChannelModal();

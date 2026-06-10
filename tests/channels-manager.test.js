@@ -41,6 +41,7 @@ import {
   getTowerPgChannelGrants,
   getTowerPgWorkspaceMembers,
 } from '../src/api.js';
+import { isTowerPgBackendMode } from '../src/backend-mode.js';
 import {
   hydrateTowerPgAudioNotes,
   hydrateTowerPgChannels,
@@ -73,6 +74,7 @@ const channelsManagerSource = fs.readFileSync(
 
 beforeEach(() => {
   vi.clearAllMocks();
+  isTowerPgBackendMode.mockReturnValue(true);
   createTowerPgChannelGrant.mockResolvedValue({ grant: { id: 'created-grant' } });
   createTowerPgScopeChannel.mockResolvedValue({ channel: { id: 'channel-new', name: 'New', scope_id: 'scope-a', kind: 'channel' } });
   createTowerPgWorkspaceGroup.mockResolvedValue({ group: { id: 'group-new', group_id: 'group-new', name: 'New group' } });
@@ -318,6 +320,7 @@ describe('channels-manager pure utilities', () => {
   });
 
   it('selects an existing direct message for the same participant pair instead of creating a duplicate', async () => {
+    isTowerPgBackendMode.mockReturnValue(false);
     const store = applyChannelMixin({
       channels: [{
         record_id: 'dm-existing',
@@ -343,6 +346,42 @@ describe('channels-manager pure utilities', () => {
     expect(store.selectChannel).toHaveBeenCalledWith('dm-existing', { syncRoute: false });
     expect(store.closeNewChannelModal).toHaveBeenCalled();
     expect(store.createEncryptedGroup).not.toHaveBeenCalled();
+  });
+
+  it('repairs a Tower PG direct message grant before opening an existing DM', async () => {
+    isTowerPgBackendMode.mockReturnValue(true);
+    const store = createPgGrantStore({
+      channels: [{
+        record_id: 'dm-existing',
+        title: 'DM: Bot',
+        channel_type: 'dm',
+        participant_npubs: ['npub1manager', 'npub1bot'],
+        description: buildDmChannelDescription(['npub1manager', 'npub1bot']),
+        scope_id: 'scope-dms',
+      }],
+      scopes: [{ record_id: 'scope-dms', title: 'DMs', pg_kind: 'dm', record_state: 'active' }],
+      selectedBoardId: 'scope-dms',
+      selectedBoardScope: { record_id: 'scope-dms', title: 'DMs', pg_kind: 'dm' },
+      newChannelDmNpub: 'npub1bot',
+      selectChannel: vi.fn(),
+      closeNewChannelModal: vi.fn(),
+      refreshTowerPgWorkspaceMembers: vi.fn().mockResolvedValue([]),
+      getPgWorkspaceMemberActorId: vi.fn(() => 'actor-bot'),
+    });
+
+    await store.createDmChannel();
+
+    expect(createTowerPgWorkspaceMember).toHaveBeenCalledWith('workspace-1', {
+      member_npub: 'npub1bot',
+      role: 'member',
+      kind: 'human',
+    }, { baseUrl: 'https://tower.example', appNpub: 'flightdeck-app' });
+    expect(createTowerPgChannelGrant).toHaveBeenCalledWith('workspace-1', 'dm-existing', {
+      principal_type: 'actor',
+      principal_id: 'actor-new',
+      permissions: permissionsForPgChannelCapacity('contributor'),
+    }, { baseUrl: 'https://tower.example', appNpub: 'flightdeck-app' });
+    expect(store.selectChannel).toHaveBeenCalledWith('dm-existing', { syncRoute: false });
   });
 
   it('opens channel settings for an explicit PG context channel id', () => {

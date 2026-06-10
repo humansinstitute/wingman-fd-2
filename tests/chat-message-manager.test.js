@@ -742,19 +742,24 @@ describe('createBotDm', () => {
     expect(store.error).toBe('Set backend URL first');
   });
 
-  it('does not create encrypted bot DM channels in PG mode', async () => {
+  it('opens bot DMs through the Tower PG channel helper in PG mode', async () => {
     isTowerPgBackendMode.mockReturnValue(true);
+    const ensureTowerPgDmChannel = vi.fn().mockResolvedValue({ record_id: 'pg-dm-1' });
     const { fn, store } = bindMethod('createBotDm', {
       session: { npub: 'npub1me' },
       ownerNpub: 'npub1owner',
       currentWorkspaceOwnerNpub: 'npub1owner',
       botNpub: 'npub1bot',
       backendUrl: 'https://tower.example',
+      ensureTowerPgDmChannel,
     });
 
     await fn();
 
-    expect(store.error).toBe('Agent DMs are not available for Tower PG workspaces yet.');
+    expect(store.error).toBeNull();
+    expect(ensureTowerPgDmChannel).toHaveBeenCalledWith('npub1bot');
+    expect(store.refreshChannels).toHaveBeenCalled();
+    expect(store.selectChannel).toHaveBeenCalledWith('pg-dm-1', { syncRoute: false });
     expect(store.createEncryptedGroup).not.toHaveBeenCalled();
   });
 });
@@ -872,6 +877,120 @@ describe('sendMessage', () => {
         pg_backend: true,
       });
       expect(store.messages.map((message) => message.record_id)).toEqual(['pg-message-1']);
+    } finally {
+      await deleteWorkspaceDb(workspaceDbKey);
+    }
+  });
+
+  it('repairs agent DM access before sending a PG message', async () => {
+    const workspaceDbKey = 'chat-message-manager-send-agent-dm-pg';
+    openWorkspaceDb(workspaceDbKey);
+    await clearRuntimeData();
+    isTowerPgBackendMode.mockReturnValue(true);
+    const ensureTowerPgDmChannel = vi.fn().mockResolvedValue({ record_id: 'dm-agent' });
+    createTowerPgMessageFromLocal.mockImplementation(async (_store, localRow) => ({
+      ...localRow,
+      record_id: 'pg-agent-dm-message',
+      sync_status: 'synced',
+      pg_backend: true,
+    }));
+
+    try {
+      const { fn } = bindMethod('sendMessage', {
+        session: { npub: 'npub1viewer' },
+        botNpub: 'npub1bot',
+        workspaceOwnerNpub: 'npub1owner',
+        selectedChannelId: 'dm-agent',
+        channels: [{
+          record_id: 'dm-agent',
+          owner_npub: 'npub1owner',
+          channel_type: 'dm',
+          participant_npubs: ['npub1viewer', 'npub1bot'],
+        }],
+        messageInput: 'hello bot',
+        ensureTowerPgDmChannel,
+      });
+
+      await fn();
+
+      expect(ensureTowerPgDmChannel).toHaveBeenCalledWith('npub1bot');
+      expect(createTowerPgMessageFromLocal).toHaveBeenCalled();
+    } finally {
+      await deleteWorkspaceDb(workspaceDbKey);
+    }
+  });
+
+  it('repairs agent DM access when the PG DM is identified by title', async () => {
+    const workspaceDbKey = 'chat-message-manager-send-agent-dm-title-pg';
+    openWorkspaceDb(workspaceDbKey);
+    await clearRuntimeData();
+    isTowerPgBackendMode.mockReturnValue(true);
+    const ensureTowerPgDmChannel = vi.fn().mockResolvedValue({ record_id: 'dm-agent' });
+    createTowerPgMessageFromLocal.mockImplementation(async (_store, localRow) => ({
+      ...localRow,
+      record_id: 'pg-agent-dm-title-message',
+      sync_status: 'synced',
+      pg_backend: true,
+    }));
+
+    try {
+      const { fn } = bindMethod('sendMessage', {
+        session: { npub: 'npub1viewer' },
+        botNpub: 'npub1bot',
+        workspaceOwnerNpub: 'npub1owner',
+        selectedChannelId: 'dm-agent',
+        channels: [{
+          record_id: 'dm-agent',
+          owner_npub: 'npub1owner',
+          title: 'DM: npub1bot',
+          channel_type: 'dm',
+        }],
+        messageInput: 'hello bot',
+        ensureTowerPgDmChannel,
+      });
+
+      await fn();
+
+      expect(ensureTowerPgDmChannel).toHaveBeenCalledWith('npub1bot');
+      expect(createTowerPgMessageFromLocal).toHaveBeenCalled();
+    } finally {
+      await deleteWorkspaceDb(workspaceDbKey);
+    }
+  });
+
+  it('derives the agent npub from the PG DM title when bot state is empty', async () => {
+    const workspaceDbKey = 'chat-message-manager-send-agent-dm-title-derived-pg';
+    openWorkspaceDb(workspaceDbKey);
+    await clearRuntimeData();
+    isTowerPgBackendMode.mockReturnValue(true);
+    const ensureTowerPgDmChannel = vi.fn().mockResolvedValue({ record_id: 'dm-agent' });
+    createTowerPgMessageFromLocal.mockImplementation(async (_store, localRow) => ({
+      ...localRow,
+      record_id: 'pg-agent-dm-title-derived-message',
+      sync_status: 'synced',
+      pg_backend: true,
+    }));
+
+    try {
+      const { fn } = bindMethod('sendMessage', {
+        session: { npub: 'npub1viewer' },
+        botNpub: '',
+        workspaceOwnerNpub: 'npub1owner',
+        selectedChannelId: 'dm-agent',
+        channels: [{
+          record_id: 'dm-agent',
+          owner_npub: 'npub1owner',
+          title: 'DM: npub1s4658awhcachmhzk5jhsg256gzdl7e4gh5a9zq8skjyt7g3k2axql224qz',
+          channel_type: 'channel',
+        }],
+        messageInput: 'hello bot',
+        ensureTowerPgDmChannel,
+      });
+
+      await fn();
+
+      expect(ensureTowerPgDmChannel).toHaveBeenCalledWith('npub1s4658awhcachmhzk5jhsg256gzdl7e4gh5a9zq8skjyt7g3k2axql224qz');
+      expect(createTowerPgMessageFromLocal).toHaveBeenCalled();
     } finally {
       await deleteWorkspaceDb(workspaceDbKey);
     }
