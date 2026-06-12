@@ -292,6 +292,7 @@ describe('PG workspace manager mode', () => {
     expect(store.verifyPgDescriptor).not.toHaveBeenCalled();
     expect(store.selectedWorkspaceKey).toBe('');
     expect(store.currentWorkspaceOwnerNpub).toBe('');
-    expect(store.showWorkspaceBootstrapModal).toBe(true);
+    expect(store.showWorkspaceBootstrapModal).toBe(false);
+    expect(store.showConnectModal).toBe(true);
   });
 });

@@ -1002,7 +1002,12 @@ export const workspaceManagerMixin = {
         this.connectWorkspacesError = message;
         this.selectedWorkspaceKey = '';
         this.currentWorkspaceOwnerNpub = '';
-        this.showWorkspaceBootstrapModal = Boolean(this.session?.npub);
+        if (isTowerPgBackendMode()) {
+          this.showWorkspaceBootstrapModal = false;
+          this.showConnectModal = Boolean(this.session?.npub);
+        } else {
+          this.showWorkspaceBootstrapModal = Boolean(this.session?.npub);
+        }
         await this.persistWorkspaceSettings?.();
         return;
       }
@@ -1244,9 +1249,14 @@ export const workspaceManagerMixin = {
         this.navigateTo('status');
         this.ensureBackgroundSync(true);
       } else {
-        // No workspaces left — go back to workspace bootstrap
+        // No workspaces left — go back to workspace creation (Connect in PG mode)
         this.ownerNpub = '';
-        this.showWorkspaceBootstrapModal = true;
+        if (isTowerPgBackendMode()) {
+          this.showWorkspaceBootstrapModal = false;
+          this.showConnectModal = true;
+        } else {
+          this.showWorkspaceBootstrapModal = true;
+        }
         this.navigateTo('status');
         await this.persistWorkspaceSettings();
       }
