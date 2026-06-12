@@ -2184,7 +2184,7 @@ export const docsManagerMixin = {
           pg_channel_id: pgContext.channelId,
           pg_thread_id: pgContext.threadId || null,
         });
-        await upsertDocument({
+        const acceptedRow = {
           ...accepted,
           content: contentModel.content,
           content_format: contentModel.content_format,
@@ -2197,12 +2197,16 @@ export const docsManagerMixin = {
           content_storage_status: 'remote',
           content_storage_error: null,
           pg_thread_id: pgContext.threadId || accepted.pg_thread_id || null,
-        });
-        const row = await this.refreshDocuments()
-          .then(() => this.documents.find((item) => item.record_id === accepted.record_id) || accepted)
-          .catch(() => accepted);
+        };
+        await upsertDocument(acceptedRow);
+        this.patchDocumentLocal(acceptedRow);
         this.openDoc(accepted.record_id);
-        return row;
+        Promise.resolve()
+          .then(() => this.refreshDocuments())
+          .catch((refreshError) => {
+            console.warn('[flightdeck] PG document refresh failed after create', refreshError);
+          });
+        return acceptedRow;
       } catch (error) {
         const localRow = this.normalizeDocumentRowGroupRefs({
           record_id: recordId,
@@ -2603,7 +2607,7 @@ export const docsManagerMixin = {
           this.patchDocumentLocal(canonical);
           this.docAutosaveState = 'saved';
           this.docEditorSharesDirty = false;
-          if (!autosave) await this.refreshDocuments();
+          if (!autosave) this.scheduleDocumentsRefresh?.('PG document save');
           return canonical;
         } catch (error) {
           const failed = { ...localUpdated, sync_status: 'failed', updated_at: new Date().toISOString() };
@@ -2650,7 +2654,7 @@ export const docsManagerMixin = {
       this.patchDocumentLocal(canonical);
       this.docAutosaveState = 'saved';
       this.docEditorSharesDirty = false;
-      if (!autosave) await this.refreshDocuments();
+      if (!autosave) this.scheduleDocumentsRefresh?.('PG document save');
       return canonical;
     } catch (error) {
       if (allowStaleRetry && isPgStaleRowVersionError(error)) {

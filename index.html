@@ -6393,10 +6393,15 @@
                     type="button"
                     class="btn-confirm"
                     @click="$store.chat.createChannelGrant()"
-                    :disabled="$store.chat.channelGrantsSaving || !$store.chat.canManageSelectedPgChannelGrants || !$store.chat.resolveChannelGrantPrincipalId()"
+                    :disabled="$store.chat.channelGrantsSaving || !$store.chat.canCreateSelectedChannelGrant"
                     x-text="$store.chat.channelGrantsSaving ? 'Granting...' : 'Grant access'"
                   ></button>
                 </div>
+                <p
+                  class="channel-grant-draft-help"
+                  :class="{ 'channel-grant-draft-warning': $store.chat.selectedChannelGrantAlreadyExists }"
+                  x-text="$store.chat.selectedChannelGrantDraftMessage"
+                ></p>
               </div>
 
               <p class="settings-success" x-show="$store.chat.channelGrantsNotice" x-text="$store.chat.channelGrantsNotice"></p>
@@ -6695,26 +6700,40 @@
 
                   <div class="new-channel-access-editor" x-show="$store.chat.isTowerPgMode">
                     <div class="new-channel-access-header">
-                      <label class="new-channel-label">Access</label>
-                      <button type="button" class="new-channel-access-add" @click="$store.chat.addNewChannelAccessRow()" :disabled="!$store.chat.newChannelCanAddAccessRow">Add row</button>
+                      <div>
+                        <label class="new-channel-label">Channel permissions</label>
+                        <p class="new-channel-access-help">Choose who can use this channel before it is created.</p>
+                      </div>
+                      <button type="button" class="new-channel-access-add" @click="$store.chat.addNewChannelAccessRow()" :disabled="!$store.chat.newChannelCanAddAccessRow">Add permission</button>
+                    </div>
+                    <div class="new-channel-access-columns" x-show="$store.chat.newChannelAccessRows.length > 0">
+                      <span>Who</span>
+                      <span>Permission</span>
                     </div>
                     <div class="new-channel-access-list">
                       <template x-for="(row, index) in $store.chat.newChannelAccessRows" :key="$store.chat.getNewChannelAccessRowKey(row, index)">
                         <div class="new-channel-access-row">
-                          <select class="new-channel-select" :value="$store.chat.getNewChannelAccessPrincipalValue(row)" @change="$store.chat.setNewChannelAccessPrincipal(index, $event.target.value)">
-                            <template x-for="option in $store.chat.newChannelAccessPrincipalOptions" :key="option.disabled ? `label-${option.label}` : option.value">
-                              <option :value="option.value || ''" :disabled="option.disabled" x-text="option.disabled ? option.label : `${option.label} (${option.type === 'group' ? 'Group' : 'Person'})`"></option>
-                            </template>
-                          </select>
-                          <select class="new-channel-select" :value="row.capacity" @change="$store.chat.setNewChannelAccessCapacity(index, $event.target.value)">
-                            <template x-for="capacity in $store.chat.pgChannelGrantCapacityOptions" :key="capacity.value">
-                              <option :value="capacity.value" x-text="capacity.label"></option>
-                            </template>
-                          </select>
+                          <div class="new-channel-access-principal">
+                            <select class="new-channel-select" :value="$store.chat.getNewChannelAccessPrincipalValue(row)" @change="$store.chat.setNewChannelAccessPrincipal(index, $event.target.value)">
+                              <template x-for="option in $store.chat.newChannelAccessPrincipalOptions" :key="option.disabled ? `label-${option.label}` : option.value">
+                                <option :value="option.value || ''" :disabled="option.disabled" x-text="option.disabled ? option.label : `${option.label} (${option.type === 'group' ? 'Group' : 'Person'})`"></option>
+                              </template>
+                            </select>
+                            <small x-text="$store.chat.getNewChannelAccessPrincipalLabel(row)"></small>
+                          </div>
+                          <div class="new-channel-access-capacity">
+                            <select class="new-channel-select" :value="row.capacity" @change="$store.chat.setNewChannelAccessCapacity(index, $event.target.value)">
+                              <template x-for="capacity in $store.chat.pgChannelGrantCapacityOptions" :key="capacity.value">
+                                <option :value="capacity.value" x-text="capacity.label"></option>
+                              </template>
+                            </select>
+                            <small x-text="$store.chat.getPgChannelGrantCapacityDescription(row.capacity)"></small>
+                          </div>
                           <button type="button" class="new-channel-access-remove" title="Remove access row" aria-label="Remove access row" @click="$store.chat.removeNewChannelAccessRow(index)">×</button>
                         </div>
                       </template>
                     </div>
+                    <p class="new-channel-access-empty" x-show="$store.chat.newChannelAccessRows.length === 0">Add at least one person or group permission to create this channel.</p>
                   </div>
 
                   <div class="new-channel-group-picker" x-show="!$store.chat.isTowerPgMode" x-data="{ groupQuery: '', groupIdx: 0, showGroups: false }" @click.outside="showGroups = false">

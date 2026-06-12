@@ -745,20 +745,25 @@ describe('createBotDm', () => {
   it('opens bot DMs through the Tower PG channel helper in PG mode', async () => {
     isTowerPgBackendMode.mockReturnValue(true);
     const ensureTowerPgDmChannel = vi.fn().mockResolvedValue({ record_id: 'pg-dm-1' });
+    const scheduleChannelsRefresh = vi.fn();
     const { fn, store } = bindMethod('createBotDm', {
       session: { npub: 'npub1me' },
       ownerNpub: 'npub1owner',
       currentWorkspaceOwnerNpub: 'npub1owner',
       botNpub: 'npub1bot',
       backendUrl: 'https://tower.example',
+      channels: [{ record_id: 'old-channel' }],
       ensureTowerPgDmChannel,
+      scheduleChannelsRefresh,
     });
 
     await fn();
 
     expect(store.error).toBeNull();
     expect(ensureTowerPgDmChannel).toHaveBeenCalledWith('npub1bot');
-    expect(store.refreshChannels).toHaveBeenCalled();
+    expect(store.refreshChannels).not.toHaveBeenCalled();
+    expect(store.channels.map((channel) => channel.record_id)).toEqual(['old-channel', 'pg-dm-1']);
+    expect(scheduleChannelsRefresh).toHaveBeenCalledWith('PG bot DM open');
     expect(store.selectChannel).toHaveBeenCalledWith('pg-dm-1', { syncRoute: false });
     expect(store.createEncryptedGroup).not.toHaveBeenCalled();
   });

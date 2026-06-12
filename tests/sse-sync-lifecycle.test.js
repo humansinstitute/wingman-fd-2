@@ -339,6 +339,7 @@ describe('connectSSEStream', () => {
       session: { npub: 'npub1viewer' },
       backendUrl: 'https://tower.example.com',
       workspaceOwnerNpub: 'npub1owner',
+      currentWorkspace: { workspaceId: 'workspace-1' },
       sseStatus: 'connected',
     });
 
@@ -348,6 +349,12 @@ describe('connectSSEStream', () => {
     expect(connectSSE).toHaveBeenCalledTimes(1);
     const options = connectSSE.mock.calls[0][5];
     expect(options.pgMode).toBe(true);
+    expect(options.workspaceId).toBe('workspace-1');
+    expect(createNip98AuthHeader).toHaveBeenCalledWith(
+      'https://tower.example.com/api/v4/flightdeck-pg/workspaces/workspace-1/events/stream',
+      'GET',
+      null,
+    );
     expect(store.sseStatus).not.toBe('disabled');
   });
 });
@@ -368,6 +375,7 @@ describe('getSSEConnectionContext', () => {
       viewerNpub: 'npub1viewer',
       backendUrl: 'https://tower.example.com',
       workspaceDbKey: 'workspace:npub1owner',
+      workspaceId: '',
       checkoutPolicyConfig,
     });
   });
@@ -379,6 +387,7 @@ describe('getSSEConnectionContext', () => {
       backendUrl: 'https://tower.example.com',
       workspaceOwnerNpub: 'npub1owner',
       currentWorkspaceKey: 'workspace:npub1owner',
+      currentWorkspace: { workspaceId: 'workspace-1' },
     });
 
     expect(fn()).toEqual({
@@ -386,8 +395,21 @@ describe('getSSEConnectionContext', () => {
       viewerNpub: 'npub1viewer',
       backendUrl: 'https://tower.example.com',
       workspaceDbKey: 'workspace:npub1owner',
+      workspaceId: 'workspace-1',
       checkoutPolicyConfig: null,
     });
+  });
+
+  it('does not return a PG SSE context until the PG workspace id is known', () => {
+    isTowerPgBackendMode.mockReturnValue(true);
+    const { fn } = bindMethod('getSSEConnectionContext', {
+      session: { npub: 'npub1viewer' },
+      backendUrl: 'https://tower.example.com',
+      workspaceOwnerNpub: 'npub1owner',
+      currentWorkspaceKey: 'workspace:npub1owner',
+    });
+
+    expect(fn()).toBeNull();
   });
 });
 
@@ -652,6 +674,7 @@ describe('ensureBackgroundSync wires SSE', () => {
       session: { npub: 'npub1viewer' },
       backendUrl: 'https://tower.example.com',
       workspaceOwnerNpub: 'npub1owner',
+      currentWorkspace: { workspaceId: 'workspace-1' },
       backgroundSyncTimer: setTimeout(() => {}, 1000),
       sseStatus: 'connected',
       catchUpSyncActive: true,

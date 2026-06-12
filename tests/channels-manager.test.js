@@ -97,6 +97,11 @@ beforeEach(() => {
   hydrateTowerPgTasks.mockResolvedValue(undefined);
 });
 
+async function flushMicrotasks() {
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
 function applyChannelMixin(store) {
   for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(channelsManagerMixin))) {
     if (Object.prototype.hasOwnProperty.call(store, key)) continue;
@@ -325,6 +330,42 @@ describe('channels-manager pure utilities', () => {
         access_level: 'contribute',
       },
     ]);
+  });
+
+  it('describes PG channel permission presets for create-channel rows', () => {
+    const store = applyChannelMixin({});
+
+    expect(store.getPgChannelGrantCapacityDescription('viewer')).toBe('can view only');
+    expect(store.getPgChannelGrantCapacityDescription('contributor')).toBe('can view and post');
+    expect(store.getPgChannelGrantCapacityDescription('manager')).toBe('can view, post, and manage access');
+  });
+
+  it('blocks duplicate channel access grants in the settings form', async () => {
+    const store = applyChannelMixin({
+      selectedChannelId: 'channel-1',
+      channelGrantPrincipalType: 'actor',
+      channelGrantActorId: 'actor-owner',
+      channelGrantCapacity: 'viewer',
+      channelGrants: [{
+        principal_type: 'actor',
+        principal_id: 'actor-owner',
+        permissions: ['channel.read', 'channel.write', 'channel.grants.manage'],
+      }],
+      currentWorkspace: { workspaceId: 'workspace-1', appNpub: 'flightdeck-app', pgMe: { actor: { actor_id: 'actor-owner', npub: 'npub1owner' } } },
+      backendUrl: 'https://tower.example',
+      canAdminWorkspace: true,
+      channelGrantsError: null,
+    });
+
+    expect(store.selectedChannelGrantAlreadyExists).toBe(true);
+    expect(store.canCreateSelectedChannelGrant).toBe(false);
+    expect(store.selectedChannelGrantDraftMessage).toBe('This user or group already has access. Change the permission in the list below.');
+
+    await store.createChannelGrant();
+
+    expect(createTowerPgChannelGrant).not.toHaveBeenCalled();
+    expect(store.channelGrantsError).toBe('This user or group already has access. Change the permission in the list below.');
+    expect(store.channelGrantsSaving).toBeFalsy();
   });
 
   it('creates PG channels with group/person access rows', async () => {
@@ -1634,7 +1675,7 @@ describe('channels-manager pure utilities', () => {
       expect(store.channelGrantsError).toBe('You do not have permission to manage grants for this channel.');
     });
 
-    it('refreshes grants and PG materialization after a successful grant', async () => {
+    it('refreshes grants immediately and runs PG materialization in the background after a successful grant', async () => {
       getTowerPgChannelGrants.mockResolvedValueOnce({
         grants: [{
           principal_type: 'actor',
@@ -1642,6 +1683,10 @@ describe('channels-manager pure utilities', () => {
           permissions: permissionsForPgChannelCapacity('viewer'),
         }],
       });
+      let finishMaterialization;
+      hydrateTowerPgScopes.mockImplementationOnce(() => new Promise((resolve) => {
+        finishMaterialization = resolve;
+      }));
       const store = createPgGrantStore({ canAdminWorkspace: true, channelGrants: [] });
 
       await store.createChannelGrant();
@@ -1655,7 +1700,14 @@ describe('channels-manager pure utilities', () => {
         principal_id: 'actor-target',
         permissions: permissionsForPgChannelCapacity('viewer'),
       }]);
+      expect(store.channelGrantsSaving).toBe(false);
+      expect(store.channelGrantsNotice).toBe('Channel access updated.');
+
+      await flushMicrotasks();
       expect(hydrateTowerPgScopes).toHaveBeenCalledWith(store);
+      expect(hydrateTowerPgChannels).not.toHaveBeenCalled();
+      finishMaterialization();
+      await flushMicrotasks();
       expect(hydrateTowerPgChannels).toHaveBeenCalledWith(store);
       expect(hydrateTowerPgTasks).toHaveBeenCalledWith(store);
       expect(hydrateTowerPgDocumentsAndFiles).toHaveBeenCalledWith(store);

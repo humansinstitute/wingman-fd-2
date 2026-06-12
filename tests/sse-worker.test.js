@@ -430,4 +430,16 @@ describe('SSE URL construction', () => {
 
     expect(sseUrl.searchParams.get('last_event_id')).toBe('42');
   });
+
+  it('builds the Flight Deck PG event stream URL when PG mode is active', () => {
+    const workspaceId = 'workspace-1';
+    const backendUrl = 'https://tower.example.com';
+    const token = 'base64token==';
+
+    const sseUrl = new URL(`/api/v4/flightdeck-pg/workspaces/${workspaceId}/events/stream`, backendUrl);
+    sseUrl.searchParams.set('token', token);
+
+    expect(sseUrl.pathname).toBe(`/api/v4/flightdeck-pg/workspaces/${workspaceId}/events/stream`);
+    expect(sseUrl.searchParams.get('token')).toBe(token);
+  });
 });

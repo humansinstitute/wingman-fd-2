@@ -1820,6 +1820,7 @@ describe('PG mode encrypted record sync startup guard', () => {
       session: { npub: 'npub1viewer' },
       backendUrl: 'https://tower.example',
       workspaceOwnerNpub: 'npub1owner',
+      currentWorkspace: { workspaceId: 'workspace-1' },
     });
 
     const result = await fn();
@@ -1828,6 +1829,12 @@ describe('PG mode encrypted record sync startup guard', () => {
     expect(connectSSE).toHaveBeenCalledTimes(1);
     const options = connectSSE.mock.calls[0][5];
     expect(options.pgMode).toBe(true);
+    expect(options.workspaceId).toBe('workspace-1');
+    expect(createNip98AuthHeader).toHaveBeenCalledWith(
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/events/stream',
+      'GET',
+      null,
+    );
   });
 });
 

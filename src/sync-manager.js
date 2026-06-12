@@ -1961,11 +1961,14 @@ export const syncManagerMixin = {
 
   getSSEConnectionContext() {
     if (!this.session?.npub || !this.backendUrl || !this.workspaceOwnerNpub) return null;
+    const workspaceId = String(this.currentWorkspace?.workspaceId || this.currentWorkspace?.workspace_id || '').trim();
+    if (this.isEncryptedRecordSyncDisabled && !workspaceId) return null;
     return {
       ownerNpub: this.workspaceOwnerNpub,
       viewerNpub: this.session.npub,
       backendUrl: this.backendUrl,
       workspaceDbKey: this.workspaceDbKey,
+      workspaceId,
       checkoutPolicyConfig: this.recordCheckoutPolicyConfig || null,
     };
   },
@@ -1977,6 +1980,8 @@ export const syncManagerMixin = {
       viewerNpub: context.viewerNpub,
       backendUrl: context.backendUrl,
       workspaceDbKey: context.workspaceDbKey || context.ownerNpub,
+      workspaceId: context.workspaceId || null,
+      pgMode: this.isEncryptedRecordSyncDisabled,
       checkoutPolicyConfig: context.checkoutPolicyConfig || null,
     });
   },
@@ -2060,7 +2065,9 @@ export const syncManagerMixin = {
     this.sseConnectInFlightKey = connectionKey;
 
     // Mint a NIP-98 auth token for the stream URL (Tower verifies NIP-98, not the bootstrap connection token)
-    const streamUrl = `${context.backendUrl}/api/v4/workspaces/${context.ownerNpub}/stream`;
+    const streamUrl = this.isEncryptedRecordSyncDisabled
+      ? `${context.backendUrl}/api/v4/flightdeck-pg/workspaces/${context.workspaceId}/events/stream`
+      : `${context.backendUrl}/api/v4/workspaces/${context.ownerNpub}/stream`;
     let authHeader;
     try {
       const workspaceSecret = getActiveWorkspaceKeySecretForAuth();
@@ -2103,6 +2110,7 @@ export const syncManagerMixin = {
         reason,
         checkoutPolicyConfig: context.checkoutPolicyConfig,
         pgMode: this.isEncryptedRecordSyncDisabled,
+        workspaceId: context.workspaceId,
       },
     );
     return true;

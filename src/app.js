@@ -3346,6 +3346,43 @@ export function initApp() {
       return tasks;
     },
 
+    scheduleTasksRefresh(reason = 'background') {
+      Promise.resolve()
+        .then(() => this.refreshTasks())
+        .catch((refreshError) => {
+          console.warn(`[flightdeck] task refresh failed after ${reason}`, refreshError);
+        });
+    },
+
+    scheduleTaskCommentsRefresh(taskId, reason = 'background') {
+      const recordId = String(taskId || '').trim();
+      if (!recordId) return;
+      Promise.resolve()
+        .then(() => hydrateTowerPgTaskComments(this, recordId))
+        .catch((refreshError) => {
+          console.warn(`[flightdeck] task comment refresh failed after ${reason}`, refreshError);
+        });
+    },
+
+    scheduleDocumentsRefresh(reason = 'background') {
+      Promise.resolve()
+        .then(() => this.refreshDocuments())
+        .catch((refreshError) => {
+          console.warn(`[flightdeck] document refresh failed after ${reason}`, refreshError);
+        });
+    },
+
+    scheduleDirectoriesAndDocumentsRefresh(reason = 'background') {
+      Promise.resolve()
+        .then(async () => {
+          await this.refreshDirectories();
+          await this.refreshDocuments();
+        })
+        .catch((refreshError) => {
+          console.warn(`[flightdeck] document tree refresh failed after ${reason}`, refreshError);
+        });
+    },
+
     async applySelectedTask(task = null) {
       const recordId = String(this.activeTaskId || '').trim();
       if (!recordId) return;
@@ -3799,7 +3836,7 @@ export function initApp() {
             this.tasks.filter((task) => task.record_id !== localRow.record_id),
             createdTask,
           );
-          await this.refreshTasks();
+          this.scheduleTasksRefresh('PG task create');
           return createdTask;
         } catch (error) {
           const failedRow = { ...localRow, sync_status: 'failed', updated_at: new Date().toISOString() };
@@ -4028,7 +4065,7 @@ export function initApp() {
               createdTask,
             );
             if (this.editingTask?.record_id === taskId) this.editingTask = { ...createdTask };
-            if (options.refresh) await this.refreshTasks();
+            if (options.refresh) this.scheduleTasksRefresh('PG task create from local edit');
             return createdTask;
           } catch (error) {
             const failedTask = { ...updated, sync_status: 'failed', updated_at: new Date().toISOString() };
@@ -4044,7 +4081,7 @@ export function initApp() {
           await upsertTask(acceptedTask);
           this.tasks = this.tasks.map((entry) => entry.record_id === taskId ? acceptedTask : entry);
           if (this.editingTask?.record_id === taskId) this.editingTask = { ...acceptedTask };
-          if (options.refresh) await this.refreshTasks();
+          if (options.refresh) this.scheduleTasksRefresh('PG task patch');
           if (releasePatchPgLease) await releasePgEditLeaseForRecord(this, task, 'task');
           return acceptedTask;
         } catch (error) {
@@ -4246,7 +4283,8 @@ export function initApp() {
       try {
         const updated = await this.applyTaskPatch(taskId, patch, { sync: false, intent: `quick_${action}` });
         await this.flushAndBackgroundSync();
-        await this.refreshTasks();
+        if (isTowerPgBackendMode()) this.scheduleTasksRefresh('PG task quick action');
+        else await this.refreshTasks();
         if (this.activeTaskId === taskId) {
           const current = this.tasks.find((task) => task.record_id === taskId) || updated;
           if (current) {
@@ -4484,7 +4522,7 @@ export function initApp() {
             this.taskDetailMode = 'view';
             this.taskEditOriginal = null;
             this.taskDescriptionEditing = false;
-            await this.refreshTasks();
+            this.scheduleTasksRefresh('PG task save');
             return;
           }
 
@@ -4516,7 +4554,7 @@ export function initApp() {
           this.taskDetailMode = 'view';
           this.taskEditOriginal = null;
           this.taskDescriptionEditing = false;
-          await this.refreshTasks();
+          this.scheduleTasksRefresh('PG task save');
           return;
         }
         const hasQueuedTaskWrite = pendingTaskWrites.length > 0;
@@ -5138,7 +5176,7 @@ export function initApp() {
             accepted,
             ...this.taskComments.filter((comment) => comment.record_id !== localRow.record_id),
           ]);
-          await hydrateTowerPgTaskComments(this, taskId);
+          this.scheduleTaskCommentsRefresh(taskId, 'PG task comment create');
         } catch (error) {
           const failed = { ...localRow, sync_status: 'failed', updated_at: new Date().toISOString() };
           await upsertComment(failed);
@@ -5343,7 +5381,8 @@ export function initApp() {
           await this.applyTaskPatch(taskId, patch, { sync: false });
         }
         await this.flushAndBackgroundSync();
-        await this.refreshTasks();
+        if (isTowerPgBackendMode()) this.scheduleTasksRefresh('PG bulk task action');
+        else await this.refreshTasks();
         this.clearSelectedTasks();
       } finally {
         this.bulkTaskBusy = false;
@@ -5451,8 +5490,11 @@ export function initApp() {
         }
         this.closeDocMoveModal();
         await this.flushAndBackgroundSync();
-        await this.refreshDirectories();
-        await this.refreshDocuments();
+        if (isTowerPgBackendMode()) this.scheduleDirectoriesAndDocumentsRefresh('PG document move');
+        else {
+          await this.refreshDirectories();
+          await this.refreshDocuments();
+        }
         this.clearSelectedDocs();
       } finally {
         this.docMoveModalSubmitting = false;
@@ -5578,8 +5620,11 @@ export function initApp() {
         });
         if (!removed) return;
         await this.flushAndBackgroundSync();
-        await this.refreshDirectories();
-        await this.refreshDocuments();
+        if (isTowerPgBackendMode()) this.scheduleDirectoriesAndDocumentsRefresh('PG bulk document delete');
+        else {
+          await this.refreshDirectories();
+          await this.refreshDocuments();
+        }
         this.clearSelectedDocs();
       } finally {
         this.bulkDocBusy = false;
@@ -6357,8 +6402,11 @@ export function initApp() {
       });
       if (!removed) return;
       await this.flushAndBackgroundSync();
-      await this.refreshDirectories();
-      await this.refreshDocuments();
+      if (isTowerPgBackendMode()) this.scheduleDirectoriesAndDocumentsRefresh('PG document delete');
+      else {
+        await this.refreshDirectories();
+        await this.refreshDocuments();
+      }
       const [first] = this.filteredDocRows;
       if (first) this.selectDocItem(first.type, first.item.record_id);
     },

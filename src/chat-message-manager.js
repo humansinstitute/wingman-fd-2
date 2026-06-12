@@ -716,8 +716,9 @@ export const chatMessageManagerMixin = {
       try {
         const channel = await this.ensureTowerPgDmChannel(targetNpub);
         if (channel?.record_id) {
-          await this.refreshChannels?.();
+          this.channels = [...(this.channels || []).filter((item) => item.record_id !== channel.record_id), channel];
           await this.selectChannel?.(channel.record_id, { syncRoute: false });
+          this.scheduleChannelsRefresh?.('PG bot DM open');
         }
       } catch (error) {
         this.error = error?.message || 'Failed to open agent DM';
@@ -807,9 +808,13 @@ export const chatMessageManagerMixin = {
         this.channels = this.channels.filter((item) => item.record_id !== channel.record_id);
         this.selectedChannelId = fallbackNextChannelId;
         this.closeThread();
-        await this.refreshChannels();
+        this.scheduleChannelsRefresh?.('PG channel delete');
         this.selectedChannelId = this.selectedChannelId ?? this.channels[0]?.record_id ?? null;
-        await this.refreshMessages({ scrollToLatest: true });
+        Promise.resolve()
+          .then(() => this.refreshMessages({ scrollToLatest: true }))
+          .catch((refreshError) => {
+            console.warn('[flightdeck] PG message refresh failed after channel delete', refreshError);
+          });
         this.channelDeleteConfirmArmed = false;
       } catch (error) {
         this.channelDeleteConfirmArmed = false;
@@ -964,7 +969,12 @@ export const chatMessageManagerMixin = {
         await replaceMessageRecord(localRow.record_id, accepted);
         this.messages = this.messages.filter((message) => message.record_id !== localRow.record_id);
         this.patchMessageLocal(accepted);
-        await this.refreshMessages({ scrollToLatest: true });
+        this.scheduleChatFeedScrollToBottom();
+        Promise.resolve()
+          .then(() => this.refreshMessages({ scrollToLatest: true }))
+          .catch((refreshError) => {
+            console.warn('[flightdeck] PG message refresh failed after send', refreshError);
+          });
       } catch (error) {
         await this.setMessageSyncStatus(msgId, 'failed');
         this.error = error?.message || 'Failed to sync PG message';
@@ -1068,7 +1078,12 @@ export const chatMessageManagerMixin = {
         await replaceMessageRecord(localRow.record_id, accepted);
         this.messages = this.messages.filter((message) => message.record_id !== localRow.record_id);
         this.patchMessageLocal(accepted);
-        await this.refreshMessages({ scrollThreadToLatest: true });
+        this.scheduleThreadRepliesScrollToBottom();
+        Promise.resolve()
+          .then(() => this.refreshMessages({ scrollThreadToLatest: true }))
+          .catch((refreshError) => {
+            console.warn('[flightdeck] PG reply refresh failed after send', refreshError);
+          });
       } catch (error) {
         await this.setMessageSyncStatus(msgId, 'failed');
         this.error = error?.message || 'Failed to sync PG reply';

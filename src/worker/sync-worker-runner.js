@@ -47,6 +47,7 @@ let sseViewerNpub = null;
 let sseBackendUrl = null;
 let sseWorkspaceDbKey = null;
 let sseCheckoutPolicyConfig = null;
+let ssePgWorkspaceId = null;
 let sseConnectionKey = null;
 let ssePgMode = false;
 let sseConnectionState = 'disconnected';
@@ -140,12 +141,14 @@ function cleanEchoSet() {
 
 // --- SSE client ---
 
-function buildSSEConnectionKey(ownerNpub, viewerNpub, backendUrl, workspaceDbKey, checkoutPolicyConfig = null) {
+function buildSSEConnectionKey(ownerNpub, viewerNpub, backendUrl, workspaceDbKey, checkoutPolicyConfig = null, pgMode = false, workspaceId = null) {
   return JSON.stringify({
     ownerNpub,
     viewerNpub,
     backendUrl,
     workspaceDbKey: workspaceDbKey || ownerNpub,
+    workspaceId: workspaceId || null,
+    pgMode: Boolean(pgMode),
     checkoutPolicyConfig: checkoutPolicyConfig || null,
   });
 }
@@ -170,6 +173,7 @@ function closeSSE({ resetContext = false } = {}) {
     sseBackendUrl = null;
     sseWorkspaceDbKey = null;
     sseCheckoutPolicyConfig = null;
+    ssePgWorkspaceId = null;
     ssePgMode = false;
     sseConnectionKey = null;
     sseConnectionState = 'disconnected';
@@ -185,6 +189,8 @@ function connectSSE(ownerNpub, viewerNpub, backendUrl, token, workspaceDbKey, op
     backendUrl,
     workspaceDbKey,
     options.checkoutPolicyConfig || null,
+    Boolean(options?.pgMode),
+    options?.workspaceId || null,
   );
   const force = Boolean(options?.force);
   const reason = String(options?.reason || 'connect');
@@ -214,9 +220,13 @@ function connectSSE(ownerNpub, viewerNpub, backendUrl, token, workspaceDbKey, op
   sseWorkspaceDbKey = workspaceDbKey;
   sseCheckoutPolicyConfig = options.checkoutPolicyConfig || null;
   ssePgMode = Boolean(options?.pgMode);
+  ssePgWorkspaceId = String(options?.workspaceId || '').trim() || null;
   sseConnectionKey = connectionKey;
 
-  const sseUrl = new URL(`/api/v4/workspaces/${ownerNpub}/stream`, backendUrl);
+  const ssePath = ssePgMode && ssePgWorkspaceId
+    ? `/api/v4/flightdeck-pg/workspaces/${ssePgWorkspaceId}/events/stream`
+    : `/api/v4/workspaces/${ownerNpub}/stream`;
+  const sseUrl = new URL(ssePath, backendUrl);
   sseUrl.searchParams.set('token', token);
   if (sseLastEventId != null) {
     sseUrl.searchParams.set('last_event_id', String(sseLastEventId));
@@ -228,6 +238,10 @@ function connectSSE(ownerNpub, viewerNpub, backendUrl, token, workspaceDbKey, op
   source.addEventListener('record-changed', (event) => {
     if (source !== eventSource) return;
     handleRecordChanged(event);
+  });
+  source.addEventListener('flightdeck_pg.event', (event) => {
+    if (source !== eventSource) return;
+    handleFlightDeckPgEvent(event);
   });
   source.addEventListener('group-changed', (event) => {
     if (source !== eventSource) return;
@@ -333,6 +347,15 @@ function handleRecordChanged(event) {
 
   // Collect stale family and debounce
   sseStaleFamilies.add(familyHash);
+  if (sseDebounceTimer) clearTimeout(sseDebounceTimer);
+  sseDebounceTimer = setTimeout(flushSSEStaleFamilies, SSE_DEBOUNCE_MS);
+}
+
+function handleFlightDeckPgEvent(event) {
+  try { JSON.parse(event.data); } catch { return; }
+  if (event.lastEventId) sseLastEventId = event.lastEventId;
+
+  sseStaleFamilies.add('flightdeck_pg');
   if (sseDebounceTimer) clearTimeout(sseDebounceTimer);
   sseDebounceTimer = setTimeout(flushSSEStaleFamilies, SSE_DEBOUNCE_MS);
 }

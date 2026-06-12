@@ -771,6 +771,26 @@ export const channelsManagerMixin = {
     return this.loadLocalChannels();
   },
 
+  scheduleChannelsRefresh(reason = 'background') {
+    Promise.resolve()
+      .then(() => this.refreshChannels())
+      .catch((refreshError) => {
+        flightDeckLog('warn', 'settings', `PG channel refresh failed after ${reason}`, {
+          error: refreshError?.message || String(refreshError),
+        });
+      });
+  },
+
+  scheduleGroupsRefresh(options = {}, reason = 'background') {
+    Promise.resolve()
+      .then(() => this.refreshGroups(options))
+      .catch((refreshError) => {
+        flightDeckLog('warn', 'groups', `PG group refresh failed after ${reason}`, {
+          error: refreshError?.message || String(refreshError),
+        });
+      });
+  },
+
   async refreshTowerPgWorkspaceMembers(options = {}) {
     const { workspaceId, workspaceOwnerNpub, baseUrl, appNpub } = resolveTowerPgWorkspaceContext(this);
     if (!workspaceId || !baseUrl) return [];
@@ -1078,6 +1098,33 @@ export const channelsManagerMixin = {
     return String(this.channelGrantActorId || '').trim();
   },
 
+  get selectedChannelGrantPrincipalKey() {
+    const principalType = String(this.channelGrantPrincipalType || '').trim();
+    const principalId = this.resolveChannelGrantPrincipalId();
+    if (!['actor', 'group'].includes(principalType) || !principalId) return '';
+    return `${principalType}:${principalId}`;
+  },
+
+  get selectedChannelGrantAlreadyExists() {
+    const key = this.selectedChannelGrantPrincipalKey;
+    if (!key) return false;
+    return (this.channelGrantRows || []).some((grant) => grant?.key === key);
+  },
+
+  get canCreateSelectedChannelGrant() {
+    return Boolean(
+      this.canManageSelectedPgChannelGrants
+      && this.selectedChannelGrantPrincipalKey
+      && !this.selectedChannelGrantAlreadyExists
+    );
+  },
+
+  get selectedChannelGrantDraftMessage() {
+    if (!this.selectedChannelGrantPrincipalKey) return 'Select a user or group to grant access.';
+    if (this.selectedChannelGrantAlreadyExists) return 'This user or group already has access. Change the permission in the list below.';
+    return this.getPgChannelGrantCapacityDescription(this.channelGrantCapacity);
+  },
+
   getPgChannelGrantPrincipalLabel(grant) {
     const rawPrincipalType = String(grant?.principal_type || grant?.stored_principal_type || '').trim();
     const principalType = rawPrincipalType === 'person' ? 'actor' : rawPrincipalType;
@@ -1108,6 +1155,14 @@ export const channelsManagerMixin = {
     return this.pgChannelGrantCapacityOptions.find((option) => option.value === value)?.label || 'Custom';
   },
 
+  getPgChannelGrantCapacityDescription(capacity) {
+    const value = String(capacity || '').trim();
+    if (value === 'manager') return 'can view, post, and manage access';
+    if (value === 'contributor') return 'can view and post';
+    if (value === 'viewer') return 'can view only';
+    return 'uses custom permissions';
+  },
+
   describePgChannelGrantPermissions(permissions = []) {
     return (permissions || []).map(String).filter(Boolean).join(', ');
   },
@@ -1125,6 +1180,17 @@ export const channelsManagerMixin = {
       hydrateTowerPgDocumentsAndFiles(this),
       hydrateTowerPgAudioNotes(this),
     ]);
+  },
+
+  schedulePgChannelAccessMaterializationRefresh() {
+    if (!isTowerPgBackendMode()) return;
+    Promise.resolve()
+      .then(() => this.refreshPgChannelAccessMaterialization())
+      .catch((error) => {
+        flightDeckLog('warn', 'settings', 'PG channel access materialization refresh failed', {
+          error: error?.message || String(error),
+        });
+      });
   },
 
   async materializeSelectedDmParticipantsFromChannelGrants() {
@@ -1184,6 +1250,10 @@ export const channelsManagerMixin = {
       this.channelGrantsError = 'Select a user or group.';
       return;
     }
+    if (this.selectedChannelGrantAlreadyExists) {
+      this.channelGrantsError = 'This user or group already has access. Change the permission in the list below.';
+      return;
+    }
 
     this.channelGrantsSaving = true;
     this.channelGrantsError = null;
@@ -1208,7 +1278,7 @@ export const channelsManagerMixin = {
         }
       }
       await this.refreshChannelGrants();
-      await this.refreshPgChannelAccessMaterialization();
+      this.schedulePgChannelAccessMaterializationRefresh();
       this.channelGrantsNotice = 'Channel access updated.';
     } catch (error) {
       if (error?.code === 'permission_denied') {
@@ -1248,7 +1318,7 @@ export const channelsManagerMixin = {
         access_level: accessLevelForPgChannelCapacity(nextCapacity),
       }, { baseUrl, appNpub });
       await this.refreshChannelGrants();
-      await this.refreshPgChannelAccessMaterialization();
+      this.schedulePgChannelAccessMaterializationRefresh();
       this.channelGrantsNotice = 'Channel access updated.';
     } catch (error) {
       if (error?.code === 'permission_denied') {
@@ -1284,7 +1354,7 @@ export const channelsManagerMixin = {
       if (!workspaceId || !baseUrl) throw new Error('Flight Deck PG workspace is not connected');
       await deleteTowerPgChannelGrant(workspaceId, channelId, principalType, principalId, { baseUrl, appNpub });
       await this.refreshChannelGrants();
-      await this.refreshPgChannelAccessMaterialization();
+      this.schedulePgChannelAccessMaterializationRefresh();
       this.channelGrantsNotice = 'Channel access removed.';
     } catch (error) {
       if (error?.code === 'permission_denied') {
@@ -1861,8 +1931,9 @@ export const channelsManagerMixin = {
       const name = `DM: ${targetNpub}`;
       if (isTowerPgBackendMode()) {
         const channelRow = await ensureTowerPgDmChannel(this, targetNpub);
-        await this.refreshChannels();
+        this.channels = [...this.channels.filter((channel) => channel.record_id !== channelRow.record_id), channelRow];
         await this.selectChannel(channelRow.record_id, { syncRoute: false });
+        this.scheduleChannelsRefresh('PG DM channel create');
         this.closeNewChannelModal();
         return;
       }
@@ -1970,8 +2041,8 @@ export const channelsManagerMixin = {
           });
         }
         this.channels = [...this.channels.filter((channel) => channel.record_id !== channelRow.record_id), channelRow];
-        await this.refreshChannels();
         await this.selectChannel(channelRow.record_id, { syncRoute: false });
+        this.scheduleChannelsRefresh('PG channel create');
         this.closeNewChannelModal();
         return;
       }
@@ -2129,7 +2200,7 @@ export const channelsManagerMixin = {
             });
           }
         }
-        await this.refreshGroups({ force: true, minIntervalMs: 0 });
+        this.scheduleGroupsRefresh({ force: true, minIntervalMs: 0 }, 'PG group write');
         await this.rememberPeople(members.map((member) => member.npub), 'pg-group');
         this.showNewGroupModal = false;
         this.resetNewGroupDraft();
@@ -2238,7 +2309,7 @@ export const channelsManagerMixin = {
           }
         }
         await this.rememberPeople(desiredMembers, 'pg-group');
-        await this.refreshGroups({ force: true, minIntervalMs: 0 });
+        this.scheduleGroupsRefresh({ force: true, minIntervalMs: 0 }, 'PG group write');
         this.showEditGroupModal = false;
         this.resetEditGroupDraft();
         return;
@@ -2411,7 +2482,7 @@ export const channelsManagerMixin = {
         });
       }
       this.pgWorkspaceMemberNpub = '';
-      await this.refreshGroups({ force: true, minIntervalMs: 0 });
+      this.scheduleGroupsRefresh({ force: true, minIntervalMs: 0 }, 'PG group write');
     } catch (error) {
       this.error = error?.message || 'Failed to add workspace member';
     } finally {
@@ -2444,7 +2515,7 @@ export const channelsManagerMixin = {
         });
       }
       this.pgGroupMemberDrafts = { ...(this.pgGroupMemberDrafts || {}), [targetGroupId]: '' };
-      await this.refreshGroups({ force: true, minIntervalMs: 0 });
+      this.scheduleGroupsRefresh({ force: true, minIntervalMs: 0 }, 'PG group write');
     } catch (error) {
       this.error = error?.message || 'Failed to add group member';
     } finally {
@@ -2470,7 +2541,7 @@ export const channelsManagerMixin = {
         child_group_id: childGroupId,
       }, { baseUrl, appNpub });
       this.pgChildGroupDrafts = { ...(this.pgChildGroupDrafts || {}), [parentId]: '' };
-      await this.refreshGroups({ force: true, minIntervalMs: 0 });
+      this.scheduleGroupsRefresh({ force: true, minIntervalMs: 0 }, 'PG group write');
     } catch (error) {
       this.error = error?.message || 'Failed to nest group';
     } finally {
@@ -2490,7 +2561,7 @@ export const channelsManagerMixin = {
       const { workspaceId, baseUrl, appNpub } = resolveTowerPgWorkspaceContext(this);
       if (!workspaceId || !baseUrl) throw new Error('Flight Deck PG workspace is not connected');
       await removeTowerPgWorkspaceChildGroup(workspaceId, parentGroupId, childGroupId, { baseUrl, appNpub });
-      await this.refreshGroups({ force: true, minIntervalMs: 0 });
+      this.scheduleGroupsRefresh({ force: true, minIntervalMs: 0 }, 'PG group write');
     } catch (error) {
       this.error = error?.message || 'Failed to remove nested group';
     } finally {
@@ -2549,7 +2620,7 @@ export const channelsManagerMixin = {
               reason: 'added_to_workspace_or_group',
             });
           }
-          await this.refreshGroups({ force: true, minIntervalMs: 0 });
+          this.scheduleGroupsRefresh({ force: true, minIntervalMs: 0 }, 'PG group write');
           this.shareInviteUrl = announcementStatus?.status === 'published'
             ? 'Member added to this PG workspace and onboarding announcement published.'
             : 'Member added to this PG workspace and group. Onboarding announcement needs retry.';
