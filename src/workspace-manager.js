@@ -581,11 +581,12 @@ export const workspaceManagerMixin = {
   },
 
   async loadLocalWorkspaceCoreData(options = {}) {
-    const [scopes, channels] = await Promise.all([
+    const [scopes, channels, dailyNotes] = await Promise.all([
       typeof this.loadLocalScopes === 'function' ? this.loadLocalScopes() : Promise.resolve([]),
       typeof this.loadLocalChannels === 'function' ? this.loadLocalChannels(options) : Promise.resolve([]),
+      typeof this.refreshDailyNotes === 'function' ? this.refreshDailyNotes().catch(() => []) : Promise.resolve([]),
     ]);
-    return { scopes, channels };
+    return { scopes, channels, dailyNotes };
   },
 
   getWorkspaceSettingsGroupNpub() {

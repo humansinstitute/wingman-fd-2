@@ -1674,6 +1674,7 @@ export const taskBoardStateMixin = {
   },
 
   selectBoard(boardId) {
+    const previousChannelId = this.selectedChannelId;
     this.selectedBoardId = boardId;
     this.persistSelectedBoardId(boardId);
     this.showBoardDescendantTasks = false;
@@ -1683,6 +1684,12 @@ export const taskBoardStateMixin = {
     this.syncSelectedChannelForPgBoard(boardId);
     if (this.navSection === 'chat') {
       this.ensureSelectedChatChannelInScope?.({ syncRoute: false });
+      if (this.selectedChannelId && this.selectedChannelId !== previousChannelId) {
+        this.selectChannel?.(this.selectedChannelId, { syncRoute: false });
+      } else if (!this.selectedChannelId) {
+        this.stopSelectedChannelLiveQuery?.();
+        void this.applyMessages?.([], { scrollToLatest: false });
+      }
     }
     if (this.showTaskDetail) this.closeTaskDetail();
     else this.syncRoute();

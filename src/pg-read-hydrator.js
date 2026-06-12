@@ -4,17 +4,20 @@ import {
   getTowerPgChannelAudioNotes,
   getTowerPgChannelDocs,
   getTowerPgChannelFiles,
+  getTowerPgDailyNotes,
   getTowerPgChannelMessages,
   getTowerPgChannelTasks,
   getTowerPgTaskComments,
   getTowerPgChannelThreads,
   getTowerPgScopeChannels,
   getTowerPgScopeTasks,
+  getTowerPgWorkspaceMembers,
   getTowerPgWorkspaceScopes,
 } from './api.js';
 import {
   replaceAudioNotesForOwner,
   replaceChannelsForOwner,
+  replaceDailyNotesForOwner,
   replaceDocumentsForOwner,
   replacePgCommentsForTarget,
   replacePgMessagesForChannel,
@@ -48,6 +51,105 @@ function pgMetadataThreadId(record = {}) {
     ? record.metadata
     : {};
   return trimText(record?.thread_id || metadata.thread_id || metadata.pg_thread_id) || null;
+}
+
+function resolveActorId(record = {}) {
+  return trimText(
+    record?.sender_actor_id
+    || record?.created_by_actor_id
+    || record?.updated_by_actor_id
+    || record?.actor_id,
+  );
+}
+
+function resolveSenderNpub(record = {}, actorNpubByActorId = new Map()) {
+  const directSender = trimText(
+    record?.sender_npub
+    || record?.npub
+    || record?.creator?.npub
+    || record?.created_by?.npub
+    || record?.createdBy?.npub
+    || record?.signature_actor?.npub
+    || record?.signature_npub
+    || record?.creator_npub
+    || record?.creatorNpub
+    || record?.created_by_npub
+    || record?.createdByNpub
+    || record?.actor_npub
+    || record?.actorNpub
+    || record?.actor?.npub
+    || record?.sender?.npub
+    || record?.senderNpub
+    || record?.created_by_actor_npub
+    || record?.createdByActorNpub
+    || record?.metadata?.sender_npub
+    || record?.metadata?.created_by_npub
+    || record?.metadata?.actor_npub
+    || record?.owner_npub,
+  );
+  if (directSender) return directSender;
+  const actorId = resolveActorId(record);
+  if (!actorId) return '';
+  return trimText(actorNpubByActorId.get(actorId));
+}
+
+function normalizeActorEntry(entry = {}) {
+  const actor = entry?.actor && typeof entry.actor === 'object' ? entry.actor : entry;
+  const actorId = trimText(actor?.actor_id || actor?.id || entry?.actor_id || entry?.id);
+  const npub = trimText(actor?.npub || entry?.npub);
+  if (!actorId || !npub) return null;
+  return [actorId, npub];
+}
+
+function resolveActorNpubByActorId(store = {}) {
+  return new Map(
+    (Array.isArray(store?.pgWorkspaceMembers) ? store.pgWorkspaceMembers : [])
+      .filter((member) => trimText(member?.npub))
+      .map((member) => [
+        trimText(member?.actor_id || member?.id),
+        trimText(member?.npub),
+      ])
+      .filter(([actorId, npub]) => actorId && npub),
+  );
+}
+
+async function resolveActorNpubByActorIdWithFallback(store = {}, deps = {}, context = {}) {
+  const actorNpubByActorId = resolveActorNpubByActorId(store);
+  if (actorNpubByActorId.size > 0 || !context.workspaceId || !context.baseUrl) {
+    return actorNpubByActorId;
+  }
+  const readWorkspaceMembers = deps.getTowerPgWorkspaceMembers || getTowerPgWorkspaceMembers;
+  try {
+    const membersResult = await readWorkspaceMembers(context.workspaceId, {
+      baseUrl: context.baseUrl,
+      appNpub: context.appNpub,
+    });
+    const members = Array.isArray(membersResult?.members) ? membersResult.members : [];
+    const refreshed = new Map(
+      members
+        .map((member) => normalizeActorEntry(member))
+        .filter(Boolean),
+    );
+    if (typeof store === 'object' && store !== null && members.length > 0) {
+      store.pgWorkspaceMembers = members
+        .map((member) => {
+          const actor = member?.actor && typeof member.actor === 'object' ? member.actor : member;
+          const actorId = trimText(actor?.actor_id || actor?.id || member?.actor_id || member?.id);
+          const npub = trimText(actor?.npub || member?.npub);
+          if (!actorId || !npub) return null;
+          return {
+            actor_id: actorId,
+            id: actorId,
+            npub,
+          };
+        })
+        .filter(Boolean);
+    }
+    if (refreshed.size > 0) return new Map([...actorNpubByActorId, ...refreshed]);
+  } catch {
+    return actorNpubByActorId;
+  }
+  return actorNpubByActorId;
 }
 
 function descriptorLinks(workspace = {}) {
@@ -145,7 +247,11 @@ export function mapPgChannelToLocal(channel, { workspaceOwnerNpub } = {}) {
   };
 }
 
-export function mapPgThreadToLocal(thread, { workspaceOwnerNpub, senderNpub } = {}) {
+export function mapPgThreadToLocal(thread, {
+  workspaceOwnerNpub,
+  senderNpub,
+  actorNpubByActorId = new Map(),
+} = {}) {
   const recordId = trimText(thread?.id || thread?.record_id);
   const updatedAt = isoTimestamp(thread?.updated_at || thread?.created_at);
   const title = trimText(thread?.title);
@@ -156,7 +262,8 @@ export function mapPgThreadToLocal(thread, { workspaceOwnerNpub, senderNpub } = 
     parent_message_id: null,
     body: title || latest || 'Untitled thread',
     attachments: [],
-    sender_npub: trimText(senderNpub) || trimText(workspaceOwnerNpub),
+    sender_npub: resolveSenderNpub(thread, actorNpubByActorId)
+      || trimText(senderNpub),
     sync_status: 'synced',
     record_state: 'active',
     version: rowVersion(thread?.row_version || thread?.version),
@@ -170,7 +277,12 @@ export function mapPgThreadToLocal(thread, { workspaceOwnerNpub, senderNpub } = 
   };
 }
 
-export function mapPgMessageToLocal(message, { workspaceOwnerNpub, senderNpub, threadById = new Map() } = {}) {
+export function mapPgMessageToLocal(message, {
+  workspaceOwnerNpub,
+  senderNpub,
+  actorNpubByActorId = new Map(),
+  threadById = new Map(),
+} = {}) {
   const recordId = trimText(message?.id || message?.record_id);
   const threadId = trimText(message?.thread_id);
   const thread = threadId ? threadById.get(threadId) || null : null;
@@ -182,7 +294,8 @@ export function mapPgMessageToLocal(message, { workspaceOwnerNpub, senderNpub, t
     parent_message_id: threadId && sourceMessageId && sourceMessageId !== recordId ? sourceMessageId : null,
     body: trimText(message?.body),
     attachments: [],
-    sender_npub: trimText(senderNpub) || trimText(workspaceOwnerNpub),
+    sender_npub: resolveSenderNpub(message, actorNpubByActorId)
+      || trimText(senderNpub),
     sync_status: 'synced',
     record_state: 'active',
     version: rowVersion(message?.row_version || message?.version),
@@ -248,7 +361,11 @@ export function mapPgTaskToLocal(task, { workspaceOwnerNpub } = {}) {
   };
 }
 
-export function mapPgTaskCommentToLocal(comment, { workspaceOwnerNpub, senderNpub } = {}) {
+export function mapPgTaskCommentToLocal(comment, {
+  workspaceOwnerNpub,
+  senderNpub,
+  actorNpubByActorId = new Map(),
+} = {}) {
   const updatedAt = isoTimestamp(comment?.updated_at || comment?.created_at);
   return {
     record_id: trimText(comment?.id || comment?.record_id),
@@ -258,7 +375,8 @@ export function mapPgTaskCommentToLocal(comment, { workspaceOwnerNpub, senderNpu
     parent_comment_id: null,
     body: trimText(comment?.body),
     attachments: [],
-    sender_npub: trimText(senderNpub) || trimText(workspaceOwnerNpub),
+    sender_npub: resolveSenderNpub(comment, actorNpubByActorId)
+      || trimText(senderNpub),
     sync_status: 'synced',
     record_state: 'active',
     version: rowVersion(comment?.row_version || comment?.version),
@@ -385,7 +503,11 @@ function pgAudioTargetFamily(targetType) {
   return null;
 }
 
-export function mapPgAudioNoteToLocal(audioNote, { workspaceOwnerNpub, senderNpub } = {}) {
+export function mapPgAudioNoteToLocal(audioNote, {
+  workspaceOwnerNpub,
+  senderNpub,
+  actorNpubByActorId = new Map(),
+} = {}) {
   const updatedAt = isoTimestamp(audioNote?.updated_at || audioNote?.created_at);
   const targetType = trimText(audioNote?.target_type);
   return {
@@ -404,7 +526,8 @@ export function mapPgAudioNoteToLocal(audioNote, { workspaceOwnerNpub, senderNpu
     transcript_preview: trimText(audioNote?.transcript_preview) || null,
     transcript: trimText(audioNote?.transcript) || null,
     summary: trimText(audioNote?.summary) || null,
-    sender_npub: trimText(senderNpub) || trimText(workspaceOwnerNpub),
+    sender_npub: resolveSenderNpub(audioNote, actorNpubByActorId)
+      || trimText(senderNpub),
     group_ids: [],
     sync_status: 'synced',
     record_state: trimText(audioNote?.record_state) || 'active',
@@ -419,6 +542,33 @@ export function mapPgAudioNoteToLocal(audioNote, { workspaceOwnerNpub, senderNpu
     pg_media_route: trimText(audioNote?.media?.route),
     pg_created_by_actor_id: trimText(audioNote?.created_by_actor_id),
     pg_updated_by_actor_id: trimText(audioNote?.updated_by_actor_id),
+  };
+}
+
+export function mapPgDailyNoteToLocal(note, { workspaceOwnerNpub } = {}) {
+  return {
+    record_id: trimText(note?.id),
+    owner_npub: trimText(workspaceOwnerNpub),
+    note_date: trimText(note?.note_date),
+    title: trimText(note?.title) || 'Daily note',
+    body: trimText(note?.body),
+    focus: trimText(note?.focus),
+    items: Array.isArray(note?.items) ? note.items : [],
+    status: trimText(note?.status) || 'active',
+    metadata: note?.metadata && typeof note.metadata === 'object' && !Array.isArray(note.metadata) ? note.metadata : {},
+    sync_status: 'synced',
+    record_state: note?.deleted_at ? 'deleted' : 'active',
+    version: rowVersion(note?.row_version || note?.version),
+    created_at: isoTimestamp(note?.created_at),
+    updated_at: isoTimestamp(note?.updated_at),
+    pg_backend: true,
+    pg_record_type: 'daily_note',
+    pg_workspace_id: trimText(note?.workspace_id),
+    pg_owner_actor_id: trimText(note?.owner_actor_id),
+    pg_scope_id: trimText(note?.scope_id),
+    pg_channel_id: trimText(note?.channel_id),
+    pg_created_by_actor_id: trimText(note?.created_by_actor_id),
+    pg_updated_by_actor_id: trimText(note?.updated_by_actor_id),
   };
 }
 
@@ -448,6 +598,7 @@ export async function hydrateTowerPgChannels(store, deps = {}) {
   const readMessages = deps.getTowerPgChannelMessages || getTowerPgChannelMessages;
   const replaceChannels = deps.replaceChannelsForOwner || replaceChannelsForOwner;
   const replaceMessages = deps.replacePgMessagesForChannel || replacePgMessagesForChannel;
+  const actorNpubByActorId = await resolveActorNpubByActorIdWithFallback(store, deps, context);
 
   let scopes = Array.isArray(store.scopes) ? store.scopes : [];
   if (scopes.length === 0 && typeof store.refreshScopes === 'function') {
@@ -470,7 +621,6 @@ export async function hydrateTowerPgChannels(store, deps = {}) {
   await replaceChannels(context.workspaceOwnerNpub, channels);
   if (typeof store.applyChannels === 'function') await store.applyChannels(channels);
 
-  const senderNpub = trimText(store.session?.npub) || context.workspaceOwnerNpub;
   for (const channel of channels) {
     const result = await readThreads(context.workspaceId, channel.record_id, {
       baseUrl: context.baseUrl,
@@ -487,8 +637,9 @@ export async function hydrateTowerPgChannels(store, deps = {}) {
     const messageRows = rawMessages
       .map((message) => mapPgMessageToLocal(message, {
         workspaceOwnerNpub: context.workspaceOwnerNpub,
-        senderNpub,
+        senderNpub: '',
         threadById,
+        actorNpubByActorId,
       }))
       .filter((message) => message.record_id && message.channel_id);
     const messageIds = new Set(messageRows.map((message) => message.record_id));
@@ -499,7 +650,8 @@ export async function hydrateTowerPgChannels(store, deps = {}) {
       })
       .map((thread) => mapPgThreadToLocal(thread, {
         workspaceOwnerNpub: context.workspaceOwnerNpub,
-        senderNpub,
+        senderNpub: '',
+        actorNpubByActorId,
       }))
       .filter((thread) => thread.record_id && thread.channel_id);
     const rows = [
@@ -568,20 +720,39 @@ export async function hydrateTowerPgTaskComments(store, taskId, deps = {}) {
   if (!context.workspaceId || !context.workspaceOwnerNpub || !context.baseUrl || !recordId) return [];
   const readTaskComments = deps.getTowerPgTaskComments || getTowerPgTaskComments;
   const replaceComments = deps.replacePgCommentsForTarget || replacePgCommentsForTarget;
+  const actorNpubByActorId = await resolveActorNpubByActorIdWithFallback(store, deps, context);
   const result = await readTaskComments(context.workspaceId, recordId, {
     baseUrl: context.baseUrl,
     appNpub: context.appNpub,
   });
-  const senderNpub = trimText(store.session?.npub) || context.workspaceOwnerNpub;
   const comments = (Array.isArray(result?.comments) ? result.comments : [])
     .map((comment) => mapPgTaskCommentToLocal(comment, {
       workspaceOwnerNpub: context.workspaceOwnerNpub,
-      senderNpub,
+      senderNpub: '',
+      actorNpubByActorId,
     }))
     .filter((comment) => comment.record_id && comment.target_record_id);
   await replaceComments(recordId, comments);
   if (typeof store.applyTaskComments === 'function') await store.applyTaskComments(comments);
   return comments;
+}
+
+export async function hydrateTowerPgDailyNotes(store, deps = {}) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  if (!context.workspaceId || !context.workspaceOwnerNpub || !context.baseUrl) return [];
+  const readDailyNotes = deps.getTowerPgDailyNotes || getTowerPgDailyNotes;
+  const replaceDailyNotes = deps.replaceDailyNotesForOwner || replaceDailyNotesForOwner;
+  const result = await readDailyNotes(context.workspaceId, {
+    baseUrl: context.baseUrl,
+    appNpub: context.appNpub,
+    limit: deps.limit || 30,
+  });
+  const dailyNotes = (Array.isArray(result?.daily_notes) ? result.daily_notes : [])
+    .map((note) => mapPgDailyNoteToLocal(note, { workspaceOwnerNpub: context.workspaceOwnerNpub }))
+    .filter((note) => note.record_id);
+  await replaceDailyNotes(context.workspaceOwnerNpub, dailyNotes);
+  if (typeof store.applyDailyNotes === 'function') await store.applyDailyNotes(dailyNotes);
+  return dailyNotes;
 }
 
 export async function hydrateTowerPgDocumentsAndFiles(store, deps = {}) {
@@ -622,13 +793,13 @@ export async function hydrateTowerPgAudioNotes(store, deps = {}) {
   if (!context.workspaceId || !context.workspaceOwnerNpub || !context.baseUrl) return [];
   const readAudioNotes = deps.getTowerPgChannelAudioNotes || getTowerPgChannelAudioNotes;
   const replaceAudioNotes = deps.replaceAudioNotesForOwner || replaceAudioNotesForOwner;
+  const actorNpubByActorId = await resolveActorNpubByActorIdWithFallback(store, deps, context);
   let channels = Array.isArray(store.channels) ? store.channels : [];
   if (channels.length === 0 && typeof store.refreshChannels === 'function') {
     const refreshed = await store.refreshChannels();
     channels = Array.isArray(refreshed) ? refreshed : (Array.isArray(store.channels) ? store.channels : []);
   }
 
-  const senderNpub = trimText(store.session?.npub) || context.workspaceOwnerNpub;
   const audioNotes = [];
   for (const channel of channels.filter((entry) => entry?.record_id && entry.record_state !== 'deleted')) {
     const result = await readAudioNotes(context.workspaceId, channel.record_id, {
@@ -639,7 +810,8 @@ export async function hydrateTowerPgAudioNotes(store, deps = {}) {
       ...(Array.isArray(result?.audio_notes) ? result.audio_notes : [])
         .map((audioNote) => mapPgAudioNoteToLocal(audioNote, {
           workspaceOwnerNpub: context.workspaceOwnerNpub,
-          senderNpub,
+          senderNpub: '',
+          actorNpubByActorId,
         }))
         .filter((audioNote) => audioNote.record_id),
     );

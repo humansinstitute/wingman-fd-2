@@ -48,6 +48,7 @@ let sseBackendUrl = null;
 let sseWorkspaceDbKey = null;
 let sseCheckoutPolicyConfig = null;
 let sseConnectionKey = null;
+let ssePgMode = false;
 let sseConnectionState = 'disconnected';
 let sseLastEventId = null;
 let sseReconnectTimer = null;
@@ -169,6 +170,7 @@ function closeSSE({ resetContext = false } = {}) {
     sseBackendUrl = null;
     sseWorkspaceDbKey = null;
     sseCheckoutPolicyConfig = null;
+    ssePgMode = false;
     sseConnectionKey = null;
     sseConnectionState = 'disconnected';
     sseLastEventId = null;
@@ -211,6 +213,7 @@ function connectSSE(ownerNpub, viewerNpub, backendUrl, token, workspaceDbKey, op
   sseBackendUrl = backendUrl;
   sseWorkspaceDbKey = workspaceDbKey;
   sseCheckoutPolicyConfig = options.checkoutPolicyConfig || null;
+  ssePgMode = Boolean(options?.pgMode);
   sseConnectionKey = connectionKey;
 
   const sseUrl = new URL(`/api/v4/workspaces/${ownerNpub}/stream`, backendUrl);
@@ -341,16 +344,18 @@ async function flushSSEStaleFamilies() {
   if (!families.length || !sseOwnerNpub || !sseBackendUrl) return;
 
   try {
-    if (sseBackendUrl) setBaseUrl(sseBackendUrl);
-    await pullRecordsForFamilies(
-      sseOwnerNpub,
-      sseViewerNpub || sseOwnerNpub,
-      families,
-      {
-        workspaceDbKey: sseWorkspaceDbKey || sseOwnerNpub,
-        checkoutPolicyConfig: sseCheckoutPolicyConfig,
-      },
-    );
+    if (!ssePgMode) {
+      if (sseBackendUrl) setBaseUrl(sseBackendUrl);
+      await pullRecordsForFamilies(
+        sseOwnerNpub,
+        sseViewerNpub || sseOwnerNpub,
+        families,
+        {
+          workspaceDbKey: sseWorkspaceDbKey || sseOwnerNpub,
+          checkoutPolicyConfig: sseCheckoutPolicyConfig,
+        },
+      );
+    }
     postSSEStatus('pull-complete', { families });
   } catch (error) {
     // Non-fatal — next SSE event will retry

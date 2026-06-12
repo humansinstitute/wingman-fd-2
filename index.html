@@ -826,9 +826,53 @@
       </nav>
 
       <div class="main-content">
+          <div class="global-pg-channel-bar" x-show="$store.chat.navSection !== 'chat' && $store.chat.isLoggedIn" x-cloak>
+            <div class="chat-channel-header">
+              <div class="chat-channel-tab-scroll" role="tablist" aria-label="Workspace channels">
+                <template x-for="channel in $store.chat.pgContextChannels" :key="channel.record_id">
+                  <div
+                    class="chat-channel-tab-item"
+                    :class="{ active: $store.chat.pgContextSelectedChannelId === channel.record_id && !$store.chat.pgContextSelectedThreadId }"
+                  >
+                    <button
+                      type="button"
+                      class="chat-channel-tab"
+                      role="tab"
+                      :aria-selected="$store.chat.pgContextSelectedChannelId === channel.record_id && !$store.chat.pgContextSelectedThreadId"
+                      @click="$store.chat.selectPgChannelContext(channel.record_id)"
+                    >
+                      <span class="channel-hash">#</span>
+                      <span class="chat-channel-tab-label" x-text="$store.chat.getChannelLabel(channel)"></span>
+                    </button>
+                    <div class="chat-channel-menu chat-channel-tab-menu" x-show="$store.chat.pgContextSelectedChannelId === channel.record_id" x-cloak>
+                      <button
+                        type="button"
+                        class="chat-channel-menu-button"
+                        title="Channel settings"
+                        aria-label="Channel settings"
+                        @click.stop.prevent="$store.chat.openChannelSettings(channel.record_id)"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                          <circle cx="12" cy="5" r="1"></circle>
+                          <circle cx="12" cy="12" r="1"></circle>
+                          <circle cx="12" cy="19" r="1"></circle>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </template>
+              </div>
+              <button type="button" class="chat-channel-tab-add" @click="$store.chat.openNewChannelModal()" title="New channel" aria-label="New channel">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path d="M12 5v14M5 12h14" stroke-linecap="round"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+
         <template x-if="$store.chat.navSection === 'status'">
           <div class="status-section">
-          <div class="pg-work-context-bar" x-show="$store.chat.showPgTaskBoardZoomControls" x-cloak>
+          <div class="pg-work-context-bar" x-show="false" x-cloak>
             <div class="chat-channel-header">
               <div class="chat-channel-tab-scroll" role="tablist" aria-label="Workspace channels">
                 <template x-for="channel in $store.chat.pgContextChannels" :key="channel.record_id">
@@ -887,7 +931,6 @@
               </template>
             </div>
           </div>
-
           <section class="flightdeck-hero" x-data="{ bpIdx: 0, open: false, query: '' }" @click.outside="open = false; query = ''">
             <h2>Welcome <span x-text="$store.chat.greetingName"></span>, where will we focus today?</h2>
             <div class="flightdeck-hero-scope-row">
@@ -937,6 +980,31 @@
                 </div>
               </section>
             </template>
+            <section
+              class="daily-note-strip"
+              x-show="$store.chat.isLoggedIn"
+              x-cloak
+              @click="$store.chat.openDailyNoteEditor()"
+              role="button"
+              tabindex="0"
+              @keydown.enter.prevent="$store.chat.openDailyNoteEditor()"
+              @keydown.space.prevent="$store.chat.openDailyNoteEditor()"
+            >
+              <template x-if="!$store.chat.getCurrentDailyNote()">
+                <div class="daily-note-empty">
+                  <span class="daily-note-plus" aria-hidden="true">+</span>
+                </div>
+              </template>
+              <template x-if="$store.chat.getCurrentDailyNote()">
+                <div class="daily-note-filled">
+                  <div>
+                    <p class="daily-note-eyebrow">Today</p>
+                    <h3 x-text="$store.chat.dailyNoteComponentTitle"></h3>
+                  </div>
+                  <p x-text="$store.chat.dailyNoteComponentPreview"></p>
+                </div>
+              </template>
+            </section>
           </section>
 
           <section class="wapps-launcher-section" aria-label="Workspace apps" data-testid="wapps-launcher" x-show="$store.chat.hasVisibleWapps" x-cloak>
@@ -1388,7 +1456,7 @@
             @keydown.escape.window="$store.chat.chatTaskModalOpen && $store.chat.closeChatTaskModal()"
           >
 
-          <div class="pg-work-context-bar" x-show="!$store.chat.showTaskDetail && $store.chat.showPgTaskBoardZoomControls" x-cloak>
+          <div class="pg-work-context-bar" x-show="false" x-cloak>
             <div class="chat-channel-header">
               <div class="chat-channel-tab-scroll" role="tablist" aria-label="Workspace channels">
                 <template x-for="channel in $store.chat.pgContextChannels" :key="channel.record_id">
@@ -2875,7 +2943,7 @@
             @keydown.escape.window="$store.chat.chatDocModalOpen && $store.chat.closeChatDocModal()"
           >
           <div class="docs-view">
-            <div class="pg-work-context-bar" x-show="!$store.chat.docsEditorOpen && $store.chat.showPgTaskBoardZoomControls" x-cloak>
+            <div class="pg-work-context-bar" x-show="false" x-cloak>
               <div class="chat-channel-header">
                 <div class="chat-channel-tab-scroll" role="tablist" aria-label="Workspace channels">
                   <template x-for="channel in $store.chat.pgContextChannels" :key="channel.record_id">
@@ -4036,7 +4104,7 @@
 
         <template x-if="$store.chat.navSection === 'files'">
           <section class="files-section" x-init="$store.chat.scheduleStorageImageHydration()" x-effect="$store.chat.filteredFileBrowserRows.length; $nextTick(() => $store.chat.scheduleStorageImageHydration())">
-            <div class="pg-work-context-bar files-work-context-bar" x-show="$store.chat.showPgTaskBoardZoomControls" x-cloak>
+            <div class="pg-work-context-bar files-work-context-bar" x-show="false" x-cloak>
               <div class="chat-channel-header">
                 <div class="chat-channel-tab-scroll" role="tablist" aria-label="Workspace channels">
                   <template x-for="channel in $store.chat.pgContextChannels" :key="channel.record_id">
@@ -8043,7 +8111,28 @@
                       <span x-text="$store.chat.getPgChannelGrantPrincipalLabel(grant)"></span>
                       <small x-text="grant.principal_type === 'group' ? 'Group' : 'User'"></small>
                     </div>
-                    <div class="channel-grant-capacity" x-text="$store.chat.getPgChannelGrantCapacityLabel(grant.capacity)"></div>
+                    <div class="channel-grant-actions">
+                      <select
+                        class="channel-grant-capacity-select"
+                        x-show="$store.chat.canEditPgChannelGrantRow(grant)"
+                        :value="grant.capacity"
+                        @change="$store.chat.updateChannelGrantCapacity(grant, $event.target.value)"
+                        :disabled="$store.chat.channelGrantsSaving"
+                        aria-label="Channel access level"
+                      >
+                        <template x-for="capacity in $store.chat.pgChannelGrantCapacityOptions" :key="capacity.value">
+                          <option :value="capacity.value" x-text="capacity.label"></option>
+                        </template>
+                      </select>
+                      <div class="channel-grant-capacity" x-show="!$store.chat.canEditPgChannelGrantRow(grant)" x-text="$store.chat.getPgChannelGrantCapacityLabel(grant.capacity)"></div>
+                      <button
+                        type="button"
+                        class="channel-grant-remove"
+                        x-show="$store.chat.canManageSelectedPgChannelGrants"
+                        @click="$store.chat.removeChannelGrant(grant)"
+                        :disabled="$store.chat.channelGrantsSaving"
+                      >Remove</button>
+                    </div>
                     <small class="channel-grant-permissions" x-text="$store.chat.describePgChannelGrantPermissions(grant.permissions)"></small>
                   </div>
                 </template>
@@ -8295,7 +8384,31 @@
                   <label class="new-channel-label">Description <span class="new-channel-optional">(optional)</span></label>
                   <input class="new-channel-input" type="text" placeholder="What's this channel about?" x-model="$store.chat.newChannelDescription" />
 
-                  <div class="new-channel-group-picker" x-data="{ groupQuery: '', groupIdx: 0, showGroups: false }" @click.outside="showGroups = false">
+                  <div class="new-channel-access-editor" x-show="$store.chat.isTowerPgMode">
+                    <div class="new-channel-access-header">
+                      <label class="new-channel-label">Access</label>
+                      <button type="button" class="new-channel-access-add" @click="$store.chat.addNewChannelAccessRow()" :disabled="!$store.chat.newChannelCanAddAccessRow">Add row</button>
+                    </div>
+                    <div class="new-channel-access-list">
+                      <template x-for="(row, index) in $store.chat.newChannelAccessRows" :key="$store.chat.getNewChannelAccessRowKey(row, index)">
+                        <div class="new-channel-access-row">
+                          <select class="new-channel-select" :value="$store.chat.getNewChannelAccessPrincipalValue(row)" @change="$store.chat.setNewChannelAccessPrincipal(index, $event.target.value)">
+                            <template x-for="option in $store.chat.newChannelAccessPrincipalOptions" :key="option.disabled ? `label-${option.label}` : option.value">
+                              <option :value="option.value || ''" :disabled="option.disabled" x-text="option.disabled ? option.label : `${option.label} (${option.type === 'group' ? 'Group' : 'Person'})`"></option>
+                            </template>
+                          </select>
+                          <select class="new-channel-select" :value="row.capacity" @change="$store.chat.setNewChannelAccessCapacity(index, $event.target.value)">
+                            <template x-for="capacity in $store.chat.pgChannelGrantCapacityOptions" :key="capacity.value">
+                              <option :value="capacity.value" x-text="capacity.label"></option>
+                            </template>
+                          </select>
+                          <button type="button" class="new-channel-access-remove" title="Remove access row" aria-label="Remove access row" @click="$store.chat.removeNewChannelAccessRow(index)">×</button>
+                        </div>
+                      </template>
+                    </div>
+                  </div>
+
+                  <div class="new-channel-group-picker" x-show="!$store.chat.isTowerPgMode" x-data="{ groupQuery: '', groupIdx: 0, showGroups: false }" @click.outside="showGroups = false">
                     <label class="new-channel-label">Group</label>
                     <template x-if="$store.chat.newChannelGroupId">
                       <div class="new-channel-resolved-profile task-assignee-selected">
@@ -8346,7 +8459,7 @@
               <button type="button" class="new-channel-cancel-btn" @click="$store.chat.closeNewChannelModal()">Cancel</button>
               <button type="button" class="new-channel-create-btn"
                 @click="$store.chat.newChannelMode === 'dm' ? $store.chat.createDmChannel() : $store.chat.createNamedChannel()"
-                :disabled="$store.chat.newChannelMode === 'dm' ? !($store.chat.newChannelDmNpub.startsWith('npub1') && $store.chat.newChannelDmNpub.length >= 63) : !$store.chat.newChannelName.trim() || !$store.chat.newChannelGroupId">
+                :disabled="$store.chat.newChannelMode === 'dm' ? !($store.chat.newChannelDmNpub.startsWith('npub1') && $store.chat.newChannelDmNpub.length >= 63) : !$store.chat.canCreateNamedChannel">
                 Create
               </button>
             </div>
@@ -8584,6 +8697,41 @@
               <button type="button" class="btn-secondary" x-show="$store.chat.audioRecorderState === 'idle'" @click="$store.chat.startAudioRecording()">Start</button>
               <button type="button" class="btn-secondary" x-show="$store.chat.audioRecorderState === 'recording'" @click="$store.chat.stopAudioRecording()">Stop</button>
               <button type="button" class="btn-confirm" x-show="$store.chat.audioRecorderState === 'ready'" @click="$store.chat.attachRecordedAudioDraft()">Retry upload</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="doc-modal-backdrop" x-show="$store.chat.dailyNoteEditorOpen" x-cloak @click.self="$store.chat.closeDailyNoteEditor()">
+          <div class="doc-modal-card daily-note-modal">
+            <button class="modal-close" type="button" @click="$store.chat.closeDailyNoteEditor()">&times;</button>
+            <p class="doc-comment-modal-copy">Daily note for <span x-text="$store.chat.getTodayDateKey()"></span></p>
+            <input
+              class="daily-note-title-input"
+              type="text"
+              x-model="$store.chat.dailyNoteEditorTitle"
+              placeholder="Daily note"
+            />
+            <label class="daily-note-field">
+              <span>Focus</span>
+              <input type="text" x-model="$store.chat.dailyNoteEditorFocus" placeholder="What matters today?" />
+            </label>
+            <label class="daily-note-field">
+              <span>Note</span>
+              <textarea
+                x-model="$store.chat.dailyNoteEditorBody"
+                rows="12"
+                placeholder="Write the plan, progress, blockers, or anything the AI should track today."
+              ></textarea>
+            </label>
+            <template x-if="$store.chat.dailyNoteEditorError">
+              <p class="error-text" x-text="$store.chat.dailyNoteEditorError"></p>
+            </template>
+            <div class="new-doc-modal-actions">
+              <button type="button" class="btn-cancel" @click="$store.chat.closeDailyNoteEditor()">Cancel</button>
+              <button type="button" class="btn-confirm" @click="$store.chat.saveDailyNoteEditor()" :disabled="$store.chat.dailyNoteEditorSaving">
+                <span x-show="!$store.chat.dailyNoteEditorSaving">Save daily note</span>
+                <span x-show="$store.chat.dailyNoteEditorSaving">Saving...</span>
+              </button>
             </div>
           </div>
         </div>

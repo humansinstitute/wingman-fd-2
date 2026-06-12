@@ -1960,7 +1960,6 @@ export const syncManagerMixin = {
   },
 
   getSSEConnectionContext() {
-    if (this.isEncryptedRecordSyncDisabled) return null;
     if (!this.session?.npub || !this.backendUrl || !this.workspaceOwnerNpub) return null;
     return {
       ownerNpub: this.workspaceOwnerNpub,
@@ -2030,12 +2029,6 @@ export const syncManagerMixin = {
   },
 
   async connectSSEStream(options = {}) {
-    if (this.isEncryptedRecordSyncDisabled) {
-      this.disconnectSSEStream('pg-mode-record-sync-disabled');
-      this.markEncryptedRecordSyncDisabled();
-      return false;
-    }
-
     const context = this.getSSEConnectionContext();
     if (!context) return false;
 
@@ -2109,6 +2102,7 @@ export const syncManagerMixin = {
         force,
         reason,
         checkoutPolicyConfig: context.checkoutPolicyConfig,
+        pgMode: this.isEncryptedRecordSyncDisabled,
       },
     );
     return true;
@@ -2142,6 +2136,16 @@ export const syncManagerMixin = {
     this.logSSELifecycle(status, message);
 
     if (status === 'pull-complete') {
+      if (this.isEncryptedRecordSyncDisabled) {
+        if (typeof this.refreshChannels === 'function') {
+          this.refreshChannels().catch((error) => {
+            flightDeckLog('warn', 'sse', 'failed to refresh PG channels after SSE pull', {
+              error: error?.message || String(error),
+            });
+          });
+        }
+        return;
+      }
       this.refreshStateForSyncFamilyHashes(message?.families || [], {
         refreshSyncStatus: false,
         refreshRecentChanges: false,
@@ -2185,9 +2189,13 @@ export const syncManagerMixin = {
   // --- sync lifecycle ---
 
   getSyncCadenceMs() {
-    if (this.isEncryptedRecordSyncDisabled) return null;
     if (!this.session?.npub || !this.backendUrl) return null;
     if (typeof document !== 'undefined' && document.hidden) return null;
+    if (this.isEncryptedRecordSyncDisabled) {
+      if (this.isSSEConnected) return this.SSE_HEARTBEAT_CADENCE_MS;
+      if (this.navSection === 'chat' && this.selectedChannelId) return this.FAST_SYNC_MS;
+      return this.IDLE_SYNC_MS;
+    }
     // When SSE is connected, widen heartbeat polling — SSE handles live refresh
     if (this.isSSEConnected) return this.SSE_HEARTBEAT_CADENCE_MS;
     if (this.navSection === 'chat' && this.selectedChannelId) return this.FAST_SYNC_MS;
@@ -2226,14 +2234,17 @@ export const syncManagerMixin = {
   },
 
   ensureBackgroundSync(runSoon = false) {
-    if (this.isEncryptedRecordSyncDisabled) {
-      this.stopBackgroundSync();
-      this.markEncryptedRecordSyncDisabled();
-      return;
-    }
     if (!this.visibilityHandler && typeof document !== 'undefined') {
       this.visibilityHandler = () => this.ensureBackgroundSync(true);
       document.addEventListener('visibilitychange', this.visibilityHandler);
+    }
+    if (this.isEncryptedRecordSyncDisabled) {
+      this.markEncryptedRecordSyncDisabled();
+      if (this.session?.npub && this.backendUrl && this.workspaceOwnerNpub) {
+        this.connectSSEStream({ reason: runSoon ? 'ensure-background-sync-soon' : 'ensure-background-sync' });
+      }
+      this.scheduleBackgroundSync(runSoon ? 50 : null);
+      return;
     }
     // Start the independent worker flush timer for low-latency outbox delivery
     if (this.session?.npub && this.backendUrl && this.workspaceOwnerNpub) {
@@ -2263,11 +2274,6 @@ export const syncManagerMixin = {
   },
 
   async backgroundSyncTick() {
-    if (this.isEncryptedRecordSyncDisabled) {
-      this.markEncryptedRecordSyncDisabled();
-      return;
-    }
-
     const cadence = this.getSyncCadenceMs();
     if (!cadence) {
       this.catchUpSyncActive = false;
@@ -2281,7 +2287,14 @@ export const syncManagerMixin = {
 
     this.backgroundSyncInFlight = true;
     try {
-      await this.performSync({ silent: true });
+      if (this.isEncryptedRecordSyncDisabled) {
+        this.markEncryptedRecordSyncDisabled();
+        if (this.navSection === 'chat' && this.selectedChannelId && typeof this.refreshChannels === 'function') {
+          await this.refreshChannels();
+        }
+      } else {
+        await this.performSync({ silent: true });
+      }
       // checkForStaleness removed — heartbeat in runSync replaces it
       this.syncBackoffMs = 0;
     } catch (error) {

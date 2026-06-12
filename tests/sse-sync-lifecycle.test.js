@@ -333,7 +333,7 @@ describe('connectSSEStream', () => {
     expect(connectSSE).toHaveBeenCalledTimes(1);
   });
 
-  it('does not connect encrypted-record SSE in Tower PG mode', async () => {
+  it('connects SSE in Tower PG mode', async () => {
     isTowerPgBackendMode.mockReturnValue(true);
     const { fn, store } = bindMethod('connectSSEStream', {
       session: { npub: 'npub1viewer' },
@@ -344,12 +344,11 @@ describe('connectSSEStream', () => {
 
     const connected = await fn({ force: true });
 
-    expect(connected).toBe(false);
-    expect(connectSSE).not.toHaveBeenCalled();
-    expect(disconnectSSE).toHaveBeenCalledTimes(1);
-    expect(store.syncStatus).toBe('disabled');
-    expect(store.sseStatus).toBe('disabled');
-    expect(store.syncSession.state).toBe('disabled');
+    expect(connected).toBe(true);
+    expect(connectSSE).toHaveBeenCalledTimes(1);
+    const options = connectSSE.mock.calls[0][5];
+    expect(options.pgMode).toBe(true);
+    expect(store.sseStatus).not.toBe('disabled');
   });
 });
 
@@ -373,7 +372,7 @@ describe('getSSEConnectionContext', () => {
     });
   });
 
-  it('returns null in Tower PG mode', () => {
+  it('returns a SSE context in Tower PG mode', () => {
     isTowerPgBackendMode.mockReturnValue(true);
     const { fn } = bindMethod('getSSEConnectionContext', {
       session: { npub: 'npub1viewer' },
@@ -382,7 +381,13 @@ describe('getSSEConnectionContext', () => {
       currentWorkspaceKey: 'workspace:npub1owner',
     });
 
-    expect(fn()).toBeNull();
+    expect(fn()).toEqual({
+      ownerNpub: 'npub1owner',
+      viewerNpub: 'npub1viewer',
+      backendUrl: 'https://tower.example.com',
+      workspaceDbKey: 'workspace:npub1owner',
+      checkoutPolicyConfig: null,
+    });
   });
 });
 
@@ -458,6 +463,20 @@ describe('handleSSEStatus', () => {
     });
   });
 
+  it('refreshes channels on pull-complete in Tower PG mode', () => {
+    isTowerPgBackendMode.mockReturnValue(true);
+    const refreshChannels = vi.fn().mockResolvedValue(undefined);
+    const { fn, store } = bindMethod('handleSSEStatus', {
+      sseStatus: 'connected',
+      refreshChannels,
+    });
+
+    fn({ status: 'pull-complete', families: ['family:channel'] });
+
+    expect(refreshChannels).toHaveBeenCalledTimes(1);
+    expect(store.sseStatus).toBe('pull-complete');
+  });
+
   it('falls back to polling-only on fallback-polling status', () => {
     const { fn, store } = bindMethod('handleSSEStatus', {
       sseStatus: 'connected',
@@ -503,7 +522,7 @@ describe('getSyncCadenceMs with SSE', () => {
     expect(fn()).toBe(15000);
   });
 
-  it('returns null in Tower PG mode', () => {
+  it('uses SSE heartbeat cadence when PG SSE is connected', () => {
     isTowerPgBackendMode.mockReturnValue(true);
     const { fn } = bindMethod('getSyncCadenceMs', {
       session: { npub: 'npub1me' },
@@ -512,7 +531,7 @@ describe('getSyncCadenceMs with SSE', () => {
       selectedChannelId: 'ch1',
       sseStatus: 'connected',
     });
-    expect(fn()).toBeNull();
+    expect(fn()).toBe(120000);
   });
 });
 
@@ -627,7 +646,7 @@ describe('ensureBackgroundSync wires SSE', () => {
     );
   });
 
-  it('does not start encrypted-record timers or SSE in Tower PG mode', () => {
+  it('keeps PG in advisory mode while still opening SSE', async () => {
     isTowerPgBackendMode.mockReturnValue(true);
     const { fn, store } = bindMethod('ensureBackgroundSync', {
       session: { npub: 'npub1viewer' },
@@ -640,16 +659,13 @@ describe('ensureBackgroundSync wires SSE', () => {
     });
 
     fn(true);
+    await flushMicrotasks();
 
-    expect(stopWorkerFlushTimer).toHaveBeenCalledTimes(1);
-    expect(disconnectSSE).toHaveBeenCalledTimes(1);
+    expect(stopWorkerFlushTimer).not.toHaveBeenCalled();
     expect(startWorkerFlushTimer).not.toHaveBeenCalled();
-    expect(connectSSE).not.toHaveBeenCalled();
-    expect(store.backgroundSyncTimer).toBeNull();
-    expect(store.syncing).toBe(false);
-    expect(store.backgroundSyncInFlight).toBe(false);
-    expect(store.catchUpSyncActive).toBe(false);
-    expect(store.syncStatus).toBe('disabled');
+    expect(connectSSE).toHaveBeenCalledTimes(1);
+    expect(store.backgroundSyncTimer).not.toBeNull();
+    clearTimeout(store.backgroundSyncTimer);
     expect(store.sseStatus).toBe('disabled');
     expect(store.syncSession.state).toBe('disabled');
   });

@@ -27,7 +27,14 @@ import { opportunitiesManagerMixin } from './opportunities-manager.js';
 import { wappsManagerMixin } from './wapps-manager.js';
 import { reportsManagerMixin } from './reports-manager.js';
 import { filesManagerMixin } from './files-manager.js';
-import { hydrateTowerPgDocumentsAndFiles, hydrateTowerPgTaskComments, hydrateTowerPgTasks } from './pg-read-hydrator.js';
+import {
+  hydrateTowerPgDailyNotes,
+  hydrateTowerPgDocumentsAndFiles,
+  hydrateTowerPgTaskComments,
+  hydrateTowerPgTasks,
+  mapPgDailyNoteToLocal,
+  resolveTowerPgWorkspaceContext,
+} from './pg-read-hydrator.js';
 import {
   createTowerPgTaskCommentFromLocal,
   createTowerPgTaskFromLocal,
@@ -140,6 +147,7 @@ import {
   getSchedulesByOwner,
   upsertSchedule,
   getScheduleById,
+  upsertDailyNote,
   getCommentsByTarget,
   upsertComment,
   replaceCommentRecord,
@@ -157,6 +165,7 @@ import {
   setBaseUrl,
   prepareStorageObject,
   prepareTowerPgStorageObject,
+  upsertTowerPgDailyNote,
   uploadStorageObject,
   completeStorageObject,
 } from './api.js';
@@ -246,6 +255,7 @@ import {
 import { isTowerPgBackendMode } from './backend-mode.js';
 import {
   buildPgChannelTaskBoardId,
+  parsePgTaskBoardId,
   resolvePgRecordContext,
 } from './pg-record-context.js';
 import { createTowerPgFileFromLocal } from './pg-write-adapter.js';
@@ -457,6 +467,14 @@ export function initApp() {
     audioNotes: [],
     groups: [],
     documents: [],
+    dailyNotes: [],
+    dailyNoteEditorOpen: false,
+    dailyNoteEditorSaving: false,
+    dailyNoteEditorError: '',
+    dailyNoteEditorTitle: '',
+    dailyNoteEditorBody: '',
+    dailyNoteEditorFocus: '',
+    dailyNoteEditorRecordId: '',
     directories: [],
     fileMessages: [],
     fileComments: [],
@@ -770,6 +788,7 @@ export function initApp() {
     newChannelName: '',
     newChannelDescription: '',
     newChannelGroupId: '',
+    newChannelAccessRows: [],
     superbasedTokenInput: '',
     superbasedError: null,
     knownWorkspaces: [],
@@ -970,17 +989,39 @@ export function initApp() {
     },
 
     get statusRecordTypeOptions() {
-      const presentTypes = new Set(this.statusRecentChanges.map((item) => item.recordTypeKey).filter(Boolean));
+      const presentTypes = new Set(this.contextFilteredStatusRecentChanges.map((item) => item.recordTypeKey).filter(Boolean));
       return STATUS_RECORD_TYPE_ORDER
         .filter((value) => presentTypes.has(value))
         .map((value) => ({ value, label: STATUS_RECORD_TYPE_LABELS[value] || value }));
     },
 
+    get contextFilteredStatusRecentChanges() {
+      const board = parsePgTaskBoardId(this.selectedBoardId);
+      const selectedChannelId = String(this.pgContextSelectedChannelId || '').trim();
+      const selectedThreadId = String(this.pgContextSelectedThreadId || '').trim();
+      const selectedScope = this.selectedBoardScope || null;
+      const selectedScopeId = String(selectedScope?.record_id || '').trim();
+      const isUnscopedBoard = this.selectedBoardId === UNSCOPED_TASK_BOARD_ID;
+
+      return this.statusRecentChanges.filter((item) => {
+        if (!item) return false;
+        if (selectedChannelId && String(item.channelId || '').trim() !== selectedChannelId) return false;
+        if (selectedThreadId && String(item.threadId || '').trim() !== selectedThreadId) return false;
+        if (board.type === 'channel' || board.type === 'thread') return true;
+        if (isUnscopedBoard) return isTaskUnscoped(item, this.scopesMap);
+        if (selectedScopeId && selectedScope) {
+          return matchesTaskBoardScope(item, selectedScope, this.scopesMap, { includeDescendants: true });
+        }
+        return true;
+      });
+    },
+
     get filteredStatusRecentChanges() {
+      const scopedChanges = this.contextFilteredStatusRecentChanges;
       if (!this.statusRecordTypeFilter || this.statusRecordTypeFilter === 'all') {
-        return this.statusRecentChanges;
+        return scopedChanges;
       }
-      return this.statusRecentChanges.filter((item) => item.recordTypeKey === this.statusRecordTypeFilter);
+      return scopedChanges.filter((item) => item.recordTypeKey === this.statusRecordTypeFilter);
     },
 
     get attentionFeedGroups() {
@@ -990,7 +1031,7 @@ export function initApp() {
         botNpub: this.botNpub,
         tasks: this.tasks,
         boardScopedTasks: this.boardScopedTasks,
-        statusRecentChanges: this.statusRecentChanges,
+        statusRecentChanges: this.contextFilteredStatusRecentChanges,
         pendingApprovals: this.pendingApprovalsByScope,
       });
     },
@@ -1429,8 +1470,13 @@ export function initApp() {
     },
 
     get filteredDocRows() {
-      const activeDirectories = this.directories.filter((item) => item.record_state !== 'deleted');
-      const activeDocuments = this.documents.filter((item) => item.record_state !== 'deleted');
+      if (this.isTowerPgMode) {
+        return this.filteredDocBrowserItems.map((row) => ({
+          ...row,
+          depth: row.depth ?? 0,
+        }));
+      }
+      const { documents: activeDocuments, directories: activeDirectories } = this.scopeFilteredDocs;
       const query = String(this.docFilter || '').trim().toLowerCase();
 
       const childDirsByParent = new Map();
@@ -2399,6 +2445,147 @@ export function initApp() {
       return documents;
     },
 
+    getTodayDateKey() {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    },
+
+    getDailyNoteScopeMetadata() {
+      const selectedChannelId = this.selectedChannelId || this.pgContextSelectedChannelId || '';
+      const selectedChannel = selectedChannelId
+        ? (this.channels || []).find((channel) => channel.record_id === selectedChannelId)
+        : null;
+      const scopeId = selectedChannel?.scope_id || this.selectedBoardId || this.selectedBoardScope?.record_id || '';
+      return {
+        scope_id: scopeId || null,
+        channel_id: selectedChannelId || null,
+      };
+    },
+
+    getCurrentDailyNote() {
+      const today = this.getTodayDateKey();
+      const metadata = this.getDailyNoteScopeMetadata();
+      const notes = (this.dailyNotes || [])
+        .filter((note) => note?.record_state !== 'deleted' && String(note.note_date || '') === today);
+      const scoped = notes.find((note) => {
+        const noteMetadata = note.metadata || {};
+        const noteScopeId = noteMetadata.scope_id || note.pg_scope_id || null;
+        const noteChannelId = noteMetadata.channel_id || note.pg_channel_id || null;
+        return (!metadata.scope_id || noteScopeId === metadata.scope_id)
+          && (!metadata.channel_id || noteChannelId === metadata.channel_id);
+      });
+      return scoped || notes[0] || null;
+    },
+
+    get dailyNoteComponentTitle() {
+      return this.getCurrentDailyNote()?.title || 'Daily note';
+    },
+
+    get dailyNoteComponentPreview() {
+      const note = this.getCurrentDailyNote();
+      if (!note) return 'Create today’s note for this space';
+      return note.focus || note.body || 'Open today’s note';
+    },
+
+    applyDailyNotes(dailyNotes = []) {
+      this.dailyNotes = Array.isArray(dailyNotes) ? dailyNotes : [];
+    },
+
+    async refreshDailyNotes() {
+      if (!isTowerPgBackendMode()) return [];
+      return hydrateTowerPgDailyNotes(this, { limit: 60 });
+    },
+
+    async openDailyNoteEditor() {
+      if (!isTowerPgBackendMode()) {
+        this.error = 'Daily notes are only available on the Flight Deck PG backend.';
+        return;
+      }
+      this.dailyNoteEditorError = '';
+      let note = this.getCurrentDailyNote();
+      if (!note) note = await this.createDailyNoteForCurrentScope();
+      if (!note) return;
+      this.dailyNoteEditorRecordId = note.record_id;
+      this.dailyNoteEditorTitle = note.title || 'Daily note';
+      this.dailyNoteEditorBody = note.body || '';
+      this.dailyNoteEditorFocus = note.focus || '';
+      this.dailyNoteEditorOpen = true;
+    },
+
+    closeDailyNoteEditor() {
+      this.dailyNoteEditorOpen = false;
+      this.dailyNoteEditorSaving = false;
+      this.dailyNoteEditorError = '';
+    },
+
+    async createDailyNoteForCurrentScope() {
+      try {
+        const context = resolveTowerPgWorkspaceContext(this);
+        if (!context.workspaceId || !context.baseUrl) throw new Error('Flight Deck PG workspace is not connected.');
+        const scopeMetadata = this.getDailyNoteScopeMetadata();
+        const response = await upsertTowerPgDailyNote(context.workspaceId, {
+          note_date: this.getTodayDateKey(),
+          scope_id: scopeMetadata.scope_id,
+          channel_id: scopeMetadata.channel_id,
+          title: 'Daily note',
+          body: '',
+          focus: '',
+          items: [],
+          status: 'active',
+          metadata: {
+            ...scopeMetadata,
+            source: 'manual',
+          },
+        }, { baseUrl: context.baseUrl, appNpub: context.appNpub });
+        const note = mapPgDailyNoteToLocal(response.daily_note, { workspaceOwnerNpub: context.workspaceOwnerNpub });
+        await upsertDailyNote(note);
+        this.dailyNotes = [...(this.dailyNotes || []).filter((item) => item.record_id !== note.record_id), note];
+        return note;
+      } catch (error) {
+        this.dailyNoteEditorError = error?.message || 'Failed to create daily note';
+        this.error = this.dailyNoteEditorError;
+        return null;
+      }
+    },
+
+    async saveDailyNoteEditor() {
+      const note = (this.dailyNotes || []).find((item) => item.record_id === this.dailyNoteEditorRecordId) || this.getCurrentDailyNote();
+      if (!note || !isTowerPgBackendMode()) return;
+      this.dailyNoteEditorSaving = true;
+      this.dailyNoteEditorError = '';
+      try {
+        const context = resolveTowerPgWorkspaceContext(this);
+        if (!context.workspaceId || !context.baseUrl) throw new Error('Flight Deck PG workspace is not connected.');
+        const response = await upsertTowerPgDailyNote(context.workspaceId, {
+          note_date: note.note_date || this.getTodayDateKey(),
+          scope_id: this.getDailyNoteScopeMetadata().scope_id,
+          channel_id: this.getDailyNoteScopeMetadata().channel_id,
+          title: this.dailyNoteEditorTitle.trim() || 'Daily note',
+          body: this.dailyNoteEditorBody,
+          focus: this.dailyNoteEditorFocus,
+          items: Array.isArray(note.items) ? note.items : [],
+          status: note.status || 'active',
+          metadata: {
+            ...(note.metadata || {}),
+            ...this.getDailyNoteScopeMetadata(),
+            source: note.metadata?.source || 'manual',
+          },
+        }, { baseUrl: context.baseUrl, appNpub: context.appNpub });
+        const saved = mapPgDailyNoteToLocal(response.daily_note, { workspaceOwnerNpub: context.workspaceOwnerNpub });
+        await upsertDailyNote(saved);
+        this.dailyNotes = [...(this.dailyNotes || []).filter((item) => item.record_id !== saved.record_id), saved];
+        this.dailyNoteEditorRecordId = saved.record_id;
+        this.dailyNoteEditorOpen = false;
+      } catch (error) {
+        this.dailyNoteEditorError = error?.message || 'Failed to save daily note';
+      } finally {
+        this.dailyNoteEditorSaving = false;
+      }
+    },
+
     applySelectedDocument(document = null) {
       applySelectedDocumentUpdate(this, document);
     },
@@ -2762,7 +2949,8 @@ export function initApp() {
           updatedAt: message.updated_at,
           updatedTs: Date.parse(message.updated_at) || 0,
           channelId: message.channel_id,
-          threadId: message.parent_message_id || null,
+          threadId: message.pg_thread_id || message.parent_message_id || null,
+          boardScopeId: channel.scope_id ?? channel.scope_l5_id ?? channel.scope_l4_id ?? channel.scope_l3_id ?? channel.scope_l2_id ?? channel.scope_l1_id ?? null,
           recordId: message.record_id,
           focusRecordId: message.record_id,
           senderNpub: message.sender_npub,
@@ -2783,6 +2971,9 @@ export function initApp() {
           updatedTs: Date.parse(directory.updated_at) || 0,
           recordId: directory.record_id,
           docType: 'directory',
+          boardScopeId: directory.scope_id ?? directory.scope_l5_id ?? directory.scope_l4_id ?? directory.scope_l3_id ?? directory.scope_l2_id ?? directory.scope_l1_id ?? null,
+          channelId: directory.pg_channel_id || null,
+          threadId: directory.pg_thread_id || null,
         });
       }
 
@@ -2800,6 +2991,9 @@ export function initApp() {
           updatedTs: Date.parse(document.updated_at) || 0,
           recordId: document.record_id,
           docType: 'document',
+          boardScopeId: document.scope_id ?? document.scope_l5_id ?? document.scope_l4_id ?? document.scope_l3_id ?? document.scope_l2_id ?? document.scope_l1_id ?? null,
+          channelId: document.pg_channel_id || null,
+          threadId: document.pg_thread_id || null,
         });
       }
 
@@ -2832,6 +3026,8 @@ export function initApp() {
           updatedTs: Date.parse(task.updated_at) || 0,
           recordId: task.record_id,
           boardScopeId: task.scope_id ?? task.scope_l5_id ?? task.scope_l4_id ?? task.scope_l3_id ?? task.scope_l2_id ?? task.scope_l1_id ?? null,
+          channelId: task.pg_channel_id || null,
+          threadId: task.pg_thread_id || null,
         });
       }
 
@@ -2846,6 +3042,7 @@ export function initApp() {
           updatedAt: schedule.updated_at,
           updatedTs: Date.parse(schedule.updated_at) || 0,
           recordId: schedule.record_id,
+          boardScopeId: schedule.scope_id ?? schedule.scope_l5_id ?? schedule.scope_l4_id ?? schedule.scope_l3_id ?? schedule.scope_l2_id ?? schedule.scope_l1_id ?? null,
         });
       }
 
@@ -2915,6 +3112,8 @@ export function initApp() {
           recordId: task.record_id,
           focusRecordId: comment.record_id,
           boardScopeId: task.scope_id ?? task.scope_l5_id ?? task.scope_l4_id ?? task.scope_l3_id ?? task.scope_l2_id ?? task.scope_l1_id ?? null,
+          channelId: task.pg_channel_id || null,
+          threadId: task.pg_thread_id || null,
           senderNpub: comment.sender_npub,
         });
       }
@@ -2937,6 +3136,9 @@ export function initApp() {
           recordId: document.record_id,
           focusRecordId: comment.record_id,
           docType: 'document',
+          boardScopeId: document.scope_id ?? document.scope_l5_id ?? document.scope_l4_id ?? document.scope_l3_id ?? document.scope_l2_id ?? document.scope_l1_id ?? null,
+          channelId: document.pg_channel_id || null,
+          threadId: document.pg_thread_id || null,
           senderNpub: comment.sender_npub,
         });
       }
@@ -6618,6 +6820,21 @@ export function initApp() {
     commandPaletteMixin,
   );
 
+  if (typeof window !== 'undefined') {
+    window.Alpine = Alpine;
+  }
   Alpine.store('chat', storeObj);
+  if (typeof window !== 'undefined') {
+    const storeAccessor = Alpine.store.bind(Alpine);
+    window.$store = new Proxy(storeAccessor, {
+      get(target, prop) {
+        if (prop in target) return target[prop];
+        return Alpine.store(prop);
+      },
+      apply(target, thisArg, args) {
+        return target.apply(thisArg, args);
+      },
+    });
+  }
   Alpine.start();
 }

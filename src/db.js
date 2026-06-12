@@ -74,6 +74,10 @@ const WORKSPACE_STORES_V11 = {
   ...WORKSPACE_STORES_V10,
   wapps: 'record_id, owner_npub, workspace_owner_npub, scope_id, scope_l1_id, scope_l2_id, scope_l3_id, scope_l4_id, scope_l5_id, updated_at',
 };
+const WORKSPACE_STORES_V12 = {
+  ...WORKSPACE_STORES_V11,
+  daily_notes: 'record_id, owner_npub, note_date, status, updated_at, sync_status, *group_ids',
+};
 
 function createWorkspaceDb(workspaceDbKey) {
   const db = new Dexie(`wingman-fd-ws-${workspaceDbKey}`);
@@ -144,6 +148,7 @@ function createWorkspaceDb(workspaceDbKey) {
   db.version(9).stores({ [retiredAgentChatStore]: null });
   db.version(10).stores(WORKSPACE_STORES_V10);
   db.version(11).stores(WORKSPACE_STORES_V11);
+  db.version(12).stores(WORKSPACE_STORES_V12);
   return db;
 }
 
@@ -587,6 +592,55 @@ export async function upsertReport(report) {
 
 export async function getReportById(recordId) {
   return wsDb().reports.get(recordId);
+}
+
+// ---------------------------------------------------------------------------
+// daily notes — workspace DB
+// ---------------------------------------------------------------------------
+
+export async function getDailyNotesByOwner(ownerNpub) {
+  const rows = await wsDb().daily_notes.where('owner_npub').equals(ownerNpub).toArray();
+  return rows.filter((row) => row.record_state !== 'deleted');
+}
+
+export async function getDailyNotesForOwnerAndDate(ownerNpub, noteDate) {
+  const rows = await wsDb().daily_notes
+    .where('owner_npub').equals(ownerNpub)
+    .toArray();
+
+  const date = String(noteDate || '').trim();
+  if (!date) return rows.filter((row) => row.record_state !== 'deleted');
+
+  return rows
+    .filter((row) => row.record_state !== 'deleted' && String(row.note_date || '').trim() === date);
+}
+
+export async function getRecentDailyNoteChangesSince(sinceIso, options = {}) {
+  const rows = await wsDb().daily_notes.where('updated_at').aboveOrEqual(sinceIso).toArray();
+  const ordered = sortRowsByTimestamp(rows.filter((row) => row.record_state !== 'deleted'));
+  if (!options.limit) return ordered;
+  return takeNewestWindow(ordered, resolveWindowLimit('daily_notes', options));
+}
+
+export async function upsertDailyNote(dailyNote) {
+  return wsDb().daily_notes.put(sanitizeForStorage(dailyNote));
+}
+
+export async function replaceDailyNotesForOwner(ownerNpub, dailyNotes = []) {
+  if (!ownerNpub) return 0;
+  const rows = (Array.isArray(dailyNotes) ? dailyNotes : [])
+    .map((dailyNote) => sanitizeForStorage(dailyNote))
+    .filter((dailyNote) => dailyNote?.record_id);
+  const db = wsDb();
+  return db.transaction('rw', db.daily_notes, async () => {
+    await db.daily_notes.where('owner_npub').equals(ownerNpub).delete();
+    if (rows.length > 0) await db.daily_notes.bulkPut(rows);
+    return rows.length;
+  });
+}
+
+export async function getDailyNoteById(recordId) {
+  return wsDb().daily_notes.get(recordId);
 }
 
 // ---------------------------------------------------------------------------
@@ -1212,6 +1266,7 @@ export async function clearRuntimeData() {
     db.documents.clear(),
     db.directories.clear(),
     db.reports.clear(),
+    db.daily_notes.clear(),
     db.wapps.clear(),
     db.tasks.clear(),
     db.schedules.clear(),

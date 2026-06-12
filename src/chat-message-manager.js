@@ -15,6 +15,7 @@ import {
   deleteChannelRuntimeState,
 } from './db.js';
 import { fetchRecordHistory } from './api.js';
+import { deleteTowerPgChannel } from './api.js';
 import {
   outboundChatMessage,
   outboundChannel,
@@ -46,6 +47,7 @@ import { getRecordWriteFieldsForStore } from './preferred-write-group.js';
 import { isTowerPgBackendMode } from './backend-mode.js';
 import { DM_SCOPE_ID, buildDmChannelDescription, findExistingDmChannel } from './dm-scope.js';
 import { createTowerPgMessageFromLocal } from './pg-write-adapter.js';
+import { resolveTowerPgWorkspaceContext } from './pg-read-hydrator.js';
 import { resolvePgThreadId } from './pg-record-context.js';
 import { buildSectionUrl, parseRouteLocation } from './route-helpers.js';
 import {
@@ -527,11 +529,14 @@ export const chatMessageManagerMixin = {
   },
 
   async refreshMessages(options = {}) {
-    if (!this.selectedChannelId) {
+    const channelId = this.selectedChannelId;
+    if (!channelId) {
       await this.applyMessages([], { scrollToLatest: false });
       return;
     }
-    await this.applyMessages(await getMessagesByChannel(this.selectedChannelId), options);
+    const messages = await getMessagesByChannel(channelId);
+    if (this.selectedChannelId !== channelId) return;
+    await this.applyMessages(messages, options);
   },
 
   patchMessageLocal(nextMessage) {
@@ -788,7 +793,28 @@ export const chatMessageManagerMixin = {
       return;
     }
     if (isTowerPgBackendMode()) {
-      this.error = 'Deleting PG channels is not available yet.';
+      if (!this.channelDeleteConfirmArmed) {
+        this.channelDeleteConfirmArmed = true;
+        return;
+      }
+      try {
+        const fallbackNextChannelId = this.channels.find((item) => item.record_id !== channel.record_id)?.record_id ?? null;
+        const { workspaceId, baseUrl, appNpub } = resolveTowerPgWorkspaceContext(this);
+        if (!workspaceId || !baseUrl) throw new Error('Flight Deck PG workspace is not connected');
+        await deleteTowerPgChannel(workspaceId, channel.record_id, { baseUrl, appNpub });
+        this.showChannelSettingsModal = false;
+        await deleteChannelRuntimeState(channel.record_id);
+        this.channels = this.channels.filter((item) => item.record_id !== channel.record_id);
+        this.selectedChannelId = fallbackNextChannelId;
+        this.closeThread();
+        await this.refreshChannels();
+        this.selectedChannelId = this.selectedChannelId ?? this.channels[0]?.record_id ?? null;
+        await this.refreshMessages({ scrollToLatest: true });
+        this.channelDeleteConfirmArmed = false;
+      } catch (error) {
+        this.channelDeleteConfirmArmed = false;
+        this.error = error?.message || 'Failed to delete channel';
+      }
       return;
     }
 

@@ -20,6 +20,7 @@ import {
 } from './db.js';
 import {
   createTowerPgWorkspaceScope,
+  deleteTowerPgWorkspaceScope,
 } from './api.js';
 import {
   outboundScope,
@@ -1641,7 +1642,22 @@ export const scopesManagerMixin = {
       return;
     }
     if (isTowerPgBackendMode()) {
-      this.error = 'Deleting Flight Deck PG scopes is not available yet.';
+      const scope = this.scopes.find(s => s.record_id === scopeId);
+      if (!scope) return;
+      try {
+        const { workspaceId, baseUrl, appNpub } = resolveTowerPgWorkspaceContext(this);
+        if (!workspaceId || !baseUrl) throw new Error('Flight Deck PG workspace is not connected');
+        await deleteTowerPgWorkspaceScope(workspaceId, scopeId, { baseUrl, appNpub });
+        this.scopes = this.scopes.filter(s => s.record_id !== scopeId);
+        this.channels = (this.channels || []).filter((channel) => channel.scope_id !== scopeId);
+        if (this.selectedBoardId === scopeId) this.selectedBoardId = null;
+        if (this.selectedChannelId && !(this.channels || []).some((channel) => channel.record_id === this.selectedChannelId)) {
+          this.selectedChannelId = this.channels?.[0]?.record_id ?? null;
+        }
+        await hydrateTowerPgScopes(this, { force: true });
+      } catch (error) {
+        this.error = error?.message || 'Failed to delete scope';
+      }
       return;
     }
     const scope = this.scopes.find(s => s.record_id === scopeId);

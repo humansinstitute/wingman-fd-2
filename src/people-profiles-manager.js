@@ -21,6 +21,18 @@ const PROFILE_CARD_MARGIN = 12;
 const FULL_NPUB_PATTERN = /^npub1[0-9a-z]{50,}$/i;
 const PROFILE_LOOKUP_RETRY_MS = 60 * 1000;
 
+function uniqueNpubCandidates(...candidates) {
+  const seen = new Set();
+  return candidates
+    .map((candidate) => String(candidate || '').trim())
+    .filter((candidate) => candidate)
+    .filter((candidate) => {
+      if (seen.has(candidate)) return false;
+      seen.add(candidate);
+      return true;
+    });
+}
+
 function getAddressBookPeopleMap(store) {
   const people = Array.isArray(store?.addressBookPeople) ? store.addressBookPeople : EMPTY_ARRAY;
   let cached = addressBookPeopleMapCache.get(people);
@@ -166,38 +178,62 @@ export const peopleProfilesManagerMixin = {
     return getAddressBookPeopleMap(this).get(npub) ?? null;
   },
 
+  getCachedPersonForSender(rawNpub) {
+    const npub = this.resolveDisplayNpub(rawNpub);
+    for (const candidate of uniqueNpubCandidates(rawNpub, npub)) {
+      const person = this.getCachedPerson(candidate);
+      if (person) return person;
+    }
+    return null;
+  },
+
+  getProfileForSender(rawNpub) {
+    const npub = this.resolveDisplayNpub(rawNpub);
+    return this.chatProfiles[npub] || (npub === rawNpub ? null : this.chatProfiles[rawNpub]);
+  },
+
   getSenderName(rawNpub) {
     if (!rawNpub) return 'Unknown';
     const npub = this.resolveDisplayNpub(rawNpub);
-    const cached = this.getCachedPerson(npub);
-    const profileName = this.chatProfiles[npub]?.name;
+    const rawNpubCandidate = String(rawNpub || '').trim();
+    const cached = this.getCachedPersonForSender(rawNpub);
+    const profileName = this.getProfileForSender(rawNpub)?.name;
     if (profileName || cached?.label) return profileName || cached.label;
-    if (isFullNpubCandidate(npub)) this.resolveChatProfile(npub);
+
+    if (isFullNpubCandidate(rawNpubCandidate) && rawNpubCandidate !== npub) {
+      this.resolveChatProfile(rawNpubCandidate);
+    }
+
+    if (isFullNpubCandidate(npub)) {
+      this.resolveChatProfile(npub);
+    }
+
     return this.getShortNpub(npub);
   },
 
   getSenderIdentity(rawNpub) {
     if (!rawNpub) return '';
     const npub = this.resolveDisplayNpub(rawNpub);
-    const cached = this.getCachedPerson(npub);
-    if (this.chatProfiles[npub]?.nip05) return this.chatProfiles[npub].nip05;
+    const profile = this.getProfileForSender(rawNpub);
+    const cached = this.getCachedPersonForSender(rawNpub);
+    if (profile?.nip05) return profile.nip05;
     if (cached?.nip05) return cached.nip05;
-    if (this.chatProfiles[npub]?.name || cached?.label) return this.getShortNpub(npub);
+    if (profile?.name || cached?.label) return this.getShortNpub(npub);
     return '';
   },
 
   getSenderAvatar(rawNpub) {
     if (!rawNpub) return null;
-    const npub = this.resolveDisplayNpub(rawNpub);
-    const cached = this.getCachedPerson(npub);
-    return this.chatProfiles[npub]?.picture || cached?.avatar_url || null;
+    const cached = this.getCachedPersonForSender(rawNpub);
+    const profile = this.getProfileForSender(rawNpub);
+    return profile?.picture || cached?.avatar_url || null;
   },
 
   getSenderBio(rawNpub) {
     if (!rawNpub) return '';
-    const npub = this.resolveDisplayNpub(rawNpub);
-    const cached = this.getCachedPerson(npub);
-    return this.chatProfiles[npub]?.about || this.chatProfiles[npub]?.bio || cached?.bio || '';
+    const profile = this.getProfileForSender(rawNpub);
+    const cached = this.getCachedPersonForSender(rawNpub);
+    return profile?.about || profile?.bio || cached?.bio || '';
   },
 
   getSenderProfile(rawNpub) {

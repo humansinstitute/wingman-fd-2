@@ -1268,6 +1268,24 @@ describe('backgroundSyncTick', () => {
 
     expect(store.catchUpSyncActive).toBe(false);
   });
+
+  it('refreshes PG channels during background tick when chat is active', async () => {
+    isTowerPgBackendMode.mockReturnValue(true);
+    const refreshChannels = vi.fn().mockResolvedValue(undefined);
+    const { fn } = bindMethod('backgroundSyncTick', {
+      session: { npub: 'npub1me' },
+      backendUrl: 'https://backend.example.com',
+      navSection: 'chat',
+      selectedChannelId: 'ch1',
+      refreshChannels,
+      FAST_SYNC_MS: 1000,
+      IDLE_SYNC_MS: 5000,
+    });
+
+    await fn();
+
+    expect(refreshChannels).toHaveBeenCalledTimes(1);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1355,6 +1373,21 @@ describe('sync family progress helpers', () => {
         refreshRecentChanges: false,
       },
     );
+  });
+
+  it('refreshes PG channels when pull-complete happens in PG mode', () => {
+    isTowerPgBackendMode.mockReturnValue(true);
+    const refreshChannels = vi.fn().mockResolvedValue(undefined);
+    const { fn } = bindMethod('handleSSEStatus', {
+      refreshChannels,
+    });
+
+    fn({
+      status: 'pull-complete',
+      families: [getSyncFamilyHash('chat_message')],
+    });
+
+    expect(refreshChannels).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -1775,7 +1808,7 @@ describe('PG mode encrypted record sync startup guard', () => {
     expect(store.connectSSEStream).toHaveBeenCalledWith({ reason: 'ensure-background-sync' });
   });
 
-  it('does not start the encrypted worker timer or SSE in Tower PG mode', () => {
+  it('skips the encrypted worker timer but keeps SSE in Tower PG mode', () => {
     isTowerPgBackendMode.mockReturnValue(true);
     const { fn, store } = bindMethod('ensureBackgroundSync', {
       session: { npub: 'npub1me' },
@@ -1787,13 +1820,14 @@ describe('PG mode encrypted record sync startup guard', () => {
     fn();
 
     expect(startWorkerFlushTimer).not.toHaveBeenCalled();
-    expect(store.connectSSEStream).not.toHaveBeenCalled();
-    expect(store.backgroundSyncTimer).toBeNull();
+    expect(store.connectSSEStream).toHaveBeenCalledWith({ reason: 'ensure-background-sync' });
+    expect(store.backgroundSyncTimer).not.toBeNull();
+    clearTimeout(store.backgroundSyncTimer);
     expect(store.syncStatus).toBe('disabled');
     expect(store.syncSession.state).toBe('disabled');
   });
 
-  it('does not open the encrypted SSE stream in Tower PG mode', async () => {
+  it('opens the SSE stream in Tower PG mode', async () => {
     isTowerPgBackendMode.mockReturnValue(true);
     const { fn, store } = bindMethod('connectSSEStream', {
       session: { npub: 'npub1viewer' },
@@ -1803,10 +1837,10 @@ describe('PG mode encrypted record sync startup guard', () => {
 
     const result = await fn();
 
-    expect(result).toBe(false);
-    expect(connectSSE).not.toHaveBeenCalled();
-    expect(store.syncStatus).toBe('disabled');
-    expect(store.sseStatus).toBe('disabled');
+    expect(result).toBe(true);
+    expect(connectSSE).toHaveBeenCalledTimes(1);
+    const options = connectSSE.mock.calls[0][5];
+    expect(options.pgMode).toBe(true);
   });
 });
 

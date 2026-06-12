@@ -209,6 +209,28 @@ describe('PG read hydrator', () => {
     });
   });
 
+  it('maps PG messages using metadata sender override', () => {
+    expect(mapPgMessageToLocal({
+      id: 'message-3',
+      workspace_id: 'workspace-1',
+      scope_id: 'scope-1',
+      channel_id: 'channel-1',
+      body: 'Reply body',
+      updated_at: '2026-06-05T02:00:00.000Z',
+      metadata: {
+        sender_npub: 'npub1dave',
+      },
+    }, {
+      workspaceOwnerNpub: 'npub1owner',
+      senderNpub: 'npub1pete',
+      threadById: new Map(),
+    })).toMatchObject({
+      record_id: 'message-3',
+      sender_npub: 'npub1dave',
+      pg_record_type: 'message',
+    });
+  });
+
   it('maps PG tasks into classic task rows with scope and PG channel/thread refs', () => {
     expect(mapPgTaskToLocal({
       id: 'task-1',
@@ -269,6 +291,27 @@ describe('PG read hydrator', () => {
       pg_record_type: 'task_comment',
       pg_channel_id: 'channel-1',
       pg_thread_id: 'thread-1',
+    });
+  });
+
+  it('maps PG task comments using actor-to-npub resolution', () => {
+    expect(mapPgTaskCommentToLocal({
+      id: 'comment-1',
+      workspace_id: 'workspace-1',
+      scope_id: 'scope-1',
+      channel_id: 'channel-1',
+      task_id: 'task-1',
+      thread_id: 'thread-1',
+      body: 'Comment body',
+      created_by_actor_id: 'actor-1',
+    }, {
+      workspaceOwnerNpub: 'npub1owner',
+      senderNpub: 'npub1viewer',
+      actorNpubByActorId: new Map([['actor-1', 'npub1alice']]),
+    })).toMatchObject({
+      record_id: 'comment-1',
+      sender_npub: 'npub1alice',
+      pg_record_type: 'task_comment',
     });
   });
 
@@ -345,6 +388,30 @@ describe('PG read hydrator', () => {
       pg_record_type: 'audio_note',
       pg_channel_id: 'channel-1',
       pg_thread_id: 'thread-1',
+    });
+  });
+
+  it('maps PG audio notes using actor-to-npub resolution', () => {
+    expect(mapPgAudioNoteToLocal({
+      id: 'audio-1',
+      workspace_id: 'workspace-1',
+      scope_id: 'scope-1',
+      channel_id: 'channel-1',
+      thread_id: 'thread-1',
+      target_type: 'message',
+      target_id: 'message-1',
+      storage_object_id: 'object-audio',
+      title: 'Voice note',
+      mime_type: 'audio/webm',
+      created_by_actor_id: 'actor-1',
+    }, {
+      workspaceOwnerNpub: 'npub1owner',
+      senderNpub: 'npub1viewer',
+      actorNpubByActorId: new Map([['actor-1', 'npub1alice']]),
+    })).toMatchObject({
+      record_id: 'audio-1',
+      sender_npub: 'npub1alice',
+      pg_record_type: 'audio_note',
     });
   });
 
@@ -426,6 +493,83 @@ describe('PG read hydrator', () => {
     expect(target.refreshMessages).toHaveBeenCalledWith({ scrollToLatest: false });
   });
 
+  it('hydrates accessible PG channels with actor-based message sender attribution', async () => {
+    const target = store({
+      scopes: [{ record_id: 'scope-1', record_state: 'active' }],
+      selectedChannelId: 'channel-1',
+      pgWorkspaceMembers: [
+        { actor_id: 'actor-1', npub: 'npub1alice' },
+        { actor_id: 'actor-2', npub: 'npub1bob' },
+      ],
+    });
+    const getTowerPgScopeChannels = vi.fn(async () => ({
+      channels: [{ id: 'channel-1', scope_id: 'scope-1', name: 'Flight Deck PG' }],
+    }));
+    const getTowerPgChannelThreads = vi.fn(async () => ({
+      threads: [{ id: 'thread-1', channel_id: 'channel-1', source_message_id: '', title: 'Thread one', created_by_actor_id: 'actor-2' }],
+    }));
+    const getTowerPgChannelMessages = vi.fn(async () => ({
+      messages: [{ id: 'message-1', channel_id: 'channel-1', thread_id: 'thread-1', body: 'Thread one', created_by_actor_id: 'actor-1' }],
+    }));
+    const replaceChannelsForOwner = vi.fn(async () => 1);
+    const replacePgMessagesForChannel = vi.fn(async () => 2);
+
+    await hydrateTowerPgChannels(target, {
+      getTowerPgScopeChannels,
+      getTowerPgChannelThreads,
+      getTowerPgChannelMessages,
+      replaceChannelsForOwner,
+      replacePgMessagesForChannel,
+    });
+
+    const mapped = replacePgMessagesForChannel.mock.calls[0][1];
+    expect(mapped).toEqual([
+      expect.objectContaining({ record_id: 'message-1', sender_npub: 'npub1alice' }),
+      expect.objectContaining({ record_id: 'thread-1', sender_npub: 'npub1bob' }),
+    ]);
+  });
+
+  it('hydrates PG channels using workspace member sync when local actor mapping is missing', async () => {
+    const getTowerPgWorkspaceMembers = vi.fn(async () => ({
+      members: [{ actor: { actor_id: 'actor-1', npub: 'npub1alice' } }],
+    }));
+    const getTowerPgScopeChannels = vi.fn(async () => ({
+      channels: [{ id: 'channel-1', scope_id: 'scope-1', name: 'Flight Deck PG' }],
+    }));
+    const getTowerPgChannelThreads = vi.fn(async () => ({
+      threads: [],
+    }));
+    const getTowerPgChannelMessages = vi.fn(async () => ({
+      messages: [{ id: 'message-1', channel_id: 'channel-1', thread_id: null, body: 'Thread one', created_by_actor_id: 'actor-1' }],
+    }));
+    const replaceChannelsForOwner = vi.fn(async () => 1);
+    const replacePgMessagesForChannel = vi.fn(async () => 1);
+
+    const rows = await hydrateTowerPgChannels(store({
+      scopes: [{ record_id: 'scope-1', record_state: 'active' }],
+      selectedChannelId: 'channel-1',
+    }), {
+      getTowerPgWorkspaceMembers,
+      getTowerPgScopeChannels,
+      getTowerPgChannelThreads,
+      getTowerPgChannelMessages,
+      replaceChannelsForOwner,
+      replacePgMessagesForChannel,
+    });
+
+    expect(getTowerPgWorkspaceMembers).toHaveBeenCalledWith('workspace-1', {
+      baseUrl: 'https://tower.example',
+      appNpub: 'flightdeck_pg',
+    });
+    expect(rows).toHaveLength(1);
+    expect(replacePgMessagesForChannel.mock.calls[0][1]).toEqual([
+      expect.objectContaining({
+        record_id: 'message-1',
+        sender_npub: 'npub1alice',
+      }),
+    ]);
+  });
+
   it('hydrates PG tasks from channel and scope task endpoints with dedupe', async () => {
     const target = store({
       scopes: [{ record_id: 'scope-1', record_state: 'active' }],
@@ -495,6 +639,42 @@ describe('PG read hydrator', () => {
     expect(applyTaskComments).toHaveBeenCalledWith(comments);
   });
 
+  it('hydrates PG task comments using actor-to-npub resolution', async () => {
+    const applyTaskComments = vi.fn();
+    const getTowerPgTaskComments = vi.fn(async () => ({
+      comments: [{
+        id: 'comment-1',
+        workspace_id: 'workspace-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        task_id: 'task-1',
+        body: 'Comment body',
+        created_by_actor_id: 'actor-1',
+      }],
+    }));
+    const replacePgCommentsForTarget = vi.fn(async () => 1);
+
+    const comments = await hydrateTowerPgTaskComments(store({
+      applyTaskComments,
+      pgWorkspaceMembers: [{ actor_id: 'actor-1', npub: 'npub1alice' }],
+    }), 'task-1', {
+      getTowerPgTaskComments,
+      replacePgCommentsForTarget,
+    });
+
+    expect(comments[0]).toMatchObject({
+      record_id: 'comment-1',
+      sender_npub: 'npub1alice',
+    });
+    expect(replacePgCommentsForTarget).toHaveBeenCalledWith('task-1', expect.arrayContaining([
+      expect.objectContaining({
+        record_id: 'comment-1',
+        sender_npub: 'npub1alice',
+      }),
+    ]));
+    expect(applyTaskComments).toHaveBeenCalledWith(comments);
+  });
+
   it('hydrates PG docs and files from accessible channels', async () => {
     const target = store({
       channels: [{ record_id: 'channel-1', record_state: 'active' }],
@@ -540,5 +720,29 @@ describe('PG read hydrator', () => {
     ]);
     expect(replaceAudioNotesForOwner).toHaveBeenCalledWith('npub1owner', audioNotes);
     expect(target.applyAudioNotes).toHaveBeenCalledWith(audioNotes);
+  });
+
+  it('hydrates PG audio notes using actor-to-npub resolution', async () => {
+    const target = store({
+      channels: [{ record_id: 'channel-1', record_state: 'active' }],
+      pgWorkspaceMembers: [{ actor_id: 'actor-1', npub: 'npub1alice' }],
+    });
+    const getTowerPgChannelAudioNotes = vi.fn(async () => ({
+      audio_notes: [{ id: 'audio-1', channel_id: 'channel-1', storage_object_id: 'object-audio', title: 'Voice note', created_by_actor_id: 'actor-1' }],
+    }));
+    const replaceAudioNotesForOwner = vi.fn(async () => 1);
+
+    const audioNotes = await hydrateTowerPgAudioNotes(target, {
+      getTowerPgChannelAudioNotes,
+      replaceAudioNotesForOwner,
+    });
+
+    expect(audioNotes[0]).toMatchObject({
+      record_id: 'audio-1',
+      sender_npub: 'npub1alice',
+    });
+    expect(replaceAudioNotesForOwner).toHaveBeenCalledWith('npub1owner', expect.arrayContaining([
+      expect.objectContaining({ record_id: 'audio-1', sender_npub: 'npub1alice' }),
+    ]));
   });
 });
