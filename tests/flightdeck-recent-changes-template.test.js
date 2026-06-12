@@ -79,7 +79,7 @@ describe('flight deck attention feed template', () => {
     expect(html).not.toContain("navigateTo('flows')");
     expect(html).not.toContain("navSection === 'flows'");
     expect(html).not.toContain('<span class="sidebar-label">Flows</span>');
-    expect(html).toContain('x-show="false" x-cloak class="settings-tab" :class="{ active: $store.chat.settingsTab === \'flows\' }"');
+    expect(html).not.toContain('$store.chat.settingsTab === \'flows\'');
   });
 
   it('labels setup without changing the settings route', () => {
@@ -93,8 +93,8 @@ describe('flight deck attention feed template', () => {
   it('hides people and opportunities in the sidebar', () => {
     const html = readFileSync(INDEX_PATH, 'utf8');
 
-    expect(html).toContain('<li x-show="false" x-cloak :class="{ active: $store.chat.navSection === \'people\' }"');
-    expect(html).toContain('<li x-show="false" x-cloak :class="{ active: $store.chat.navSection === \'opportunities\' }"');
+    expect(html).not.toContain('$store.chat.navSection === \'people\'');
+    expect(html).not.toContain('$store.chat.navSection === \'opportunities\'');
   });
 
   it('exposes files as a top-level sidebar section', () => {

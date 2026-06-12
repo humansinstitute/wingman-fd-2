@@ -22,11 +22,10 @@ describe('settings admin gating template', () => {
   it('hides advanced settings tabs behind the workspace advanced checkbox', () => {
     const html = readFileSync(INDEX_PATH, 'utf8');
 
-    expect(html).toContain('x-show="false" x-cloak class="settings-tab" :class="{ active: $store.chat.settingsTab === \'flows\' }"');
-    expect(html).toContain('x-show="$store.chat.workspaceAdvancedOptionsEnabled" class="settings-tab" :class="{ active: $store.chat.settingsTab === \'data\' }"');
+    expect(html).toContain('x-show="$store.chat.workspaceAdvancedOptionsEnabled && !$store.chat.isTowerPgMode" class="settings-tab" :class="{ active: $store.chat.settingsTab === \'data\' }"');
     expect(html).toContain('>Sync</button>');
     expect(html).toContain('<div class="settings-tab-content" x-show="false">');
-    expect(html).toContain('<div class="settings-tab-content" x-show="$store.chat.workspaceAdvancedOptionsEnabled && $store.chat.settingsTab === \'data\'">');
+    expect(html).toContain('<div class="settings-tab-content" x-show="$store.chat.workspaceAdvancedOptionsEnabled && !$store.chat.isTowerPgMode && $store.chat.settingsTab === \'data\'">');
     expect(html).toContain('id="workspace-advanced-options-input"');
   });
 

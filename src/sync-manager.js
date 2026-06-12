@@ -1092,11 +1092,7 @@ export const syncManagerMixin = {
 
     if (familyId === 'opportunity') {
       await upsertOpportunity(nextRecord);
-      if (typeof this.applyOpportunities === 'function') {
-        this.applyOpportunities(this.opportunities.map((entry) => entry.record_id === nextRecord.record_id ? nextRecord : entry));
-      } else {
-        this.opportunities = this.opportunities.map((entry) => entry.record_id === nextRecord.record_id ? nextRecord : entry);
-      }
+      this.opportunities = this.opportunities.map((entry) => entry.record_id === nextRecord.record_id ? nextRecord : entry);
     }
   },
 
@@ -1599,6 +1595,10 @@ export const syncManagerMixin = {
 
   async forceSyncAllPendingWrites() {
     if (this.pendingWritesBusy) return;
+    if (this.isEncryptedRecordSyncDisabled) {
+      this.pendingWritesError = PG_RECORD_SYNC_DISABLED_MESSAGE;
+      return;
+    }
     if (!this.workspaceOwnerNpub || !this.session?.npub) {
       this.pendingWritesError = 'Configure workspace sync first.';
       return;
@@ -2877,7 +2877,6 @@ export const syncManagerMixin = {
     if (selected.has('task')) await this.refreshTasks();
     if (selected.has('schedule')) await this.refreshSchedules();
     if (selected.has('scope')) await this.refreshScopes();
-    if (selected.has('wapp')) await this.refreshWapps?.();
     if (selected.has('task') || selected.has('scope')) await this.ensureTaskBoardScopeSetup();
     if (selected.has('comment') && this.activeTaskId) {
       await this.loadTaskComments(this.activeTaskId);

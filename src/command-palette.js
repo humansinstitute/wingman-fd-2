@@ -1,9 +1,7 @@
 import {
-  getAllApprovals,
   getChannelsByOwner,
   getDirectoriesByOwner,
   getDocumentsByOwner,
-  getFlowsByOwner,
   getMessagesByChannel,
   getReportsByOwner,
   getScopesByOwner,
@@ -19,8 +17,6 @@ const COMMAND_GROUP_LABELS = Object.freeze({
   task: 'Tasks',
   channel: 'Chat channels',
   thread: 'Chat threads',
-  flow: 'Flows',
-  approval: 'Approvals',
   command: 'Commands',
   report: 'Flight Deck',
 });
@@ -32,8 +28,6 @@ const COMMAND_GROUP_ORDER = Object.freeze([
   'task',
   'channel',
   'thread',
-  'flow',
-  'approval',
   'command',
   'report',
 ]);
@@ -461,10 +455,8 @@ export const commandPaletteMixin = {
         getTasksByOwner(ownerNpub),
         getScopesByOwner(ownerNpub),
       ]);
-      const [reports, flows, approvals] = await Promise.all([
+      const [reports] = await Promise.all([
         isFlightDeckSurfaceDisabled('reports') ? [] : getReportsByOwner(ownerNpub),
-        isFlightDeckSurfaceDisabled('flows') ? [] : getFlowsByOwner(ownerNpub),
-        isFlightDeckSurfaceDisabled('approvals') ? [] : getAllApprovals(),
       ]);
       const channelMessages = await Promise.all(
         channels.map((channel) => getMessagesByChannel(channel.record_id)),
@@ -476,8 +468,6 @@ export const commandPaletteMixin = {
         tasks,
         reports,
         scopes,
-        flows,
-        approvals,
         messages: channelMessages.flat(),
       });
     } finally {
@@ -583,38 +573,6 @@ export const commandPaletteMixin = {
       }));
     }
 
-    if (!isFlightDeckSurfaceDisabled('flows')) {
-      for (const flow of records.flows || []) {
-        items.push(buildItem({
-          id: `flow:${flow.record_id}`,
-          group: 'flow',
-          title: flow.title || 'Untitled flow',
-          subtitle: flow.scope_id ? this.getTaskBoardLabel?.(flow) : 'Flow',
-          action: 'open-flow',
-          recordId: flow.record_id,
-          scopeId: scopeIdFromRecord(flow),
-          updatedTs: recordUpdatedTs(flow),
-          searchText: compactText([flow.description, flow.trigger_type]),
-        }));
-      }
-    }
-
-    if (!isFlightDeckSurfaceDisabled('approvals')) {
-      for (const approval of records.approvals || []) {
-        items.push(buildItem({
-          id: `approval:${approval.record_id}`,
-          group: 'approval',
-          title: approval.title || 'Untitled approval',
-          subtitle: compactText([approval.status || 'approval', approval.approval_mode]),
-          action: 'open-approval',
-          recordId: approval.record_id,
-          scopeId: scopeIdFromRecord(approval),
-          updatedTs: recordUpdatedTs(approval),
-          searchText: compactText([approval.brief, approval.agent_review_note]),
-        }));
-      }
-    }
-
     if (!isFlightDeckSurfaceDisabled('reports')) {
       for (const report of records.reports || []) {
         items.push(buildItem({
@@ -713,23 +671,6 @@ export const commandPaletteMixin = {
         this.navigateTo('chat', { syncRoute: false });
         if (item.channelId) await this.selectChannel(item.channelId, { syncRoute: false });
         if (item.threadId) this.openThread(item.threadId, { scrollToLatest: false });
-        this.syncRoute();
-        return;
-      case 'open-flow':
-        if (isFlightDeckSurfaceDisabled('flows')) return;
-        this.navigateTo('settings', { syncRoute: false });
-        this.settingsTab = 'flows';
-        await this.refreshFlows();
-        await this.refreshApprovals();
-        this.openFlowEditor(item.recordId);
-        this.syncRoute();
-        return;
-      case 'open-approval':
-        if (isFlightDeckSurfaceDisabled('approvals')) return;
-        this.navigateTo('status', { syncRoute: false });
-        await this.refreshApprovals();
-        this.activeApprovalId = item.recordId;
-        this.showApprovalDetail = true;
         this.syncRoute();
         return;
       case 'open-report':

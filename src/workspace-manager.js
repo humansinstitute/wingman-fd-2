@@ -272,13 +272,8 @@ export const workspaceManagerMixin = {
     this.settingsTab = requestedTab;
     this.normalizeSettingsTab();
     if (this.settingsTab === 'schedules') this.refreshSchedules?.();
-    if (this.settingsTab === 'apps') this.refreshWapps?.();
     if (this.settingsTab === 'scopes') this.refreshScopes?.();
     if (this.settingsTab === 'sharing') this.prepareWorkspaceSharingSettings?.();
-    if (this.settingsTab === 'flows') {
-      this.refreshFlows?.();
-      this.refreshApprovals?.();
-    }
   },
 
   async prepareWorkspaceSharingSettings(options = {}) {

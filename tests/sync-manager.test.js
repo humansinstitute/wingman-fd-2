@@ -1107,19 +1107,6 @@ describe('pending write diagnostics', () => {
     expect(store.refreshStateForFamilies).toHaveBeenCalledWith(['document']);
   });
 
-  it('refreshes WApps after WApp family pulls or repairs', async () => {
-    const store = createStore({
-      refreshWapps: vi.fn().mockResolvedValue(undefined),
-      refreshStatusRecentChanges: vi.fn().mockResolvedValue(undefined),
-      refreshSyncStatus: vi.fn().mockResolvedValue(undefined),
-    });
-
-    await store.refreshStateForFamilies(['wapp']);
-
-    expect(store.refreshWapps).toHaveBeenCalled();
-    expect(store.refreshStatusRecentChanges).toHaveBeenCalledWith({ hasNewData: true, force: true });
-    expect(store.refreshSyncStatus).toHaveBeenCalled();
-  });
 });
 
 // ---------------------------------------------------------------------------

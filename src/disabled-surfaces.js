@@ -47,7 +47,6 @@ export function blockDisabledFlightDeckSurface(store, surfaceId) {
   const message = disabledFlightDeckSurfaceMessage(surfaceId);
   if (store) {
     store.error = message;
-    if (surfaceId === 'wappVisibility') store.wappVisibilityError = message;
     if (surfaceId === 'reports') store.reportDeleteError = message;
   }
   return true;

@@ -21,10 +21,6 @@ import { connectSettingsManagerMixin } from './connect-settings-manager.js';
 import { workspaceSelfIndexManagerMixin } from './workspace-self-index-manager.js';
 import { onboardingAnnouncementsManagerMixin } from './onboarding-announcements-manager.js';
 import { unreadStoreMixin } from './unread-store.js';
-import { flowsManagerMixin } from './flows-manager.js';
-import { personsManagerMixin } from './persons-manager.js';
-import { opportunitiesManagerMixin } from './opportunities-manager.js';
-import { wappsManagerMixin } from './wapps-manager.js';
 import { reportsManagerMixin } from './reports-manager.js';
 import { filesManagerMixin } from './files-manager.js';
 import {
@@ -1032,7 +1028,6 @@ export function initApp() {
         tasks: this.tasks,
         boardScopedTasks: this.boardScopedTasks,
         statusRecentChanges: this.contextFilteredStatusRecentChanges,
-        pendingApprovals: this.pendingApprovalsByScope,
       });
     },
 
@@ -1688,8 +1683,6 @@ export function initApp() {
       if (!isTowerPgBackendMode()) {
         await this.ensureWorkspaceSessionKey();
         await this.refreshGroups({ maxAgeMs: this.GROUP_KEY_REFRESH_MAX_AGE_MS });
-        // Flows are loaded eagerly so flow linkage resolution works from any section
-        this.refreshFlows().catch(() => {});
         // Fetch ws_key → user_npub mappings for display identity resolution
         this.refreshWorkspaceKeyMappings().catch(() => {});
         if (options.runAccessPrune === true) {
@@ -2011,12 +2004,6 @@ export function initApp() {
           }
         } else if (this.navSection === 'reports') {
           this.selectedReportId = route.params.reportid || this.selectedReport?.record_id || null;
-        } else if (this.navSection === 'opportunities') {
-          if (route.params.opportunityid) {
-            this.openOpportunityDetail(route.params.opportunityid);
-          } else {
-            this.closeOpportunityDetail({ syncRoute: false });
-          }
         } else if (this.navSection === 'tasks') {
           // Scope already restored above; apply task-specific params
           if (!route.params.scopeid && !route.params.groupid) {
@@ -2387,13 +2374,8 @@ export function initApp() {
       if (section === 'settings') {
         this.normalizeSettingsTab?.();
         if (this.settingsTab === 'schedules') this.refreshSchedules();
-        if (this.settingsTab === 'apps') this.refreshWapps?.();
         if (this.settingsTab === 'scopes') this.refreshScopes();
         if (this.settingsTab === 'sharing') this.prepareWorkspaceSharingSettings?.();
-        if (this.settingsTab === 'flows') {
-          this.refreshFlows();
-          this.refreshApprovals();
-        }
       }
       if (options.syncRoute !== false) this.syncRoute();
       this.startWorkspaceLiveQueries();
@@ -3250,22 +3232,6 @@ export function initApp() {
         });
         return;
       }
-      if (item.section === 'flows') {
-        this.navSection = 'settings';
-        this.settingsTab = 'flows';
-        this.mobileNavOpen = false;
-        if (item.boardScopeId) {
-          this.selectedBoardId = item.boardScopeId;
-          this.persistSelectedBoardId(this.selectedBoardId);
-          this.validateSelectedBoardId();
-        }
-        this.startWorkspaceLiveQueries();
-        await this.refreshFlows();
-        await this.refreshApprovals();
-        if (item.recordId) this.openFlowEditor(item.recordId);
-        else this.syncRoute();
-        return;
-      }
       if (item.section !== 'chat') return;
       this.focusMessageId = item.focusRecordId ?? item.recordId ?? null;
       this.navSection = 'chat';
@@ -3343,9 +3309,7 @@ export function initApp() {
         normalizedTasks.push(normalized);
       }
       const dedupedTasks = dedupeTasksByRecordId(normalizedTasks);
-      const hydratedTasks = typeof this.hydrateTasksWithOpportunityLinks === 'function'
-        ? this.hydrateTasksWithOpportunityLinks(dedupedTasks)
-        : dedupedTasks;
+      const hydratedTasks = dedupedTasks;
       if (!sameListBySignature(this.tasks, hydratedTasks, (task) => [
         String(task?.record_id || ''),
         String(task?.updated_at || ''),
@@ -6232,27 +6196,6 @@ export function initApp() {
           this.scopeNavFocus = id;
           document.getElementById('scope-' + id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         });
-      } else if (linkType === 'flow') {
-        this.navSection = 'settings';
-        this.settingsTab = 'flows';
-        this.mobileNavOpen = false;
-        this.startWorkspaceLiveQueries();
-        this.refreshFlows();
-        this.refreshApprovals();
-        this.syncRoute();
-        this.$nextTick(() => {
-          this.editingFlowId = id;
-          this.showFlowEditor = true;
-        });
-      } else if (linkType === 'opportunity') {
-        this.navSection = 'opportunities';
-        this.mobileNavOpen = false;
-        this.startWorkspaceLiveQueries();
-        this.$nextTick(() => this.openOpportunityDetail(id));
-      } else if (linkType === 'person') {
-        this.navSection = 'people';
-        this.mobileNavOpen = false;
-        this.startWorkspaceLiveQueries();
       }
     },
 
@@ -6812,10 +6755,6 @@ export function initApp() {
     filesManagerMixin,
     sectionLiveQueryMixin,
     unreadStoreMixin,
-    flowsManagerMixin,
-    personsManagerMixin,
-    opportunitiesManagerMixin,
-    wappsManagerMixin,
     reportsManagerMixin,
     commandPaletteMixin,
   );

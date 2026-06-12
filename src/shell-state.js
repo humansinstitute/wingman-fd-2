@@ -536,7 +536,6 @@ export function createShellState(options = {}) {
       } else {
         await this.ensureWorkspaceSessionKey();
         await this.refreshGroups({ maxAgeMs: this.GROUP_KEY_REFRESH_MAX_AGE_MS });
-        this.refreshFlows().catch(() => {});
         this.refreshWorkspaceKeyMappings().catch(() => {});
         if (options.runAccessPrune === true) {
           this.runAccessPruneOnLogin().catch(() => {});
@@ -703,12 +702,6 @@ export function createShellState(options = {}) {
           }
         } else if (this.navSection === 'reports') {
           this.selectedReportId = route.params.reportid || this.selectedReport?.record_id || null;
-        } else if (this.navSection === 'opportunities') {
-          if (route.params.opportunityid) {
-            this.openOpportunityDetail(route.params.opportunityid);
-          } else {
-            this.closeOpportunityDetail({ syncRoute: false });
-          }
         } else if (this.navSection === 'tasks') {
           if (!route.params.scopeid && !route.params.groupid) {
             this.selectedBoardId = this.readStoredTaskBoardId() || this.preferredTaskBoardId;
@@ -773,13 +766,8 @@ export function createShellState(options = {}) {
       if (section === 'settings') {
         this.normalizeSettingsTab?.();
         if (this.settingsTab === 'schedules') this.refreshSchedules();
-        if (this.settingsTab === 'apps') this.refreshWapps?.();
         if (this.settingsTab === 'scopes') this.refreshScopes();
         if (this.settingsTab === 'sharing') this.prepareWorkspaceSharingSettings?.();
-        if (this.settingsTab === 'flows') {
-          this.refreshFlows();
-          this.refreshApprovals();
-        }
       }
       if (options.syncRoute !== false) this.syncRoute();
       this.startWorkspaceLiveQueries();

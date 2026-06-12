@@ -1501,20 +1501,10 @@ export const chatMessageManagerMixin = {
     const source = this.chatThreadFlowDispatchSource;
     this.chatThreadFlowDispatchSubmitting = true;
     try {
-      const result = await this.startChatThreadFlowDispatch({
-        flowId: this.chatThreadFlowDispatchSelectedFlowId,
-        resolvedScopeId: this.chatThreadFlowDispatchResolvedScopeId,
-        resolvedScopeAssignment: this.chatThreadFlowDispatchResolvedScopeAssignment,
-        scopeSource: this.chatThreadFlowDispatchScopeSource,
-        channelId: source.channelId,
-        clickedMessageId: source.clickedMessageId,
-        threadRootMessageId: source.threadRootMessageId,
-        sourceSurface: source.sourceSurface,
-        launchNotes: this.chatThreadFlowDispatchLaunchNotes,
-        kickoffDescription: String(this.chatThreadFlowDispatchPreview || '').trim(),
-      });
+      // Flow dispatch was removed from Flight Deck (flows feature removal).
+      const result = null;
       if (!result) {
-        throw new Error('Failed to create the kickoff task for this flow dispatch.');
+        throw new Error('Flow dispatch is no longer available.');
       }
       this.closeChatThreadFlowDispatch();
       return result;

@@ -11,19 +11,12 @@ import {
   getWindowedDocumentsByOwner,
   getReportById,
   getWindowedReportsByOwner,
-  getManageableWappsByOwner,
   getTaskById,
   getTasksByOwner,
   getSchedulesByOwner,
   getScopesByOwner,
   getCommentsByTarget,
   getReactionsByTargets,
-  getFlowsByOwner,
-  getApprovalsByStatus,
-  getPersonsByOwner,
-  getOrganisationsByOwner,
-  getOpportunitiesByOwner,
-  getOpportunityById,
   isWorkspaceDbOpenForKey,
 } from './db.js';
 import { recordFamilyHash } from './translators/chat.js';
@@ -161,11 +154,6 @@ function buildWorkspaceSpecs(store) {
     case 'status':
       sectionSpecs = [
         {
-          key: 'status:wapps',
-          query: () => getManageableWappsByOwner(ownerNpub),
-          onNext: (wapps) => store.applyWapps(wapps),
-        },
-        {
           key: 'status:tasks',
           query: () => getTasksByOwner(ownerNpub),
           onNext: (tasks) => store.applyTasks(tasks),
@@ -250,20 +238,6 @@ function buildWorkspaceSpecs(store) {
       sectionSpecs = [];
   }
 
-  if (!isFlightDeckSurfaceDisabled('flows')) {
-    alwaysOn.push({
-      key: 'ws:flows',
-      query: () => getFlowsByOwner(ownerNpub),
-      onNext: (flows) => store.applyFlows(flows),
-    });
-  }
-  if (!isFlightDeckSurfaceDisabled('opportunities')) {
-    alwaysOn.push({
-      key: 'ws:opportunities',
-      query: () => getOpportunitiesByOwner(ownerNpub),
-      onNext: (opportunities) => store.applyOpportunities(opportunities),
-    });
-  }
   if (store?.navSection === 'status' && !isFlightDeckSurfaceDisabled('reports')) {
     sectionSpecs.push({
       key: 'status:reports',
@@ -278,21 +252,6 @@ function buildWorkspaceSpecs(store) {
       onNext: (schedules) => store.applySchedules(schedules),
     });
   }
-  if ((store?.navSection === 'status' || store?.navSection === 'settings') && !isFlightDeckSurfaceDisabled('approvals')) {
-    sectionSpecs.push({
-      key: `${store.navSection}:approvals`,
-      query: () => getApprovalsByStatus('pending'),
-      onNext: (approvals) => { store.approvals = approvals; },
-    });
-  }
-  if (store?.navSection === 'settings' && !isFlightDeckSurfaceDisabled('wappVisibility')) {
-    sectionSpecs.push({
-      key: 'settings:wapps',
-      query: () => getManageableWappsByOwner(ownerNpub),
-      onNext: (wapps) => store.applyWapps(wapps),
-    });
-  }
-
   return [...alwaysOn, ...sectionSpecs];
 }
 
@@ -436,29 +395,6 @@ function buildDetailSpecs(store) {
           onNext: (report) => {
             if (store.workspaceOwnerNpub !== ownerNpub || store.selectedReportId !== reportId) return;
             return store.applySelectedReport(report);
-          },
-        },
-      ];
-    }
-    case 'opportunities': {
-      if (isFlightDeckSurfaceDisabled('opportunities')) return [];
-      const opportunityId = String(store?.activeOpportunityId || '').trim();
-      if (!opportunityId) return [];
-      return [
-        {
-          key: `opportunities:selected-opportunity:${opportunityId}`,
-          query: () => getOpportunityById(opportunityId),
-          onNext: (opportunity) => {
-            if (store.workspaceOwnerNpub !== ownerNpub || store.activeOpportunityId !== opportunityId) return;
-            return store.applySelectedOpportunity(opportunity);
-          },
-        },
-        {
-          key: `opportunities:comments:${opportunityId}`,
-          query: () => getCommentsByTarget(opportunityId),
-          onNext: (comments) => {
-            if (store.workspaceOwnerNpub !== ownerNpub || store.activeOpportunityId !== opportunityId) return;
-            return store.applyOpportunityComments(comments);
           },
         },
       ];
