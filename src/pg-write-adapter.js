@@ -25,6 +25,7 @@ import {
   resolvePgRecordContext,
 } from './pg-record-context.js';
 import { addPgEditLeaseToSaveBody } from './pg-edit-session.js';
+import { buildAgentInstructionSignature } from './message-instruction-signatures.js';
 
 function trimText(value) {
   return String(value ?? '').trim();
@@ -241,8 +242,15 @@ export async function createTowerPgMessageFromLocal(store, message, options = {}
   if (!context.workspaceId || !message?.channel_id) throw new Error('Tower PG chat is not ready');
   const parentMessage = options.parentMessage || null;
   const threadId = trimText(options.threadId || parentMessage?.pg_thread_id);
+  const messageSignature = await buildAgentInstructionSignature({
+    body: message.body,
+    workspaceId: context.workspaceId,
+    channelId: message.channel_id,
+    threadId,
+  });
   const result = await createTowerPgChannelMessage(context.workspaceId, message.channel_id, {
     body: message.body,
+    message_signature: messageSignature,
     ...(threadId ? { thread_id: threadId } : { create_thread: true, thread_title: message.body.slice(0, 80) }),
   }, pgRequestOptions(context));
   const threadById = new Map();
