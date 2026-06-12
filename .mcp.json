@@ -5,11 +5,12 @@
       "command": "bun",
       "args": [
         "run",
-        "/Users/mini/code/wingmen/src/mcp/stdio-server.ts"
+        "/Users/mini/code/wingmanbefree/autopilot/src/mcp/stdio-server.ts"
       ],
       "env": {
-        "WINGMAN_URL": "http://localhost:3021",
-        "SESSION_ID": "a2647bbf-5683-4ff0-854c-e6d2602d116e",
+        "WINGMAN_URL": "http://localhost:3256",
+        "SESSION_ID": "dbaf5cfa-7676-477a-973a-92024e9ec042",
+        "WINGMAN_NPUB": "npub1s4658awhcachmhzk5jhsg256gzdl7e4gh5a9zq8skjyt7g3k2axql224qz",
         "BOT_PUBKEY_HEX": "857543f5d7c7717ddc56a4af042a9a409bff66a8bd3a5100f0b488bf2236574c",
         "BOT_NPUB": "npub1s4658awhcachmhzk5jhsg256gzdl7e4gh5a9zq8skjyt7g3k2axql224qz",
         "USER_NPUB": "npub1jss47s4fvv6usl7tn6yp5zamv2u60923ncgfea0e6thkza5p7c3q0afmzy",
