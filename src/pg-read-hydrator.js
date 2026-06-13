@@ -742,9 +742,15 @@ export async function hydrateTowerPgDailyNotes(store, deps = {}) {
   if (!context.workspaceId || !context.workspaceOwnerNpub || !context.baseUrl) return [];
   const readDailyNotes = deps.getTowerPgDailyNotes || getTowerPgDailyNotes;
   const replaceDailyNotes = deps.replaceDailyNotesForOwner || replaceDailyNotesForOwner;
+  const scopeMetadata = typeof store.getDailyNoteScopeMetadata === 'function'
+    ? store.getDailyNoteScopeMetadata()
+    : {};
   const result = await readDailyNotes(context.workspaceId, {
     baseUrl: context.baseUrl,
     appNpub: context.appNpub,
+    noteDate: deps.noteDate || null,
+    scopeId: deps.scopeId || scopeMetadata.scope_id || null,
+    channelId: deps.channelId || scopeMetadata.channel_id || null,
     limit: deps.limit || 30,
   });
   const dailyNotes = (Array.isArray(result?.daily_notes) ? result.daily_notes : [])

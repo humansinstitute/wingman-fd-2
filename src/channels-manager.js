@@ -1728,6 +1728,7 @@ export const channelsManagerMixin = {
     this.pendingChatScrollToLatest = options.scrollToLatest !== false;
     this.startSelectedChannelLiveQuery();
     await this.refreshMessages?.({ scrollToLatest: options.scrollToLatest });
+    await this.refreshDailyNotes?.();
     if (options.syncRoute !== false) this.syncRoute();
     this.ensureBackgroundSync(true);
     const selectedChannelUnreadCutoff = await this.captureSelectedChannelUnreadSnapshot(recordId);

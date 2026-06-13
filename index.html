@@ -7032,7 +7032,10 @@
         <div class="doc-modal-backdrop" x-show="$store.chat.dailyNoteEditorOpen" x-cloak @click.self="$store.chat.closeDailyNoteEditor()">
           <div class="doc-modal-card daily-note-modal">
             <button class="modal-close" type="button" @click="$store.chat.closeDailyNoteEditor()">&times;</button>
-            <p class="doc-comment-modal-copy">Daily note for <span x-text="$store.chat.getTodayDateKey()"></span></p>
+            <div class="daily-note-modal-meta">
+              <p class="doc-comment-modal-copy">Daily note for <span x-text="$store.chat.getTodayDateKey()"></span></p>
+              <span x-show="$store.chat.dailyNoteEditorVersionLabel" x-text="$store.chat.dailyNoteEditorVersionLabel"></span>
+            </div>
             <input
               class="daily-note-title-input"
               type="text"

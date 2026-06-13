@@ -2490,6 +2490,12 @@ export function initApp() {
       return note.focus || note.body || 'Open today’s note';
     },
 
+    get dailyNoteEditorVersionLabel() {
+      const note = (this.dailyNotes || []).find((item) => item.record_id === this.dailyNoteEditorRecordId) || null;
+      const version = Number(note?.version || note?.row_version || 0);
+      return version > 0 ? `Version ${version}` : '';
+    },
+
     applyDailyNotes(dailyNotes = []) {
       this.dailyNotes = Array.isArray(dailyNotes) ? dailyNotes : [];
     },

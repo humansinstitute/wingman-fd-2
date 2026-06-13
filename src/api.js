@@ -644,12 +644,13 @@ export async function getTowerPgTaskComments(workspaceId, taskId, { baseUrl = _b
   return json(resp, { requestUrl, method: 'GET', prefix: 'Tower PG API' });
 }
 
-export async function getTowerPgDailyNotes(workspaceId, { baseUrl = _baseUrl, appNpub = FLIGHT_DECK_PG_APP_NPUB, noteDate = null, ownerActorId = null, limit = 30 } = {}) {
+export async function getTowerPgDailyNotes(workspaceId, { baseUrl = _baseUrl, appNpub = FLIGHT_DECK_PG_APP_NPUB, noteDate = null, scopeId = null, channelId = null, limit = 30 } = {}) {
   const encodedWorkspaceId = encodeURIComponent(String(workspaceId || '').trim());
   if (!encodedWorkspaceId) throw new Error('Tower PG workspace id is required');
   const params = new URLSearchParams();
   if (noteDate) params.set('note_date', String(noteDate));
-  if (ownerActorId) params.set('owner_actor_id', String(ownerActorId));
+  if (scopeId) params.set('scope_id', String(scopeId));
+  if (channelId) params.set('channel_id', String(channelId));
   if (limit) params.set('limit', String(limit));
   const requestPath = `/api/v4/flightdeck-pg/workspaces/${encodedWorkspaceId}/daily-notes${params.size > 0 ? `?${params.toString()}` : ''}`;
   const requestUrl = resolveTowerPgUrl(requestPath, baseUrl);

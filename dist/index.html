@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-h0wPG5Kk.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-C9yE9Znx.css">
+  <script type="module" crossorigin src="/assets/index-T-TkwRmq.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-BUKCmILN.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -7034,7 +7034,10 @@
         <div class="doc-modal-backdrop" x-show="$store.chat.dailyNoteEditorOpen" x-cloak @click.self="$store.chat.closeDailyNoteEditor()">
           <div class="doc-modal-card daily-note-modal">
             <button class="modal-close" type="button" @click="$store.chat.closeDailyNoteEditor()">&times;</button>
-            <p class="doc-comment-modal-copy">Daily note for <span x-text="$store.chat.getTodayDateKey()"></span></p>
+            <div class="daily-note-modal-meta">
+              <p class="doc-comment-modal-copy">Daily note for <span x-text="$store.chat.getTodayDateKey()"></span></p>
+              <span x-show="$store.chat.dailyNoteEditorVersionLabel" x-text="$store.chat.dailyNoteEditorVersionLabel"></span>
+            </div>
             <input
               class="daily-note-title-input"
               type="text"
