@@ -139,6 +139,7 @@ import {
   getDirectoryById,
   getTasksByOwner,
   upsertTask,
+  replaceTaskRecordId,
   getTaskById,
   getSchedulesByOwner,
   upsertSchedule,
@@ -341,6 +342,23 @@ function mergeTaskIntoList(tasks = [], nextTask) {
   const merged = [...current];
   merged[existingIndex] = nextTask;
   return merged;
+}
+
+async function replaceLocalTaskWithAcceptedPgTask(store, localRecordId, acceptedTask) {
+  const previousId = String(localRecordId || '').trim();
+  const acceptedId = String(acceptedTask?.record_id || '').trim();
+  if (!acceptedId) return acceptedTask;
+  await replaceTaskRecordId(previousId, acceptedTask);
+  store.tasks = mergeTaskIntoList(
+    (Array.isArray(store.tasks) ? store.tasks : []).filter((task) => task?.record_id !== previousId),
+    acceptedTask,
+  );
+  if (store.activeTaskId === previousId) store.activeTaskId = acceptedId;
+  if (store.editingTask?.record_id === previousId) store.editingTask = { ...acceptedTask };
+  if (Array.isArray(store.selectedTaskIds)) {
+    store.selectedTaskIds = [...new Set(store.selectedTaskIds.map((taskId) => taskId === previousId ? acceptedId : taskId))];
+  }
+  return acceptedTask;
 }
 
 export function initApp() {
@@ -3831,11 +3849,7 @@ export function initApp() {
       if (isTowerPgBackendMode()) {
         try {
           const createdTask = await createTowerPgTaskFromLocal(this, localRow);
-          await upsertTask(createdTask);
-          this.tasks = mergeTaskIntoList(
-            this.tasks.filter((task) => task.record_id !== localRow.record_id),
-            createdTask,
-          );
+          await replaceLocalTaskWithAcceptedPgTask(this, localRow.record_id, createdTask);
           this.scheduleTasksRefresh('PG task create');
           return createdTask;
         } catch (error) {
@@ -4059,12 +4073,7 @@ export function initApp() {
           }
           try {
             const createdTask = await createTowerPgTaskFromLocal(this, updated);
-            await upsertTask(createdTask);
-            this.tasks = mergeTaskIntoList(
-              this.tasks.filter((entry) => entry.record_id !== updated.record_id),
-              createdTask,
-            );
-            if (this.editingTask?.record_id === taskId) this.editingTask = { ...createdTask };
+            await replaceLocalTaskWithAcceptedPgTask(this, updated.record_id, createdTask);
             if (options.refresh) this.scheduleTasksRefresh('PG task create from local edit');
             return createdTask;
           } catch (error) {
@@ -4504,12 +4513,7 @@ export function initApp() {
             if (isOnlineForPgEdit()) {
               try {
                 const createdTask = await createTowerPgTaskFromLocal(this, updated);
-                await upsertTask(createdTask);
-                this.tasks = mergeTaskIntoList(
-                  this.tasks.filter((entry) => entry.record_id !== updated.record_id),
-                  createdTask,
-                );
-                this.editingTask = { ...createdTask };
+                await replaceLocalTaskWithAcceptedPgTask(this, updated.record_id, createdTask);
               } catch (error) {
                 const failed = { ...updated, sync_status: 'failed', updated_at: new Date().toISOString() };
                 await upsertTask(failed);

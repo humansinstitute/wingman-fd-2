@@ -872,6 +872,20 @@ export async function upsertTask(task) {
   return wsDb().tasks.put(sanitizeForStorage(task));
 }
 
+export async function replaceTaskRecordId(previousRecordId, task) {
+  if (!task?.record_id) return null;
+  const nextTask = sanitizeForStorage(task);
+  const previousId = String(previousRecordId || '').trim();
+  const db = wsDb();
+  return db.transaction('rw', db.tasks, async () => {
+    if (previousId && previousId !== nextTask.record_id) {
+      await db.tasks.delete(previousId);
+    }
+    await db.tasks.put(nextTask);
+    return nextTask.record_id;
+  });
+}
+
 export async function replaceTasksForOwner(ownerNpub, tasks = []) {
   if (!ownerNpub) return 0;
   const rows = (Array.isArray(tasks) ? tasks : [])
