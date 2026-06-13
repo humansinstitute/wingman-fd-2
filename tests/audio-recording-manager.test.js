@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { JSDOM } from 'jsdom';
 
 const mocks = vi.hoisted(() => ({
   getAudioNotesByOwner: vi.fn(),
@@ -76,6 +77,25 @@ function createStore(overrides = {}) {
     resolveGroupId: (value) => String(value || '').trim() || null,
     ...overrides,
   });
+}
+
+function createAudioStub(overrides = {}) {
+  const listeners = new Map();
+  const audio = {
+    currentTime: 0,
+    duration: 30,
+    seekable: { length: 1, end: () => 30 },
+    play: vi.fn().mockResolvedValue(undefined),
+    pause: vi.fn(),
+    addEventListener: vi.fn((eventName, listener) => {
+      listeners.set(eventName, listener);
+    }),
+    dispatchAudioEvent(eventName) {
+      listeners.get(eventName)?.();
+    },
+    ...overrides,
+  };
+  return audio;
 }
 
 describe('audioRecordingManagerMixin', () => {
@@ -373,10 +393,10 @@ describe('audioRecordingManagerMixin', () => {
   });
 
   it('plays a group-visible voice note by downloading and decrypting the stored object', async () => {
-    const play = vi.fn().mockResolvedValue(undefined);
+    const audio = createAudioStub();
     const createObjectURL = vi.fn(() => 'blob:voice-note');
     const revokeObjectURL = vi.fn();
-    vi.stubGlobal('Audio', vi.fn(() => ({ play })));
+    vi.stubGlobal('Audio', vi.fn(() => audio));
     vi.stubGlobal('URL', {
       ...globalThis.URL,
       createObjectURL,
@@ -405,7 +425,52 @@ describe('audioRecordingManagerMixin', () => {
       'audio/webm;codecs=opus',
     );
     expect(createObjectURL).toHaveBeenCalledWith(decryptedBlob);
-    expect(play).toHaveBeenCalledTimes(1);
+    expect(audio.play).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows a playback overlay with a scrubber and stop control', async () => {
+    const dom = new JSDOM('<!doctype html><body></body>');
+    vi.stubGlobal('document', dom.window.document);
+    const audio = createAudioStub();
+    const createObjectURL = vi.fn(() => 'blob:voice-note');
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal('Audio', vi.fn(() => audio));
+    vi.stubGlobal('URL', {
+      ...globalThis.URL,
+      createObjectURL,
+      revokeObjectURL,
+    });
+    mocks.downloadStorageObject.mockResolvedValue(new Uint8Array([9, 8, 7]));
+    mocks.decryptAudioBytes.mockResolvedValue(new Blob(['voice'], { type: 'audio/webm;codecs=opus' }));
+
+    const store = createStore({
+      audioNotes: [{
+        record_id: 'audio-1',
+        storage_object_id: 'storage-1',
+        media_encryption: { scheme: 'aes-gcm', key_b64: 'key', iv_b64: 'iv' },
+        mime_type: 'audio/webm;codecs=opus',
+        title: 'TTS reply',
+      }],
+    });
+
+    await store.playAudioAttachment({ kind: 'audio', audio_note_record_id: 'audio-1' });
+
+    const modal = dom.window.document.querySelector('[data-testid="audio-playback-modal"]');
+    const scrubber = dom.window.document.querySelector('[data-testid="audio-playback-scrubber"]');
+    const stopButton = dom.window.document.querySelector('[data-testid="audio-playback-stop"]');
+    expect(modal).not.toBeNull();
+    expect(scrubber).not.toBeNull();
+    expect(stopButton).not.toBeNull();
+
+    scrubber.value = '12';
+    scrubber.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    expect(audio.currentTime).toBe(12);
+
+    stopButton.click();
+    expect(audio.pause).toHaveBeenCalledTimes(1);
+    expect(audio.currentTime).toBe(0);
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:voice-note');
+    expect(dom.window.document.querySelector('[data-testid="audio-playback-modal"]')).toBeNull();
   });
 
   it('refreshes audio notes before playback when the synced comment attachment arrives first', async () => {

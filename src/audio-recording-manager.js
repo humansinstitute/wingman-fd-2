@@ -34,6 +34,176 @@ import {
   getRecordWriteFieldsForStore,
 } from './preferred-write-group.js';
 
+let activeAudio = null;
+let activeAudioModal = null;
+let activeAudioObjectUrl = '';
+
+function formatPlaybackTime(seconds) {
+  if (!Number.isFinite(seconds) || seconds <= 0) return '0:00';
+  const totalSeconds = Math.floor(seconds);
+  const minutes = Math.floor(totalSeconds / 60);
+  const remainder = String(totalSeconds % 60).padStart(2, '0');
+  return `${minutes}:${remainder}`;
+}
+
+function getAudioSeekableEnd(audio) {
+  const ranges = audio?.seekable;
+  if (!ranges?.length) return 0;
+  try {
+    return ranges.end(ranges.length - 1);
+  } catch {
+    return 0;
+  }
+}
+
+function removeAudioPlaybackModal() {
+  activeAudioModal?.remove();
+  activeAudioModal = null;
+}
+
+function revokeActiveAudioUrl() {
+  if (!activeAudioObjectUrl) return;
+  URL.revokeObjectURL(activeAudioObjectUrl);
+  activeAudioObjectUrl = '';
+}
+
+function updateAudioPlaybackTimeline(audio = activeAudio) {
+  if (!activeAudioModal || !audio) return;
+  const scrubber = activeAudioModal.querySelector('[data-part="audio-scrubber"]');
+  const elapsed = activeAudioModal.querySelector('[data-part="audio-elapsed"]');
+  const duration = activeAudioModal.querySelector('[data-part="audio-duration"]');
+  const currentTime = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+  const reportedDuration = Number.isFinite(audio.duration) ? audio.duration : 0;
+  const seekableEnd = getAudioSeekableEnd(audio);
+  const totalTime = Math.max(reportedDuration, seekableEnd, currentTime);
+  if (scrubber) {
+    scrubber.max = totalTime > 0 ? String(Math.ceil(totalTime)) : '0';
+    scrubber.value = String(Math.floor(currentTime));
+    scrubber.disabled = totalTime <= 0;
+  }
+  if (elapsed) elapsed.textContent = formatPlaybackTime(currentTime);
+  if (duration) duration.textContent = totalTime > 0 ? formatPlaybackTime(totalTime) : '--:--';
+}
+
+function stopAudioPlayback() {
+  const stoppedAudio = activeAudio;
+  if (stoppedAudio) {
+    try {
+      stoppedAudio.pause();
+      stoppedAudio.currentTime = 0;
+    } catch {
+      // Ignore browser audio state errors.
+    }
+  }
+  activeAudio = null;
+  removeAudioPlaybackModal();
+  revokeActiveAudioUrl();
+}
+
+function syncAudioPlaybackModal({ title = 'Audio playing' } = {}) {
+  if (typeof document === 'undefined') return;
+  if (activeAudioModal?.isConnected) {
+    const titleNode = activeAudioModal.querySelector('[data-part="audio-title"]');
+    if (titleNode) titleNode.textContent = title || 'Audio playing';
+    updateAudioPlaybackTimeline(activeAudio);
+    return;
+  }
+
+  const overlay = document.createElement('div');
+  overlay.className = 'fd-audio-playback-modal';
+  overlay.dataset.testid = 'audio-playback-modal';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.setAttribute('aria-labelledby', 'audio-playback-title');
+
+  const panel = document.createElement('div');
+  panel.className = 'fd-audio-playback-modal__panel';
+
+  const status = document.createElement('div');
+  status.className = 'fd-audio-playback-modal__status';
+  status.setAttribute('aria-hidden', 'true');
+  for (let index = 0; index < 4; index += 1) {
+    status.append(document.createElement('span'));
+  }
+
+  const titleNode = document.createElement('p');
+  titleNode.id = 'audio-playback-title';
+  titleNode.className = 'fd-audio-playback-modal__title';
+  titleNode.dataset.part = 'audio-title';
+  titleNode.textContent = title || 'Audio playing';
+
+  const stopButton = document.createElement('button');
+  stopButton.type = 'button';
+  stopButton.className = 'fd-audio-playback-modal__stop';
+  stopButton.dataset.testid = 'audio-playback-stop';
+  stopButton.setAttribute('aria-label', 'Stop audio playback');
+  stopButton.textContent = 'Stop';
+  stopButton.addEventListener('click', () => stopAudioPlayback());
+
+  const timeline = document.createElement('div');
+  timeline.className = 'fd-audio-playback-modal__timeline';
+
+  const elapsed = document.createElement('span');
+  elapsed.className = 'fd-audio-playback-modal__time';
+  elapsed.dataset.part = 'audio-elapsed';
+  elapsed.textContent = '0:00';
+
+  const scrubber = document.createElement('input');
+  scrubber.type = 'range';
+  scrubber.min = '0';
+  scrubber.max = '0';
+  scrubber.value = '0';
+  scrubber.step = '1';
+  scrubber.className = 'fd-audio-playback-modal__scrubber';
+  scrubber.dataset.part = 'audio-scrubber';
+  scrubber.dataset.testid = 'audio-playback-scrubber';
+  scrubber.setAttribute('aria-label', 'Audio playback timeline');
+  scrubber.disabled = true;
+  scrubber.addEventListener('input', () => {
+    if (!activeAudio) return;
+    const nextTime = Number(scrubber.value);
+    if (Number.isFinite(nextTime)) {
+      activeAudio.currentTime = nextTime;
+      updateAudioPlaybackTimeline(activeAudio);
+    }
+  });
+
+  const duration = document.createElement('span');
+  duration.className = 'fd-audio-playback-modal__time';
+  duration.dataset.part = 'audio-duration';
+  duration.textContent = '--:--';
+
+  timeline.append(elapsed, scrubber, duration);
+  panel.append(status, titleNode, stopButton, timeline);
+  overlay.append(panel);
+  overlay.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      stopAudioPlayback();
+    }
+  });
+  document.body.append(overlay);
+  activeAudioModal = overlay;
+  updateAudioPlaybackTimeline(activeAudio);
+  stopButton.focus({ preventScroll: true });
+}
+
+function startAudioPlayback(audio, objectUrl, { title = 'Audio playing' } = {}) {
+  stopAudioPlayback();
+  activeAudio = audio;
+  activeAudioObjectUrl = objectUrl;
+  syncAudioPlaybackModal({ title });
+  audio.addEventListener?.('loadedmetadata', () => updateAudioPlaybackTimeline(audio));
+  audio.addEventListener?.('durationchange', () => updateAudioPlaybackTimeline(audio));
+  audio.addEventListener?.('timeupdate', () => updateAudioPlaybackTimeline(audio));
+  audio.addEventListener?.('ended', () => {
+    if (activeAudio === audio) stopAudioPlayback();
+  }, { once: true });
+  audio.addEventListener?.('error', () => {
+    if (activeAudio === audio) stopAudioPlayback();
+  }, { once: true });
+}
+
 // ---------------------------------------------------------------------------
 // Mixin — methods that use `this` (the Alpine store)
 // ---------------------------------------------------------------------------
@@ -406,12 +576,16 @@ export const audioRecordingManagerMixin = {
         : await decryptAudioBytes(encryptedBytes, note.media_encryption, note.mime_type);
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
-      audio.onended = () => URL.revokeObjectURL(url);
-      audio.onerror = () => URL.revokeObjectURL(url);
+      startAudioPlayback(audio, url, { title: this.getAudioAttachmentPreview(attachment) });
       await audio.play();
     } catch (error) {
+      stopAudioPlayback();
       this.error = error?.message || 'Could not play voice note.';
     }
+  },
+
+  stopAudioPlayback() {
+    stopAudioPlayback();
   },
 
   async applyAudioNotes(audioNotes = []) {
