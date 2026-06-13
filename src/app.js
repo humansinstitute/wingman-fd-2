@@ -5988,18 +5988,18 @@ export function initApp() {
     searchMentions(rawQuery) {
       if (!rawQuery) return [];
 
-      // Parse type prefix: @scope:, @task:, @doc:
+      // Parse type prefix: @scope:, @task:, @doc:, @channel:
       let typeFilter = null;
       let query = rawQuery;
-      const prefixMatch = rawQuery.match(/^(scope|task|doc|person|flow|opportunity):/i);
+      const prefixMatch = rawQuery.match(/^(scope|task|doc|person|flow|opportunity|channel|chat):/i);
       if (prefixMatch) {
-        typeFilter = prefixMatch[1].toLowerCase();
+        typeFilter = prefixMatch[1].toLowerCase() === 'chat' ? 'channel' : prefixMatch[1].toLowerCase();
         query = rawQuery.slice(prefixMatch[0].length);
       }
 
       const needle = query.toLowerCase();
       const results = [];
-      const limit = 10;
+      const limit = typeFilter === 'channel' ? Number.MAX_SAFE_INTEGER : 10;
 
       // People from groups
       if (!typeFilter || typeFilter === 'person') {
@@ -6032,6 +6032,22 @@ export function initApp() {
           if (task.record_state === 'deleted') continue;
           if (!needle || (task.title || '').toLowerCase().includes(needle)) {
             results.push({ type: 'task', id: task.record_id, label: task.title || 'Untitled', sublabel: 'Task' });
+          }
+        }
+      }
+
+      // Channels
+      if (!typeFilter || typeFilter === 'channel') {
+        for (const channel of this.channels) {
+          if (channel.record_state === 'deleted') continue;
+          const label = this.getChannelLabel?.(channel) || channel.title || channel.name || 'Untitled';
+          if (
+            !needle
+            || label.toLowerCase().includes(needle)
+            || String(channel.title || '').toLowerCase().includes(needle)
+            || String(channel.name || '').toLowerCase().includes(needle)
+          ) {
+            results.push({ type: 'channel', id: channel.record_id, label, sublabel: 'Channel' });
           }
         }
       }
@@ -6108,6 +6124,18 @@ export function initApp() {
         .sort((left, right) => (Date.parse(right.updated_at || '') || 0) - (Date.parse(left.updated_at || '') || 0));
       for (const task of recentTasks.slice(0, 2)) {
         add({ type: 'task', id: task.record_id, label: task.title || 'Untitled', sublabel: 'Task' });
+      }
+
+      const recentChannels = [...(this.channels || [])]
+        .filter((channel) => channel.record_state !== 'deleted')
+        .sort((left, right) => (Date.parse(right.updated_at || '') || 0) - (Date.parse(left.updated_at || '') || 0));
+      for (const channel of recentChannels.slice(0, 2)) {
+        add({
+          type: 'channel',
+          id: channel.record_id,
+          label: this.getChannelLabel?.(channel) || channel.title || channel.name || 'Untitled',
+          sublabel: 'Channel',
+        });
       }
 
       for (const scope of (this.scopes || []).filter((scope) => scope.record_state !== 'deleted').slice(0, 2)) {
@@ -6251,6 +6279,11 @@ export function initApp() {
           this.scopeNavFocus = id;
           document.getElementById('scope-' + id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         });
+      } else if (linkType === 'channel') {
+        this.navSection = 'chat';
+        this.mobileNavOpen = false;
+        this.startWorkspaceLiveQueries();
+        this.selectChannel?.(id);
       }
     },
 

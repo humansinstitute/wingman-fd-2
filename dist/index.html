@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-T-TkwRmq.js"></script>
+  <script type="module" crossorigin src="/assets/index-DBQxdzhZ.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-BUKCmILN.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
@@ -7095,7 +7095,7 @@
           @click="$store.chat.selectMention(result)"
           @mouseenter="$store.chat.mentionSelectedIndex = idx"
         >
-          <span class="mention-result-type" x-text="result.type === 'person' ? '@' : result.type === 'doc' ? 'DOC' : result.type === 'scope' ? 'SCOPE' : result.type === 'flow' ? 'FLOW' : result.type === 'opportunity' ? 'OPP' : 'TASK'"></span>
+          <span class="mention-result-type" x-text="result.type === 'person' ? '@' : result.type === 'doc' ? 'DOC' : result.type === 'scope' ? 'SCOPE' : result.type === 'flow' ? 'FLOW' : result.type === 'opportunity' ? 'OPP' : result.type === 'channel' ? 'CHAN' : 'TASK'"></span>
           <span class="mention-result-label" x-text="result.label"></span>
           <span class="mention-result-sublabel" x-show="result.sublabel" x-text="result.sublabel"></span>
         </li>
