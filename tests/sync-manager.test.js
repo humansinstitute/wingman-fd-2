@@ -25,9 +25,14 @@ import { getSyncFamilyHash } from '../src/sync-families.js';
 import { createNip98AuthHeader, createNip98AuthHeaderForSecret } from '../src/auth/nostr.js';
 import { getActiveWorkspaceKeySecretForAuth } from '../src/crypto/workspace-keys.js';
 import { isTowerPgBackendMode } from '../src/backend-mode.js';
+import { hydrateTowerPgEventUpdates } from '../src/pg-read-hydrator.js';
 
 vi.mock('../src/backend-mode.js', () => ({
   isTowerPgBackendMode: vi.fn(() => false),
+}));
+
+vi.mock('../src/pg-read-hydrator.js', () => ({
+  hydrateTowerPgEventUpdates: vi.fn(async () => ({ channels: 0, events: 0 })),
 }));
 
 vi.mock('../src/crypto/group-keys.js', () => ({
@@ -1362,8 +1367,9 @@ describe('sync family progress helpers', () => {
     );
   });
 
-  it('refreshes PG channels when pull-complete happens in PG mode', () => {
+  it('refreshes PG channels when pull-complete happens in PG mode', async () => {
     isTowerPgBackendMode.mockReturnValue(true);
+    hydrateTowerPgEventUpdates.mockResolvedValueOnce({ channels: 0, events: 0 });
     const refreshChannels = vi.fn().mockResolvedValue(undefined);
     const { fn } = bindMethod('handleSSEStatus', {
       refreshChannels,
@@ -1373,8 +1379,32 @@ describe('sync family progress helpers', () => {
       status: 'pull-complete',
       families: [getSyncFamilyHash('chat_message')],
     });
+    await Promise.resolve();
+    await Promise.resolve();
 
     expect(refreshChannels).toHaveBeenCalledTimes(1);
+  });
+
+  it('hydrates targeted PG event updates without broad channel refresh', async () => {
+    isTowerPgBackendMode.mockReturnValue(true);
+    hydrateTowerPgEventUpdates.mockResolvedValueOnce({ channels: 1, events: 1 });
+    const refreshChannels = vi.fn().mockResolvedValue(undefined);
+    const pgEvents = [{ entity_type: 'message', channel_id: 'channel-1' }];
+    const { fn, store } = bindMethod('handleSSEStatus', {
+      refreshChannels,
+    });
+
+    fn({
+      status: 'pull-complete',
+      families: ['flightdeck_pg'],
+      pgEvents,
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(hydrateTowerPgEventUpdates).toHaveBeenCalledWith(expect.any(Object), pgEvents);
+    expect(hydrateTowerPgEventUpdates.mock.calls.at(-1)[0]).toBe(store);
+    expect(refreshChannels).not.toHaveBeenCalled();
   });
 });
 

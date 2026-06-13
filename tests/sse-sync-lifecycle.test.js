@@ -11,6 +11,7 @@ import {
 import { syncManagerMixin } from '../src/sync-manager.js';
 import { createNip98AuthHeader } from '../src/auth/nostr.js';
 import { isTowerPgBackendMode } from '../src/backend-mode.js';
+import { hydrateTowerPgEventUpdates } from '../src/pg-read-hydrator.js';
 
 vi.mock('../src/api.js', () => ({
   downloadStorageObject: vi.fn(),
@@ -66,6 +67,10 @@ vi.mock('../src/sync-worker-client.js', () => ({
 vi.mock('../src/auth/nostr.js', () => ({
   createNip98AuthHeader: vi.fn(async () => 'Nostr eyJraW5kIjoyNzIzNX0='),
   createNip98AuthHeaderForSecret: vi.fn(async () => 'Nostr eyJzZWNyZXQiOnRydWV9'),
+}));
+
+vi.mock('../src/pg-read-hydrator.js', () => ({
+  hydrateTowerPgEventUpdates: vi.fn(async () => ({ channels: 0, events: 0 })),
 }));
 
 vi.mock('../src/backend-mode.js', () => ({
@@ -485,8 +490,9 @@ describe('handleSSEStatus', () => {
     });
   });
 
-  it('refreshes channels on pull-complete in Tower PG mode', () => {
+  it('refreshes channels on pull-complete in Tower PG mode', async () => {
     isTowerPgBackendMode.mockReturnValue(true);
+    hydrateTowerPgEventUpdates.mockResolvedValueOnce({ channels: 0, events: 0 });
     const refreshChannels = vi.fn().mockResolvedValue(undefined);
     const { fn, store } = bindMethod('handleSSEStatus', {
       sseStatus: 'connected',
@@ -494,6 +500,7 @@ describe('handleSSEStatus', () => {
     });
 
     fn({ status: 'pull-complete', families: ['family:channel'] });
+    await flushMicrotasks();
 
     expect(refreshChannels).toHaveBeenCalledTimes(1);
     expect(store.sseStatus).toBe('pull-complete');

@@ -442,4 +442,20 @@ describe('SSE URL construction', () => {
     expect(sseUrl.pathname).toBe(`/api/v4/flightdeck-pg/workspaces/${workspaceId}/events/stream`);
     expect(sseUrl.searchParams.get('token')).toBe(token);
   });
+
+  it('uses cursor rather than last_event_id for Flight Deck PG event streams', () => {
+    const workspaceId = 'workspace-1';
+    const backendUrl = 'https://tower.example.com';
+    const token = 'base64token==';
+    const pgCursor = 'eyJ2ZXJzaW9uIjoxLCJyb3dWZXJzaW9uIjo0Mn0';
+
+    const sseUrl = new URL(`/api/v4/flightdeck-pg/workspaces/${workspaceId}/events/stream`, backendUrl);
+    sseUrl.searchParams.set('token', token);
+    if (pgCursor != null) {
+      sseUrl.searchParams.set('cursor', String(pgCursor));
+    }
+
+    expect(sseUrl.searchParams.get('cursor')).toBe(pgCursor);
+    expect(sseUrl.searchParams.has('last_event_id')).toBe(false);
+  });
 });

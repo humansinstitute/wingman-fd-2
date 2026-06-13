@@ -152,6 +152,10 @@ async function resolveActorNpubByActorIdWithFallback(store = {}, deps = {}, cont
   return actorNpubByActorId;
 }
 
+function uniqueNonEmpty(values = []) {
+  return [...new Set(values.map((value) => trimText(value)).filter(Boolean))];
+}
+
 function descriptorLinks(workspace = {}) {
   const descriptor = workspace.pgDescriptor && typeof workspace.pgDescriptor === 'object'
     ? workspace.pgDescriptor
@@ -666,6 +670,73 @@ export async function hydrateTowerPgChannels(store, deps = {}) {
   }
 
   return channels;
+}
+
+export async function hydrateTowerPgChannelMessages(store, channelId, deps = {}) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  const targetChannelId = trimText(channelId);
+  if (!context.workspaceId || !context.workspaceOwnerNpub || !context.baseUrl || !targetChannelId) return [];
+
+  const readThreads = deps.getTowerPgChannelThreads || getTowerPgChannelThreads;
+  const readMessages = deps.getTowerPgChannelMessages || getTowerPgChannelMessages;
+  const replaceMessages = deps.replacePgMessagesForChannel || replacePgMessagesForChannel;
+  const actorNpubByActorId = await resolveActorNpubByActorIdWithFallback(store, deps, context);
+
+  const result = await readThreads(context.workspaceId, targetChannelId, {
+    baseUrl: context.baseUrl,
+    appNpub: context.appNpub,
+  });
+  const rawThreads = Array.isArray(result?.threads) ? result.threads : [];
+  const threadById = new Map(rawThreads.map((thread) => [trimText(thread?.id), thread]).filter(([id]) => id));
+  const messagesResult = await readMessages(context.workspaceId, targetChannelId, {
+    baseUrl: context.baseUrl,
+    appNpub: context.appNpub,
+  });
+  const rawMessages = Array.isArray(messagesResult?.messages) ? messagesResult.messages : [];
+  const sourceMessageIds = new Set(rawThreads.map((thread) => trimText(thread?.source_message_id)).filter(Boolean));
+  const messageRows = rawMessages
+    .map((message) => mapPgMessageToLocal(message, {
+      workspaceOwnerNpub: context.workspaceOwnerNpub,
+      senderNpub: '',
+      threadById,
+      actorNpubByActorId,
+    }))
+    .filter((message) => message.record_id && message.channel_id);
+  const messageIds = new Set(messageRows.map((message) => message.record_id));
+  const fallbackThreads = rawThreads
+    .filter((thread) => {
+      const sourceMessageId = trimText(thread?.source_message_id);
+      return !sourceMessageId || !messageIds.has(sourceMessageId);
+    })
+    .map((thread) => mapPgThreadToLocal(thread, {
+      workspaceOwnerNpub: context.workspaceOwnerNpub,
+      senderNpub: '',
+      actorNpubByActorId,
+    }))
+    .filter((thread) => thread.record_id && thread.channel_id);
+  const rows = [
+    ...messageRows,
+    ...fallbackThreads.filter((thread) => !sourceMessageIds.has(thread.record_id)),
+  ];
+  await replaceMessages(targetChannelId, rows);
+
+  if (store.selectedChannelId === targetChannelId && typeof store.refreshMessages === 'function') {
+    await store.refreshMessages({ scrollToLatest: false });
+  }
+
+  return rows;
+}
+
+export async function hydrateTowerPgEventUpdates(store, events = [], deps = {}) {
+  const pgEvents = Array.isArray(events) ? events : [];
+  const changedChannels = uniqueNonEmpty(pgEvents
+    .filter((event) => ['message', 'thread'].includes(trimText(event?.entity_type)))
+    .map((event) => event?.channel_id));
+
+  if (changedChannels.length === 0) return { channels: 0, events: pgEvents.length };
+
+  await Promise.all(changedChannels.map((channelId) => hydrateTowerPgChannelMessages(store, channelId, deps)));
+  return { channels: changedChannels.length, events: pgEvents.length };
 }
 
 export async function hydrateTowerPgTasks(store, deps = {}) {

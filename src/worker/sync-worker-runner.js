@@ -52,6 +52,7 @@ let sseConnectionKey = null;
 let ssePgMode = false;
 let sseConnectionState = 'disconnected';
 let sseLastEventId = null;
+let sseLastPgCursor = null;
 let sseReconnectTimer = null;
 let sseReconnectAttempts = 0;
 const SSE_DEBOUNCE_MS = 300;
@@ -178,6 +179,7 @@ function closeSSE({ resetContext = false } = {}) {
     sseConnectionKey = null;
     sseConnectionState = 'disconnected';
     sseLastEventId = null;
+    sseLastPgCursor = null;
     sseReconnectAttempts = 0;
   }
 }
@@ -228,7 +230,9 @@ function connectSSE(ownerNpub, viewerNpub, backendUrl, token, workspaceDbKey, op
     : `/api/v4/workspaces/${ownerNpub}/stream`;
   const sseUrl = new URL(ssePath, backendUrl);
   sseUrl.searchParams.set('token', token);
-  if (sseLastEventId != null) {
+  if (ssePgMode && sseLastPgCursor != null) {
+    sseUrl.searchParams.set('cursor', String(sseLastPgCursor));
+  } else if (!ssePgMode && sseLastEventId != null) {
     sseUrl.searchParams.set('last_event_id', String(sseLastEventId));
   }
 
@@ -327,7 +331,10 @@ function postSSEStatus(status, extra = {}) {
 function handleConnected(event) {
   sseReconnectAttempts = 0;
   sseConnectionState = 'connected';
-  if (event?.lastEventId) sseLastEventId = event.lastEventId;
+  let data = null;
+  try { data = event?.data ? JSON.parse(event.data) : null; } catch { data = null; }
+  if (ssePgMode && data?.cursor) sseLastPgCursor = data.cursor;
+  else if (event?.lastEventId) sseLastEventId = event.lastEventId;
   postSSEStatus('connected', {
     phase: 'stream-open',
     reason: 'eventsource-open',
@@ -352,18 +359,29 @@ function handleRecordChanged(event) {
 }
 
 function handleFlightDeckPgEvent(event) {
-  try { JSON.parse(event.data); } catch { return; }
-  if (event.lastEventId) sseLastEventId = event.lastEventId;
+  let data;
+  try { data = JSON.parse(event.data); } catch { return; }
+  if (data?.cursor) sseLastPgCursor = data.cursor;
+  else if (event.lastEventId) sseLastEventId = event.lastEventId;
 
-  sseStaleFamilies.add('flightdeck_pg');
+  sseStaleFamilies.add({
+    family: 'flightdeck_pg',
+    event: data,
+  });
   if (sseDebounceTimer) clearTimeout(sseDebounceTimer);
   sseDebounceTimer = setTimeout(flushSSEStaleFamilies, SSE_DEBOUNCE_MS);
 }
 
 async function flushSSEStaleFamilies() {
   sseDebounceTimer = null;
-  const families = [...sseStaleFamilies];
+  const staleEntries = [...sseStaleFamilies];
   sseStaleFamilies.clear();
+  const pgEvents = staleEntries
+    .map((entry) => entry && typeof entry === 'object' ? entry.event : null)
+    .filter(Boolean);
+  const families = [...new Set(staleEntries
+    .map((entry) => entry && typeof entry === 'object' ? entry.family : entry)
+    .filter(Boolean))];
   if (!families.length || !sseOwnerNpub || !sseBackendUrl) return;
 
   try {
@@ -379,7 +397,7 @@ async function flushSSEStaleFamilies() {
         },
       );
     }
-    postSSEStatus('pull-complete', { families });
+    postSSEStatus('pull-complete', { families, pgEvents });
   } catch (error) {
     // Non-fatal — next SSE event will retry
   }

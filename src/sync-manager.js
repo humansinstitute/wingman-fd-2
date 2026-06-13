@@ -67,6 +67,7 @@ import { outboundWapp } from './translators/wapps.js';
 import { decryptRecordPayload } from './translators/record-crypto.js';
 import { hasGroupKey } from './crypto/group-keys.js';
 import { outboundComment } from './translators/comments.js';
+import { hydrateTowerPgEventUpdates } from './pg-read-hydrator.js';
 import {
   getRecordWriteFieldsForStore,
   getPreferredRecordWriteGroupForStore,
@@ -2145,13 +2146,20 @@ export const syncManagerMixin = {
 
     if (status === 'pull-complete') {
       if (this.isEncryptedRecordSyncDisabled) {
-        if (typeof this.refreshChannels === 'function') {
-          this.refreshChannels().catch((error) => {
-            flightDeckLog('warn', 'sse', 'failed to refresh PG channels after SSE pull', {
+        hydrateTowerPgEventUpdates(this, message?.pgEvents || [])
+          .then((result) => {
+            if (result?.channels > 0) return;
+            if (typeof this.refreshChannels !== 'function') return;
+            return this.refreshChannels();
+          })
+          .catch((error) => {
+            flightDeckLog('warn', 'sse', 'failed to refresh PG records after SSE event', {
               error: error?.message || String(error),
             });
+            if (typeof this.refreshChannels === 'function') {
+              this.refreshChannels().catch(() => {});
+            }
           });
-        }
         return;
       }
       this.refreshStateForSyncFamilyHashes(message?.families || [], {

@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   hydrateTowerPgChannels,
+  hydrateTowerPgChannelMessages,
+  hydrateTowerPgEventUpdates,
   hydrateTowerPgAudioNotes,
   hydrateTowerPgDocumentsAndFiles,
   hydrateTowerPgScopes,
@@ -527,6 +529,62 @@ describe('PG read hydrator', () => {
       expect.objectContaining({ record_id: 'message-1', sender_npub: 'npub1alice' }),
       expect.objectContaining({ record_id: 'thread-1', sender_npub: 'npub1bob' }),
     ]);
+  });
+
+  it('hydrates only the requested PG channel messages', async () => {
+    const target = store({
+      selectedChannelId: 'channel-1',
+      pgWorkspaceMembers: [{ actor_id: 'actor-1', npub: 'npub1alice' }],
+    });
+    const getTowerPgChannelThreads = vi.fn(async () => ({
+      threads: [{ id: 'thread-1', channel_id: 'channel-1', source_message_id: '', title: 'Thread one', created_by_actor_id: 'actor-1' }],
+    }));
+    const getTowerPgChannelMessages = vi.fn(async () => ({
+      messages: [{ id: 'message-1', channel_id: 'channel-1', thread_id: 'thread-1', body: 'Thread one', created_by_actor_id: 'actor-1' }],
+    }));
+    const replacePgMessagesForChannel = vi.fn(async () => 2);
+
+    const rows = await hydrateTowerPgChannelMessages(target, 'channel-1', {
+      getTowerPgChannelThreads,
+      getTowerPgChannelMessages,
+      replacePgMessagesForChannel,
+    });
+
+    expect(getTowerPgChannelThreads).toHaveBeenCalledWith('workspace-1', 'channel-1', {
+      baseUrl: 'https://tower.example',
+      appNpub: 'flightdeck_pg',
+    });
+    expect(getTowerPgChannelMessages).toHaveBeenCalledWith('workspace-1', 'channel-1', {
+      baseUrl: 'https://tower.example',
+      appNpub: 'flightdeck_pg',
+    });
+    expect(replacePgMessagesForChannel).toHaveBeenCalledWith('channel-1', rows);
+    expect(target.refreshMessages).toHaveBeenCalledWith({ scrollToLatest: false });
+  });
+
+  it('hydrates changed PG channels from event payloads in parallel', async () => {
+    const target = store({ selectedChannelId: 'channel-1' });
+    const getTowerPgChannelThreads = vi.fn(async (_workspaceId, channelId) => ({
+      threads: [{ id: `thread-${channelId}`, channel_id: channelId, source_message_id: '', title: 'Thread' }],
+    }));
+    const getTowerPgChannelMessages = vi.fn(async (_workspaceId, channelId) => ({
+      messages: [{ id: `message-${channelId}`, channel_id: channelId, thread_id: `thread-${channelId}`, body: 'Body' }],
+    }));
+    const replacePgMessagesForChannel = vi.fn(async () => 1);
+
+    const result = await hydrateTowerPgEventUpdates(target, [
+      { entity_type: 'message', channel_id: 'channel-1' },
+      { entity_type: 'thread', channel_id: 'channel-1' },
+      { entity_type: 'message', channel_id: 'channel-2' },
+      { entity_type: 'task', channel_id: 'channel-3' },
+    ], {
+      getTowerPgChannelThreads,
+      getTowerPgChannelMessages,
+      replacePgMessagesForChannel,
+    });
+
+    expect(result).toEqual({ channels: 2, events: 4 });
+    expect(replacePgMessagesForChannel.mock.calls.map(([channelId]) => channelId).sort()).toEqual(['channel-1', 'channel-2']);
   });
 
   it('hydrates PG channels using workspace member sync when local actor mapping is missing', async () => {
