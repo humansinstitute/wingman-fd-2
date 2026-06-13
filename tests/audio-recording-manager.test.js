@@ -55,6 +55,7 @@ vi.mock('../src/backend-mode.js', () => ({
 
 vi.mock('../src/translators/audio-notes.js', () => ({
   outboundAudioNote: mocks.outboundAudioNote,
+  recordFamilyHash: (family) => `npub1app:${family}`,
 }));
 
 vi.mock('../src/audio-notes.js', () => ({
@@ -426,6 +427,43 @@ describe('audioRecordingManagerMixin', () => {
     );
     expect(createObjectURL).toHaveBeenCalledWith(decryptedBlob);
     expect(audio.play).toHaveBeenCalledTimes(1);
+  });
+
+  it('merges target-linked audio notes into comment audio attachments', () => {
+    const store = createStore({
+      audioNotes: [
+        {
+          record_id: 'audio-targeted',
+          target_record_id: 'comment-1',
+          target_record_family_hash: 'npub1app:comment',
+          title: 'Spoken comment',
+          duration_seconds: 14,
+          record_state: 'active',
+        },
+        {
+          record_id: 'audio-deleted',
+          target_record_id: 'comment-1',
+          target_record_family_hash: 'npub1app:comment',
+          title: 'Deleted comment audio',
+          record_state: 'deleted',
+        },
+      ],
+    });
+
+    const attachments = store.getAudioAttachmentsForRecord({
+      record_id: 'comment-1',
+      attachments: [{ kind: 'audio', audio_note_record_id: 'audio-existing', title: 'Existing audio' }],
+    });
+
+    expect(attachments).toEqual([
+      { kind: 'audio', audio_note_record_id: 'audio-existing', title: 'Existing audio' },
+      {
+        kind: 'audio',
+        audio_note_record_id: 'audio-targeted',
+        title: 'Spoken comment',
+        duration_seconds: 14,
+      },
+    ]);
   });
 
   it('shows a playback overlay with a scrubber and stop control', async () => {

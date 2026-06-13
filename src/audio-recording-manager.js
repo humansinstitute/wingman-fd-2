@@ -17,7 +17,7 @@ import {
   completeStorageObject,
   downloadStorageObject,
 } from './api.js';
-import { outboundAudioNote } from './translators/audio-notes.js';
+import { outboundAudioNote, recordFamilyHash } from './translators/audio-notes.js';
 import {
   buildStoragePrepareBody,
   normalizeStorageGroupIds as normalizeStorageAccessGroupIds,
@@ -222,6 +222,39 @@ export const audioRecordingManagerMixin = {
     const recordId = String(attachment?.audio_note_record_id || '').trim();
     if (!recordId) return null;
     return this.getAudioNote(recordId);
+  },
+
+  getAudioAttachmentsForRecord(record, targetFamilyHash = recordFamilyHash('comment')) {
+    const recordId = String(record?.record_id || '').trim();
+    const existingAttachments = Array.isArray(record?.attachments) ? record.attachments : [];
+    const audioAttachments = existingAttachments.filter((attachment) => attachment?.kind === 'audio');
+    if (!recordId) return audioAttachments;
+
+    const seen = new Set(
+      audioAttachments
+        .map((attachment) => String(attachment?.audio_note_record_id || '').trim())
+        .filter(Boolean),
+    );
+    const targetHash = String(targetFamilyHash || '').trim();
+    const targetLinkedAttachments = (Array.isArray(this.audioNotes) ? this.audioNotes : [])
+      .filter((note) =>
+        String(note?.record_state || 'active') !== 'deleted'
+        && String(note?.target_record_id || '').trim() === recordId
+        && (!targetHash || String(note?.target_record_family_hash || '').trim() === targetHash)
+      )
+      .map((note) => ({
+        kind: 'audio',
+        audio_note_record_id: note.record_id,
+        title: note.title || 'Voice note',
+        duration_seconds: Number.isFinite(Number(note.duration_seconds)) ? Number(note.duration_seconds) : null,
+      }))
+      .filter((attachment) => {
+        const id = String(attachment.audio_note_record_id || '').trim();
+        if (!id || seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      });
+    return [...audioAttachments, ...targetLinkedAttachments];
   },
 
   getAudioAttachmentPreview(attachment) {

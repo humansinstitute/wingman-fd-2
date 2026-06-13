@@ -2404,8 +2404,8 @@
                             x-text="$store.chat.isTaskCommentExpanded(comment.record_id) ? 'Show less' : 'Show more...'"
                           ></button>
                         </template>
-                        <div class="audio-attachment-list" x-show="(comment.attachments || []).length > 0">
-                          <template x-for="attachment in (comment.attachments || []).filter(a => a.kind === 'audio')" :key="attachment.audio_note_record_id">
+                        <div class="audio-attachment-list" x-show="$store.chat.getAudioAttachmentsForRecord(comment).length > 0">
+                          <template x-for="attachment in $store.chat.getAudioAttachmentsForRecord(comment)" :key="attachment.audio_note_record_id">
                             <button type="button" class="audio-card" @click="$store.chat.playAudioAttachment(attachment)">
                               <div class="audio-card-main">
                                 <div class="audio-card-title" x-text="$store.chat.getAudioAttachmentPreview(attachment)"></div>
@@ -2808,8 +2808,8 @@
                       <div class="thread-msg-text">
                         <div class="chat-post-markdown" x-html="$store.chat.renderMarkdown(reply.body)"></div>
                       </div>
-                      <div class="audio-attachment-list" x-show="(reply.attachments || []).length > 0">
-                        <template x-for="attachment in (reply.attachments || []).filter(a => a.kind === 'audio')" :key="attachment.audio_note_record_id">
+                      <div class="audio-attachment-list" x-show="$store.chat.getAudioAttachmentsForRecord(reply).length > 0">
+                        <template x-for="attachment in $store.chat.getAudioAttachmentsForRecord(reply)" :key="attachment.audio_note_record_id">
                           <button type="button" class="audio-card" @click="$store.chat.playAudioAttachment(attachment)">
                             <div class="audio-card-main">
                               <div class="audio-card-title" x-text="$store.chat.getAudioAttachmentPreview(attachment)"></div>
@@ -3510,8 +3510,8 @@
                                   <span class="doc-thread-status-badge" :class="{ 'doc-thread-status-badge-resolved': root.comment_status === 'resolved' }" x-text="root.comment_status === 'resolved' ? 'Done' : 'Open'"></span>
                                 </div>
                                 <div class="doc-thread-entry-body" x-show="root.comment_status !== 'resolved' || root.record_id === $store.chat.selectedDocCommentId" x-html="$store.chat.renderMarkdown(root.body || '')"></div>
-                                <div class="audio-attachment-list" x-show="(root.comment_status !== 'resolved' || root.record_id === $store.chat.selectedDocCommentId) && (root.attachments || []).length > 0">
-                                  <template x-for="attachment in (root.attachments || []).filter(a => a.kind === 'audio')" :key="attachment.audio_note_record_id">
+                                <div class="audio-attachment-list" x-show="(root.comment_status !== 'resolved' || root.record_id === $store.chat.selectedDocCommentId) && $store.chat.getAudioAttachmentsForRecord(root).length > 0">
+                                  <template x-for="attachment in $store.chat.getAudioAttachmentsForRecord(root)" :key="attachment.audio_note_record_id">
                                     <button type="button" class="audio-card" @click.stop="$store.chat.playAudioAttachment(attachment)">
                                       <div class="audio-card-main">
                                         <div class="audio-card-title" x-text="$store.chat.getAudioAttachmentPreview(attachment)"></div>
@@ -3559,8 +3559,8 @@
                                     </div>
                                   </div>
                                   <div class="doc-thread-entry-body" x-html="$store.chat.renderMarkdown(reply.body)"></div>
-                                  <div class="audio-attachment-list" x-show="(reply.attachments || []).length > 0">
-                                    <template x-for="attachment in (reply.attachments || []).filter(a => a.kind === 'audio')" :key="attachment.audio_note_record_id">
+                                  <div class="audio-attachment-list" x-show="$store.chat.getAudioAttachmentsForRecord(reply).length > 0">
+                                    <template x-for="attachment in $store.chat.getAudioAttachmentsForRecord(reply)" :key="attachment.audio_note_record_id">
                                       <button type="button" class="audio-card" @click="$store.chat.playAudioAttachment(attachment)">
                                         <div class="audio-card-main">
                                           <div class="audio-card-title" x-text="$store.chat.getAudioAttachmentPreview(attachment)"></div>
