@@ -60,6 +60,62 @@ import {
 const chatDerivedCache = new WeakMap();
 const THREAD_REPLY_PREVIEW_WORD_LIMIT = 50;
 
+function audioNoteSignature(audioNotes = []) {
+  return (Array.isArray(audioNotes) ? audioNotes : [])
+    .map((note) => [
+      String(note?.record_id || ''),
+      String(note?.target_record_id || ''),
+      String(note?.target_record_family_hash || ''),
+      String(note?.record_state || ''),
+      String(note?.updated_at || ''),
+      String(note?.version ?? ''),
+    ].join(':'))
+    .join('|');
+}
+
+function buildMessageAudioAttachmentsByTarget(audioNotes = []) {
+  const byTarget = new Map();
+  const chatMessageFamilyHash = recordFamilyHash('chat_message');
+  for (const note of Array.isArray(audioNotes) ? audioNotes : []) {
+    const recordId = String(note?.record_id || '').trim();
+    const targetRecordId = String(note?.target_record_id || '').trim();
+    const targetFamilyHash = String(note?.target_record_family_hash || '').trim();
+    if (!recordId || !targetRecordId || targetFamilyHash !== chatMessageFamilyHash) continue;
+    if (String(note?.record_state || 'active') === 'deleted') continue;
+    const list = byTarget.get(targetRecordId) || [];
+    list.push({
+      kind: 'audio',
+      audio_note_record_id: recordId,
+      title: note?.title || 'Voice note',
+      duration_seconds: Number.isFinite(Number(note?.duration_seconds)) ? Number(note.duration_seconds) : null,
+    });
+    byTarget.set(targetRecordId, list);
+  }
+  return byTarget;
+}
+
+function attachTargetAudioNotesToMessages(messages = [], audioNotes = []) {
+  const byTarget = buildMessageAudioAttachmentsByTarget(audioNotes);
+  if (byTarget.size === 0) return messages;
+  return messages.map((message) => {
+    const targetAttachments = byTarget.get(message?.record_id);
+    if (!targetAttachments?.length) return message;
+    const existingAttachments = Array.isArray(message?.attachments) ? message.attachments : [];
+    const existingAudioIds = new Set(
+      existingAttachments
+        .filter((attachment) => attachment?.kind === 'audio')
+        .map((attachment) => String(attachment?.audio_note_record_id || '').trim())
+        .filter(Boolean),
+    );
+    const missingAttachments = targetAttachments.filter((attachment) => !existingAudioIds.has(attachment.audio_note_record_id));
+    if (missingAttachments.length === 0) return message;
+    return {
+      ...message,
+      attachments: [...existingAttachments, ...missingAttachments],
+    };
+  });
+}
+
 function scheduleUiNextTick(callback) {
   const nextTick = globalThis.Alpine?.nextTick;
   if (typeof nextTick === 'function') {
@@ -116,7 +172,9 @@ async function ensureTowerPgAgentDmAccess(store, channel) {
 }
 
 function getChatDerivedState(store) {
-  const messages = Array.isArray(store?.messages) ? store.messages : [];
+  const sourceMessages = Array.isArray(store?.messages) ? store.messages : [];
+  const audioNotes = Array.isArray(store?.audioNotes) ? store.audioNotes : [];
+  const currentAudioNoteSignature = audioNoteSignature(audioNotes);
   const activeThreadId = store?.activeThreadId ?? null;
   const focusMessageId = store?.focusMessageId ?? null;
   const mainFeedVisibleCount = Math.max(
@@ -128,7 +186,8 @@ function getChatDerivedState(store) {
   const previous = chatDerivedCache.get(store);
   if (
     previous
-    && previous.messages === messages
+    && previous.messages === sourceMessages
+    && previous.audioNoteSignature === currentAudioNoteSignature
     && previous.activeThreadId === activeThreadId
     && previous.focusMessageId === focusMessageId
     && previous.mainFeedVisibleCount === mainFeedVisibleCount
@@ -137,6 +196,7 @@ function getChatDerivedState(store) {
     return previous.value;
   }
 
+  const messages = attachTargetAudioNotesToMessages(sourceMessages, audioNotes);
   const mainFeedMessages = rankMainFeedMessages(messages);
   const resolvedMainFeedVisibleCount = resolveVisibleThreadReplyCount(
     mainFeedMessages,
@@ -167,7 +227,8 @@ function getChatDerivedState(store) {
   };
 
   chatDerivedCache.set(store, {
-    messages,
+    messages: sourceMessages,
+    audioNoteSignature: currentAudioNoteSignature,
     activeThreadId,
     focusMessageId,
     mainFeedVisibleCount,
@@ -613,7 +674,9 @@ export const chatMessageManagerMixin = {
 
   getThreadParentMessage() {
     if (!this.activeThreadId) return null;
-    return this.messages.find(msg => msg.record_id === this.activeThreadId) ?? null;
+    return this.mainFeedMessages.find(msg => msg.record_id === this.activeThreadId)
+      ?? this.messages.find(msg => msg.record_id === this.activeThreadId)
+      ?? null;
   },
 
   getThreadReplyCount(recordId) {
@@ -622,7 +685,8 @@ export const chatMessageManagerMixin = {
 
   getThreadReplies(recordId) {
     if (!recordId) return [];
-    return rankThreadReplies(this.messages, recordId);
+    if (recordId === this.activeThreadId) return this.threadMessages;
+    return rankThreadReplies(attachTargetAudioNotesToMessages(this.messages, this.audioNotes), recordId);
   },
 
   getLatestThreadReply(recordId) {

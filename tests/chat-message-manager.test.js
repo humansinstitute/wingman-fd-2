@@ -53,6 +53,7 @@ function createStore(overrides = {}) {
     messageInput: '',
     messageAudioDrafts: [],
     threadAudioDrafts: [],
+    audioNotes: [],
     expandedChatMessageIds: [],
     truncatedChatMessageIds: [],
     focusMessageId: null,
@@ -233,6 +234,101 @@ describe('chat message computed getters', () => {
     const thread = store.threadMessages;
     expect(thread.length).toBe(2);
     expect(thread.every((m) => m.parent_message_id === 'm1')).toBe(true);
+  });
+
+  it('adds target-linked audio notes to visible chat message attachments', () => {
+    const store = createStore({
+      messages: [
+        {
+          record_id: 'm1',
+          parent_message_id: null,
+          attachments: [],
+          updated_at: '2024-01-01T00:00:00Z',
+        },
+      ],
+      audioNotes: [
+        {
+          record_id: 'audio-1',
+          target_record_id: 'm1',
+          target_record_family_hash: 'mock:chat_message',
+          title: 'Reply TTS',
+          duration_seconds: 12,
+          record_state: 'active',
+          updated_at: '2024-01-01T00:01:00Z',
+        },
+      ],
+    });
+
+    expect(store.visibleMainFeedMessages[0]?.attachments).toEqual([
+      {
+        kind: 'audio',
+        audio_note_record_id: 'audio-1',
+        title: 'Reply TTS',
+        duration_seconds: 12,
+      },
+    ]);
+  });
+
+  it('rebuilds visible chat messages when target-linked audio notes arrive after the message', () => {
+    const store = createStore({
+      messages: [
+        {
+          record_id: 'm1',
+          parent_message_id: null,
+          attachments: [],
+          updated_at: '2024-01-01T00:00:00Z',
+        },
+      ],
+      audioNotes: [],
+    });
+
+    expect(store.visibleMainFeedMessages[0]?.attachments).toEqual([]);
+
+    store.audioNotes = [
+      {
+        record_id: 'audio-1',
+        target_record_id: 'm1',
+        target_record_family_hash: 'mock:chat_message',
+        title: 'Reply TTS',
+        record_state: 'active',
+        updated_at: '2024-01-01T00:01:00Z',
+      },
+    ];
+
+    expect(store.visibleMainFeedMessages[0]?.attachments).toEqual([
+      expect.objectContaining({
+        kind: 'audio',
+        audio_note_record_id: 'audio-1',
+        title: 'Reply TTS',
+      }),
+    ]);
+  });
+
+  it('does not duplicate audio attachments already present on the message', () => {
+    const store = createStore({
+      messages: [
+        {
+          record_id: 'm1',
+          parent_message_id: null,
+          attachments: [{ kind: 'audio', audio_note_record_id: 'audio-1', title: 'Existing audio' }],
+          updated_at: '2024-01-01T00:00:00Z',
+        },
+      ],
+      audioNotes: [
+        {
+          record_id: 'audio-1',
+          target_record_id: 'm1',
+          target_record_family_hash: 'mock:chat_message',
+          title: 'Reply TTS',
+          record_state: 'active',
+          updated_at: '2024-01-01T00:01:00Z',
+        },
+      ],
+    });
+
+    expect(store.visibleMainFeedMessages[0]?.attachments).toEqual([
+      { kind: 'audio', audio_note_record_id: 'audio-1', title: 'Existing audio' },
+    ]);
   });
 
   it('hasMoreThreadMessages returns false when no hidden messages', () => {
