@@ -8,6 +8,7 @@ import {
   getTowerPgChannelMessages,
   getTowerPgReactions,
   getTowerPgChannelTasks,
+  getTowerPgTask,
   getTowerPgTaskComments,
   getTowerPgChannelThreads,
   getTowerPgScopeChannels,
@@ -29,6 +30,7 @@ import {
   replacePgTasksForChannel,
   replaceTasksForOwner,
   replaceScopesForOwner,
+  upsertTask,
 } from './db.js';
 import { recordFamilyHash } from './translators/chat.js';
 import { recordFamilyHash as taskFamilyHash } from './translators/tasks.js';
@@ -821,6 +823,32 @@ export async function hydrateTowerPgChannelTasks(store, channelId, deps = {}) {
   return tasks;
 }
 
+export async function hydrateTowerPgTask(store, taskId, deps = {}) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  const recordId = trimText(taskId);
+  if (!context.workspaceId || !context.workspaceOwnerNpub || !context.baseUrl || !recordId) return null;
+
+  const readTask = deps.getTowerPgTask || getTowerPgTask;
+  const writeTask = deps.upsertTask || upsertTask;
+  const result = await readTask(context.workspaceId, recordId, {
+    baseUrl: context.baseUrl,
+    appNpub: context.appNpub,
+  });
+  const sourceTask = result?.task || result;
+  const task = mapPgTaskToLocal(sourceTask, { workspaceOwnerNpub: context.workspaceOwnerNpub });
+  if (!task.record_id) return null;
+
+  await writeTask(task);
+  if (typeof store.applyTasks === 'function') {
+    const existing = Array.isArray(store.tasks) ? store.tasks : [];
+    await store.applyTasks([
+      ...existing.filter((item) => item?.record_id !== task.record_id),
+      task,
+    ]);
+  }
+  return task;
+}
+
 export async function hydrateTowerPgChannelDocumentsAndFiles(store, channelId, deps = {}) {
   const context = resolveTowerPgWorkspaceContext(store);
   const targetChannelId = trimText(channelId);
@@ -928,6 +956,7 @@ export async function hydrateTowerPgEventUpdates(store, events = [], deps = {}) 
   const pgEvents = Array.isArray(events) ? events : [];
   const messageChannels = new Set();
   const taskChannels = new Set();
+  const taskIds = new Set();
   const documentChannels = new Set();
   const audioChannels = new Set();
   const taskCommentTargets = new Set();
@@ -943,7 +972,9 @@ export async function hydrateTowerPgEventUpdates(store, events = [], deps = {}) 
     if (['message', 'thread'].includes(entityType) && channelId) {
       messageChannels.add(channelId);
     } else if (['task', 'task_assignment'].includes(entityType) && channelId) {
-      taskChannels.add(channelId);
+      const taskId = trimText(event?.entity_id || payload.task_id || payload.id);
+      if (taskId) taskIds.add(taskId);
+      else taskChannels.add(channelId);
     } else if (['doc', 'file'].includes(entityType) && channelId) {
       documentChannels.add(channelId);
     } else if (entityType === 'audio_note' && channelId) {
@@ -964,6 +995,7 @@ export async function hydrateTowerPgEventUpdates(store, events = [], deps = {}) 
 
   const jobs = [
     ...[...messageChannels].map((channelId) => hydrateTowerPgChannelMessages(store, channelId, deps)),
+    ...[...taskIds].map((taskId) => hydrateTowerPgTask(store, taskId, deps)),
     ...[...taskChannels].map((channelId) => hydrateTowerPgChannelTasks(store, channelId, deps)),
     ...[...documentChannels].map((channelId) => hydrateTowerPgChannelDocumentsAndFiles(store, channelId, deps)),
     ...[...audioChannels].map((channelId) => hydrateTowerPgChannelAudioNotes(store, channelId, deps)),

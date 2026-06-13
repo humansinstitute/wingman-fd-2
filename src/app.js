@@ -26,6 +26,7 @@ import { filesManagerMixin } from './files-manager.js';
 import {
   hydrateTowerPgDailyNotes,
   hydrateTowerPgDocumentsAndFiles,
+  hydrateTowerPgTask,
   hydrateTowerPgTaskComments,
   hydrateTowerPgTasks,
   mapPgDailyNoteToLocal,
@@ -4772,6 +4773,15 @@ export function initApp() {
       let task = this.tasks.find((item) => item.record_id === recordId);
       if (!task) {
         task = await getTaskById(recordId);
+        if (!task && isTowerPgBackendMode()) {
+          try {
+            task = await hydrateTowerPgTask(this, recordId);
+          } catch (refreshError) {
+            console.warn('[flightdeck] task hydration failed before opening chat task modal', refreshError);
+          }
+          task = this.tasks.find((item) => item.record_id === recordId)
+            || await getTaskById(recordId);
+        }
         if (task && task.record_state !== 'deleted') {
           await this.applyTasks([
             ...this.tasks.filter((item) => item.record_id !== recordId),

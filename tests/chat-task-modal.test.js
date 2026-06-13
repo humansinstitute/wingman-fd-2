@@ -40,6 +40,10 @@ describe('chat task modal wiring', () => {
     const end = source.indexOf('async closeChatTaskModal()', start);
     const method = source.slice(start, end);
 
+    expect(method).toContain('if (!task && isTowerPgBackendMode())');
+    expect(method).toContain('await hydrateTowerPgTask(this, recordId)');
+    expect(method.indexOf('await hydrateTowerPgTask(this, recordId)'))
+      .toBeLessThan(method.indexOf("this.error = 'Task is not available locally yet.'"));
     expect(method).toContain('await this.applyTasks([');
     expect(method.indexOf('this.openTaskDetail(recordId, { syncRoute: false })'))
       .toBeLessThan(method.indexOf('this.chatTaskModalOpen = true'));

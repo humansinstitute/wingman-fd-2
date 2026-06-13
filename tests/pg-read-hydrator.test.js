@@ -6,6 +6,7 @@ import {
   hydrateTowerPgAudioNotes,
   hydrateTowerPgDocumentsAndFiles,
   hydrateTowerPgScopes,
+  hydrateTowerPgTask,
   hydrateTowerPgTasks,
   hydrateTowerPgTaskComments,
   mapPgChannelToLocal,
@@ -594,6 +595,47 @@ describe('PG read hydrator', () => {
     expect(replacePgTasksForChannel).toHaveBeenCalledWith('channel-3', [expect.objectContaining({ record_id: 'task-channel-3' })]);
   });
 
+  it('hydrates changed PG task events by exact task id when present', async () => {
+    const target = store({ tasks: [] });
+    const getTowerPgTask = vi.fn(async () => ({
+      task: {
+        id: 'task-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        thread_id: 'thread-1',
+        title: 'Exact task',
+        row_version: 3,
+      },
+    }));
+    const upsertTask = vi.fn(async () => 'task-1');
+    const getTowerPgChannelTasks = vi.fn();
+
+    const result = await hydrateTowerPgEventUpdates(target, [
+      { entity_type: 'task', channel_id: 'channel-1', entity_id: 'task-1', payload: { task_id: 'task-1' } },
+    ], {
+      getTowerPgTask,
+      getTowerPgChannelTasks,
+      upsertTask,
+    });
+
+    expect(result).toEqual({ channels: 0, appliedTargets: 1, fallbackEvents: 0, events: 1 });
+    expect(getTowerPgTask).toHaveBeenCalledWith('workspace-1', 'task-1', {
+      baseUrl: 'https://tower.example',
+      appNpub: 'flightdeck_pg',
+    });
+    expect(getTowerPgChannelTasks).not.toHaveBeenCalled();
+    expect(upsertTask).toHaveBeenCalledWith(expect.objectContaining({
+      record_id: 'task-1',
+      title: 'Exact task',
+      pg_channel_id: 'channel-1',
+      pg_thread_id: 'thread-1',
+      version: 3,
+    }));
+    expect(target.applyTasks).toHaveBeenCalledWith([
+      expect.objectContaining({ record_id: 'task-1' }),
+    ]);
+  });
+
   it('routes PG events to targeted surface hydrators without heartbeat', async () => {
     const target = store({
       selectedChannelId: 'channel-1',
@@ -739,6 +781,38 @@ describe('PG read hydrator', () => {
     });
     expect(replaceTasksForOwner).toHaveBeenCalledWith('npub1owner', tasks);
     expect(target.applyTasks).toHaveBeenCalledWith(tasks);
+  });
+
+  it('hydrates one PG task by id without replacing the whole local task set', async () => {
+    const target = store({
+      tasks: [{ record_id: 'existing-task', title: 'Existing task', record_state: 'active' }],
+    });
+    const getTowerPgTask = vi.fn(async () => ({
+      task: {
+        id: 'task-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        title: 'Fetched task',
+      },
+    }));
+    const upsertTask = vi.fn(async () => 'task-1');
+
+    const task = await hydrateTowerPgTask(target, 'task-1', {
+      getTowerPgTask,
+      upsertTask,
+    });
+
+    expect(task).toMatchObject({
+      record_id: 'task-1',
+      title: 'Fetched task',
+      scope_id: 'scope-1',
+      pg_channel_id: 'channel-1',
+    });
+    expect(upsertTask).toHaveBeenCalledWith(expect.objectContaining({ record_id: 'task-1' }));
+    expect(target.applyTasks).toHaveBeenCalledWith([
+      expect.objectContaining({ record_id: 'existing-task' }),
+      expect.objectContaining({ record_id: 'task-1' }),
+    ]);
   });
 
   it('hydrates PG task comments and replaces the local PG set for the task', async () => {
