@@ -6,6 +6,7 @@ import {
   getTowerPgChannelFiles,
   getTowerPgDailyNotes,
   getTowerPgChannelMessages,
+  getTowerPgReactions,
   getTowerPgChannelTasks,
   getTowerPgTaskComments,
   getTowerPgChannelThreads,
@@ -19,8 +20,13 @@ import {
   replaceChannelsForOwner,
   replaceDailyNotesForOwner,
   replaceDocumentsForOwner,
+  replacePgAudioNotesForChannel,
   replacePgCommentsForTarget,
+  replacePgDailyNotesForChannelAndDate,
+  replacePgDocumentsForChannel,
   replacePgMessagesForChannel,
+  replacePgReactionsForTarget,
+  replacePgTasksForChannel,
   replaceTasksForOwner,
   replaceScopesForOwner,
 } from './db.js';
@@ -504,6 +510,9 @@ function pgAudioTargetFamily(targetType) {
   if (normalized === 'message') return recordFamilyHash('chat_message');
   if (normalized === 'task') return recordFamilyHash('task');
   if (normalized === 'doc') return recordFamilyHash('document');
+  if (normalized === 'file') return recordFamilyHash('document');
+  if (normalized === 'task_comment') return recordFamilyHash('comment');
+  if (normalized === 'audio_note') return recordFamilyHash('audio_note');
   return null;
 }
 
@@ -573,6 +582,34 @@ export function mapPgDailyNoteToLocal(note, { workspaceOwnerNpub } = {}) {
     pg_channel_id: trimText(note?.channel_id),
     pg_created_by_actor_id: trimText(note?.created_by_actor_id),
     pg_updated_by_actor_id: trimText(note?.updated_by_actor_id),
+  };
+}
+
+export function mapPgReactionToLocal(reaction, {
+  workspaceOwnerNpub,
+  targetType,
+  targetId,
+} = {}) {
+  const now = new Date().toISOString();
+  const resolvedTargetType = trimText(targetType || reaction?.target_type);
+  return {
+    record_id: trimText(reaction?.id || reaction?.record_id),
+    owner_npub: trimText(workspaceOwnerNpub),
+    target_record_id: trimText(targetId || reaction?.target_id),
+    target_record_family_hash: pgAudioTargetFamily(resolvedTargetType),
+    emoji: trimText(reaction?.emoji),
+    emoji_shortcode: trimText(reaction?.emoji_shortcode),
+    reactor_npub: trimText(reaction?.reactor_npub || reaction?.reactor_actor_id),
+    sender_npub: trimText(reaction?.reactor_npub || reaction?.reactor_actor_id),
+    record_state: trimText(reaction?.record_state) || 'active',
+    version: rowVersion(reaction?.row_version || reaction?.version),
+    created_at: isoTimestamp(reaction?.created_at || reaction?.updated_at || now),
+    updated_at: isoTimestamp(reaction?.updated_at || reaction?.created_at || now),
+    pg_backend: true,
+    pg_record_type: 'reaction',
+    pg_workspace_id: trimText(reaction?.workspace_id),
+    pg_channel_id: trimText(reaction?.channel_id),
+    pg_thread_id: trimText(reaction?.thread_id) || null,
   };
 }
 
@@ -727,16 +764,221 @@ export async function hydrateTowerPgChannelMessages(store, channelId, deps = {})
   return rows;
 }
 
+function mergeStoreChannelRows(store, collectionName, applyName, channelId, rows = []) {
+  const existing = Array.isArray(store?.[collectionName]) ? store[collectionName] : [];
+  const nextRows = [
+    ...existing.filter((row) => !(row?.pg_backend === true && row?.pg_channel_id === channelId)),
+    ...rows,
+  ];
+  if (typeof store?.[applyName] === 'function') return store[applyName](nextRows);
+  return null;
+}
+
+function mergeStoreDailyRows(store, channelId, noteDate, rows = []) {
+  const existing = Array.isArray(store?.dailyNotes) ? store.dailyNotes : [];
+  const nextRows = [
+    ...existing.filter((row) => !(
+      row?.pg_backend === true
+      && row?.pg_channel_id === channelId
+      && row?.note_date === noteDate
+    )),
+    ...rows,
+  ];
+  if (typeof store?.applyDailyNotes === 'function') return store.applyDailyNotes(nextRows);
+  return null;
+}
+
+function mergeStoreReactionRows(store, targetFamilyHash, targetId, rows = []) {
+  const existing = Array.isArray(store?.reactionRows) ? store.reactionRows : [];
+  const nextRows = [
+    ...existing.filter((row) => !(
+      row?.pg_backend === true
+      && row?.target_record_family_hash === targetFamilyHash
+      && row?.target_record_id === targetId
+    )),
+    ...rows,
+  ];
+  if (typeof store?.applyReactions === 'function') return store.applyReactions(nextRows);
+  return null;
+}
+
+export async function hydrateTowerPgChannelTasks(store, channelId, deps = {}) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  const targetChannelId = trimText(channelId);
+  if (!context.workspaceId || !context.workspaceOwnerNpub || !context.baseUrl || !targetChannelId) return [];
+
+  const readChannelTasks = deps.getTowerPgChannelTasks || getTowerPgChannelTasks;
+  const replaceTasks = deps.replacePgTasksForChannel || replacePgTasksForChannel;
+  const result = await readChannelTasks(context.workspaceId, targetChannelId, {
+    baseUrl: context.baseUrl,
+    appNpub: context.appNpub,
+  });
+  const tasks = (Array.isArray(result?.tasks) ? result.tasks : [])
+    .map((task) => mapPgTaskToLocal(task, { workspaceOwnerNpub: context.workspaceOwnerNpub }))
+    .filter((task) => task.record_id);
+  await replaceTasks(targetChannelId, tasks);
+  await mergeStoreChannelRows(store, 'tasks', 'applyTasks', targetChannelId, tasks);
+  return tasks;
+}
+
+export async function hydrateTowerPgChannelDocumentsAndFiles(store, channelId, deps = {}) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  const targetChannelId = trimText(channelId);
+  if (!context.workspaceId || !context.workspaceOwnerNpub || !context.baseUrl || !targetChannelId) return [];
+
+  const readDocs = deps.getTowerPgChannelDocs || getTowerPgChannelDocs;
+  const readFiles = deps.getTowerPgChannelFiles || getTowerPgChannelFiles;
+  const replaceDocuments = deps.replacePgDocumentsForChannel || replacePgDocumentsForChannel;
+  const [docsResult, filesResult] = await Promise.all([
+    readDocs(context.workspaceId, targetChannelId, {
+      baseUrl: context.baseUrl,
+      appNpub: context.appNpub,
+    }),
+    readFiles(context.workspaceId, targetChannelId, {
+      baseUrl: context.baseUrl,
+      appNpub: context.appNpub,
+    }),
+  ]);
+  const documents = [
+    ...(Array.isArray(docsResult?.docs) ? docsResult.docs : [])
+      .map((doc) => mapPgDocToLocal(doc, { workspaceOwnerNpub: context.workspaceOwnerNpub })),
+    ...(Array.isArray(filesResult?.files) ? filesResult.files : [])
+      .map((file) => mapPgFileToLocalDocument(file, { workspaceOwnerNpub: context.workspaceOwnerNpub })),
+  ].filter((doc) => doc.record_id);
+  await replaceDocuments(targetChannelId, documents);
+  await mergeStoreChannelRows(store, 'documents', 'applyDocuments', targetChannelId, documents);
+  return documents;
+}
+
+export async function hydrateTowerPgChannelAudioNotes(store, channelId, deps = {}) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  const targetChannelId = trimText(channelId);
+  if (!context.workspaceId || !context.workspaceOwnerNpub || !context.baseUrl || !targetChannelId) return [];
+
+  const readAudioNotes = deps.getTowerPgChannelAudioNotes || getTowerPgChannelAudioNotes;
+  const replaceAudioNotes = deps.replacePgAudioNotesForChannel || replacePgAudioNotesForChannel;
+  const actorNpubByActorId = await resolveActorNpubByActorIdWithFallback(store, deps, context);
+  const result = await readAudioNotes(context.workspaceId, targetChannelId, {
+    baseUrl: context.baseUrl,
+    appNpub: context.appNpub,
+  });
+  const audioNotes = (Array.isArray(result?.audio_notes) ? result.audio_notes : [])
+    .map((audioNote) => mapPgAudioNoteToLocal(audioNote, {
+      workspaceOwnerNpub: context.workspaceOwnerNpub,
+      senderNpub: '',
+      actorNpubByActorId,
+    }))
+    .filter((audioNote) => audioNote.record_id);
+  await replaceAudioNotes(targetChannelId, audioNotes);
+  await mergeStoreChannelRows(store, 'audioNotes', 'applyAudioNotes', targetChannelId, audioNotes);
+  return audioNotes;
+}
+
+export async function hydrateTowerPgDailyNoteTarget(store, channelId, noteDate, deps = {}) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  const targetChannelId = trimText(channelId);
+  const targetNoteDate = trimText(noteDate);
+  if (!context.workspaceId || !context.workspaceOwnerNpub || !context.baseUrl || !targetChannelId || !targetNoteDate) return [];
+
+  const readDailyNotes = deps.getTowerPgDailyNotes || getTowerPgDailyNotes;
+  const replaceDailyNotes = deps.replacePgDailyNotesForChannelAndDate || replacePgDailyNotesForChannelAndDate;
+  const result = await readDailyNotes(context.workspaceId, {
+    baseUrl: context.baseUrl,
+    appNpub: context.appNpub,
+    channelId: targetChannelId,
+    noteDate: targetNoteDate,
+    limit: deps.limit || 10,
+  });
+  const dailyNotes = (Array.isArray(result?.daily_notes) ? result.daily_notes : [])
+    .map((note) => mapPgDailyNoteToLocal(note, { workspaceOwnerNpub: context.workspaceOwnerNpub }))
+    .filter((note) => note.record_id);
+  await replaceDailyNotes(targetChannelId, targetNoteDate, dailyNotes);
+  await mergeStoreDailyRows(store, targetChannelId, targetNoteDate, dailyNotes);
+  return dailyNotes;
+}
+
+export async function hydrateTowerPgReactionTarget(store, targetType, targetId, deps = {}) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  const resolvedTargetType = trimText(targetType);
+  const resolvedTargetId = trimText(targetId);
+  const targetFamilyHash = pgAudioTargetFamily(resolvedTargetType);
+  if (!context.workspaceId || !context.workspaceOwnerNpub || !context.baseUrl || !resolvedTargetType || !resolvedTargetId || !targetFamilyHash) return [];
+
+  const readReactions = deps.getTowerPgReactions || getTowerPgReactions;
+  const replaceReactions = deps.replacePgReactionsForTarget || replacePgReactionsForTarget;
+  const result = await readReactions(context.workspaceId, {
+    targetType: resolvedTargetType,
+    targetId: resolvedTargetId,
+    baseUrl: context.baseUrl,
+    appNpub: context.appNpub,
+  });
+  const reactions = (Array.isArray(result?.reactions) ? result.reactions : [])
+    .map((reaction) => mapPgReactionToLocal(reaction, {
+      workspaceOwnerNpub: context.workspaceOwnerNpub,
+      targetType: resolvedTargetType,
+      targetId: resolvedTargetId,
+    }))
+    .filter((reaction) => reaction.record_id && reaction.target_record_family_hash && reaction.target_record_id);
+  await replaceReactions(targetFamilyHash, resolvedTargetId, reactions);
+  await mergeStoreReactionRows(store, targetFamilyHash, resolvedTargetId, reactions);
+  return reactions;
+}
+
 export async function hydrateTowerPgEventUpdates(store, events = [], deps = {}) {
   const pgEvents = Array.isArray(events) ? events : [];
-  const changedChannels = uniqueNonEmpty(pgEvents
-    .filter((event) => ['message', 'thread'].includes(trimText(event?.entity_type)))
-    .map((event) => event?.channel_id));
+  const messageChannels = new Set();
+  const taskChannels = new Set();
+  const documentChannels = new Set();
+  const audioChannels = new Set();
+  const taskCommentTargets = new Set();
+  const dailyTargets = new Map();
+  const reactionTargets = new Map();
+  let fallbackEvents = 0;
 
-  if (changedChannels.length === 0) return { channels: 0, events: pgEvents.length };
+  for (const event of pgEvents) {
+    const entityType = trimText(event?.entity_type);
+    const channelId = trimText(event?.channel_id || event?.payload?.channel_id);
+    const payload = event?.payload && typeof event.payload === 'object' ? event.payload : {};
 
-  await Promise.all(changedChannels.map((channelId) => hydrateTowerPgChannelMessages(store, channelId, deps)));
-  return { channels: changedChannels.length, events: pgEvents.length };
+    if (['message', 'thread'].includes(entityType) && channelId) {
+      messageChannels.add(channelId);
+    } else if (['task', 'task_assignment'].includes(entityType) && channelId) {
+      taskChannels.add(channelId);
+    } else if (['doc', 'file'].includes(entityType) && channelId) {
+      documentChannels.add(channelId);
+    } else if (entityType === 'audio_note' && channelId) {
+      audioChannels.add(channelId);
+    } else if (entityType === 'task_comment' && trimText(payload.task_id)) {
+      taskCommentTargets.add(trimText(payload.task_id));
+    } else if (entityType === 'daily_note' && channelId && trimText(payload.note_date)) {
+      const noteDate = trimText(payload.note_date);
+      dailyTargets.set(`${channelId}:${noteDate}`, { channelId, noteDate });
+    } else if (entityType === 'reaction' && trimText(payload.target_type) && trimText(payload.target_id)) {
+      const targetType = trimText(payload.target_type);
+      const targetId = trimText(payload.target_id);
+      reactionTargets.set(`${targetType}:${targetId}`, { targetType, targetId });
+    } else {
+      fallbackEvents += 1;
+    }
+  }
+
+  const jobs = [
+    ...[...messageChannels].map((channelId) => hydrateTowerPgChannelMessages(store, channelId, deps)),
+    ...[...taskChannels].map((channelId) => hydrateTowerPgChannelTasks(store, channelId, deps)),
+    ...[...documentChannels].map((channelId) => hydrateTowerPgChannelDocumentsAndFiles(store, channelId, deps)),
+    ...[...audioChannels].map((channelId) => hydrateTowerPgChannelAudioNotes(store, channelId, deps)),
+    ...[...taskCommentTargets].map((taskId) => hydrateTowerPgTaskComments(store, taskId, deps)),
+    ...[...dailyTargets.values()].map(({ channelId, noteDate }) => hydrateTowerPgDailyNoteTarget(store, channelId, noteDate, deps)),
+    ...[...reactionTargets.values()].map(({ targetType, targetId }) => hydrateTowerPgReactionTarget(store, targetType, targetId, deps)),
+  ];
+
+  await Promise.all(jobs);
+  return {
+    channels: messageChannels.size,
+    appliedTargets: jobs.length,
+    fallbackEvents,
+    events: pgEvents.length,
+  };
 }
 
 export async function hydrateTowerPgTasks(store, deps = {}) {

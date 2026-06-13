@@ -480,6 +480,24 @@ export async function replaceDocumentsForOwner(ownerNpub, documents = []) {
   });
 }
 
+export async function replacePgDocumentsForChannel(channelId, documents = []) {
+  if (!channelId) return 0;
+  const rows = (Array.isArray(documents) ? documents : [])
+    .map((document) => sanitizeForStorage(document))
+    .filter((document) => document?.record_id);
+  const db = wsDb();
+  return db.transaction('rw', db.documents, async () => {
+    const existing = await db.documents.toArray();
+    const pgDocumentIds = existing
+      .filter((document) => document?.pg_backend === true && document?.pg_channel_id === channelId)
+      .map((document) => document.record_id)
+      .filter(Boolean);
+    if (pgDocumentIds.length > 0) await db.documents.bulkDelete(pgDocumentIds);
+    if (rows.length > 0) await db.documents.bulkPut(rows);
+    return rows.length;
+  });
+}
+
 export async function getDocumentById(recordId) {
   return wsDb().documents.get(recordId);
 }
@@ -648,6 +666,28 @@ export async function replaceDailyNotesForOwner(ownerNpub, dailyNotes = []) {
   const db = wsDb();
   return db.transaction('rw', db.daily_notes, async () => {
     await db.daily_notes.where('owner_npub').equals(ownerNpub).delete();
+    if (rows.length > 0) await db.daily_notes.bulkPut(rows);
+    return rows.length;
+  });
+}
+
+export async function replacePgDailyNotesForChannelAndDate(channelId, noteDate, dailyNotes = []) {
+  if (!channelId || !noteDate) return 0;
+  const rows = (Array.isArray(dailyNotes) ? dailyNotes : [])
+    .map((dailyNote) => sanitizeForStorage(dailyNote))
+    .filter((dailyNote) => dailyNote?.record_id);
+  const db = wsDb();
+  return db.transaction('rw', db.daily_notes, async () => {
+    const existing = await db.daily_notes.toArray();
+    const pgDailyNoteIds = existing
+      .filter((dailyNote) =>
+        dailyNote?.pg_backend === true
+        && dailyNote?.pg_channel_id === channelId
+        && dailyNote?.note_date === noteDate
+      )
+      .map((dailyNote) => dailyNote.record_id)
+      .filter(Boolean);
+    if (pgDailyNoteIds.length > 0) await db.daily_notes.bulkDelete(pgDailyNoteIds);
     if (rows.length > 0) await db.daily_notes.bulkPut(rows);
     return rows.length;
   });
@@ -913,6 +953,24 @@ export async function replaceTasksForOwner(ownerNpub, tasks = []) {
   });
 }
 
+export async function replacePgTasksForChannel(channelId, tasks = []) {
+  if (!channelId) return 0;
+  const rows = (Array.isArray(tasks) ? tasks : [])
+    .map((task) => sanitizeForStorage(task))
+    .filter((task) => task?.record_id);
+  const db = wsDb();
+  return db.transaction('rw', db.tasks, async () => {
+    const existing = await db.tasks.toArray();
+    const pgTaskIds = existing
+      .filter((task) => task?.pg_backend === true && task?.pg_channel_id === channelId)
+      .map((task) => task.record_id)
+      .filter(Boolean);
+    if (pgTaskIds.length > 0) await db.tasks.bulkDelete(pgTaskIds);
+    if (rows.length > 0) await db.tasks.bulkPut(rows);
+    return rows.length;
+  });
+}
+
 export async function getTaskById(recordId) {
   return wsDb().tasks.get(recordId);
 }
@@ -1098,6 +1156,29 @@ export async function upsertReaction(reaction) {
   });
 }
 
+export async function replacePgReactionsForTarget(targetRecordFamilyHash, targetRecordId, reactions = []) {
+  const familyHash = String(targetRecordFamilyHash || '').trim();
+  const targetId = String(targetRecordId || '').trim();
+  if (!familyHash || !targetId) return 0;
+  const rows = (Array.isArray(reactions) ? reactions : [])
+    .map((reaction) => sanitizeForStorage(reaction))
+    .filter((reaction) => reaction?.record_id);
+  const db = wsDb();
+  return db.transaction('rw', db.reactions, async () => {
+    const existing = await db.reactions
+      .where('target_record_id')
+      .equals(targetId)
+      .toArray();
+    const pgReactionIds = existing
+      .filter((reaction) => reaction?.pg_backend === true && reaction?.target_record_family_hash === familyHash)
+      .map((reaction) => reaction.record_id)
+      .filter(Boolean);
+    if (pgReactionIds.length > 0) await db.reactions.bulkDelete(pgReactionIds);
+    if (rows.length > 0) await db.reactions.bulkPut(rows);
+    return rows.length;
+  });
+}
+
 export async function deleteRuntimeRecordByFamily(familyIdOrHash, recordId) {
   const family = getSyncFamily(familyIdOrHash);
   const tableName = family?.table;
@@ -1129,6 +1210,24 @@ export async function replaceAudioNotesForOwner(ownerNpub, audioNotes = []) {
   const db = wsDb();
   return db.transaction('rw', db.audio_notes, async () => {
     await db.audio_notes.where('owner_npub').equals(ownerNpub).delete();
+    if (rows.length > 0) await db.audio_notes.bulkPut(rows);
+    return rows.length;
+  });
+}
+
+export async function replacePgAudioNotesForChannel(channelId, audioNotes = []) {
+  if (!channelId) return 0;
+  const rows = (Array.isArray(audioNotes) ? audioNotes : [])
+    .map((audioNote) => sanitizeForStorage(audioNote))
+    .filter((audioNote) => audioNote?.record_id);
+  const db = wsDb();
+  return db.transaction('rw', db.audio_notes, async () => {
+    const existing = await db.audio_notes.toArray();
+    const pgAudioNoteIds = existing
+      .filter((audioNote) => audioNote?.pg_backend === true && audioNote?.pg_channel_id === channelId)
+      .map((audioNote) => audioNote.record_id)
+      .filter(Boolean);
+    if (pgAudioNoteIds.length > 0) await db.audio_notes.bulkDelete(pgAudioNoteIds);
     if (rows.length > 0) await db.audio_notes.bulkPut(rows);
     return rows.length;
   });

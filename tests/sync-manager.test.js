@@ -32,7 +32,7 @@ vi.mock('../src/backend-mode.js', () => ({
 }));
 
 vi.mock('../src/pg-read-hydrator.js', () => ({
-  hydrateTowerPgEventUpdates: vi.fn(async () => ({ channels: 0, events: 0 })),
+  hydrateTowerPgEventUpdates: vi.fn(async () => ({ appliedTargets: 0, fallbackEvents: 0, events: 0 })),
 }));
 
 vi.mock('../src/crypto/group-keys.js', () => ({
@@ -1369,7 +1369,7 @@ describe('sync family progress helpers', () => {
 
   it('refreshes PG channels when pull-complete happens in PG mode', async () => {
     isTowerPgBackendMode.mockReturnValue(true);
-    hydrateTowerPgEventUpdates.mockResolvedValueOnce({ channels: 0, events: 0 });
+    hydrateTowerPgEventUpdates.mockResolvedValueOnce({ appliedTargets: 0, fallbackEvents: 0, events: 0 });
     const refreshChannels = vi.fn().mockResolvedValue(undefined);
     const { fn } = bindMethod('handleSSEStatus', {
       refreshChannels,
@@ -1387,7 +1387,7 @@ describe('sync family progress helpers', () => {
 
   it('hydrates targeted PG event updates without broad channel refresh', async () => {
     isTowerPgBackendMode.mockReturnValue(true);
-    hydrateTowerPgEventUpdates.mockResolvedValueOnce({ channels: 1, events: 1 });
+    hydrateTowerPgEventUpdates.mockResolvedValueOnce({ appliedTargets: 1, fallbackEvents: 0, events: 1 });
     const refreshChannels = vi.fn().mockResolvedValue(undefined);
     const pgEvents = [{ entity_type: 'message', channel_id: 'channel-1' }];
     const { fn, store } = bindMethod('handleSSEStatus', {

@@ -570,7 +570,11 @@ describe('PG read hydrator', () => {
     const getTowerPgChannelMessages = vi.fn(async (_workspaceId, channelId) => ({
       messages: [{ id: `message-${channelId}`, channel_id: channelId, thread_id: `thread-${channelId}`, body: 'Body' }],
     }));
+    const getTowerPgChannelTasks = vi.fn(async (_workspaceId, channelId) => ({
+      tasks: [{ id: `task-${channelId}`, channel_id: channelId, title: 'Task' }],
+    }));
     const replacePgMessagesForChannel = vi.fn(async () => 1);
+    const replacePgTasksForChannel = vi.fn(async () => 1);
 
     const result = await hydrateTowerPgEventUpdates(target, [
       { entity_type: 'message', channel_id: 'channel-1' },
@@ -580,11 +584,81 @@ describe('PG read hydrator', () => {
     ], {
       getTowerPgChannelThreads,
       getTowerPgChannelMessages,
+      getTowerPgChannelTasks,
       replacePgMessagesForChannel,
+      replacePgTasksForChannel,
     });
 
-    expect(result).toEqual({ channels: 2, events: 4 });
+    expect(result).toEqual({ channels: 2, appliedTargets: 3, fallbackEvents: 0, events: 4 });
     expect(replacePgMessagesForChannel.mock.calls.map(([channelId]) => channelId).sort()).toEqual(['channel-1', 'channel-2']);
+    expect(replacePgTasksForChannel).toHaveBeenCalledWith('channel-3', [expect.objectContaining({ record_id: 'task-channel-3' })]);
+  });
+
+  it('routes PG events to targeted surface hydrators without heartbeat', async () => {
+    const target = store({
+      selectedChannelId: 'channel-1',
+      tasks: [],
+      documents: [],
+      audioNotes: [],
+      dailyNotes: [],
+      reactionRows: [],
+      applyReactions: vi.fn(),
+    });
+    const getTowerPgChannelDocs = vi.fn(async (_workspaceId, channelId) => ({
+      docs: [{ id: `doc-${channelId}`, channel_id: channelId, title: 'Doc' }],
+    }));
+    const getTowerPgChannelFiles = vi.fn(async (_workspaceId, channelId) => ({
+      files: [{ id: `file-${channelId}`, channel_id: channelId, display_name: 'File' }],
+    }));
+    const getTowerPgChannelAudioNotes = vi.fn(async (_workspaceId, channelId) => ({
+      audio_notes: [{ id: `audio-${channelId}`, channel_id: channelId, storage_object_id: 'object-audio', title: 'Voice note' }],
+    }));
+    const getTowerPgTaskComments = vi.fn(async (_workspaceId, taskId) => ({
+      comments: [{ id: `comment-${taskId}`, task_id: taskId, body: 'Comment' }],
+    }));
+    const getTowerPgDailyNotes = vi.fn(async (_workspaceId, options) => ({
+      daily_notes: [{ id: `daily-${options.channelId}`, channel_id: options.channelId, note_date: options.noteDate, title: 'Daily' }],
+    }));
+    const getTowerPgReactions = vi.fn(async () => ({
+      reactions: [{ id: 'reaction-1', target_type: 'message', target_id: 'message-1', emoji: 'thumbs_up', reactor_npub: 'npub1alice' }],
+    }));
+    const replacePgDocumentsForChannel = vi.fn(async () => 2);
+    const replacePgAudioNotesForChannel = vi.fn(async () => 1);
+    const replacePgCommentsForTarget = vi.fn(async () => 1);
+    const replacePgDailyNotesForChannelAndDate = vi.fn(async () => 1);
+    const replacePgReactionsForTarget = vi.fn(async () => 1);
+
+    const result = await hydrateTowerPgEventUpdates(target, [
+      { entity_type: 'doc', channel_id: 'channel-doc' },
+      { entity_type: 'file', channel_id: 'channel-doc' },
+      { entity_type: 'audio_note', channel_id: 'channel-audio' },
+      { entity_type: 'task_comment', payload: { task_id: 'task-1' } },
+      { entity_type: 'daily_note', channel_id: 'channel-daily', payload: { note_date: '2026-06-13' } },
+      { entity_type: 'reaction', payload: { target_type: 'message', target_id: 'message-1' } },
+      { entity_type: 'scope' },
+    ], {
+      getTowerPgChannelDocs,
+      getTowerPgChannelFiles,
+      getTowerPgChannelAudioNotes,
+      getTowerPgTaskComments,
+      getTowerPgDailyNotes,
+      getTowerPgReactions,
+      replacePgDocumentsForChannel,
+      replacePgAudioNotesForChannel,
+      replacePgCommentsForTarget,
+      replacePgDailyNotesForChannelAndDate,
+      replacePgReactionsForTarget,
+    });
+
+    expect(result).toEqual({ channels: 0, appliedTargets: 5, fallbackEvents: 1, events: 7 });
+    expect(replacePgDocumentsForChannel).toHaveBeenCalledWith('channel-doc', [
+      expect.objectContaining({ record_id: 'doc-channel-doc' }),
+      expect.objectContaining({ record_id: 'file-channel-doc' }),
+    ]);
+    expect(replacePgAudioNotesForChannel).toHaveBeenCalledWith('channel-audio', [expect.objectContaining({ record_id: 'audio-channel-audio' })]);
+    expect(replacePgCommentsForTarget).toHaveBeenCalledWith('task-1', [expect.objectContaining({ record_id: 'comment-task-1' })]);
+    expect(replacePgDailyNotesForChannelAndDate).toHaveBeenCalledWith('channel-daily', '2026-06-13', [expect.objectContaining({ record_id: 'daily-channel-daily' })]);
+    expect(replacePgReactionsForTarget).toHaveBeenCalledWith(expect.any(String), 'message-1', [expect.objectContaining({ record_id: 'reaction-1' })]);
   });
 
   it('hydrates PG channels using workspace member sync when local actor mapping is missing', async () => {

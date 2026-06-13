@@ -2148,7 +2148,7 @@ export const syncManagerMixin = {
       if (this.isEncryptedRecordSyncDisabled) {
         hydrateTowerPgEventUpdates(this, message?.pgEvents || [])
           .then((result) => {
-            if (result?.channels > 0) return;
+            if (result?.appliedTargets > 0) return;
             if (typeof this.refreshChannels !== 'function') return;
             return this.refreshChannels();
           })

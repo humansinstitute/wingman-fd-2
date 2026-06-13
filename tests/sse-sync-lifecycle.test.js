@@ -70,7 +70,7 @@ vi.mock('../src/auth/nostr.js', () => ({
 }));
 
 vi.mock('../src/pg-read-hydrator.js', () => ({
-  hydrateTowerPgEventUpdates: vi.fn(async () => ({ channels: 0, events: 0 })),
+  hydrateTowerPgEventUpdates: vi.fn(async () => ({ appliedTargets: 0, fallbackEvents: 0, events: 0 })),
 }));
 
 vi.mock('../src/backend-mode.js', () => ({
@@ -492,7 +492,7 @@ describe('handleSSEStatus', () => {
 
   it('refreshes channels on pull-complete in Tower PG mode', async () => {
     isTowerPgBackendMode.mockReturnValue(true);
-    hydrateTowerPgEventUpdates.mockResolvedValueOnce({ channels: 0, events: 0 });
+    hydrateTowerPgEventUpdates.mockResolvedValueOnce({ appliedTargets: 0, fallbackEvents: 0, events: 0 });
     const refreshChannels = vi.fn().mockResolvedValue(undefined);
     const { fn, store } = bindMethod('handleSSEStatus', {
       sseStatus: 'connected',
