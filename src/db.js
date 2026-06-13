@@ -453,6 +453,20 @@ export async function upsertDocument(document) {
   return wsDb().documents.put(sanitizeForStorage(document));
 }
 
+export async function replaceDocumentRecord(previousRecordId, document) {
+  const row = sanitizeForStorage(document);
+  if (!row?.record_id) return null;
+  const db = wsDb();
+  return db.transaction('rw', db.documents, async () => {
+    const previousId = String(previousRecordId || '').trim();
+    if (previousId && previousId !== row.record_id) {
+      await db.documents.delete(previousId);
+    }
+    await db.documents.put(row);
+    return row.record_id;
+  });
+}
+
 export async function replaceDocumentsForOwner(ownerNpub, documents = []) {
   if (!ownerNpub) return 0;
   const rows = (Array.isArray(documents) ? documents : [])

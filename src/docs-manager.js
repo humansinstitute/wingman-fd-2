@@ -17,6 +17,7 @@ import {
 } from './utils/state-helpers.js';
 import {
   upsertDocument,
+  replaceDocumentRecord,
   upsertDirectory,
   upsertComment,
   getCommentsByTarget,
@@ -2603,8 +2604,10 @@ export const docsManagerMixin = {
             content_storage_error: null,
             references: nextReferences,
           };
-          await upsertDocument(canonical);
+          await replaceDocumentRecord(localUpdated.record_id, canonical);
+          this.documents = (this.documents || []).filter((document) => document.record_id !== localUpdated.record_id);
           this.patchDocumentLocal(canonical);
+          if (this.selectedDocId === localUpdated.record_id) this.selectedDocId = canonical.record_id;
           this.docAutosaveState = 'saved';
           this.docEditorSharesDirty = false;
           if (!autosave) this.scheduleDocumentsRefresh?.('PG document save');

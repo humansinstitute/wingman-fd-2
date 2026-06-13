@@ -68,6 +68,7 @@ import {
   mergeDocumentSaveReferences,
 } from '../src/docs-manager.js';
 import {
+  getDocumentById,
   getPendingWrites,
   openWorkspaceDb,
 } from '../src/db.js';
@@ -1144,6 +1145,41 @@ describe('docsManagerMixin canonical row normalization', () => {
     });
     expect(createTowerPgChannelDocMock).toHaveBeenCalledTimes(1);
     expect(await getPendingWrites()).toEqual([]);
+
+    Object.defineProperty(globalThis, 'navigator', {
+      configurable: true,
+      value: { onLine: true },
+    });
+    createTowerPgChannelDocMock.mockResolvedValueOnce({
+      doc: {
+        id: 'pg-doc-accepted',
+        workspace_id: 'workspace-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        storage_object_id: 'storage-pg-doc-local',
+        title: 'Offline PG document synced',
+        metadata: { thread_id: 'thread-1' },
+        row_version: 1,
+      },
+    });
+
+    store.docEditorTitle = 'Offline PG document synced';
+    store.docEditorBlocks = [{ id: 'block-1', type: 'markdown', text: 'Synced after reconnect', attrs: {} }];
+    const accepted = await store.saveSelectedDocItem({ autosave: false });
+
+    expect(accepted).toMatchObject({
+      record_id: 'pg-doc-accepted',
+      title: 'Offline PG document synced',
+      sync_status: 'synced',
+      pg_backend: true,
+    });
+    expect(await getDocumentById(row.record_id)).toBeUndefined();
+    expect(await getDocumentById('pg-doc-accepted')).toMatchObject({
+      title: 'Offline PG document synced',
+      content: 'Synced after reconnect',
+    });
+    expect(store.selectedDocId).toBe('pg-doc-accepted');
+    expect(store.documents.map((document) => document.record_id)).toEqual(['pg-doc-accepted']);
     Object.defineProperty(globalThis, 'navigator', {
       configurable: true,
       value: { onLine: true },
