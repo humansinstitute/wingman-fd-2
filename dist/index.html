@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-nSLlAAEk.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-CISpESFn.css">
+  <script type="module" crossorigin src="/assets/index-Do3u1OTx.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-CIPRoOjk.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -781,7 +781,6 @@
                 x-data="{ bpIdx: 0, open: false, query: '' }"
                 @click.outside="open = false; query = ''"
               >
-                <span class="channel-row-scope-label">Scope</span>
                 <div class="board-picker-typeahead-wrapper">
                   <input
                     class="board-picker-typeahead-input channel-row-scope-input"
@@ -808,6 +807,7 @@
                   </ul>
                   <div class="board-picker-typeahead-empty channel-row-scope-empty" x-show="open && $store.chat.filterFlightDeckScopeOptions(query).length === 0">No scopes match.</div>
                 </div>
+                <span class="channel-row-scope-separator" aria-hidden="true">|</span>
               </div>
               <div class="chat-channel-tab-scroll" role="tablist" aria-label="Workspace channels">
                 <template x-for="channel in $store.chat.pgContextChannels" :key="channel.record_id">
@@ -2457,7 +2457,6 @@
                 x-data="{ bpIdx: 0, open: false, query: '' }"
                 @click.outside="open = false; query = ''"
               >
-                <span class="channel-row-scope-label">Scope</span>
                 <div class="board-picker-typeahead-wrapper">
                   <input
                     class="board-picker-typeahead-input channel-row-scope-input"
@@ -2484,6 +2483,7 @@
                   </ul>
                   <div class="board-picker-typeahead-empty channel-row-scope-empty" x-show="open && $store.chat.filterFlightDeckScopeOptions(query).length === 0">No scopes match.</div>
                 </div>
+                <span class="channel-row-scope-separator" aria-hidden="true">|</span>
               </div>
               <div class="chat-channel-tab-scroll" role="tablist" aria-label="Chat channels">
                 <template x-for="ch in $store.chat.scopeFilteredChannels" :key="ch.record_id">
