@@ -4592,6 +4592,9 @@ button:disabled {
 .doc-thread-entry-body,
 .task-comment-body {
   color: var(--text);
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .chat-post-markdown h1,
@@ -4658,6 +4661,7 @@ button:disabled {
 .thread-msg-text .chat-post-markdown pre,
 .doc-thread-entry-body pre,
 .task-comment-body pre {
+  max-width: 100%;
   margin: 0 0 0.6rem;
   padding: 0.8rem 0.95rem;
   overflow-x: auto;
@@ -4715,7 +4719,10 @@ button:disabled {
 .thread-msg-text .chat-post-markdown table,
 .doc-thread-entry-body table,
 .task-comment-body table {
+  display: block;
   width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
   margin: 0 0 0.75rem;
   border-collapse: collapse;
   font-size: 0.9em;
@@ -10266,6 +10273,8 @@ button:disabled {
   cursor: pointer;
   box-shadow: 0 1px 3px rgba(0,0,0,0.06);
   transition: box-shadow 0.15s, transform 0.15s;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .kanban-card:hover {
@@ -10292,6 +10301,7 @@ button:disabled {
   justify-content: space-between;
   gap: 0.5rem;
   margin-bottom: 0.35rem;
+  min-width: 0;
 }
 
 .kanban-card-title {
@@ -10301,7 +10311,9 @@ button:disabled {
   line-height: 1.3;
   margin-bottom: 0;
   word-break: break-word;
+  overflow-wrap: anywhere;
   flex: 1;
+  min-width: 0;
 }
 
 .task-card-select {
@@ -10356,6 +10368,7 @@ button:disabled {
   min-height: 1.45rem;
   overflow: hidden;
   align-items: center;
+  min-width: 0;
 }
 
 .task-card-tag {
@@ -10396,6 +10409,7 @@ button:disabled {
   flex-wrap: wrap;
   gap: 0.25rem;
   align-items: center;
+  min-width: 0;
 }
 
 .kanban-empty {
@@ -10761,6 +10775,8 @@ button:disabled {
   line-height: 1.12;
   font-weight: 750;
   letter-spacing: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
   border: none;
   border-bottom: 2px solid transparent;
   padding: 0.1rem 0 0.25rem;
@@ -10797,6 +10813,8 @@ button:disabled {
   line-height: 1.12;
   font-weight: 750;
   letter-spacing: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .task-detail-assignee-avatar {
@@ -10948,6 +10966,9 @@ button:disabled {
   min-height: 2rem;
   font-size: 0.98rem;
   line-height: 1.62;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .task-description-section {
@@ -11343,6 +11364,7 @@ button:disabled {
   flex: 1;
   overflow-y: auto;
   min-height: 120px;
+  min-width: 0;
 }
 
 .task-comment-row {
@@ -11350,6 +11372,7 @@ button:disabled {
   background: transparent;
   border-bottom: 1px solid var(--border);
   border-radius: 0;
+  min-width: 0;
 }
 
 .task-comment-header {
@@ -11357,6 +11380,7 @@ button:disabled {
   align-items: center;
   gap: 0.45rem;
   margin-bottom: 0.25rem;
+  min-width: 0;
 }
 
 .task-comment-avatar {
@@ -11404,6 +11428,9 @@ button:disabled {
   font-size: 0.85rem;
   line-height: 1.45;
   word-break: break-word;
+  overflow-wrap: anywhere;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .task-comment-body-collapsed {
