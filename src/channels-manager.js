@@ -1671,6 +1671,10 @@ export const channelsManagerMixin = {
       await this.applyMessages([], { scrollToLatest: false });
     }
 
+    if (this.navSection === 'chat') {
+      this.ensureSelectedChatChannelInScope({ syncRoute: options.syncRoute !== false });
+    }
+
     this.updatePageTitle();
   },
 

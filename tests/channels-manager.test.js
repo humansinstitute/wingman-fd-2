@@ -242,6 +242,44 @@ describe('channels-manager pure utilities', () => {
     expect(store.selectedChannelId).toBe('ch-a');
   });
 
+  it('reconciles the selected chat channel when channels hydrate for the active scope', async () => {
+    const scopesMap = new Map([
+      ['scope-a', { record_id: 'scope-a', level: 'l1', title: 'Scope A' }],
+      ['scope-b', { record_id: 'scope-b', level: 'l1', title: 'Scope B' }],
+    ]);
+    const store = applyChannelMixin({
+      channels: [],
+      channelOrder: [],
+      navSection: 'chat',
+      selectedBoardId: 'scope-a',
+      selectedBoardScope: scopesMap.get('scope-a'),
+      scopesMap,
+      selectedChannelId: 'ch-b',
+      session: { npub: 'npub1owner' },
+      workspaceOwnerNpub: 'npub1owner',
+      groups: [],
+      MAIN_FEED_PAGE_SIZE: 20,
+      getChannelParticipants: () => [],
+      rememberPeople: vi.fn(),
+      closeThread: vi.fn(),
+      startSelectedChannelLiveQuery: vi.fn(),
+      syncRoute: vi.fn(),
+      applyMessages: vi.fn(),
+      updatePageTitle: vi.fn(),
+      selectChannel: vi.fn(function selectChannel(recordId) {
+        this.selectedChannelId = recordId;
+      }),
+    });
+
+    await store.applyChannels([
+      { record_id: 'ch-a', title: 'A', scope_id: 'scope-a', scope_l1_id: 'scope-a' },
+      { record_id: 'ch-b', title: 'B', scope_id: 'scope-b', scope_l1_id: 'scope-b' },
+    ], { syncRoute: false });
+
+    expect(store.selectChannel).toHaveBeenCalledWith('ch-a', { syncRoute: false });
+    expect(store.selectedChannelId).toBe('ch-a');
+  });
+
   it('finds an existing named channel by title and scope', () => {
     const channel = findExistingNamedChannel([
       { record_id: 'ch-1', title: 'Ops', scope_id: 'scope-a' },

@@ -230,6 +230,9 @@ export const scopesManagerMixin = {
       this.scopes = normalizedScopes;
     }
     this.scopesLoaded = true;
+    if (this.navSection === 'chat') {
+      this.ensureSelectedChatChannelInScope?.({ syncRoute: false });
+    }
   },
 
   async loadLocalScopes() {

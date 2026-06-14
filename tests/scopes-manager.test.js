@@ -63,6 +63,22 @@ function createScopeStore(overrides = {}) {
 }
 
 describe('scopes-manager pure utilities', () => {
+  it('reconciles the selected chat channel after scopes hydrate', async () => {
+    const ensureSelectedChatChannelInScope = vi.fn();
+    const store = createScopeStore({
+      scopes: [],
+      scopesLoaded: false,
+      navSection: 'chat',
+      normalizeScopeRowGroupRefs: (scope) => scope,
+      ensureSelectedChatChannelInScope,
+    });
+
+    await store.applyScopes([{ record_id: 'scope-a', title: 'Scope A', level: 'l1' }]);
+
+    expect(store.scopesLoaded).toBe(true);
+    expect(ensureSelectedChatChannelInScope).toHaveBeenCalledWith({ syncRoute: false });
+  });
+
   // --- getAvailableParents ---
   describe('getAvailableParents', () => {
     const scopes = [
