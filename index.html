@@ -170,39 +170,6 @@
         </button>
       </div>
       <div class="session-controls" x-show="$store.chat.isLoggedIn">
-        <div
-          class="header-scope-switcher"
-          x-data="{ bpIdx: 0, open: false, query: '' }"
-          @click.outside="open = false; query = ''"
-        >
-          <span class="header-scope-label">Scope</span>
-          <div class="board-picker-typeahead-wrapper">
-            <input
-              class="board-picker-typeahead-input header-scope-input"
-              type="text"
-              x-model="query"
-              :placeholder="$store.chat.focusScopeTitle"
-              @focus="open = true; bpIdx = 0"
-              @keydown.escape="open = false; query = ''; $el.blur()"
-              @keydown.arrow-down.prevent="bpIdx = Math.min(bpIdx + 1, $store.chat.filterFlightDeckScopeOptions(query).length - 1)"
-              @keydown.arrow-up.prevent="bpIdx = Math.max(bpIdx - 1, 0)"
-              @keydown.enter.prevent="if ($store.chat.filterFlightDeckScopeOptions(query)[bpIdx]) { $store.chat.selectBoard($store.chat.filterFlightDeckScopeOptions(query)[bpIdx].id); open = false; query = ''; $el.blur() }"
-              aria-label="Current scope"
-            />
-            <ul class="board-picker-typeahead-results header-scope-results" x-show="open && $store.chat.filterFlightDeckScopeOptions(query).length > 0" x-cloak>
-              <template x-for="(board, idx) in $store.chat.filterFlightDeckScopeOptions(query)" :key="board.id">
-                <li
-                  class="board-picker-typeahead-option"
-                  :class="{ 'board-picker-typeahead-active': $store.chat.selectedBoardId === board.id, 'board-picker-typeahead-highlight': idx === bpIdx }"
-                  @click="$store.chat.selectBoard(board.id); open = false; query = ''"
-                  @mouseenter="bpIdx = idx"
-                  x-text="board.label"
-                ></li>
-              </template>
-            </ul>
-            <div class="board-picker-typeahead-empty header-scope-empty" x-show="open && $store.chat.filterFlightDeckScopeOptions(query).length === 0">No scopes match.</div>
-          </div>
-        </div>
         <button
           class="avatar-chip"
           :class="{
@@ -807,6 +774,39 @@
       <div class="main-content">
           <div class="global-pg-channel-bar" x-show="$store.chat.navSection !== 'chat' && $store.chat.isLoggedIn" x-cloak>
             <div class="chat-channel-header">
+              <div
+                class="channel-row-scope-switcher"
+                x-data="{ bpIdx: 0, open: false, query: '' }"
+                @click.outside="open = false; query = ''"
+              >
+                <span class="channel-row-scope-label">Scope</span>
+                <div class="board-picker-typeahead-wrapper">
+                  <input
+                    class="board-picker-typeahead-input channel-row-scope-input"
+                    type="text"
+                    x-model="query"
+                    :placeholder="$store.chat.focusScopeTitle"
+                    @focus="open = true; bpIdx = 0"
+                    @keydown.escape="open = false; query = ''; $el.blur()"
+                    @keydown.arrow-down.prevent="bpIdx = Math.min(bpIdx + 1, $store.chat.filterFlightDeckScopeOptions(query).length - 1)"
+                    @keydown.arrow-up.prevent="bpIdx = Math.max(bpIdx - 1, 0)"
+                    @keydown.enter.prevent="if ($store.chat.filterFlightDeckScopeOptions(query)[bpIdx]) { $store.chat.selectBoard($store.chat.filterFlightDeckScopeOptions(query)[bpIdx].id); open = false; query = ''; $el.blur() }"
+                    aria-label="Current scope"
+                  />
+                  <ul class="board-picker-typeahead-results channel-row-scope-results" x-show="open && $store.chat.filterFlightDeckScopeOptions(query).length > 0" x-cloak>
+                    <template x-for="(board, idx) in $store.chat.filterFlightDeckScopeOptions(query)" :key="board.id">
+                      <li
+                        class="board-picker-typeahead-option"
+                        :class="{ 'board-picker-typeahead-active': $store.chat.selectedBoardId === board.id, 'board-picker-typeahead-highlight': idx === bpIdx }"
+                        @click="$store.chat.selectBoard(board.id); open = false; query = ''"
+                        @mouseenter="bpIdx = idx"
+                        x-text="board.label"
+                      ></li>
+                    </template>
+                  </ul>
+                  <div class="board-picker-typeahead-empty channel-row-scope-empty" x-show="open && $store.chat.filterFlightDeckScopeOptions(query).length === 0">No scopes match.</div>
+                </div>
+              </div>
               <div class="chat-channel-tab-scroll" role="tablist" aria-label="Workspace channels">
                 <template x-for="channel in $store.chat.pgContextChannels" :key="channel.record_id">
                   <div
@@ -2450,6 +2450,39 @@
         <template x-if="$store.chat.navSection === 'chat'">
           <div class="chat-section">
             <div class="chat-channel-header" x-show="$store.chat.navSection === 'chat'" x-cloak>
+              <div
+                class="channel-row-scope-switcher"
+                x-data="{ bpIdx: 0, open: false, query: '' }"
+                @click.outside="open = false; query = ''"
+              >
+                <span class="channel-row-scope-label">Scope</span>
+                <div class="board-picker-typeahead-wrapper">
+                  <input
+                    class="board-picker-typeahead-input channel-row-scope-input"
+                    type="text"
+                    x-model="query"
+                    :placeholder="$store.chat.focusScopeTitle"
+                    @focus="open = true; bpIdx = 0"
+                    @keydown.escape="open = false; query = ''; $el.blur()"
+                    @keydown.arrow-down.prevent="bpIdx = Math.min(bpIdx + 1, $store.chat.filterFlightDeckScopeOptions(query).length - 1)"
+                    @keydown.arrow-up.prevent="bpIdx = Math.max(bpIdx - 1, 0)"
+                    @keydown.enter.prevent="if ($store.chat.filterFlightDeckScopeOptions(query)[bpIdx]) { $store.chat.selectBoard($store.chat.filterFlightDeckScopeOptions(query)[bpIdx].id); open = false; query = ''; $el.blur() }"
+                    aria-label="Current scope"
+                  />
+                  <ul class="board-picker-typeahead-results channel-row-scope-results" x-show="open && $store.chat.filterFlightDeckScopeOptions(query).length > 0" x-cloak>
+                    <template x-for="(board, idx) in $store.chat.filterFlightDeckScopeOptions(query)" :key="board.id">
+                      <li
+                        class="board-picker-typeahead-option"
+                        :class="{ 'board-picker-typeahead-active': $store.chat.selectedBoardId === board.id, 'board-picker-typeahead-highlight': idx === bpIdx }"
+                        @click="$store.chat.selectBoard(board.id); open = false; query = ''"
+                        @mouseenter="bpIdx = idx"
+                        x-text="board.label"
+                      ></li>
+                    </template>
+                  </ul>
+                  <div class="board-picker-typeahead-empty channel-row-scope-empty" x-show="open && $store.chat.filterFlightDeckScopeOptions(query).length === 0">No scopes match.</div>
+                </div>
+              </div>
               <div class="chat-channel-tab-scroll" role="tablist" aria-label="Chat channels">
                 <template x-for="ch in $store.chat.scopeFilteredChannels" :key="ch.record_id">
                   <div
