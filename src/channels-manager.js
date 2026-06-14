@@ -935,6 +935,14 @@ export const channelsManagerMixin = {
     return this.newChannelAccessAddOptions.length > 0;
   },
 
+  get newChannelAccessDisabledReason() {
+    if (!isTowerPgBackendMode()) return '';
+    if (this.newChannelCanAddAccessRow) return '';
+    if (this.newChannelAccessLoading) return 'Loading users and groups...';
+    if (this.newChannelAccessError) return this.newChannelAccessError;
+    return 'All available users and groups already have a permission row.';
+  },
+
   get canCreateNamedChannel() {
     if (!this.newChannelName?.trim()) return false;
     if (!isTowerPgBackendMode()) return Boolean(this.newChannelGroupId);
@@ -1852,14 +1860,27 @@ export const channelsManagerMixin = {
     this.newChannelName = '';
     this.newChannelDescription = '';
     this.newChannelGroupId = '';
+    this.newChannelAccessLoading = false;
+    this.newChannelAccessError = '';
     this.resetNewChannelAccessRows();
     this.showNewChannelModal = true;
-    if (isTowerPgBackendMode()) {
-      await this.refreshTowerPgWorkspaceMembers?.({ force: true, limit: 200 }).catch(() => []);
-    }
     if (isTowerPgBackendMode() && this.newChannelMode === 'channel') {
-      await this.refreshGroups?.({ force: true, minIntervalMs: 0 }).catch(() => []);
-      this.resetNewChannelAccessRows();
+      this.newChannelAccessLoading = true;
+      try {
+        await Promise.all([
+          this.refreshTowerPgWorkspaceMembers?.({ force: true, limit: 200 }) ?? Promise.resolve([]),
+          this.refreshGroups?.({ force: true, minIntervalMs: 0 }) ?? Promise.resolve([]),
+        ]);
+      } catch (error) {
+        this.newChannelAccessError = error?.message || 'Failed to load users and groups.';
+      } finally {
+        this.newChannelAccessLoading = false;
+      }
+      if (!this.newChannelAccessError) {
+        this.resetNewChannelAccessRows();
+      }
+    } else if (isTowerPgBackendMode()) {
+      await this.refreshTowerPgWorkspaceMembers?.({ force: true, limit: 200 }).catch(() => []);
     }
   },
 

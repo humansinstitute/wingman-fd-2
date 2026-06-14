@@ -805,6 +805,8 @@ export function initApp() {
     newChannelGroupId: '',
     newChannelAccessPrincipalDraft: '',
     newChannelAccessRows: [],
+    newChannelAccessLoading: false,
+    newChannelAccessError: '',
     superbasedTokenInput: '',
     superbasedError: null,
     knownWorkspaces: [],

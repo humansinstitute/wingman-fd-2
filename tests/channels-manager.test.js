@@ -525,6 +525,8 @@ describe('channels-manager pure utilities', () => {
       newChannelName: 'Ops',
       newChannelDescription: '',
       newChannelAccessPrincipalDraft: '',
+      newChannelAccessLoading: false,
+      newChannelAccessError: '',
       newChannelAccessRows: [
         { principal_type: 'group', principal_id: 'group-workspace', capacity: 'viewer' },
         { principal_type: 'actor', principal_id: 'actor-owner', capacity: 'manager' },
@@ -553,6 +555,8 @@ describe('channels-manager pure utilities', () => {
         label: 'Wingman 21',
       }),
     ]);
+    expect(store.newChannelCanAddAccessRow).toBe(true);
+    expect(store.newChannelAccessDisabledReason).toBe('');
 
     store.addNewChannelAccessRow('actor:actor-wingman-21');
 
@@ -592,6 +596,39 @@ describe('channels-manager pure utilities', () => {
         },
       ],
     }, { baseUrl: 'https://tower.example', appNpub: 'flightdeck-app' });
+  });
+
+  it('keeps the new channel permission picker disabled only with a visible reason', () => {
+    const store = applyChannelMixin({
+      newChannelAccessRows: [],
+      currentWorkspaceGroups: [],
+      groups: [],
+      pgWorkspaceMembers: [],
+      currentWorkspace: {
+        workspaceId: 'workspace-1',
+        pgMe: {},
+      },
+      session: {},
+      newChannelAccessLoading: true,
+      newChannelAccessError: '',
+      getSenderName: vi.fn((npub) => npub),
+    });
+
+    expect(store.newChannelCanAddAccessRow).toBe(false);
+    expect(store.newChannelAccessDisabledReason).toBe('Loading users and groups...');
+
+    store.newChannelAccessLoading = false;
+    store.newChannelAccessError = 'Failed to load workspace members.';
+    expect(store.newChannelAccessDisabledReason).toBe('Failed to load workspace members.');
+
+    store.newChannelAccessError = '';
+    expect(store.newChannelAccessDisabledReason).toBe('All available users and groups already have a permission row.');
+
+    store.pgWorkspaceMembers = [
+      { actor_id: 'actor-target', npub: 'npub1target', display_name: 'Target' },
+    ];
+    expect(store.newChannelCanAddAccessRow).toBe(true);
+    expect(store.newChannelAccessDisabledReason).toBe('');
   });
 
   it('opens the new channel modal in DM mode only when the DM scope is selected', () => {
