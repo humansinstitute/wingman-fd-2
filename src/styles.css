@@ -2210,52 +2210,65 @@ button:disabled {
   min-height: 0;
 }
 
-.daily-note-strip {
-  width: min(100%, 58rem);
-  min-height: 4.25rem;
-  margin: 1rem auto 0.7rem;
-  border: 1.5px solid #0f172a;
-  border-radius: 22px;
-  background: #ffffff;
-  box-shadow: none;
+.daily-note-side-panel {
   cursor: pointer;
-  display: grid;
-  place-items: center;
   transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
 }
 
-.daily-note-strip:hover {
+.daily-note-side-panel:hover {
   transform: translateY(-1px);
-  border-color: #000000;
-  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.1);
+  border-color: rgba(15, 23, 42, 0.2);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+}
+
+.daily-note-side-panel:focus-visible {
+  outline: 2px solid rgba(59, 130, 246, 0.35);
+  outline-offset: 2px;
 }
 
 .daily-note-empty {
-  display: grid;
-  place-items: center;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+}
+
+.daily-note-empty h3 {
+  margin: 0 0 0.2rem;
+  color: #0f172a;
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.daily-note-empty p {
+  margin: 0;
+  color: #64748b !important;
+  font-size: 0.82rem !important;
+  line-height: 1.4;
 }
 
 .daily-note-plus {
-  width: 2.3rem;
-  height: 2.3rem;
+  width: 2rem;
+  height: 2rem;
   border-radius: 999px;
-  border: 1.5px solid #0f172a;
+  border: 1px solid #cbd5e1;
   background: #ffffff;
   color: #0f172a;
   display: grid;
   place-items: center;
-  font-size: 1.65rem;
+  flex: 0 0 auto;
+  font-size: 1.35rem;
   line-height: 1;
   font-weight: 650;
 }
 
 .daily-note-filled {
   width: 100%;
-  padding: 0.9rem 1.15rem;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.55rem;
 }
 
 .daily-note-eyebrow {
@@ -2276,13 +2289,14 @@ button:disabled {
 
 .daily-note-filled > p {
   margin: 0;
-  max-width: 38rem;
   color: #475569;
-  font-size: 0.92rem;
-  line-height: 1.35;
+  font-size: 0.84rem;
+  line-height: 1.45;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
 }
 
 .mobile-sidebar-backdrop {
@@ -2376,8 +2390,8 @@ button:disabled {
 
 .flightdeck-hero {
   width: 100%;
-  margin-bottom: 2.35rem;
-  padding: 1.9rem 0 2.6rem;
+  margin-bottom: 1.6rem;
+  padding: 1.55rem 0 1.9rem;
   border: none;
   border-radius: 0;
   background: transparent;
@@ -2395,26 +2409,10 @@ button:disabled {
   color: #0f172a;
 }
 
-.flightdeck-hero-scope-row {
-  margin-top: 1.45rem;
-  margin-bottom: 0;
-  display: flex;
-  justify-content: center;
-}
-
-.flightdeck-typeahead-wrapper,
 .attention-feed-header select {
   min-width: min(100%, 38rem);
 }
 
-.board-picker-typeahead-wrapper.flightdeck-typeahead-wrapper {
-  width: min(100%, 46rem);
-  max-width: 46rem;
-  flex: 0 1 46rem;
-  margin: 0 auto;
-}
-
-.flightdeck-scope-input,
 .attention-feed-header select {
   border: 1px solid #cbd5e1;
   background: #fff;

@@ -910,80 +910,8 @@
               </template>
             </div>
           </div>
-          <section class="flightdeck-hero" x-data="{ bpIdx: 0, open: false, query: '' }" @click.outside="open = false; query = ''">
+          <section class="flightdeck-hero">
             <h2>Welcome <span x-text="$store.chat.greetingName"></span>, where will we focus today?</h2>
-            <div class="flightdeck-hero-scope-row">
-              <div class="board-picker-typeahead-wrapper flightdeck-typeahead-wrapper">
-                <input
-                  id="flightdeck-scope-select"
-                  class="board-picker-typeahead-input flightdeck-scope-input"
-                  type="text"
-                  x-model="query"
-                  :placeholder="$store.chat.selectedBoardScope?.title || 'Choose a scope to focus'"
-                  @focus="open = true; bpIdx = 0"
-                  @keydown.escape="open = false; query = ''; $el.blur()"
-                  @keydown.arrow-down.prevent="bpIdx = Math.min(bpIdx + 1, $store.chat.filterFlightDeckScopeOptions(query).length - 1)"
-                  @keydown.arrow-up.prevent="bpIdx = Math.max(bpIdx - 1, 0)"
-                  @keydown.enter.prevent="if ($store.chat.filterFlightDeckScopeOptions(query)[bpIdx]) { $store.chat.selectBoard($store.chat.filterFlightDeckScopeOptions(query)[bpIdx].id); open = false; query = ''; $el.blur() }"
-                  aria-label="Choose a scope to focus"
-                />
-                <ul class="board-picker-typeahead-results" x-show="open && $store.chat.filterFlightDeckScopeOptions(query).length > 0" x-cloak>
-                  <template x-for="(board, idx) in $store.chat.filterFlightDeckScopeOptions(query)" :key="board.id">
-                    <li
-                      class="board-picker-typeahead-option"
-                      :class="{ 'board-picker-typeahead-active': $store.chat.selectedBoardId === board.id, 'board-picker-typeahead-highlight': idx === bpIdx }"
-                      @click="$store.chat.selectBoard(board.id); open = false; query = ''"
-                      @mouseenter="bpIdx = idx"
-                      x-text="board.label"
-                    ></li>
-                  </template>
-                </ul>
-                <div class="board-picker-typeahead-empty" x-show="open && $store.chat.filterFlightDeckScopeOptions(query).length === 0">No scopes match.</div>
-              </div>
-            </div>
-            <template x-if="$store.chat.recentFocusAreas.length > 0">
-              <section class="focus-areas-panel flightdeck-focus-areas" aria-label="Recent scope shortcuts">
-                <div class="focus-areas-list">
-                  <template x-for="area in $store.chat.recentFocusAreas" :key="area.id">
-                    <button
-                      type="button"
-                      class="focus-area-btn"
-                      :class="{ 'focus-area-btn-active': $store.chat.selectedBoardId === area.id }"
-                      @click="$store.chat.selectBoard(area.id)"
-                      :title="area.breadcrumb"
-                    >
-                      <span class="focus-area-title" x-text="area.label"></span>
-                      <span class="focus-area-meta" x-text="area.meta"></span>
-                    </button>
-                  </template>
-                </div>
-              </section>
-            </template>
-            <section
-              class="daily-note-strip"
-              x-show="$store.chat.isLoggedIn"
-              x-cloak
-              @click="$store.chat.openDailyNoteEditor()"
-              role="button"
-              tabindex="0"
-              @keydown.enter.prevent="$store.chat.openDailyNoteEditor()"
-              @keydown.space.prevent="$store.chat.openDailyNoteEditor()"
-            >
-              <template x-if="!$store.chat.getCurrentDailyNote()">
-                <div class="daily-note-empty">
-                  <span class="daily-note-plus" aria-hidden="true">+</span>
-                </div>
-              </template>
-              <template x-if="$store.chat.getCurrentDailyNote()">
-                <div class="daily-note-filled">
-                  <div>
-                    <p class="daily-note-eyebrow">Today</p>
-                    <h3 x-text="$store.chat.dailyNoteComponentTitle"></h3>
-                  </div>
-                  <p x-text="$store.chat.dailyNoteComponentPreview"></p>
-                </div>
-              </template>
-            </section>
           </section>
 
 
@@ -1162,6 +1090,35 @@
             </section>
 
             <aside class="flightdeck-side-column">
+              <section
+                class="flightdeck-side-panel daily-note-side-panel"
+                x-show="$store.chat.isLoggedIn"
+                x-cloak
+                @click="$store.chat.openDailyNoteEditor()"
+                role="button"
+                tabindex="0"
+                @keydown.enter.prevent="$store.chat.openDailyNoteEditor()"
+                @keydown.space.prevent="$store.chat.openDailyNoteEditor()"
+              >
+                <template x-if="!$store.chat.getCurrentDailyNote()">
+                  <div class="daily-note-empty">
+                    <div>
+                      <h3>Daily Scope</h3>
+                      <p>Set today&apos;s focus.</p>
+                    </div>
+                    <span class="daily-note-plus" aria-hidden="true">+</span>
+                  </div>
+                </template>
+                <template x-if="$store.chat.getCurrentDailyNote()">
+                  <div class="daily-note-filled">
+                    <div>
+                      <p class="daily-note-eyebrow">Daily Scope</p>
+                      <h3 x-text="$store.chat.dailyNoteComponentTitle"></h3>
+                    </div>
+                    <p x-text="$store.chat.dailyNoteComponentPreview"></p>
+                  </div>
+                </template>
+              </section>
               <section class="flightdeck-side-panel timing-panel">
                 <div class="timing-panel-header">
                   <div>

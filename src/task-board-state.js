@@ -513,6 +513,7 @@ export function getScopeAncestorPath(scopeId, scopesMap) {
 export function formatTaskBoardScopeDisplay(scope, scopesMap) {
   if (!scope?.record_id) return '';
   const title = String(scope.title || '').trim() || 'Untitled scope';
+  if (scopeDepth(scope.level) === 1) return title;
   const level = levelLabel(scope.level) || 'Scope';
   const ancestorPath = getScopeAncestorPath(scope.record_id, scopesMap);
   return ancestorPath ? `${title} (${level}): ${ancestorPath}` : `${title} (${level})`;

@@ -375,7 +375,7 @@ describe('formatTaskBoardScopeDisplay', () => {
   });
 
   it('formats root-level product', () => {
-    expect(formatTaskBoardScopeDisplay(product, scopesMap)).toBe('Product X (L1)');
+    expect(formatTaskBoardScopeDisplay(product, scopesMap)).toBe('Product X');
   });
 
   it('formats nested project with ancestor path', () => {
@@ -390,7 +390,7 @@ describe('formatTaskBoardScopeDisplay', () => {
 
   it('handles scope with empty title', () => {
     const scope = { ...product, title: '' };
-    expect(formatTaskBoardScopeDisplay(scope, scopesMap)).toBe('Untitled scope (L1)');
+    expect(formatTaskBoardScopeDisplay(scope, scopesMap)).toBe('Untitled scope');
   });
 });
 
@@ -423,7 +423,7 @@ describe('getTaskBoardOptionLabel', () => {
   });
 
   it('returns formatted display for known scope', () => {
-    expect(getTaskBoardOptionLabel('scope-product', scopesMap)).toBe('Product X (L1)');
+    expect(getTaskBoardOptionLabel('scope-product', scopesMap)).toBe('Product X');
   });
 });
 
@@ -639,7 +639,7 @@ describe('computeBoardScopedTasks', () => {
       },
     });
 
-    expect(store.flightDeckScopeOptions.map((board) => board.label)).toContain('Product X (L1)');
+    expect(store.flightDeckScopeOptions.map((board) => board.label)).toContain('Product X');
     expect(store.flightDeckScopeOptions.map((board) => board.label)).not.toContain('Launch');
     expect(store.focusScopeTitle).toBe('Product X');
     expect(store.pgContextThreads).toMatchObject([
