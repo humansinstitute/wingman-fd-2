@@ -134,6 +134,18 @@ export function filterChannelsByScope(channels, selectedBoardId, selectedBoardSc
   );
 }
 
+function getChannelScopeId(channel) {
+  return String(
+    channel?.scope_id
+    || channel?.scope_l5_id
+    || channel?.scope_l4_id
+    || channel?.scope_l3_id
+    || channel?.scope_l2_id
+    || channel?.scope_l1_id
+    || '',
+  ).trim();
+}
+
 export function findExistingNamedChannel(channels = [], title = '', scopeId = '') {
   const targetTitle = String(title || '').trim().toLowerCase();
   const targetScopeId = String(scopeId || '').trim();
@@ -1740,6 +1752,17 @@ export const channelsManagerMixin = {
 
   async selectChannel(recordId, options = {}) {
     this.selectedChannelId = recordId;
+    const selectedChannel = (this.channels || []).find((channel) => channel?.record_id === recordId) || null;
+    const selectedChannelScopeId = getChannelScopeId(selectedChannel);
+    const shouldPromoteScope = selectedChannelScopeId
+      && this.selectedBoardId !== selectedChannelScopeId
+      && (!this.selectedBoardId
+        || this.selectedBoardId === '__all__'
+        || this.selectedBoardId === '__recent__'
+        || this.selectedBoardId === '__unscoped__');
+    if (shouldPromoteScope) {
+      this.selectBoard?.(selectedChannelScopeId);
+    }
     this.mainFeedVisibleCount = this.MAIN_FEED_PAGE_SIZE;
     this.chatFeedNearTop = false;
     this.expandedChatMessageIds = [];

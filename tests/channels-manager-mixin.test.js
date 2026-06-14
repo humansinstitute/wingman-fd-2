@@ -57,6 +57,24 @@ describe('channelsManagerMixin', () => {
     expect(store.syncRoute).toHaveBeenCalledTimes(1);
   });
 
+  it('selectChannel promotes All scope to the selected channel scope', async () => {
+    const store = createStore({
+      selectedBoardId: '__all__',
+      channels: [
+        { record_id: 'channel-home', title: 'Home', scope_id: 'scope-home', record_state: 'active' },
+      ],
+      selectBoard: vi.fn(function selectBoard(boardId) {
+        this.selectedBoardId = boardId;
+      }),
+    });
+
+    await store.selectChannel('channel-home');
+
+    expect(store.selectBoard).toHaveBeenCalledWith('scope-home');
+    expect(store.selectedBoardId).toBe('scope-home');
+    expect(store.selectedChannelId).toBe('channel-home');
+  });
+
   it('captures the selected channel unread snapshot before markChannelRead clears the live unread cursor', async () => {
     const callOrder = [];
     const store = createStore({

@@ -676,6 +676,30 @@ describe('computeBoardScopedTasks', () => {
     expect(store.selectedBoardId).toBe('scope-ops');
     expect(store.selectedChannelId).toBe('channel-standup');
   });
+
+  it('selects a channel context by jumping from All to the channel scope', () => {
+    const store = Object.create(taskBoardStateMixin);
+    Object.assign(store, {
+      currentWorkspace: { pgBackendMode: true },
+      navSection: 'status',
+      selectedBoardId: ALL_TASK_BOARD_ID,
+      selectedChannelId: null,
+      channels: [
+        { record_id: 'channel-home', title: 'Home', scope_id: 'scope-product', record_state: 'active' },
+      ],
+      showTaskDetail: false,
+      persistSelectedBoardId() {},
+      clearSelectedTasks() {},
+      normalizeTaskFilterTags() {},
+      closeBoardPicker() {},
+      syncRoute() {},
+    });
+
+    store.selectPgChannelContext('channel-home');
+
+    expect(store.selectedBoardId).toBe('scope-product');
+    expect(store.selectedChannelId).toBe('channel-home');
+  });
 });
 
 // --- computeFilteredTasks ---

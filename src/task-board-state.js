@@ -1391,6 +1391,13 @@ export const taskBoardStateMixin = {
   selectPgChannelContext(channelId) {
     const normalizedChannelId = String(channelId || '').trim();
     if (!normalizedChannelId) return;
+    const channel = (this.channels || []).find((entry) => entry?.record_id === normalizedChannelId && entry.record_state !== 'deleted') || null;
+    const scopeId = getPgChannelScopeId(channel);
+    this.selectedChannelId = normalizedChannelId;
+    if (scopeId) {
+      this.selectBoard(scopeId);
+      return;
+    }
     this.selectBoard(buildPgChannelTaskBoardId(normalizedChannelId));
   },
 
