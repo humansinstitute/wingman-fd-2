@@ -142,4 +142,42 @@ describe('section live query plan', () => {
     expect(store.refreshDocuments).toHaveBeenCalledTimes(1);
     expect(store.refreshAudioNotes).toHaveBeenCalledTimes(1);
   });
+
+  it('refreshes Tower PG tasks when the task board route becomes active after workspace hydration', async () => {
+    const store = {
+      currentWorkspace: {
+        pgBackendMode: true,
+        workspaceKey: 'pg:npub1user::tower:npub1tower::workspace:npub1workspace::app:flightdeck_pg',
+        workspaceId: 'workspace-1',
+      },
+      currentWorkspaceKey: 'pg:npub1user::tower:npub1tower::workspace:npub1workspace::app:flightdeck_pg',
+      workspaceOwnerNpub: 'npub1owner',
+      selectedBoardId: 'scope-1',
+      session: { npub: 'npub1user' },
+      backendUrl: 'https://tower.example',
+      navSection: 'chat',
+      startSharedLiveQueries: vi.fn(),
+      createLiveSubscription: vi.fn(() => ({ unsubscribe() {} })),
+      stopLiveSubscription: vi.fn(),
+      initUnreadTracking: vi.fn(),
+      loadLocalWorkspaceCoreData: vi.fn(async () => ({ scopes: [], channels: [] })),
+      refreshGroups: vi.fn(async () => []),
+      refreshScopes: vi.fn(async () => []),
+      refreshChannels: vi.fn(async () => []),
+      refreshTasks: vi.fn(async () => []),
+      refreshDocuments: vi.fn(async () => []),
+      refreshAudioNotes: vi.fn(async () => []),
+    };
+
+    openWorkspaceDb(store.currentWorkspaceKey);
+    sectionLiveQueryMixin.startWorkspaceLiveQueries.call(store);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(store.refreshTasks).toHaveBeenCalledTimes(1);
+
+    store.navSection = 'tasks';
+    sectionLiveQueryMixin.startWorkspaceLiveQueries.call(store);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(store.refreshTasks).toHaveBeenCalledTimes(2);
+  });
 });

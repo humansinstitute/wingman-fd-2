@@ -636,6 +636,40 @@ describe('PG read hydrator', () => {
     ]);
   });
 
+  it('hydrates PG task id events even when Tower omits channel context', async () => {
+    const target = store({ tasks: [] });
+    const getTowerPgTask = vi.fn(async () => ({
+      task: {
+        id: 'task-from-chat',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        title: 'Chat-created task',
+        row_version: 1,
+      },
+    }));
+    const upsertTask = vi.fn(async () => 'task-from-chat');
+    const getTowerPgChannelTasks = vi.fn();
+
+    const result = await hydrateTowerPgEventUpdates(target, [
+      { entity_type: 'task', entity_id: 'task-from-chat', payload: {} },
+    ], {
+      getTowerPgTask,
+      getTowerPgChannelTasks,
+      upsertTask,
+    });
+
+    expect(result).toEqual({ channels: 0, appliedTargets: 1, fallbackEvents: 0, events: 1 });
+    expect(getTowerPgTask).toHaveBeenCalledWith('workspace-1', 'task-from-chat', {
+      baseUrl: 'https://tower.example',
+      appNpub: 'flightdeck_pg',
+    });
+    expect(getTowerPgChannelTasks).not.toHaveBeenCalled();
+    expect(upsertTask).toHaveBeenCalledWith(expect.objectContaining({
+      record_id: 'task-from-chat',
+      title: 'Chat-created task',
+    }));
+  });
+
   it('routes PG events to targeted surface hydrators without heartbeat', async () => {
     const target = store({
       selectedChannelId: 'channel-1',

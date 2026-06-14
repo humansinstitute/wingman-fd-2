@@ -37,6 +37,8 @@ function getSectionState(store) {
       workspaceOwnerNpub: '',
       pgHydratingWorkspaceKeys: new Set(),
       pgHydratedWorkspaceKeys: new Set(),
+      pgRefreshingTaskBoardKeys: new Set(),
+      pgTaskBoardRefreshAt: new Map(),
     };
     SECTION_STATE.set(store, state);
   }
@@ -119,6 +121,50 @@ function scheduleTowerPgWorkspaceHydration(store, state) {
     })
     .finally(() => {
       state.pgHydratingWorkspaceKeys.delete(workspaceKey);
+    });
+}
+
+const PG_TASK_BOARD_REFRESH_MIN_MS = 5000;
+
+function buildTowerPgTaskBoardRefreshKey(store) {
+  const workspaceKey = String(store?.currentWorkspaceKey || store?.currentWorkspace?.workspaceKey || '').trim();
+  if (!workspaceKey) return '';
+  const boardId = String(store?.selectedBoardId || store?.preferredTaskBoardId || '').trim();
+  return boardId ? `${workspaceKey}:tasks:${boardId}` : `${workspaceKey}:tasks`;
+}
+
+function scheduleTowerPgTaskBoardRefresh(store, state) {
+  if (!isTowerPgBackendMode()) return;
+  if (store?.navSection !== 'tasks') return;
+  if (!store?.currentWorkspace?.pgBackendMode) return;
+  if (!store?.session?.npub) return;
+  if (!store?.backendUrl) return;
+  if (typeof store?.refreshTasks !== 'function') return;
+  const workspaceKey = String(store.currentWorkspaceKey || store.currentWorkspace?.workspaceKey || '').trim();
+  if (!workspaceKey || !isWorkspaceDbOpenForKey(workspaceKey)) return;
+  if (state.pgHydratingWorkspaceKeys.has(workspaceKey)) return;
+
+  const refreshKey = buildTowerPgTaskBoardRefreshKey(store);
+  if (!refreshKey || state.pgRefreshingTaskBoardKeys.has(refreshKey)) return;
+  const lastRefreshAt = Number(state.pgTaskBoardRefreshAt.get(refreshKey) || 0);
+  if (Date.now() - lastRefreshAt < PG_TASK_BOARD_REFRESH_MIN_MS) return;
+
+  state.pgRefreshingTaskBoardKeys.add(refreshKey);
+  state.pgTaskBoardRefreshAt.set(refreshKey, Date.now());
+  Promise.resolve()
+    .then(async () => {
+      if (String(store.currentWorkspaceKey || '') !== workspaceKey) return;
+      await store.refreshTasks();
+    })
+    .catch((error) => {
+      flightDeckLog('debug', 'pg', 'Tower PG task board refresh failed after route activation', {
+        workspaceKey,
+        boardId: String(store?.selectedBoardId || ''),
+        error: error?.message || String(error),
+      });
+    })
+    .finally(() => {
+      state.pgRefreshingTaskBoardKeys.delete(refreshKey);
     });
 }
 
@@ -462,6 +508,7 @@ export const sectionLiveQueryMixin = {
     }
 
     scheduleTowerPgWorkspaceHydration(this, state);
+    scheduleTowerPgTaskBoardRefresh(this, state);
   },
 
   stopWorkspaceLiveQueries() {

@@ -971,10 +971,11 @@ export async function hydrateTowerPgEventUpdates(store, events = [], deps = {}) 
 
     if (['message', 'thread'].includes(entityType) && channelId) {
       messageChannels.add(channelId);
-    } else if (['task', 'task_assignment'].includes(entityType) && channelId) {
+    } else if (['task', 'task_assignment'].includes(entityType)) {
       const taskId = trimText(event?.entity_id || payload.task_id || payload.id);
       if (taskId) taskIds.add(taskId);
-      else taskChannels.add(channelId);
+      else if (channelId) taskChannels.add(channelId);
+      else fallbackEvents += 1;
     } else if (['doc', 'file'].includes(entityType) && channelId) {
       documentChannels.add(channelId);
     } else if (entityType === 'audio_note' && channelId) {
