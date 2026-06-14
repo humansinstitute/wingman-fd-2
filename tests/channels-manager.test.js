@@ -508,6 +508,92 @@ describe('channels-manager pure utilities', () => {
     ]));
   });
 
+  it('adds a selected PG user as a setup permission row and persists it on channel create', async () => {
+    const store = applyChannelMixin({
+      channels: [],
+      selectedBoardId: 'scope-a',
+      selectedBoardScope: { record_id: 'scope-a', title: 'Scope A', level: 'l1' },
+      scopesMap: new Map([['scope-a', { record_id: 'scope-a', title: 'Scope A', level: 'l1' }]]),
+      scopes: [{ record_id: 'scope-a', title: 'Scope A', level: 'l1', record_state: 'active' }],
+      currentWorkspace: {
+        workspaceId: 'workspace-1',
+        appNpub: 'flightdeck-app',
+        pgMe: { actor: { actor_id: 'actor-owner', npub: 'npub1owner' } },
+      },
+      backendUrl: 'https://tower.example',
+      workspaceOwnerNpub: 'npub1workspace',
+      newChannelName: 'Ops',
+      newChannelDescription: '',
+      newChannelAccessPrincipalDraft: '',
+      newChannelAccessRows: [
+        { principal_type: 'group', principal_id: 'group-workspace', capacity: 'viewer' },
+        { principal_type: 'actor', principal_id: 'actor-owner', capacity: 'manager' },
+      ],
+      groups: [{ group_id: 'group-workspace', group_npub: 'group-workspace', name: 'Workspace' }],
+      currentWorkspaceGroups: [{ group_id: 'group-workspace', group_npub: 'group-workspace', name: 'Workspace' }],
+      pgWorkspaceMembers: [
+        { actor_id: 'actor-owner', npub: 'npub1owner', display_name: 'Owner' },
+        { actor_id: 'actor-wingman-21', npub: 'npub1wingman21', display_name: 'Wingman 21' },
+      ],
+      getSenderName: vi.fn((npub) => ({
+        npub1owner: 'Owner',
+        npub1wingman21: 'Wingman 21',
+      }[npub] || npub)),
+      resolveGroupId: (groupId) => groupId,
+      refreshChannels: vi.fn(async function refreshChannels() {
+        return this.channels;
+      }),
+      selectChannel: vi.fn(),
+      closeNewChannelModal: vi.fn(),
+    });
+
+    expect(store.newChannelAccessAddOptions).toEqual([
+      expect.objectContaining({
+        value: 'actor:actor-wingman-21',
+        label: 'Wingman 21',
+      }),
+    ]);
+
+    store.addNewChannelAccessRow('actor:actor-wingman-21');
+
+    expect(store.newChannelAccessPrincipalDraft).toBe('');
+    expect(store.newChannelAccessRows).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        principal_type: 'actor',
+        principal_id: 'actor-wingman-21',
+        capacity: 'viewer',
+      }),
+    ]));
+    expect(store.newChannelAccessAddOptions).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ value: 'actor:actor-wingman-21' }),
+    ]));
+
+    await store.createNamedChannel();
+
+    expect(createTowerPgScopeChannel).toHaveBeenCalledWith('workspace-1', 'scope-a', {
+      name: 'Ops',
+      description: undefined,
+      kind: 'channel',
+      grants: [
+        {
+          principal_type: 'group',
+          principal_id: 'group-workspace',
+          access_level: 'view',
+        },
+        {
+          principal_type: 'actor',
+          principal_id: 'actor-owner',
+          access_level: 'manage',
+        },
+        {
+          principal_type: 'actor',
+          principal_id: 'actor-wingman-21',
+          access_level: 'view',
+        },
+      ],
+    }, { baseUrl: 'https://tower.example', appNpub: 'flightdeck-app' });
+  });
+
   it('opens the new channel modal in DM mode only when the DM scope is selected', () => {
     const dmStore = applyChannelMixin({
       selectedBoardId: DM_SCOPE_ID,

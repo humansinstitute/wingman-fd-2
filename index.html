@@ -6704,8 +6704,15 @@
                         <label class="new-channel-label">Channel permissions</label>
                         <p class="new-channel-access-help">Choose who can use this channel before it is created.</p>
                       </div>
-                      <button type="button" class="new-channel-access-add" aria-label="Add initial channel permission" data-testid="new-channel-add-permission" @click="$store.chat.addNewChannelAccessRow()" :disabled="!$store.chat.newChannelCanAddAccessRow">Add permission</button>
+                      <button type="button" class="new-channel-access-add" aria-label="Add next available channel permission" data-testid="new-channel-add-permission" @click="$store.chat.addNewChannelAccessRow()" :disabled="!$store.chat.newChannelCanAddAccessRow">Add permission</button>
                     </div>
+                    <label class="new-channel-access-picker-label" for="new-channel-access-picker">Select user or group</label>
+                    <select id="new-channel-access-picker" class="new-channel-select new-channel-access-picker" aria-label="Select user or group to add to channel permissions" data-testid="new-channel-permission-picker" x-model="$store.chat.newChannelAccessPrincipalDraft" @change="$store.chat.addNewChannelAccessRow($event.target.value)" :disabled="!$store.chat.newChannelCanAddAccessRow">
+                      <option value="">Select user or group</option>
+                      <template x-for="option in $store.chat.newChannelAccessAddOptions" :key="option.value">
+                        <option :value="option.value" x-text="`${option.label} (${option.type === 'group' ? 'Group' : 'Person'})`"></option>
+                      </template>
+                    </select>
                     <div class="new-channel-access-columns" x-show="$store.chat.newChannelAccessRows.length > 0">
                       <span>Who</span>
                       <span>Permission</span>

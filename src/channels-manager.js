@@ -908,8 +908,19 @@ export const channelsManagerMixin = {
     ];
   },
 
+  get newChannelAccessAddOptions() {
+    const selectedPrincipals = new Set(
+      (Array.isArray(this.newChannelAccessRows) ? this.newChannelAccessRows : [])
+        .map((row) => this.getNewChannelAccessPrincipalValue(row))
+        .filter(Boolean)
+    );
+    return this.newChannelAccessPrincipalOptions.filter((option) =>
+      !option.disabled && !selectedPrincipals.has(option.value)
+    );
+  },
+
   get newChannelCanAddAccessRow() {
-    return this.newChannelAccessPrincipalOptions.some((option) => !option.disabled);
+    return this.newChannelAccessAddOptions.length > 0;
   },
 
   get canCreateNamedChannel() {
@@ -948,15 +959,19 @@ export const channelsManagerMixin = {
     this.newChannelAccessRows = rows;
   },
 
-  addNewChannelAccessRow() {
-    const firstPrincipal = this.newChannelAccessPrincipalOptions.find((option) => !option.disabled);
-    if (!firstPrincipal) return;
+  addNewChannelAccessRow(value = '') {
+    const requestedValue = String(value || this.newChannelAccessPrincipalDraft || '').trim();
+    const principal = requestedValue
+      ? this.newChannelAccessAddOptions.find((option) => option.value === requestedValue)
+      : this.newChannelAccessAddOptions[0];
+    this.newChannelAccessPrincipalDraft = '';
+    if (!principal) return;
     this.newChannelAccessRows = [
       ...(Array.isArray(this.newChannelAccessRows) ? this.newChannelAccessRows : []),
       {
         id: crypto.randomUUID(),
-        principal_type: firstPrincipal.type,
-        principal_id: firstPrincipal.id,
+        principal_type: principal.type,
+        principal_id: principal.id,
         capacity: 'viewer',
       },
     ];
@@ -977,6 +992,7 @@ export const channelsManagerMixin = {
 
   resetNewChannelAccessRows() {
     if (!isTowerPgBackendMode()) {
+      this.newChannelAccessPrincipalDraft = '';
       this.newChannelAccessRows = [];
       return;
     }
@@ -1002,6 +1018,7 @@ export const channelsManagerMixin = {
         capacity: 'manager',
       });
     }
+    this.newChannelAccessPrincipalDraft = '';
     this.newChannelAccessRows = rows;
   },
 

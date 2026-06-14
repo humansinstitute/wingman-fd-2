@@ -8528,6 +8528,19 @@ button:disabled {
   cursor: not-allowed;
 }
 
+.new-channel-access-picker-label {
+  display: block;
+  margin-top: 0.65rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.new-channel-access-picker {
+  margin-top: 0.3rem;
+}
+
 .new-channel-access-list {
   display: flex;
   flex-direction: column;

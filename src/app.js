@@ -803,6 +803,7 @@ export function initApp() {
     newChannelName: '',
     newChannelDescription: '',
     newChannelGroupId: '',
+    newChannelAccessPrincipalDraft: '',
     newChannelAccessRows: [],
     superbasedTokenInput: '',
     superbasedError: null,
