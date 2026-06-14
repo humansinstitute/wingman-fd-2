@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-Bd8brEwI.js"></script>
+  <script type="module" crossorigin src="/assets/index-BRJerbI6.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-D0Rm8eVf.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
@@ -6623,15 +6623,15 @@
 
         <!-- New channel modal -->
         <div class="new-channel-modal-overlay" x-show="$store.chat.showNewChannelModal" x-transition.opacity @click.self="$store.chat.closeNewChannelModal()">
-          <div class="new-channel-modal">
+          <div class="new-channel-modal" role="dialog" aria-modal="true" aria-labelledby="new-channel-modal-title" data-testid="new-channel-modal">
             <div class="new-channel-modal-header">
-              <h3>New channel</h3>
-              <button type="button" class="new-channel-modal-close" @click="$store.chat.closeNewChannelModal()">&times;</button>
+              <h3 id="new-channel-modal-title">New channel</h3>
+              <button type="button" class="new-channel-modal-close" aria-label="Close new channel modal" data-testid="new-channel-close" @click="$store.chat.closeNewChannelModal()">&times;</button>
             </div>
 
-            <div class="new-channel-tabs">
-              <button type="button" class="new-channel-tab" x-show="$store.chat.canCreateDmInCurrentScope" :class="{ active: $store.chat.newChannelMode === 'dm' }" @click="$store.chat.newChannelMode = 'dm'">Direct message</button>
-              <button type="button" class="new-channel-tab" x-show="!$store.chat.isDmScopeSelected" :class="{ active: $store.chat.newChannelMode === 'channel' }" @click="$store.chat.newChannelMode = 'channel'">Channel</button>
+            <div class="new-channel-tabs" role="tablist" aria-label="New channel type">
+              <button type="button" role="tab" class="new-channel-tab" x-show="$store.chat.canCreateDmInCurrentScope" :aria-selected="$store.chat.newChannelMode === 'dm'" :class="{ active: $store.chat.newChannelMode === 'dm' }" data-testid="new-channel-mode-dm" @click="$store.chat.newChannelMode = 'dm'">Direct message</button>
+              <button type="button" role="tab" class="new-channel-tab" x-show="!$store.chat.isDmScopeSelected" :aria-selected="$store.chat.newChannelMode === 'channel'" :class="{ active: $store.chat.newChannelMode === 'channel' }" data-testid="new-channel-mode-channel" @click="$store.chat.newChannelMode = 'channel'">Channel</button>
             </div>
 
             <div class="new-channel-body">
@@ -6695,10 +6695,10 @@
               <template x-if="$store.chat.newChannelMode === 'channel' && !$store.chat.isDmScopeSelected">
                 <div class="new-channel-form">
                   <label class="new-channel-label">Channel name</label>
-                  <input class="new-channel-input" type="text" placeholder="e.g. general, design, ops" x-model="$store.chat.newChannelName" />
+                  <input class="new-channel-input" type="text" placeholder="e.g. general, design, ops" x-model="$store.chat.newChannelName" aria-label="Channel name" data-testid="new-channel-name-input" />
 
                   <label class="new-channel-label">Description <span class="new-channel-optional">(optional)</span></label>
-                  <input class="new-channel-input" type="text" placeholder="What's this channel about?" x-model="$store.chat.newChannelDescription" />
+                  <input class="new-channel-input" type="text" placeholder="What's this channel about?" x-model="$store.chat.newChannelDescription" aria-label="Channel description" data-testid="new-channel-description-input" />
 
                   <div class="new-channel-access-editor" x-show="$store.chat.isTowerPgMode">
                     <div class="new-channel-access-header">
@@ -6706,7 +6706,7 @@
                         <label class="new-channel-label">Channel permissions</label>
                         <p class="new-channel-access-help">Choose who can use this channel before it is created.</p>
                       </div>
-                      <button type="button" class="new-channel-access-add" @click="$store.chat.addNewChannelAccessRow()" :disabled="!$store.chat.newChannelCanAddAccessRow">Add permission</button>
+                      <button type="button" class="new-channel-access-add" aria-label="Add initial channel permission" data-testid="new-channel-add-permission" @click="$store.chat.addNewChannelAccessRow()" :disabled="!$store.chat.newChannelCanAddAccessRow">Add permission</button>
                     </div>
                     <div class="new-channel-access-columns" x-show="$store.chat.newChannelAccessRows.length > 0">
                       <span>Who</span>
@@ -6716,7 +6716,7 @@
                       <template x-for="(row, index) in $store.chat.newChannelAccessRows" :key="$store.chat.getNewChannelAccessRowKey(row, index)">
                         <div class="new-channel-access-row">
                           <div class="new-channel-access-principal">
-                            <select class="new-channel-select" :value="$store.chat.getNewChannelAccessPrincipalValue(row)" @change="$store.chat.setNewChannelAccessPrincipal(index, $event.target.value)">
+                            <select class="new-channel-select" :aria-label="`Permission row ${index + 1} principal`" :data-testid="`new-channel-permission-principal-${index}`" :value="$store.chat.getNewChannelAccessPrincipalValue(row)" @change="$store.chat.setNewChannelAccessPrincipal(index, $event.target.value)">
                               <template x-for="option in $store.chat.newChannelAccessPrincipalOptions" :key="option.disabled ? `label-${option.label}` : option.value">
                                 <option :value="option.value || ''" :disabled="option.disabled" x-text="option.disabled ? option.label : `${option.label} (${option.type === 'group' ? 'Group' : 'Person'})`"></option>
                               </template>
@@ -6724,14 +6724,14 @@
                             <small x-text="$store.chat.getNewChannelAccessPrincipalLabel(row)"></small>
                           </div>
                           <div class="new-channel-access-capacity">
-                            <select class="new-channel-select" :value="row.capacity" @change="$store.chat.setNewChannelAccessCapacity(index, $event.target.value)">
+                            <select class="new-channel-select" :aria-label="`Permission row ${index + 1} access level`" :data-testid="`new-channel-permission-capacity-${index}`" :value="row.capacity" @change="$store.chat.setNewChannelAccessCapacity(index, $event.target.value)">
                               <template x-for="capacity in $store.chat.pgChannelGrantCapacityOptions" :key="capacity.value">
                                 <option :value="capacity.value" x-text="capacity.label"></option>
                               </template>
                             </select>
                             <small x-text="$store.chat.getPgChannelGrantCapacityDescription(row.capacity)"></small>
                           </div>
-                          <button type="button" class="new-channel-access-remove" title="Remove access row" aria-label="Remove access row" @click="$store.chat.removeNewChannelAccessRow(index)">×</button>
+                          <button type="button" class="new-channel-access-remove" title="Remove access row" :aria-label="`Remove permission row ${index + 1}`" :data-testid="`new-channel-permission-remove-${index}`" @click="$store.chat.removeNewChannelAccessRow(index)">×</button>
                         </div>
                       </template>
                     </div>
@@ -6786,8 +6786,10 @@
             </div>
 
             <div class="new-channel-footer">
-              <button type="button" class="new-channel-cancel-btn" @click="$store.chat.closeNewChannelModal()">Cancel</button>
+              <button type="button" class="new-channel-cancel-btn" data-testid="new-channel-cancel" @click="$store.chat.closeNewChannelModal()">Cancel</button>
               <button type="button" class="new-channel-create-btn"
+                data-testid="new-channel-create"
+                aria-label="Create channel"
                 @click="$store.chat.newChannelMode === 'dm' ? $store.chat.createDmChannel() : $store.chat.createNamedChannel()"
                 :disabled="$store.chat.newChannelMode === 'dm' ? !($store.chat.newChannelDmNpub.startsWith('npub1') && $store.chat.newChannelDmNpub.length >= 63) : !$store.chat.canCreateNamedChannel">
                 Create
