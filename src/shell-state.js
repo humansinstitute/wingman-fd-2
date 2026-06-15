@@ -581,6 +581,7 @@ export function createShellState(options = {}) {
           case 'chat': return 'chat';
           case 'docs': return 'docs';
           case 'files': return 'files';
+          case 'autopilot': return 'autopilot';
           case 'reports': return 'reports';
           case 'opportunities': return 'opportunities';
           case 'people': return 'people';
@@ -736,7 +737,7 @@ export function createShellState(options = {}) {
       if (section === 'chat' || section === 'docs') {
         this.markSectionRead(section);
       }
-      if (section === 'tasks' || section === 'reports' || section === 'files') {
+      if (section === 'tasks' || section === 'reports' || section === 'files' || section === 'autopilot') {
         this.validateSelectedBoardId();
         this.normalizeTaskFilterTags();
       }
@@ -783,7 +784,10 @@ export function createShellState(options = {}) {
     },
 
     clearInactiveSectionData(activeSection) {
-      if (activeSection !== 'chat') {
+      const keepsChatData = activeSection === 'chat' || activeSection === 'autopilot';
+      const keepsDocsData = activeSection === 'docs' || activeSection === 'autopilot';
+      const keepsFilesData = activeSection === 'files' || activeSection === 'autopilot';
+      if (!keepsChatData) {
         this.messages = [];
         this.audioNotes = [];
       }
@@ -794,12 +798,12 @@ export function createShellState(options = {}) {
         this.showTaskDetail = false;
         this.editingTask = null;
       }
-      if (activeSection !== 'docs') {
+      if (!keepsDocsData) {
         this.documents = [];
         this.directories = [];
         this.docComments = [];
       }
-      if (activeSection !== 'files') {
+      if (!keepsFilesData) {
         this.fileMessages = [];
         this.fileComments = [];
       }

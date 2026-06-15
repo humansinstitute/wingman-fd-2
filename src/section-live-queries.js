@@ -249,6 +249,40 @@ function buildWorkspaceSpecs(store) {
         },
       ];
       break;
+    case 'autopilot':
+      sectionSpecs = [
+        {
+          key: 'autopilot:messages',
+          query: () => getMessagesByOwner(ownerNpub),
+          onNext: (messages) => store.applyFileMessages(messages),
+        },
+        {
+          key: 'autopilot:comments',
+          query: () => getCommentsByOwner(ownerNpub),
+          onNext: (comments) => store.applyFileComments(comments),
+        },
+        {
+          key: 'autopilot:audio-notes',
+          query: () => getAudioNotesByOwner(ownerNpub),
+          onNext: (audioNotes) => store.applyAudioNotes(audioNotes),
+        },
+        {
+          key: 'autopilot:directories',
+          query: () => getDirectoriesByOwner(ownerNpub),
+          onNext: (directories) => store.applyDirectories(directories),
+        },
+        {
+          key: 'autopilot:documents',
+          query: () => getDocumentsByOwner(ownerNpub),
+          onNext: (documents) => store.applyDocuments(documents),
+        },
+        {
+          key: 'autopilot:tasks',
+          query: () => getTasksByOwner(ownerNpub),
+          onNext: (tasks) => store.applyTasks(tasks),
+        },
+      ];
+      break;
     case 'docs':
       sectionSpecs = [
         {

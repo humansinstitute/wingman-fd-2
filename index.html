@@ -650,7 +650,8 @@
           <li
             x-cloak
             x-show="$store.chat.hasHarnessLink"
-            @click="$store.chat.openHarnessLink()"
+            :class="{ active: $store.chat.navSection === 'autopilot' }"
+            @click="$store.chat.navigateTo('autopilot')"
             :title="$store.chat.workspaceHarnessUrl"
           >
             <span class="sidebar-icon" aria-hidden="true">
@@ -4387,6 +4388,90 @@
             </div>
           </div>
           </div>
+        </template>
+
+        <template x-if="$store.chat.navSection === 'autopilot'">
+          <section class="autopilot-overview-section">
+            <div class="autopilot-overview-header">
+              <div>
+                <h2>Autopilot</h2>
+                <p x-text="$store.chat.workspaceHarnessUrl || 'No Autopilot URL configured.'"></p>
+              </div>
+              <button type="button" class="btn-confirm" @click="$store.chat.openHarnessLink()" :disabled="!$store.chat.hasHarnessLink">Open Autopilot</button>
+            </div>
+
+            <div class="autopilot-overview-toolbar">
+              <select class="files-filter-select" x-model="$store.chat.autopilotOverviewScopeFilter">
+                <template x-for="option in $store.chat.autopilotOverviewScopeOptions" :key="option.id">
+                  <option :value="option.id" x-text="option.label"></option>
+                </template>
+              </select>
+              <select class="files-filter-select" x-model="$store.chat.autopilotOverviewChannelFilter">
+                <template x-for="option in $store.chat.autopilotOverviewChannelOptions" :key="option.id">
+                  <option :value="option.id" x-text="option.label"></option>
+                </template>
+              </select>
+            </div>
+
+            <div class="autopilot-overview-stats">
+              <article>
+                <span>Threads</span>
+                <strong x-text="$store.chat.autopilotOverviewStats.threads"></strong>
+              </article>
+              <article>
+                <span>Docs</span>
+                <strong x-text="$store.chat.autopilotOverviewStats.documents"></strong>
+              </article>
+              <article>
+                <span>Unresolved comments</span>
+                <strong x-text="$store.chat.autopilotOverviewStats.unresolvedDocComments"></strong>
+              </article>
+              <article>
+                <span>Files</span>
+                <strong x-text="$store.chat.autopilotOverviewStats.files"></strong>
+              </article>
+            </div>
+
+            <div class="autopilot-overview-grid">
+              <section class="autopilot-overview-panel">
+                <div class="autopilot-panel-heading">
+                  <h3>Latest Messages</h3>
+                </div>
+                <div class="autopilot-overview-list" x-show="$store.chat.autopilotOverviewThreads.length > 0">
+                  <template x-for="thread in $store.chat.autopilotOverviewThreads.slice(0, 12)" :key="thread.id">
+                    <button type="button" class="autopilot-overview-row" @click="$store.chat.openAutopilotOverviewThread(thread)">
+                      <span class="autopilot-row-title" x-text="thread.title"></span>
+                      <span class="autopilot-row-meta">
+                        <span x-text="thread.channelLabel"></span>
+                        <span x-text="$store.chat.formatRelativeTime(thread.latestMessageUpdatedAt)"></span>
+                      </span>
+                      <span class="autopilot-row-preview" x-text="thread.latestMessage"></span>
+                    </button>
+                  </template>
+                </div>
+                <p class="settings-field-help" x-show="$store.chat.autopilotOverviewThreads.length === 0">No matching threads.</p>
+              </section>
+
+              <section class="autopilot-overview-panel">
+                <div class="autopilot-panel-heading">
+                  <h3>Recent Files</h3>
+                </div>
+                <div class="autopilot-overview-list" x-show="$store.chat.autopilotOverviewFiles.length > 0">
+                  <template x-for="file in $store.chat.autopilotOverviewFiles.slice(0, 12)" :key="file.id">
+                    <button type="button" class="autopilot-overview-row" @click="$store.chat.openFileBrowserSource(file)">
+                      <span class="autopilot-row-title" x-text="file.name"></span>
+                      <span class="autopilot-row-meta">
+                        <span x-text="file.source_label"></span>
+                        <span x-text="$store.chat.fileUpdatedLabel(file)"></span>
+                      </span>
+                      <span class="autopilot-row-preview" x-text="file.object_id"></span>
+                    </button>
+                  </template>
+                </div>
+                <p class="settings-field-help" x-show="$store.chat.autopilotOverviewFiles.length === 0">No matching files.</p>
+              </section>
+            </div>
+          </section>
         </template>
 
 

@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-DcdAZxPs.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-DTj_seTb.css">
+  <script type="module" crossorigin src="/assets/index-wfHUDZBG.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-BypUs7Az.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -142,7 +142,7 @@
       <div class="error-bar" x-text="$store.chat.error"></div>
     </template>
 
-    <header class="page-header">
+    <header class="page-header" x-show="!$store.chat.appHeaderHidden" x-cloak>
       <div class="header-leading">
         <button
           type="button"
@@ -167,7 +167,7 @@
           <img class="brand-logo" src="/wingman-logo.png" alt="Wingman logo" />
           <div class="brand-copy">
             <h1>Wingman</h1>
-            <p>Solvitur Ambulando | Be Free</p>
+            <p>Solvitur Ambulando</p>
           </div>
         </button>
       </div>
@@ -252,7 +252,7 @@
         <template x-for="board in $store.chat.filterFlightDeckScopeOptions('')" :key="board.id">
           <li
             class="board-picker-typeahead-option"
-            :class="{ 'board-picker-typeahead-active': $store.chat.selectedBoardId === board.id }"
+            :class="{ 'board-picker-typeahead-active': $store.chat.isFlightDeckScopeOptionActive(board) }"
             @click="$store.chat.selectBoard(board.id); open = false"
             x-text="board.label"
           ></li>
@@ -511,6 +511,50 @@
     </div>
 
     <div
+      class="doc-modal-backdrop write-context-modal-backdrop"
+      x-show="$store.chat.showWriteContextModal"
+      x-cloak
+      @click.self="$store.chat.closeWriteContextModal()"
+      @keydown.escape.window="$store.chat.closeWriteContextModal()"
+    >
+      <div class="doc-modal-card write-context-modal" role="dialog" aria-modal="true" aria-labelledby="write-context-title">
+        <button class="modal-close" type="button" @click="$store.chat.closeWriteContextModal()">&times;</button>
+        <h3 id="write-context-title" x-text="$store.chat.writeContextTitle"></h3>
+        <p class="doc-comment-modal-copy">Pick the scope and channel for this record.</p>
+        <label class="write-context-field">
+          <span>Scope</span>
+          <select x-model="$store.chat.writeContextScopeId" @change="$store.chat.selectWriteContextScope($event.target.value)">
+            <option value="">Select scope</option>
+            <template x-for="option in $store.chat.writeContextScopeOptions" :key="option.id">
+              <option :value="option.id" x-text="option.label || option.title || option.id"></option>
+            </template>
+          </select>
+        </label>
+        <label class="write-context-field">
+          <span>Channel</span>
+          <select x-model="$store.chat.writeContextChannelId">
+            <option value="">Select channel</option>
+            <template x-for="channel in $store.chat.writeContextChannelOptions" :key="channel.record_id">
+              <option :value="channel.record_id" x-text="$store.chat.getChannelLabel(channel)"></option>
+            </template>
+          </select>
+        </label>
+        <p class="scope-picker-empty" x-show="$store.chat.writeContextScopeOptions.length === 0">Create a scope with a channel before adding records.</p>
+        <p class="files-upload-error" x-show="$store.chat.writeContextError" x-text="$store.chat.writeContextError"></p>
+        <div class="new-doc-modal-actions">
+          <button type="button" class="btn-cancel" :disabled="$store.chat.writeContextSubmitting" @click="$store.chat.closeWriteContextModal()">Cancel</button>
+          <button
+            type="button"
+            class="btn-confirm"
+            :disabled="$store.chat.writeContextSubmitting || !$store.chat.writeContextScopeId || !$store.chat.writeContextChannelId"
+            @click="$store.chat.confirmWriteContextModal()"
+            x-text="$store.chat.writeContextSubmitting ? 'Continuing...' : 'Continue'"
+          ></button>
+        </div>
+      </div>
+    </div>
+
+    <div
       class="command-shortcut-overlay"
       x-show="$store.chat.showCommandPaletteShortcutOverlay && !$store.chat.showCommandPalette"
       x-cloak
@@ -652,7 +696,8 @@
           <li
             x-cloak
             x-show="$store.chat.hasHarnessLink"
-            @click="$store.chat.openHarnessLink()"
+            :class="{ active: $store.chat.navSection === 'autopilot' }"
+            @click="$store.chat.navigateTo('autopilot')"
             :title="$store.chat.workspaceHarnessUrl"
           >
             <span class="sidebar-icon" aria-hidden="true">
@@ -798,7 +843,7 @@
                     <template x-for="(board, idx) in $store.chat.filterFlightDeckScopeOptions(query)" :key="board.id">
                       <li
                         class="board-picker-typeahead-option"
-                        :class="{ 'board-picker-typeahead-active': $store.chat.selectedBoardId === board.id, 'board-picker-typeahead-highlight': idx === bpIdx }"
+                        :class="{ 'board-picker-typeahead-active': $store.chat.isFlightDeckScopeOptionActive(board), 'board-picker-typeahead-highlight': idx === bpIdx }"
                         @click="$store.chat.selectBoard(board.id); open = false; query = ''"
                         @mouseenter="bpIdx = idx"
                         x-text="board.label"
@@ -2431,7 +2476,7 @@
                     <template x-for="(board, idx) in $store.chat.filterFlightDeckScopeOptions(query)" :key="board.id">
                       <li
                         class="board-picker-typeahead-option"
-                        :class="{ 'board-picker-typeahead-active': $store.chat.selectedBoardId === board.id, 'board-picker-typeahead-highlight': idx === bpIdx }"
+                        :class="{ 'board-picker-typeahead-active': $store.chat.isFlightDeckScopeOptionActive(board), 'board-picker-typeahead-highlight': idx === bpIdx }"
                         @click="$store.chat.selectBoard(board.id); open = false; query = ''"
                         @mouseenter="bpIdx = idx"
                         x-text="board.label"
@@ -2491,6 +2536,28 @@
                   <path d="M12 5v14M5 12h14"/>
                 </svg>
               </button>
+              <div class="chat-channel-header-actions">
+                <button
+                  type="button"
+                  class="chat-channel-header-icon-btn"
+                  @click="$store.chat.toggleAppHeaderHidden()"
+                  :title="$store.chat.appHeaderHidden ? 'Show header' : 'Full screen'"
+                  :aria-label="$store.chat.appHeaderHidden ? 'Show header' : 'Full screen'"
+                >
+                  <svg x-show="!$store.chat.appHeaderHidden" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="15 3 21 3 21 9"></polyline>
+                    <polyline points="9 21 3 21 3 15"></polyline>
+                    <line x1="21" y1="3" x2="14" y2="10"></line>
+                    <line x1="3" y1="21" x2="10" y2="14"></line>
+                  </svg>
+                  <svg x-show="$store.chat.appHeaderHidden" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="4 14 10 14 10 20"></polyline>
+                    <polyline points="20 10 14 10 14 4"></polyline>
+                    <line x1="14" y1="10" x2="21" y2="3"></line>
+                    <line x1="3" y1="21" x2="10" y2="14"></line>
+                  </svg>
+                </button>
+              </div>
             </div>
 
           <div class="chat-layout" :class="{ 'chat-layout-thread-full': $store.chat.activeThreadId && $store.chat.threadSize === 'full', 'chat-layout-thread-open': !!$store.chat.activeThreadId }">
@@ -2524,6 +2591,8 @@
                       </button>
                       <div class="chat-msg-actions-popover" x-show="$store.chat.isMessageActionsMenuOpen(msg.record_id)" x-cloak x-transition>
                         <button type="button" :data-record-id="msg.record_id" data-source-surface="main_feed" data-chat-get-it-done="true">Get it done</button>
+                        <button type="button" @click.stop.prevent="$store.chat.copyMessageRawText(msg.record_id)">Copy message</button>
+                        <button type="button" class="chat-msg-actions-danger" @click.stop.prevent="$store.chat.openChatDeleteConfirm('message', msg.record_id)">Delete message</button>
                         <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop.prevent="$store.chat.inspectMessageSyncStatus(msg.record_id)">Check sync status</button>
                       </div>
                     </div>
@@ -2672,9 +2741,6 @@
                   <h3>Thread</h3>
                 </div>
                 <div class="thread-header-actions">
-                  <button class="thread-delete-btn" @click="$store.chat.deleteActiveThread()" type="button" title="Delete thread">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-                  </button>
                   <button class="thread-resize-btn" @click="$store.chat.cycleThreadSize()" type="button"
                     :title="$store.chat.threadSize === 'full' ? 'Exit full screen' : 'Full screen'"
                     :aria-label="$store.chat.threadSize === 'full' ? 'Exit full screen' : 'Full screen'">
@@ -2705,6 +2771,10 @@
                       </button>
                       <div class="chat-msg-actions-popover" x-show="$store.chat.isMessageActionsMenuOpen($store.chat.getThreadParentMessage()?.record_id)" x-cloak x-transition>
                         <button type="button" :data-record-id="$store.chat.getThreadParentMessage()?.record_id || ''" data-source-surface="thread_parent" data-chat-get-it-done="true">Get it done</button>
+                        <button type="button" @click.stop.prevent="$store.chat.copyMessageRawText($store.chat.getThreadParentMessage()?.record_id)">Copy message</button>
+                        <button type="button" @click.stop.prevent="$store.chat.copyThreadRawText($store.chat.getThreadParentMessage()?.record_id)">Copy thread</button>
+                        <button type="button" class="chat-msg-actions-danger" @click.stop.prevent="$store.chat.openChatDeleteConfirm('message', $store.chat.getThreadParentMessage()?.record_id)">Delete message</button>
+                        <button type="button" class="chat-msg-actions-danger" @click.stop.prevent="$store.chat.openChatDeleteConfirm('thread', $store.chat.getThreadParentMessage()?.record_id)">Delete thread</button>
                         <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop.prevent="$store.chat.inspectMessageSyncStatus($store.chat.getThreadParentMessage()?.record_id)">Check sync status</button>
                       </div>
                     </div>
@@ -2776,6 +2846,8 @@
                       </button>
                       <div class="chat-msg-actions-popover" x-show="$store.chat.isMessageActionsMenuOpen(reply.record_id)" x-cloak x-transition>
                         <button type="button" :data-record-id="reply.record_id" data-source-surface="thread_reply" data-chat-get-it-done="true">Get it done</button>
+                        <button type="button" @click.stop.prevent="$store.chat.copyMessageRawText(reply.record_id)">Copy message</button>
+                        <button type="button" class="chat-msg-actions-danger" @click.stop.prevent="$store.chat.openChatDeleteConfirm('message', reply.record_id)">Delete message</button>
                         <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop.prevent="$store.chat.inspectMessageSyncStatus(reply.record_id)">Check sync status</button>
                       </div>
                     </div>
@@ -4194,10 +4266,23 @@
                         <span>Scope</span>
                         <select
                           x-model="item.scope_id"
+                          @change="item.channel_id = ($store.chat.fileUploadChannelOptions(item.scope_id)[0]?.id || '')"
                           :disabled="!$store.chat.canEditFileUploadItem(item)"
                         >
                           <option value="">Select scope</option>
                           <template x-for="option in $store.chat.fileUploadScopeOptions" :key="option.id">
+                            <option :value="option.id" x-text="option.label"></option>
+                          </template>
+                        </select>
+                      </label>
+                      <label>
+                        <span>Channel</span>
+                        <select
+                          x-model="item.channel_id"
+                          :disabled="!$store.chat.canEditFileUploadItem(item)"
+                        >
+                          <option value="">Select channel</option>
+                          <template x-for="option in $store.chat.fileUploadChannelOptions(item.scope_id)" :key="option.id">
                             <option :value="option.id" x-text="option.label"></option>
                           </template>
                         </select>
@@ -4389,6 +4474,90 @@
             </div>
           </div>
           </div>
+        </template>
+
+        <template x-if="$store.chat.navSection === 'autopilot'">
+          <section class="autopilot-overview-section">
+            <div class="autopilot-overview-header">
+              <div>
+                <h2>Autopilot</h2>
+                <p x-text="$store.chat.workspaceHarnessUrl || 'No Autopilot URL configured.'"></p>
+              </div>
+              <button type="button" class="btn-confirm" @click="$store.chat.openHarnessLink()" :disabled="!$store.chat.hasHarnessLink">Open Autopilot</button>
+            </div>
+
+            <div class="autopilot-overview-toolbar">
+              <select class="files-filter-select" x-model="$store.chat.autopilotOverviewScopeFilter">
+                <template x-for="option in $store.chat.autopilotOverviewScopeOptions" :key="option.id">
+                  <option :value="option.id" x-text="option.label"></option>
+                </template>
+              </select>
+              <select class="files-filter-select" x-model="$store.chat.autopilotOverviewChannelFilter">
+                <template x-for="option in $store.chat.autopilotOverviewChannelOptions" :key="option.id">
+                  <option :value="option.id" x-text="option.label"></option>
+                </template>
+              </select>
+            </div>
+
+            <div class="autopilot-overview-stats">
+              <article>
+                <span>Threads</span>
+                <strong x-text="$store.chat.autopilotOverviewStats.threads"></strong>
+              </article>
+              <article>
+                <span>Docs</span>
+                <strong x-text="$store.chat.autopilotOverviewStats.documents"></strong>
+              </article>
+              <article>
+                <span>Unresolved comments</span>
+                <strong x-text="$store.chat.autopilotOverviewStats.unresolvedDocComments"></strong>
+              </article>
+              <article>
+                <span>Files</span>
+                <strong x-text="$store.chat.autopilotOverviewStats.files"></strong>
+              </article>
+            </div>
+
+            <div class="autopilot-overview-grid">
+              <section class="autopilot-overview-panel">
+                <div class="autopilot-panel-heading">
+                  <h3>Latest Messages</h3>
+                </div>
+                <div class="autopilot-overview-list" x-show="$store.chat.autopilotOverviewThreads.length > 0">
+                  <template x-for="thread in $store.chat.autopilotOverviewThreads.slice(0, 12)" :key="thread.id">
+                    <button type="button" class="autopilot-overview-row" @click="$store.chat.openAutopilotOverviewThread(thread)">
+                      <span class="autopilot-row-title" x-text="thread.title"></span>
+                      <span class="autopilot-row-meta">
+                        <span x-text="thread.channelLabel"></span>
+                        <span x-text="$store.chat.formatRelativeTime(thread.latestMessageUpdatedAt)"></span>
+                      </span>
+                      <span class="autopilot-row-preview" x-text="thread.latestMessage"></span>
+                    </button>
+                  </template>
+                </div>
+                <p class="settings-field-help" x-show="$store.chat.autopilotOverviewThreads.length === 0">No matching threads.</p>
+              </section>
+
+              <section class="autopilot-overview-panel">
+                <div class="autopilot-panel-heading">
+                  <h3>Recent Files</h3>
+                </div>
+                <div class="autopilot-overview-list" x-show="$store.chat.autopilotOverviewFiles.length > 0">
+                  <template x-for="file in $store.chat.autopilotOverviewFiles.slice(0, 12)" :key="file.id">
+                    <button type="button" class="autopilot-overview-row" @click="$store.chat.openFileBrowserSource(file)">
+                      <span class="autopilot-row-title" x-text="file.name"></span>
+                      <span class="autopilot-row-meta">
+                        <span x-text="file.source_label"></span>
+                        <span x-text="$store.chat.fileUpdatedLabel(file)"></span>
+                      </span>
+                      <span class="autopilot-row-preview" x-text="file.object_id"></span>
+                    </button>
+                  </template>
+                </div>
+                <p class="settings-field-help" x-show="$store.chat.autopilotOverviewFiles.length === 0">No matching files.</p>
+              </section>
+            </div>
+          </section>
         </template>
 
 
@@ -5161,14 +5330,14 @@
                 <div class="scope-card" :data-level="s1.level" :id="'scope-' + s1.record_id" x-data="{ expanded: false, actionsOpen: false }">
                   <div class="scope-card-header">
                     <span class="scope-level-badge" x-show="!$store.chat.isTowerPgMode" :data-level="s1.level" x-text="$store.chat.scopeLevelLabel(s1.level)"></span>
-                    <div class="scope-card-actions" x-show="$store.chat.canAdminWorkspace && !$store.chat.isTowerPgMode">
+                    <div class="scope-card-actions" x-show="$store.chat.canAdminWorkspace">
                       <div class="doc-actions-menu scope-actions-menu" @click.outside="actionsOpen = false">
                         <button type="button" class="doc-actions-toggle" title="Scope actions" aria-label="Scope actions" @click.stop="actionsOpen = !actionsOpen">
                           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/></svg>
                         </button>
                         <div class="doc-actions-popover" x-show="actionsOpen" x-cloak x-transition>
 	                          <button x-show="!$store.chat.isTowerPgMode && parseInt(s1.level.slice(1)) < 5" type="button" @click.stop="$store.chat.startNewScope('l' + (parseInt(s1.level.slice(1)) + 1), s1.record_id); actionsOpen = false">Add child scope</button>
-	                          <button type="button" @click.stop="$store.chat.startEditScope(s1.record_id); actionsOpen = false">Edit scope</button>
+	                          <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop="$store.chat.startEditScope(s1.record_id); actionsOpen = false">Edit scope</button>
 	                          <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop="$store.chat.openRecordStatusModal({ familyId: 'scope', recordId: s1.record_id, label: s1.title || 'Untitled scope' }); actionsOpen = false">Check status</button>
 	                          <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop="$store.chat.reapplyScopeGroupCrypto(s1.record_id); actionsOpen = false" :disabled="$store.chat.scopePolicyRepairBusy">Reapply group crypto</button>
                           <button type="button" class="doc-actions-delete" @click.stop="if(confirm('Delete this scope and its children?')) $store.chat.deleteScope(s1.record_id); actionsOpen = false">Delete scope</button>
@@ -5466,6 +5635,18 @@
                     </select>
                   </div>
                 </template>
+                <div class="scope-field" x-show="$store.chat.isTowerPgMode">
+                  <label class="scope-field-label">Template</label>
+                  <select
+                    x-model="$store.chat.newScopeTemplateId"
+                    @change="$store.chat.selectNewScopeTemplate($event.target.value)"
+                  >
+                    <option value="">Blank scope</option>
+                    <template x-for="template in $store.chat.scopeTemplateOptions" :key="template.id">
+                      <option :value="template.id" x-text="template.title"></option>
+                    </template>
+                  </select>
+                </div>
                 <div class="scope-field">
                   <label class="scope-field-label">Title</label>
                   <input
@@ -5486,6 +5667,20 @@
                     @keydown.escape="$store.chat.cancelNewScope()"
                   />
                 </div>
+                <template x-for="field in $store.chat.newScopeTemplateFields" :key="`scope-template-field-${field.name}`">
+                  <div class="scope-field">
+                    <label class="scope-field-label" x-text="field.label"></label>
+                    <input
+                      type="text"
+                      :value="$store.chat.newScopeTemplateValues[field.name] || ''"
+                      :placeholder="field.name === 'workingdir' ? '/Users/mini/code/project' : ''"
+                      @input="$store.chat.setNewScopeTemplateValue(field.name, $event.target.value)"
+                      @keydown.enter.prevent="$store.chat.addScope()"
+                      @keydown.escape="$store.chat.cancelNewScope()"
+                    />
+                  </div>
+                </template>
+                <p class="files-upload-error scope-template-error" x-show="$store.chat.newScopeTemplateError" x-text="$store.chat.newScopeTemplateError"></p>
                 <div class="scope-field scope-field-wide">
                   <label class="scope-field-label" x-text="$store.chat.isTowerPgMode ? 'Owner group' : 'Default groups'"></label>
                   <div class="scope-groups-list" x-show="$store.chat.newScopeAssignedGroupIds.length > 0">
@@ -5579,8 +5774,8 @@
 
               <template x-if="$store.chat.showNewScopeForm">
                 <div class="scope-modal-actions">
-                  <button type="button" class="scope-cancel-btn" @click="$store.chat.cancelNewScope()">Cancel</button>
-                  <button type="button" class="scope-save-btn" @click="$store.chat.addScope()">Create</button>
+                  <button type="button" class="scope-cancel-btn" @click="$store.chat.cancelNewScope()" :disabled="$store.chat.newScopeSubmitting">Cancel</button>
+                  <button type="button" class="scope-save-btn" @click="$store.chat.addScope()" :disabled="$store.chat.newScopeSubmitting" x-text="$store.chat.newScopeSubmitting ? 'Creating...' : 'Create'"></button>
                 </div>
               </template>
               <template x-if="!$store.chat.showNewScopeForm">
@@ -6345,6 +6540,31 @@
               </div>
             </div>
 
+            <section class="channel-metadata-panel" x-show="$store.chat.isTowerPgMode">
+              <label class="task-field-label" for="channel-base-prompt-input">Base prompt</label>
+              <textarea
+                id="channel-base-prompt-input"
+                class="new-channel-input channel-base-prompt-input"
+                rows="7"
+                placeholder="Describe how Autopilot should use this channel and the base project context to include with messages."
+                x-model="$store.chat.channelSettingsBasePrompt"
+                :disabled="$store.chat.channelSettingsSaving"
+                aria-label="Channel base prompt"
+                data-testid="channel-base-prompt-input"
+              ></textarea>
+              <div class="channel-metadata-actions">
+                <button
+                  type="button"
+                  class="btn-confirm"
+                  @click="$store.chat.saveChannelBasePrompt()"
+                  :disabled="$store.chat.channelSettingsSaving"
+                  x-text="$store.chat.channelSettingsSaving ? 'Saving...' : 'Save prompt'"
+                ></button>
+                <p class="settings-success" x-show="$store.chat.channelSettingsNotice" x-text="$store.chat.channelSettingsNotice"></p>
+                <p class="groups-subtitle channel-access-error" x-show="$store.chat.channelSettingsError" x-text="$store.chat.channelSettingsError"></p>
+              </div>
+            </section>
+
             <section class="channel-access-panel" x-show="$store.chat.isTowerPgMode">
               <div class="channel-access-header">
                 <h4>Channel access</h4>
@@ -6690,21 +6910,35 @@
                   <label class="new-channel-label">Description <span class="new-channel-optional">(optional)</span></label>
                   <input class="new-channel-input" type="text" placeholder="What's this channel about?" x-model="$store.chat.newChannelDescription" aria-label="Channel description" data-testid="new-channel-description-input" />
 
+                  <div x-show="$store.chat.isTowerPgMode" x-cloak>
+                    <label class="new-channel-label" for="new-channel-base-prompt-input">Base prompt <span class="new-channel-optional">(optional)</span></label>
+                    <textarea
+                      id="new-channel-base-prompt-input"
+                      class="new-channel-input new-channel-textarea"
+                      rows="5"
+                      placeholder="Describe how Autopilot should use this channel and the base project context to include with messages."
+                      x-model="$store.chat.newChannelBasePrompt"
+                      aria-label="Channel base prompt"
+                      data-testid="new-channel-base-prompt-input"
+                    ></textarea>
+                  </div>
+
                   <div class="new-channel-access-editor" x-show="$store.chat.isTowerPgMode">
                     <div class="new-channel-access-header">
                       <div>
                         <label class="new-channel-label">Channel permissions</label>
                         <p class="new-channel-access-help">Choose who can use this channel before it is created.</p>
                       </div>
-                      <button type="button" class="new-channel-access-add" aria-label="Add next available channel permission" data-testid="new-channel-add-permission" @click="$store.chat.addNewChannelAccessRow()" :disabled="!$store.chat.newChannelCanAddAccessRow">Add permission</button>
+                      <button type="button" class="new-channel-access-add" aria-label="Add next available channel permission" data-testid="new-channel-add-permission" @click="$store.chat.addNewChannelAccessRow()" :disabled="Boolean($store.chat.newChannelAccessDisabledReason)">Add permission</button>
                     </div>
                     <label class="new-channel-access-picker-label" for="new-channel-access-picker">Select user or group</label>
-                    <select id="new-channel-access-picker" class="new-channel-select new-channel-access-picker" aria-label="Select user or group to add to channel permissions" data-testid="new-channel-permission-picker" x-model="$store.chat.newChannelAccessPrincipalDraft" @change="$store.chat.addNewChannelAccessRow($event.target.value)" :disabled="!$store.chat.newChannelCanAddAccessRow">
+                    <select id="new-channel-access-picker" class="new-channel-select new-channel-access-picker" aria-label="Select user or group to add to channel permissions" data-testid="new-channel-permission-picker" x-model="$store.chat.newChannelAccessPrincipalDraft" @change="$store.chat.addNewChannelAccessRow($event.target.value)" :disabled="Boolean($store.chat.newChannelAccessDisabledReason)" :aria-describedby="$store.chat.newChannelAccessDisabledReason ? 'new-channel-access-status' : null">
                       <option value="">Select user or group</option>
                       <template x-for="option in $store.chat.newChannelAccessAddOptions" :key="option.value">
                         <option :value="option.value" x-text="`${option.label} (${option.type === 'group' ? 'Group' : 'Person'})`"></option>
                       </template>
                     </select>
+                    <p id="new-channel-access-status" class="new-channel-access-empty" aria-live="polite" data-testid="new-channel-permission-status" x-show="$store.chat.newChannelAccessDisabledReason" x-text="$store.chat.newChannelAccessDisabledReason"></p>
                     <div class="new-channel-access-columns" x-show="$store.chat.newChannelAccessRows.length > 0">
                       <span>Who</span>
                       <span>Permission</span>
@@ -7063,6 +7297,26 @@
               <button type="button" class="btn-confirm" @click="$store.chat.saveDailyNoteEditor()" :disabled="$store.chat.dailyNoteEditorSaving">
                 <span x-show="!$store.chat.dailyNoteEditorSaving">Save daily note</span>
                 <span x-show="$store.chat.dailyNoteEditorSaving">Saving...</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="doc-modal-backdrop" x-show="$store.chat.chatDeleteConfirm.open" x-cloak @click.self="$store.chat.closeChatDeleteConfirm()">
+          <div class="doc-modal-card chat-delete-confirm-modal">
+            <button class="modal-close" type="button" @click="$store.chat.closeChatDeleteConfirm()">&times;</button>
+            <div class="chat-delete-confirm-header">
+              <h3 x-text="$store.chat.chatDeleteConfirm.title || 'Delete'"></h3>
+            </div>
+            <p class="doc-comment-modal-copy" x-text="$store.chat.chatDeleteConfirm.message"></p>
+            <template x-if="$store.chat.chatDeleteConfirm.error">
+              <p class="error-text" x-text="$store.chat.chatDeleteConfirm.error"></p>
+            </template>
+            <div class="new-doc-modal-actions">
+              <button type="button" class="btn-cancel" @click="$store.chat.closeChatDeleteConfirm()" :disabled="$store.chat.chatDeleteConfirm.submitting">Cancel</button>
+              <button type="button" class="btn-delete-doc-confirm" @click="$store.chat.confirmChatDelete()" :disabled="$store.chat.chatDeleteConfirm.submitting">
+                <span x-show="!$store.chat.chatDeleteConfirm.submitting">Delete</span>
+                <span x-show="$store.chat.chatDeleteConfirm.submitting">Deleting...</span>
               </button>
             </div>
           </div>

@@ -23,6 +23,7 @@ import { onboardingAnnouncementsManagerMixin } from './onboarding-announcements-
 import { unreadStoreMixin } from './unread-store.js';
 import { reportsManagerMixin } from './reports-manager.js';
 import { filesManagerMixin } from './files-manager.js';
+import { autopilotOverviewManagerMixin } from './autopilot-overview-manager.js';
 import {
   hydrateTowerPgDailyNotes,
   hydrateTowerPgDocumentsAndFiles,
@@ -912,6 +913,8 @@ export function initApp() {
     dispatchJobId: null,
     dispatchGoal: '',
     jobRunsFilterJobId: '',
+    autopilotOverviewScopeFilter: 'all',
+    autopilotOverviewChannelFilter: 'all',
     jobRunsFilterStatus: '',
 
     showWorkspaceBootstrapModal: false,
@@ -6855,6 +6858,7 @@ export function initApp() {
     docsManagerMixin,
     jobsManagerMixin,
     audioRecordingManagerMixin,
+    autopilotOverviewManagerMixin,
     storageImageManagerMixin,
     filesManagerMixin,
     sectionLiveQueryMixin,

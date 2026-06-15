@@ -7949,6 +7949,138 @@ button:disabled {
   border-bottom: none;
 }
 
+.autopilot-overview-section {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 24px;
+}
+
+.autopilot-overview-header,
+.autopilot-overview-toolbar,
+.autopilot-panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.autopilot-overview-header h2,
+.autopilot-panel-heading h3 {
+  margin: 0;
+}
+
+.autopilot-overview-header p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.autopilot-overview-toolbar {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.autopilot-overview-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.autopilot-overview-stats article,
+.autopilot-overview-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+}
+
+.autopilot-overview-stats article {
+  padding: 12px;
+}
+
+.autopilot-overview-stats span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.autopilot-overview-stats strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 22px;
+}
+
+.autopilot-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.autopilot-overview-panel {
+  padding: 14px;
+  min-width: 0;
+}
+
+.autopilot-overview-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.autopilot-overview-row {
+  width: 100%;
+  min-height: 74px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  padding: 10px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.autopilot-overview-row:hover {
+  background: var(--surface);
+}
+
+.autopilot-row-title,
+.autopilot-row-preview {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.autopilot-row-title {
+  font-weight: 650;
+}
+
+.autopilot-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.autopilot-row-preview {
+  margin-top: 6px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+@media (max-width: 860px) {
+  .autopilot-overview-section {
+    padding: 16px;
+  }
+
+  .autopilot-overview-stats,
+  .autopilot-overview-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .settings-field-label {
   font-size: 0.78rem;
   font-weight: 700;
