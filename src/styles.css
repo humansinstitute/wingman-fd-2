@@ -7956,6 +7956,13 @@ button:disabled {
   padding: 24px;
 }
 
+.autopilot-overview-greeting {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+}
+
 .autopilot-overview-header,
 .autopilot-overview-toolbar,
 .autopilot-panel-heading {
@@ -7983,12 +7990,14 @@ button:disabled {
 
 .autopilot-overview-stats {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
 }
 
 .autopilot-overview-stats article,
-.autopilot-overview-panel {
+.autopilot-overview-panel,
+.autopilot-daily-scope,
+.autopilot-overview-diagnostics {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--panel);
@@ -8008,6 +8017,42 @@ button:disabled {
   display: block;
   margin-top: 4px;
   font-size: 22px;
+}
+
+.autopilot-daily-scope {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px;
+}
+
+.autopilot-daily-scope h3,
+.autopilot-daily-scope p {
+  margin: 0;
+}
+
+.autopilot-daily-scope h3 {
+  margin-top: 4px;
+}
+
+.autopilot-daily-scope p {
+  margin-top: 6px;
+  color: var(--text);
+}
+
+.autopilot-overview-diagnostics {
+  padding: 10px 12px;
+}
+
+.autopilot-overview-diagnostics p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.autopilot-overview-diagnostics p + p {
+  margin-top: 4px;
 }
 
 .autopilot-overview-grid {
@@ -8078,6 +8123,11 @@ button:disabled {
   .autopilot-overview-stats,
   .autopilot-overview-grid {
     grid-template-columns: 1fr;
+  }
+
+  .autopilot-daily-scope {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 

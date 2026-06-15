@@ -4394,29 +4394,35 @@
           <section class="autopilot-overview-section">
             <div class="autopilot-overview-header">
               <div>
-                <h2>Autopilot</h2>
-                <p x-text="$store.chat.workspaceHarnessUrl || 'No Autopilot URL configured.'"></p>
+                <p class="autopilot-overview-greeting" x-text="$store.chat.autopilotOverviewGreeting"></p>
+                <h2>Autopilot Overview</h2>
+                <p x-text="$store.chat.autopilotOverviewContextLabel"></p>
               </div>
               <button type="button" class="btn-confirm" @click="$store.chat.openHarnessLink()" :disabled="!$store.chat.hasHarnessLink">Open Autopilot</button>
             </div>
 
             <div class="autopilot-overview-toolbar">
-              <select class="files-filter-select" x-model="$store.chat.autopilotOverviewScopeFilter">
+              <select class="files-filter-select" x-model="$store.chat.autopilotOverviewScopeFilter" @change="$store.chat.handleAutopilotOverviewScopeChange()">
                 <template x-for="option in $store.chat.autopilotOverviewScopeOptions" :key="option.id">
                   <option :value="option.id" x-text="option.label"></option>
                 </template>
               </select>
-              <select class="files-filter-select" x-model="$store.chat.autopilotOverviewChannelFilter">
+              <select class="files-filter-select" x-model="$store.chat.autopilotOverviewChannelFilter" :disabled="!$store.chat.autopilotOverviewIsScoped || $store.chat.autopilotOverviewChannelOptions.length === 0">
                 <template x-for="option in $store.chat.autopilotOverviewChannelOptions" :key="option.id">
                   <option :value="option.id" x-text="option.label"></option>
                 </template>
               </select>
+              <p class="settings-field-help" x-show="$store.chat.autopilotOverviewIsScoped && !$store.chat.autopilotOverviewContext.channelId">Selected scope has no chat channel.</p>
             </div>
 
             <div class="autopilot-overview-stats">
               <article>
                 <span>Threads</span>
                 <strong x-text="$store.chat.autopilotOverviewStats.threads"></strong>
+              </article>
+              <article>
+                <span>Tasks</span>
+                <strong x-text="$store.chat.autopilotOverviewStats.tasks"></strong>
               </article>
               <article>
                 <span>Docs</span>
@@ -4432,13 +4438,36 @@
               </article>
             </div>
 
+            <section class="autopilot-daily-scope">
+              <div>
+                <span class="daily-note-eyebrow">Daily Scope</span>
+                <h3 x-text="$store.chat.autopilotOverviewDailyNote.title"></h3>
+                <p x-text="$store.chat.autopilotOverviewDailyNote.body"></p>
+                <div class="autopilot-row-meta">
+                  <span x-text="$store.chat.autopilotOverviewDailyNote.source"></span>
+                  <span x-show="$store.chat.autopilotOverviewDailyNote.updatedAt" x-text="$store.chat.formatRelativeTime($store.chat.autopilotOverviewDailyNote.updatedAt)"></span>
+                  <span x-show="$store.chat.autopilotOverviewDailyNote.duplicateCount > 0" x-text="`${$store.chat.autopilotOverviewDailyNote.duplicateCount} duplicate note${$store.chat.autopilotOverviewDailyNote.duplicateCount === 1 ? '' : 's'}`"></span>
+                </div>
+              </div>
+              <button type="button" class="btn-secondary" @click="$store.chat.openAutopilotOverviewDailyNote()" x-text="$store.chat.autopilotOverviewDailyNote.note ? 'Open note' : 'Create note'"></button>
+            </section>
+
+            <template x-if="$store.chat.autopilotOverviewDiagnostics.length > 0">
+              <div class="autopilot-overview-diagnostics">
+                <template x-for="item in $store.chat.autopilotOverviewDiagnostics" :key="item">
+                  <p x-text="item"></p>
+                </template>
+              </div>
+            </template>
+
             <div class="autopilot-overview-grid">
               <section class="autopilot-overview-panel">
                 <div class="autopilot-panel-heading">
-                  <h3>Latest Messages</h3>
+                  <h3>Recent Threads</h3>
+                  <button type="button" class="btn-secondary btn-compact" @click="$store.chat.navigateTo('chat')">View all</button>
                 </div>
                 <div class="autopilot-overview-list" x-show="$store.chat.autopilotOverviewThreads.length > 0">
-                  <template x-for="thread in $store.chat.autopilotOverviewThreads.slice(0, 12)" :key="thread.id">
+                  <template x-for="thread in $store.chat.autopilotOverviewThreads.slice(0, 5)" :key="thread.id">
                     <button type="button" class="autopilot-overview-row" @click="$store.chat.openAutopilotOverviewThread(thread)">
                       <span class="autopilot-row-title" x-text="thread.title"></span>
                       <span class="autopilot-row-meta">
@@ -4454,14 +4483,56 @@
 
               <section class="autopilot-overview-panel">
                 <div class="autopilot-panel-heading">
-                  <h3>Recent Files</h3>
+                  <h3>Recent Tasks and Comments</h3>
+                  <button type="button" class="btn-secondary btn-compact" @click="$store.chat.navigateTo('tasks')">View all</button>
+                </div>
+                <div class="autopilot-overview-list" x-show="$store.chat.autopilotOverviewTasks.length > 0">
+                  <template x-for="task in $store.chat.autopilotOverviewTasks.slice(0, 5)" :key="task.id">
+                    <button type="button" class="autopilot-overview-row" @click="$store.chat.openAutopilotOverviewTask(task)">
+                      <span class="autopilot-row-title" x-text="task.title"></span>
+                      <span class="autopilot-row-meta">
+                        <span x-text="task.subtitle"></span>
+                        <span x-text="task.reason"></span>
+                        <span x-text="$store.chat.formatRelativeTime(task.activityAt)"></span>
+                      </span>
+                    </button>
+                  </template>
+                </div>
+                <p class="settings-field-help" x-show="$store.chat.autopilotOverviewTasks.length === 0">No recent task activity for this context.</p>
+              </section>
+
+              <section class="autopilot-overview-panel">
+                <div class="autopilot-panel-heading">
+                  <h3>Docs and Comments</h3>
+                  <button type="button" class="btn-secondary btn-compact" @click="$store.chat.navigateTo('docs')">View all</button>
+                </div>
+                <div class="autopilot-overview-list" x-show="$store.chat.autopilotOverviewDocuments.length > 0">
+                  <template x-for="doc in $store.chat.autopilotOverviewDocuments.slice(0, 5)" :key="doc.id">
+                    <button type="button" class="autopilot-overview-row" @click="$store.chat.openAutopilotOverviewDocument(doc)">
+                      <span class="autopilot-row-title" x-text="doc.title"></span>
+                      <span class="autopilot-row-meta">
+                        <span x-text="doc.reason"></span>
+                        <span x-text="$store.chat.formatRelativeTime(doc.activityAt)"></span>
+                      </span>
+                      <span class="autopilot-row-preview" x-text="doc.subtitle"></span>
+                    </button>
+                  </template>
+                </div>
+                <p class="settings-field-help" x-show="$store.chat.autopilotOverviewDocuments.length === 0">No recent document activity for this context.</p>
+              </section>
+
+              <section class="autopilot-overview-panel">
+                <div class="autopilot-panel-heading">
+                  <h3>Files</h3>
+                  <button type="button" class="btn-secondary btn-compact" @click="$store.chat.navigateTo('files')">View all</button>
                 </div>
                 <div class="autopilot-overview-list" x-show="$store.chat.autopilotOverviewFiles.length > 0">
-                  <template x-for="file in $store.chat.autopilotOverviewFiles.slice(0, 12)" :key="file.id">
+                  <template x-for="file in $store.chat.autopilotOverviewFiles.slice(0, 5)" :key="file.id">
                     <button type="button" class="autopilot-overview-row" @click="$store.chat.openFileBrowserSource(file)">
                       <span class="autopilot-row-title" x-text="file.name"></span>
                       <span class="autopilot-row-meta">
                         <span x-text="file.source_label"></span>
+                        <span x-text="file.reason"></span>
                         <span x-text="$store.chat.fileUpdatedLabel(file)"></span>
                       </span>
                       <span class="autopilot-row-preview" x-text="file.object_id"></span>
