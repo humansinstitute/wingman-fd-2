@@ -16,6 +16,7 @@ vi.mock('../src/translators/record-crypto.js', () => ({
 
 import { APP_NPUB } from '../src/app-identity.js';
 import { FLIGHT_DECK_SCHEMA_BUNDLE } from '../src/generated/flightdeck-schema-bundle.js';
+import { REACTION_EMOJI_OPTIONS } from '../src/reactions.js';
 import { SYNC_FAMILY_OPTIONS } from '../src/sync-families.js';
 import { outboundApproval } from '../src/translators/approvals.js';
 import { outboundAudioNote } from '../src/translators/audio-notes.js';
@@ -97,6 +98,23 @@ describe('published Flight Deck schema manifests', () => {
 
     expect(FLIGHT_DECK_SCHEMA_BUNDLE.schema_hash).toMatch(/^[a-f0-9]{64}$/);
     expect(bundleFamilies).toEqual(manifestFamilies);
+  });
+
+  it('reaction schema accepts every supported Flight Deck reaction emoji', async () => {
+    for (const option of REACTION_EMOJI_OPTIONS) {
+      const payload = JSON.parse((await outboundReaction({
+        record_id: `reaction-${option.emoji}`,
+        owner_npub: 'npub_owner',
+        target_record_id: 'msg-1',
+        target_record_family_hash: `${APP_NPUB}:chat_message`,
+        emoji: option.emoji,
+        reactor_npub: 'npub_actor',
+        target_group_ids: ['group-1'],
+      })).owner_payload.ciphertext);
+
+      expect(payload.data.emoji_shortcode).toBe(option.shortcode);
+      assertMatchesPublishedSchema('reaction', payload);
+    }
   });
 
   it('validate real outbound Flight Deck payloads', async () => {

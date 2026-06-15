@@ -7,6 +7,7 @@ export const REACTION_EMOJI_OPTIONS = Object.freeze([
   { emoji: 'eyes', shortcode: ':eyes:', label: String.fromCodePoint(0x1f440) },
   { emoji: 'party', shortcode: ':party:', label: String.fromCodePoint(0x1f389) },
   { emoji: 'shaka', shortcode: ':call_me_hand:', label: String.fromCodePoint(0x1f919) },
+  { emoji: 'white_check_mark', shortcode: ':white_check_mark:', label: String.fromCodePoint(0x2705) },
 ]);
 
 export const DEFAULT_REACTION_EMOJI = 'thumbs_up';

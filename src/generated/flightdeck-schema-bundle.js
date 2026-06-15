@@ -2,7 +2,7 @@
 // Do not edit by hand.
 export const FLIGHT_DECK_SCHEMA_BUNDLE = {
   "bundle_schema_version": 1,
-  "schema_hash": "c45734dadb9e25f4edc79dfb9fdc76ca4448d5e36ce1502e19ea656b41a5a5b7",
+  "schema_hash": "6e55b8f5069c87335f5b429408ef5a745dff6b7085d1340f04a5700ac556f745",
   "schemas": [
     {
       "collection_space": "agent_chat_trigger",
@@ -1670,7 +1670,9 @@ export const FLIGHT_DECK_SCHEMA_BUNDLE = {
                   "smile",
                   "heart",
                   "eyes",
-                  "party"
+                  "party",
+                  "shaka",
+                  "white_check_mark"
                 ]
               },
               "emoji_shortcode": {
@@ -1679,7 +1681,9 @@ export const FLIGHT_DECK_SCHEMA_BUNDLE = {
                   ":smile:",
                   ":heart:",
                   ":eyes:",
-                  ":party:"
+                  ":party:",
+                  ":call_me_hand:",
+                  ":white_check_mark:"
                 ]
               },
               "reactor_npub": {
