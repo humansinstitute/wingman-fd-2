@@ -4,7 +4,10 @@ const {
   acquireRecordCheckoutMock,
   completeStorageObjectMock,
   createTowerPgChannelDocMock,
+  deleteTowerPgDocCommentMock,
+  createTowerPgDocCommentMock,
   downloadStorageObjectMock,
+  getTowerPgDocVersionsMock,
   isTowerPgBackendModeMock,
   prepareStorageObjectMock,
   prepareTowerPgStorageObjectMock,
@@ -12,19 +15,24 @@ const {
   acquireTowerPgEditLeaseMock,
   releaseTowerPgEditLeaseMock,
   updateTowerPgDocMock,
+  updateTowerPgDocCommentMock,
   uploadStorageObjectMock,
 } = vi.hoisted(() => ({
   acquireRecordCheckoutMock: vi.fn(),
   acquireTowerPgEditLeaseMock: vi.fn(),
   completeStorageObjectMock: vi.fn(),
   createTowerPgChannelDocMock: vi.fn(),
+  createTowerPgDocCommentMock: vi.fn(),
+  deleteTowerPgDocCommentMock: vi.fn(),
   downloadStorageObjectMock: vi.fn(),
+  getTowerPgDocVersionsMock: vi.fn(),
   isTowerPgBackendModeMock: vi.fn(() => false),
   prepareStorageObjectMock: vi.fn(),
   prepareTowerPgStorageObjectMock: vi.fn(),
   releaseRecordCheckoutMock: vi.fn(),
   releaseTowerPgEditLeaseMock: vi.fn(),
   updateTowerPgDocMock: vi.fn(),
+  updateTowerPgDocCommentMock: vi.fn(),
   uploadStorageObjectMock: vi.fn(),
 }));
 
@@ -34,6 +42,8 @@ vi.mock('../src/api.js', () => ({
   completeStorageObject: completeStorageObjectMock,
   createTowerPgChannelAudioNote: vi.fn(),
   createTowerPgChannelDoc: createTowerPgChannelDocMock,
+  createTowerPgDocComment: createTowerPgDocCommentMock,
+  deleteTowerPgDocComment: deleteTowerPgDocCommentMock,
   createTowerPgChannelFile: vi.fn(),
   createTowerPgChannelMessage: vi.fn(),
   createTowerPgChannelTask: vi.fn(),
@@ -45,6 +55,7 @@ vi.mock('../src/api.js', () => ({
   getTowerPgChannelMessages: vi.fn(),
   getTowerPgChannelTasks: vi.fn(),
   getTowerPgChannelThreads: vi.fn(),
+  getTowerPgDocVersions: getTowerPgDocVersionsMock,
   getTowerPgScopeChannels: vi.fn(),
   getTowerPgScopeTasks: vi.fn(),
   getTowerPgWorkspaceScopes: vi.fn(),
@@ -54,6 +65,7 @@ vi.mock('../src/api.js', () => ({
   releaseTowerPgEditLease: releaseTowerPgEditLeaseMock,
   renewTowerPgEditLease: vi.fn(),
   updateTowerPgDoc: updateTowerPgDocMock,
+  updateTowerPgDocComment: updateTowerPgDocCommentMock,
   updateTowerPgTask: vi.fn(),
   updateTowerPgTaskState: vi.fn(),
   uploadStorageObject: uploadStorageObjectMock,
@@ -104,6 +116,21 @@ function createStore(overrides = {}) {
     loadDocComments: vi.fn(),
     syncRoute: vi.fn(),
     ensureBackgroundSync: vi.fn(),
+    containsInlineImageUploadToken: vi.fn(() => false),
+    resolvePgWriteContext: vi.fn((context = {}) => {
+      const channelId = context.channelId || store.selectedChannelId || store.selectedChannel?.record_id || null;
+      const channel = channelId
+        ? (store.channels || []).find((item) => item.record_id === channelId) || null
+        : null;
+      const scopeId = context.scopeId || channel?.scope_id || channel?.scope_l1_id || null;
+      if (!scopeId || !channelId) return null;
+      return {
+        scopeId,
+        channelId,
+        threadId: context.threadId || null,
+        channel,
+      };
+    }),
     patchDocumentLocal: vi.fn(function patchDocumentLocal(nextDocument) {
       const index = this.documents.findIndex((item) => item.record_id === nextDocument.record_id);
       if (index >= 0) {
@@ -128,11 +155,22 @@ function createStore(overrides = {}) {
     },
   });
 
+  Object.defineProperty(store, 'selectedDocComment', {
+    configurable: true,
+    get() {
+      return (store.docComments || []).find((comment) => comment.record_id === store.selectedDocCommentId) || null;
+    },
+  });
+
   return store;
 }
 
 beforeEach(() => {
   isTowerPgBackendModeMock.mockReturnValue(false);
+  createTowerPgDocCommentMock.mockReset();
+  updateTowerPgDocCommentMock.mockReset();
+  deleteTowerPgDocCommentMock.mockReset();
+  getTowerPgDocVersionsMock.mockReset();
 });
 
 afterEach(() => {
@@ -442,6 +480,35 @@ describe('docsManagerMixin comment drawer', () => {
 
     expect(store.getRootDocComments().map((comment) => comment.record_id)).toEqual(['root-1']);
     expect(store.getDocCommentReplies('root-1').map((comment) => comment.record_id)).toEqual(['reply-1']);
+  });
+
+  it('counts block comments from root threads without double-counting replies', () => {
+    const store = createStore({
+      docEditorBlocks: [{ id: 'block-1', start_line: 1 }],
+      docComments: [
+        {
+          record_id: 'root-1',
+          parent_comment_id: null,
+          anchor_block_id: 'block-1',
+          anchor_line_number: 1,
+          record_state: 'active',
+          comment_status: 'open',
+          updated_at: '2026-01-01T00:01:00Z',
+        },
+        {
+          record_id: 'reply-1',
+          parent_comment_id: 'root-1',
+          anchor_block_id: 'block-1',
+          anchor_line_number: 1,
+          record_state: 'active',
+          comment_status: 'open',
+          updated_at: '2026-01-01T00:02:00Z',
+        },
+      ],
+    });
+
+    expect(store.getDocCommentsForBlock(store.docEditorBlocks[0]).map((comment) => comment.record_id)).toEqual(['root-1']);
+    expect(store.getDocBlockCommentCount(store.docEditorBlocks[0])).toBe(2);
   });
 
   it('orders root comment threads by document block position before timestamp', () => {
@@ -1273,6 +1340,62 @@ describe('docsManagerMixin canonical row normalization', () => {
     expect(store.docAutosaveState).toBe('saved');
   });
 
+  it('loads PG document versions from the typed Tower route', async () => {
+    isTowerPgBackendModeMock.mockReturnValue(true);
+    getTowerPgDocVersionsMock.mockResolvedValue({
+      versions: [
+        {
+          version: 2,
+          title: 'PG document v2',
+          updated_at: '2026-06-15T01:00:00.000Z',
+          content: {
+            content: 'Updated body',
+            content_format: 'block_document_v1',
+            content_blocks: [{ id: 'block-1', type: 'markdown', text: 'Updated body', attrs: {} }],
+          },
+        },
+        {
+          version: 1,
+          title: 'PG document v1',
+          updated_at: '2026-06-15T00:00:00.000Z',
+          content: {
+            content: 'Initial body',
+            content_format: 'block_document_v1',
+            content_blocks: [{ id: 'block-0', type: 'markdown', text: 'Initial body', attrs: {} }],
+          },
+        },
+      ],
+    });
+    const store = createStore({
+      backendUrl: 'https://tower.example',
+      currentWorkspace: {
+        workspaceId: 'workspace-1',
+        workspaceOwnerNpub: 'npub1pgworkspace',
+        directHttpsUrl: 'https://tower.example',
+        appNpub: 'flightdeck_pg',
+      },
+      selectedDocId: 'doc-1',
+      selectedDocType: 'document',
+      documents: [{ record_id: 'doc-1', title: 'PG document', pg_backend: true, record_state: 'active' }],
+      syncRoute: vi.fn(),
+    });
+
+    await store.openDocVersioning();
+
+    expect(getTowerPgDocVersionsMock).toHaveBeenCalledWith('workspace-1', 'doc-1', {
+      baseUrl: 'https://tower.example',
+      appNpub: 'flightdeck_pg',
+      limit: 50,
+    });
+    expect(store.docVersionHistory.map((version) => version.version)).toEqual([2, 1]);
+    expect(store.docVersionHistory[0]).toMatchObject({
+      title: 'PG document v2',
+      content: 'Updated body',
+      content_format: 'block_document_v1',
+    });
+    expect(store.docVersioningPreviewHtml).toContain('Updated body');
+  });
+
   it('preserves non-writable delivery groups in canonical document rows', () => {
     const store = createStore();
 
@@ -1307,8 +1430,304 @@ describe('docsManagerMixin canonical row normalization', () => {
     expect(normalized.group_ids).toEqual(['g-hidden', 'g-allowed']);
     expect(normalized.scope_policy_group_ids).toEqual(['g-hidden']);
     expect(normalized.shares).toHaveLength(2);
+    });
   });
-});
+
+  it('creates PG document comments through Tower and replaces the optimistic row', async () => {
+    const wsDb = openWorkspaceDb('pg-doc-comment-create');
+    await wsDb.open();
+    await Promise.all(wsDb.tables.map((table) => table.clear()));
+    isTowerPgBackendModeMock.mockReturnValue(true);
+    createTowerPgDocCommentMock.mockResolvedValue({
+      comment: {
+        id: 'pg-comment-1',
+        workspace_id: 'workspace-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        doc_id: 'doc-1',
+        body: 'Doc comment',
+        metadata: {
+          anchor_block_id: 'block-1',
+          anchor_line_number: 5,
+          comment_status: 'open',
+        },
+        row_version: 1,
+      },
+    });
+
+    const store = createStore({
+      workspaceOwnerNpub: 'npub1signedinactor',
+      backendUrl: 'https://tower.example',
+      currentWorkspace: {
+        workspaceId: 'workspace-1',
+        workspaceOwnerNpub: 'npub1pgworkspace',
+        directHttpsUrl: 'https://tower.example',
+        appNpub: 'flightdeck_pg',
+      },
+      documents: [{
+        record_id: 'doc-1',
+        owner_npub: 'npub1pgworkspace',
+        title: 'Doc',
+        content: 'Body',
+        scope_id: 'scope-1',
+        scope_l1_id: 'scope-1',
+        pg_backend: true,
+        pg_record_type: 'doc',
+        pg_channel_id: 'channel-1',
+        sync_status: 'synced',
+        record_state: 'active',
+      }],
+      selectedDocId: 'doc-1',
+      selectedDocType: 'document',
+      docComments: [],
+      docCommentAudioDrafts: [],
+      docCommentAnchorBlockId: 'block-1',
+      docCommentAnchorLine: 5,
+      newDocCommentBody: 'Doc comment',
+      scheduleStorageImageHydration: vi.fn(),
+      scheduleDocCommentConnectorUpdate: vi.fn(),
+    });
+
+    await store.addDocComment();
+
+    expect(createTowerPgDocCommentMock).toHaveBeenCalledWith('workspace-1', 'doc-1', {
+      body: 'Doc comment',
+      metadata: {
+        anchor_block_id: 'block-1',
+        anchor_line_number: 5,
+        client_record_id: expect.any(String),
+        comment_status: 'open',
+      },
+    }, { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
+    expect(store.docComments).toHaveLength(1);
+    expect(store.docComments[0]).toMatchObject({
+      record_id: 'pg-comment-1',
+      target_record_id: 'doc-1',
+      anchor_block_id: 'block-1',
+      anchor_line_number: 5,
+      pg_backend: true,
+      pg_record_type: 'doc_comment',
+    });
+    expect(store.selectedDocCommentId).toBe('pg-comment-1');
+  });
+
+  it('creates PG document comment replies with parent_comment_id', async () => {
+    const wsDb = openWorkspaceDb('pg-doc-comment-reply-create');
+    await wsDb.open();
+    await Promise.all(wsDb.tables.map((table) => table.clear()));
+    isTowerPgBackendModeMock.mockReturnValue(true);
+    createTowerPgDocCommentMock.mockResolvedValue({
+      comment: {
+        id: 'pg-reply-1',
+        workspace_id: 'workspace-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        doc_id: 'doc-1',
+        parent_comment_id: 'root-1',
+        body: 'Reply',
+        metadata: {
+          anchor_block_id: 'block-1',
+          anchor_line_number: 5,
+          comment_status: 'open',
+        },
+        row_version: 1,
+      },
+    });
+    const rootComment = {
+      record_id: 'root-1',
+      target_record_id: 'doc-1',
+      target_record_family_hash: recordFamilyHash('document'),
+      parent_comment_id: null,
+      anchor_block_id: 'block-1',
+      anchor_line_number: 5,
+      body: 'Root',
+      comment_status: 'open',
+      record_state: 'active',
+      updated_at: '2026-06-01T00:00:00.000Z',
+    };
+
+    const store = createStore({
+      workspaceOwnerNpub: 'npub1signedinactor',
+      backendUrl: 'https://tower.example',
+      currentWorkspace: {
+        workspaceId: 'workspace-1',
+        workspaceOwnerNpub: 'npub1pgworkspace',
+        directHttpsUrl: 'https://tower.example',
+        appNpub: 'flightdeck_pg',
+      },
+      documents: [{
+        record_id: 'doc-1',
+        owner_npub: 'npub1pgworkspace',
+        title: 'Doc',
+        content: 'Body',
+        scope_id: 'scope-1',
+        scope_l1_id: 'scope-1',
+        pg_backend: true,
+        pg_record_type: 'doc',
+        pg_channel_id: 'channel-1',
+        sync_status: 'synced',
+        record_state: 'active',
+      }],
+      selectedDocId: 'doc-1',
+      selectedDocType: 'document',
+      selectedDocCommentId: 'root-1',
+      docComments: [rootComment],
+      docCommentReplyAudioDrafts: [],
+      newDocCommentReplyBody: 'Reply',
+      scheduleStorageImageHydration: vi.fn(),
+      scheduleDocCommentConnectorUpdate: vi.fn(),
+    });
+
+    await store.addDocCommentReply();
+
+    expect(createTowerPgDocCommentMock).toHaveBeenCalledWith('workspace-1', 'doc-1', {
+      body: 'Reply',
+      parent_comment_id: 'root-1',
+      metadata: {
+        anchor_block_id: 'block-1',
+        anchor_line_number: 5,
+        client_record_id: expect.any(String),
+        comment_status: 'open',
+      },
+    }, { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
+    expect(store.docComments).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        record_id: 'pg-reply-1',
+        parent_comment_id: 'root-1',
+        body: 'Reply',
+        pg_record_type: 'doc_comment',
+      }),
+    ]));
+  });
+
+  it('resolves PG document comments through Tower', async () => {
+    const wsDb = openWorkspaceDb('pg-doc-comment-status');
+    await wsDb.open();
+    await Promise.all(wsDb.tables.map((table) => table.clear()));
+    isTowerPgBackendModeMock.mockReturnValue(true);
+    updateTowerPgDocCommentMock.mockResolvedValue({
+      comment: {
+        id: 'root-1',
+        workspace_id: 'workspace-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        doc_id: 'doc-1',
+        parent_comment_id: null,
+        body: 'Root',
+        metadata: {
+          anchor_block_id: 'block-1',
+          anchor_line_number: 5,
+          comment_status: 'resolved',
+        },
+        row_version: 2,
+      },
+    });
+    const store = createStore({
+      workspaceOwnerNpub: 'npub1signedinactor',
+      backendUrl: 'https://tower.example',
+      currentWorkspace: {
+        workspaceId: 'workspace-1',
+        workspaceOwnerNpub: 'npub1pgworkspace',
+        directHttpsUrl: 'https://tower.example',
+        appNpub: 'flightdeck_pg',
+      },
+      documents: [{ record_id: 'doc-1', pg_backend: true, pg_channel_id: 'channel-1', record_state: 'active' }],
+      selectedDocId: 'doc-1',
+      selectedDocType: 'document',
+      selectedDocCommentId: 'root-1',
+      docComments: [{
+        record_id: 'root-1',
+        target_record_id: 'doc-1',
+        parent_comment_id: null,
+        body: 'Root',
+        anchor_block_id: 'block-1',
+        anchor_line_number: 5,
+        comment_status: 'open',
+        record_state: 'active',
+        version: 1,
+      }],
+      scheduleDocCommentConnectorUpdate: vi.fn(),
+    });
+
+    await store.setDocCommentStatus('root-1', 'resolved');
+
+    expect(updateTowerPgDocCommentMock).toHaveBeenCalledWith('workspace-1', 'doc-1', 'root-1', {
+      comment_status: 'resolved',
+      row_version: 1,
+    }, { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
+    expect(store.docComments[0]).toMatchObject({
+      record_id: 'root-1',
+      comment_status: 'resolved',
+      version: 2,
+    });
+  });
+
+  it('removes PG document comment threads through Tower', async () => {
+    const wsDb = openWorkspaceDb('pg-doc-comment-delete');
+    await wsDb.open();
+    await Promise.all(wsDb.tables.map((table) => table.clear()));
+    isTowerPgBackendModeMock.mockReturnValue(true);
+    deleteTowerPgDocCommentMock.mockResolvedValue({
+      comment: {
+        id: 'root-1',
+        workspace_id: 'workspace-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        doc_id: 'doc-1',
+        parent_comment_id: null,
+        body: 'Root',
+        metadata: { comment_status: 'open' },
+        record_state: 'deleted',
+        row_version: 2,
+      },
+    });
+    const store = createStore({
+      workspaceOwnerNpub: 'npub1signedinactor',
+      backendUrl: 'https://tower.example',
+      currentWorkspace: {
+        workspaceId: 'workspace-1',
+        workspaceOwnerNpub: 'npub1pgworkspace',
+        directHttpsUrl: 'https://tower.example',
+        appNpub: 'flightdeck_pg',
+      },
+      documents: [{ record_id: 'doc-1', pg_backend: true, pg_channel_id: 'channel-1', record_state: 'active' }],
+      selectedDocId: 'doc-1',
+      selectedDocType: 'document',
+      selectedDocCommentId: 'root-1',
+      docComments: [
+        {
+          record_id: 'root-1',
+          target_record_id: 'doc-1',
+          parent_comment_id: null,
+          body: 'Root',
+          comment_status: 'open',
+          record_state: 'active',
+          version: 1,
+        },
+        {
+          record_id: 'reply-1',
+          target_record_id: 'doc-1',
+          parent_comment_id: 'root-1',
+          body: 'Reply',
+          comment_status: 'open',
+          record_state: 'active',
+          version: 1,
+        },
+      ],
+      clearDocCommentConnector: vi.fn(),
+      scheduleDocCommentConnectorUpdate: vi.fn(),
+    });
+
+    await store.removeDocComment('root-1');
+
+    expect(deleteTowerPgDocCommentMock).toHaveBeenCalledWith('workspace-1', 'doc-1', 'root-1', {
+      rowVersion: 1,
+      baseUrl: 'https://tower.example',
+      appNpub: 'flightdeck_pg',
+    });
+    expect(store.docComments.every((comment) => comment.record_state === 'deleted')).toBe(true);
+    expect(store.selectedDocCommentId).toBeNull();
+  });
 
 describe('lock-managed checkout state helpers', () => {
   it('treats an expired lease as not held', () => {

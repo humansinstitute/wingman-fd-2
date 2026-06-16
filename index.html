@@ -140,7 +140,7 @@
       <div class="error-bar" x-text="$store.chat.error"></div>
     </template>
 
-    <header class="page-header">
+    <header class="page-header" x-show="!$store.chat.appHeaderHidden" x-cloak>
       <div class="header-leading">
         <button
           type="button"
@@ -165,7 +165,7 @@
           <img class="brand-logo" src="/wingman-logo.png" alt="Wingman logo" />
           <div class="brand-copy">
             <h1>Wingman</h1>
-            <p>Solvitur Ambulando | Be Free</p>
+            <p>Solvitur Ambulando</p>
           </div>
         </button>
       </div>
@@ -250,7 +250,7 @@
         <template x-for="board in $store.chat.filterFlightDeckScopeOptions('')" :key="board.id">
           <li
             class="board-picker-typeahead-option"
-            :class="{ 'board-picker-typeahead-active': $store.chat.selectedBoardId === board.id }"
+            :class="{ 'board-picker-typeahead-active': $store.chat.isFlightDeckScopeOptionActive(board) }"
             @click="$store.chat.selectBoard(board.id); open = false"
             x-text="board.label"
           ></li>
@@ -506,6 +506,50 @@
           </template>
         </div>
       </section>
+    </div>
+
+    <div
+      class="doc-modal-backdrop write-context-modal-backdrop"
+      x-show="$store.chat.showWriteContextModal"
+      x-cloak
+      @click.self="$store.chat.closeWriteContextModal()"
+      @keydown.escape.window="$store.chat.closeWriteContextModal()"
+    >
+      <div class="doc-modal-card write-context-modal" role="dialog" aria-modal="true" aria-labelledby="write-context-title">
+        <button class="modal-close" type="button" @click="$store.chat.closeWriteContextModal()">&times;</button>
+        <h3 id="write-context-title" x-text="$store.chat.writeContextTitle"></h3>
+        <p class="doc-comment-modal-copy">Pick the scope and channel for this record.</p>
+        <label class="write-context-field">
+          <span>Scope</span>
+          <select x-model="$store.chat.writeContextScopeId" @change="$store.chat.selectWriteContextScope($event.target.value)">
+            <option value="">Select scope</option>
+            <template x-for="option in $store.chat.writeContextScopeOptions" :key="option.id">
+              <option :value="option.id" x-text="option.label || option.title || option.id"></option>
+            </template>
+          </select>
+        </label>
+        <label class="write-context-field">
+          <span>Channel</span>
+          <select x-model="$store.chat.writeContextChannelId">
+            <option value="">Select channel</option>
+            <template x-for="channel in $store.chat.writeContextChannelOptions" :key="channel.record_id">
+              <option :value="channel.record_id" x-text="$store.chat.getChannelLabel(channel)"></option>
+            </template>
+          </select>
+        </label>
+        <p class="scope-picker-empty" x-show="$store.chat.writeContextScopeOptions.length === 0">Create a scope with a channel before adding records.</p>
+        <p class="files-upload-error" x-show="$store.chat.writeContextError" x-text="$store.chat.writeContextError"></p>
+        <div class="new-doc-modal-actions">
+          <button type="button" class="btn-cancel" :disabled="$store.chat.writeContextSubmitting" @click="$store.chat.closeWriteContextModal()">Cancel</button>
+          <button
+            type="button"
+            class="btn-confirm"
+            :disabled="$store.chat.writeContextSubmitting || !$store.chat.writeContextScopeId || !$store.chat.writeContextChannelId"
+            @click="$store.chat.confirmWriteContextModal()"
+            x-text="$store.chat.writeContextSubmitting ? 'Continuing...' : 'Continue'"
+          ></button>
+        </div>
+      </div>
     </div>
 
     <div
@@ -774,7 +818,10 @@
 
       <div class="main-content">
           <div class="global-pg-channel-bar" x-show="$store.chat.navSection !== 'chat' && $store.chat.isLoggedIn" x-cloak>
-            <div class="chat-channel-header">
+            <div
+              class="chat-channel-header"
+              :class="{ 'pg-all-scopes-context': $store.chat.pgContextAllScopesSelected }"
+            >
               <div
                 class="channel-row-scope-switcher"
                 x-data="{ bpIdx: 0, open: false, query: '' }"
@@ -797,7 +844,7 @@
                     <template x-for="(board, idx) in $store.chat.filterFlightDeckScopeOptions(query)" :key="board.id">
                       <li
                         class="board-picker-typeahead-option"
-                        :class="{ 'board-picker-typeahead-active': $store.chat.selectedBoardId === board.id, 'board-picker-typeahead-highlight': idx === bpIdx }"
+                        :class="{ 'board-picker-typeahead-active': $store.chat.isFlightDeckScopeOptionActive(board), 'board-picker-typeahead-highlight': idx === bpIdx }"
                         @click="$store.chat.selectBoard(board.id); open = false; query = ''"
                         @mouseenter="bpIdx = idx"
                         x-text="board.label"
@@ -809,6 +856,26 @@
                 <span class="channel-row-scope-separator" aria-hidden="true">|</span>
               </div>
               <div class="chat-channel-tab-scroll" role="tablist" aria-label="Workspace channels">
+                <div
+                  class="chat-channel-tab-item channel-home-tab-item"
+                  :class="{ active: $store.chat.pgContextAllScopesSelected }"
+                >
+                  <button
+                    type="button"
+                    class="chat-channel-tab chat-channel-home-tab"
+                    role="tab"
+                    :aria-selected="$store.chat.pgContextAllScopesSelected"
+                    @click="$store.chat.openAllScopesOverview()"
+                    title="All scopes overview"
+                    aria-label="All scopes overview"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M3 11.5 12 4l9 7.5"></path>
+                      <path d="M5 10.5V20h14v-9.5"></path>
+                      <path d="M9.5 20v-5h5v5"></path>
+                    </svg>
+                  </button>
+                </div>
                 <template x-for="channel in $store.chat.pgContextChannels" :key="channel.record_id">
                   <div
                     class="chat-channel-tab-item"
@@ -847,6 +914,28 @@
                   <path d="M12 5v14M5 12h14" stroke-linecap="round"></path>
                 </svg>
               </button>
+              <div class="chat-channel-header-actions">
+                <button
+                  type="button"
+                  class="chat-channel-header-icon-btn"
+                  @click="$store.chat.toggleAppHeaderHidden()"
+                  :title="$store.chat.appHeaderHidden ? 'Show header' : 'Full screen'"
+                  :aria-label="$store.chat.appHeaderHidden ? 'Show header' : 'Full screen'"
+                >
+                  <svg x-show="!$store.chat.appHeaderHidden" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="15 3 21 3 21 9"></polyline>
+                    <polyline points="9 21 3 21 3 15"></polyline>
+                    <line x1="21" y1="3" x2="14" y2="10"></line>
+                    <line x1="3" y1="21" x2="10" y2="14"></line>
+                  </svg>
+                  <svg x-show="$store.chat.appHeaderHidden" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="4 14 10 14 10 20"></polyline>
+                    <polyline points="20 10 14 10 14 4"></polyline>
+                    <line x1="14" y1="10" x2="21" y2="3"></line>
+                    <line x1="3" y1="21" x2="10" y2="14"></line>
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -911,11 +1000,6 @@
               </template>
             </div>
           </div>
-          <section class="flightdeck-hero">
-            <h2>Welcome <span x-text="$store.chat.greetingName"></span>, where will we focus today?</h2>
-          </section>
-
-
           <section class="flightdeck-reports-section" x-show="false" x-cloak>
             <div class="flightdeck-reports-header">
               <h3>Reports</h3>
@@ -1032,143 +1116,166 @@
             </div>
           </section>
 
-          <div class="flightdeck-grid">
-            <section class="attention-feed-section">
-              <div class="attention-feed-header">
-                <div>
-                  <h3>Needs Attention</h3>
-                  <p x-text="$store.chat.attentionFeedSummary"></p>
-                </div>
-                <div class="attention-feed-controls">
-                  <select x-model="$store.chat.statusTimeRange" @change="$store.chat.refreshStatusRecentChanges({ force: true })" aria-label="Attention feed time range">
-                    <option value="1h">Last hour</option>
-                    <option value="2h">Last 2 hours</option>
-                    <option value="4h">Last 4 hours</option>
-                    <option value="24h">Last 24 hours</option>
-                  </select>
-                </div>
+          <section class="flightdeck-summary-overview" data-testid="flightdeck-summary-overview">
+            <div class="flightdeck-summary-header">
+              <div>
+                <h2>Welcome <span x-text="$store.chat.greetingName"></span>, where will we focus today?</h2>
+                <p x-text="$store.chat.autopilotOverviewContextLabel"></p>
               </div>
+              <section class="my-agents-panel" aria-label="My Agents">
+                <h3>My Agents</h3>
+                <button
+                  type="button"
+                  class="autopilot-agent-launcher"
+                  @click="$store.chat.openHarnessLink()"
+                  :disabled="!$store.chat.hasHarnessLink"
+                  :title="$store.chat.workspaceHarnessUrl"
+                  aria-label="Dive deeper in Autopilot"
+                >
+                  <span class="autopilot-agent-avatar-ring">
+                    <template x-if="$store.chat.harnessAgentAvatarUrl">
+                      <img :src="$store.chat.harnessAgentAvatarUrl" alt="" />
+                    </template>
+                    <template x-if="!$store.chat.harnessAgentAvatarUrl">
+                      <span x-text="$store.chat.getInitials($store.chat.harnessAgentLabel || 'Autopilot')"></span>
+                    </template>
+                  </span>
+                  <span class="autopilot-agent-launcher-copy">
+                    <strong x-text="$store.chat.harnessAgentLabel || 'Autopilot agent'"></strong>
+                    <small>Dive Deeper in Autopilot</small>
+                  </span>
+                </button>
+              </section>
+            </div>
 
-              <p class="attention-feed-empty" x-show="$store.chat.attentionFeedItemCount === 0">
-                Nothing needs attention in this window.
-              </p>
-              <div class="attention-lanes" x-show="$store.chat.attentionFeedItemCount > 0">
-                <template x-for="group in $store.chat.attentionFeedGroups" :key="group.id">
-                  <section class="attention-lane" x-show="group.items.length > 0">
-                    <div class="attention-lane-header">
-                      <div>
-                        <h4 x-text="group.label"></h4>
-                        <p x-text="group.description"></p>
-                      </div>
-                      <span class="attention-lane-count" x-text="group.items.length"></span>
-                    </div>
-                    <div class="attention-card-list">
-                      <template x-for="item in group.items" :key="item.id">
-                        <button type="button" class="attention-card" :class="'attention-card-' + item.severity + ' attention-card-kind-' + item.kind" @click="$store.chat.openAttentionItem(item)">
-                          <span class="attention-card-icon" aria-hidden="true" x-html="$store.chat.getAttentionIconSvg(item.icon)"></span>
-                          <span class="attention-card-content">
-                            <span class="attention-card-kicker" x-text="item.reason"></span>
-                            <span class="attention-card-title" x-text="item.title"></span>
-                            <span class="attention-card-subtitle" x-show="item.subtitle" x-text="item.subtitle"></span>
-                          </span>
-                          <span class="attention-card-meta">
-                            <span class="attention-card-actor identity-avatar-button" x-show="item.actorNpub" role="button" tabindex="0" @click.stop="$store.chat.openIdentityCard($event, item.actorNpub)" @keydown.enter.stop.prevent="$store.chat.openIdentityCard($event, item.actorNpub)" :title="$store.chat.getSenderName(item.actorNpub)">
-                              <img x-show="$store.chat.getSenderAvatar(item.actorNpub)" :src="$store.chat.getSenderAvatar(item.actorNpub)" alt="">
-                              <span x-show="!$store.chat.getSenderAvatar(item.actorNpub)" x-text="$store.chat.getInitials($store.chat.getSenderName(item.actorNpub))"></span>
-                            </span>
-                            <span class="attention-card-time">
-                              <span x-text="$store.chat.formatRelativeTime(item.updatedAt)"></span>
-                              <span x-show="item.updatedAt" x-text="new Date(item.updatedAt).toLocaleString()"></span>
-                            </span>
-                            <span class="attention-card-action" x-text="item.actionLabel"></span>
-                          </span>
-                        </button>
-                      </template>
-                    </div>
-                  </section>
-                </template>
+            <section class="autopilot-daily-scope flightdeck-summary-daily" data-testid="flightdeck-summary-daily-scope">
+              <div>
+                <span class="daily-note-eyebrow">Daily Scope</span>
+                <h3 x-text="$store.chat.autopilotOverviewDailyNote.title"></h3>
+                <p x-text="$store.chat.autopilotOverviewDailyNote.body"></p>
+                <div class="autopilot-row-meta">
+                  <span x-text="$store.chat.autopilotOverviewDailyNote.source"></span>
+                  <span x-show="$store.chat.autopilotOverviewDailyNote.updatedAt" x-text="$store.chat.formatRelativeTime($store.chat.autopilotOverviewDailyNote.updatedAt)"></span>
+                  <span x-show="$store.chat.autopilotOverviewDailyNote.duplicateCount > 0" x-text="`${$store.chat.autopilotOverviewDailyNote.duplicateCount} duplicate note${$store.chat.autopilotOverviewDailyNote.duplicateCount === 1 ? '' : 's'}`"></span>
+                </div>
               </div>
+              <button type="button" class="btn-secondary" @click="$store.chat.openAutopilotOverviewDailyNote()" :aria-label="$store.chat.autopilotOverviewDailyNote.note ? 'Open Daily Scope note' : 'Create Daily Scope note'" x-text="$store.chat.autopilotOverviewDailyNote.note ? 'Open note' : 'Create note'"></button>
             </section>
 
-            <aside class="flightdeck-side-column">
-              <section
-                class="flightdeck-side-panel daily-note-side-panel"
-                x-show="$store.chat.isLoggedIn"
-                x-cloak
-                @click="$store.chat.openDailyNoteEditor()"
-                role="button"
-                tabindex="0"
-                @keydown.enter.prevent="$store.chat.openDailyNoteEditor()"
-                @keydown.space.prevent="$store.chat.openDailyNoteEditor()"
-              >
-                <template x-if="!$store.chat.getCurrentDailyNote()">
-                  <div class="daily-note-empty">
-                    <div>
-                      <h3>Daily Scope</h3>
-                      <p>Set today&apos;s focus.</p>
-                    </div>
-                    <span class="daily-note-plus" aria-hidden="true">+</span>
+            <div class="flightdeck-summary-grid">
+              <div class="flightdeck-summary-column">
+                <section class="flightdeck-summary-panel flightdeck-summary-panel-chat" data-testid="flightdeck-summary-threads">
+                  <div class="autopilot-panel-heading">
+                    <h3>Threads</h3>
+                    <button type="button" class="btn-secondary btn-compact" @click="$store.chat.navigateTo('chat')" aria-label="View all recent threads">View all</button>
                   </div>
-                </template>
-                <template x-if="$store.chat.getCurrentDailyNote()">
-                  <div class="daily-note-filled">
-                    <div>
-                      <p class="daily-note-eyebrow">Daily Scope</p>
-                      <h3 x-text="$store.chat.dailyNoteComponentTitle"></h3>
-                    </div>
-                    <p x-text="$store.chat.dailyNoteComponentPreview"></p>
-                  </div>
-                </template>
-              </section>
-              <section class="flightdeck-side-panel timing-panel">
-                <div class="timing-panel-header">
-                  <div>
-                    <h3>Timing</h3>
-                    <p>Scheduled work around the current board.</p>
-                  </div>
-                  <span class="timing-panel-count" x-show="$store.chat.statusTimingItemCount > 0" x-text="$store.chat.statusTimingItemCount"></span>
-                </div>
-
-                <p class="timing-empty" x-show="$store.chat.statusTimingItemCount === 0">
-                  No scheduled tasks or schedule runs near this board.
-                </p>
-
-                <div class="timing-group" x-show="$store.chat.statusTimingFeed.upcoming.length > 0">
-                  <h4>Coming Up</h4>
-                  <div class="timing-card-list">
-                    <template x-for="item in $store.chat.statusTimingFeed.upcoming" :key="item.id">
-                      <button type="button" class="timing-card" @click="$store.chat.openTimingItem(item)">
-                        <span class="timing-card-icon" x-html="$store.chat.getAttentionIconSvg(item.icon)" aria-hidden="true"></span>
-                        <span class="timing-card-body">
-                          <span class="timing-card-time" x-text="item.timingLabel"></span>
-                          <span class="timing-card-title" x-text="item.title"></span>
-                          <span class="timing-card-subtitle" x-show="item.subtitle" x-text="item.subtitle"></span>
+                  <div class="attention-card-list flightdeck-summary-card-list" x-show="$store.chat.autopilotOverviewThreads.length > 0">
+                    <template x-for="thread in $store.chat.autopilotOverviewThreads.slice(0, 5)" :key="thread.id">
+                      <button type="button" class="attention-card flightdeck-summary-card flightdeck-summary-card-chat" @click="$store.chat.openAutopilotOverviewThread(thread)" aria-label="Open selected thread">
+                        <span class="attention-card-icon" aria-hidden="true" x-html="$store.chat.getAttentionIconSvg('chat')"></span>
+                        <span class="attention-card-content">
+                          <span class="attention-card-kicker" x-text="thread.channelLabel"></span>
+                          <span class="attention-card-title" x-text="thread.title"></span>
+                          <span class="attention-card-subtitle" x-text="thread.latestMessage"></span>
                         </span>
-                        <span class="timing-card-badge" x-text="item.badge"></span>
+                        <span class="attention-card-meta">
+                          <span class="attention-card-time">
+                            <span x-text="$store.chat.formatRelativeTime(thread.latestMessageUpdatedAt)"></span>
+                            <span x-text="thread.messageCount + ' ' + (thread.messageCount === 1 ? 'message' : 'messages')"></span>
+                          </span>
+                          <span class="attention-card-action">Open thread</span>
+                        </span>
                       </button>
                     </template>
                   </div>
-                </div>
+                  <p class="settings-field-help" x-show="$store.chat.autopilotOverviewThreads.length === 0">No matching threads.</p>
+                </section>
 
-                <div class="timing-group" x-show="$store.chat.statusTimingFeed.justGone.length > 0">
-                  <h4>Just Gone</h4>
-                  <div class="timing-card-list">
-                    <template x-for="item in $store.chat.statusTimingFeed.justGone" :key="item.id">
-                      <button type="button" class="timing-card timing-card-past" @click="$store.chat.openTimingItem(item)">
-                        <span class="timing-card-icon" x-html="$store.chat.getAttentionIconSvg(item.icon)" aria-hidden="true"></span>
-                        <span class="timing-card-body">
-                          <span class="timing-card-time" x-text="item.timingLabel"></span>
-                          <span class="timing-card-title" x-text="item.title"></span>
-                          <span class="timing-card-subtitle" x-show="item.subtitle" x-text="item.subtitle"></span>
+                <section class="flightdeck-summary-panel flightdeck-summary-panel-task" data-testid="flightdeck-summary-tasks">
+                  <div class="autopilot-panel-heading">
+                    <h3>Tasks</h3>
+                    <button type="button" class="btn-secondary btn-compact" @click="$store.chat.navigateTo('tasks')" aria-label="View all recent tasks and comments">View all</button>
+                  </div>
+                  <div class="attention-card-list flightdeck-summary-card-list" x-show="$store.chat.autopilotOverviewTasks.length > 0">
+                    <template x-for="task in $store.chat.autopilotOverviewTasks.slice(0, 5)" :key="task.id">
+                      <button type="button" class="attention-card flightdeck-summary-card flightdeck-summary-card-task" @click="$store.chat.openAutopilotOverviewTask(task)" aria-label="Open selected task">
+                        <span class="attention-card-icon" aria-hidden="true" x-html="$store.chat.getAttentionIconSvg('task')"></span>
+                        <span class="attention-card-content">
+                          <span class="attention-card-kicker" x-text="task.subtitle"></span>
+                          <span class="attention-card-title" x-text="task.title"></span>
+                          <span class="attention-card-subtitle" x-text="task.reason"></span>
                         </span>
-                        <span class="timing-card-badge" x-text="item.badge"></span>
+                        <span class="attention-card-meta">
+                          <span class="attention-card-time">
+                            <span x-text="$store.chat.formatRelativeTime(task.activityAt)"></span>
+                            <span x-show="task.activityAt" x-text="new Date(task.activityAt).toLocaleString()"></span>
+                          </span>
+                          <span class="attention-card-action">Open task</span>
+                        </span>
                       </button>
                     </template>
                   </div>
-                </div>
-              </section>
-            </aside>
-          </div>
+                  <p class="settings-field-help" x-show="$store.chat.autopilotOverviewTasks.length === 0">No recent task activity for this context.</p>
+                </section>
+              </div>
+
+              <div class="flightdeck-summary-column">
+                <section class="flightdeck-summary-panel flightdeck-summary-panel-doc" data-testid="flightdeck-summary-documents">
+                  <div class="autopilot-panel-heading">
+                    <h3>Docs and Comments</h3>
+                    <button type="button" class="btn-secondary btn-compact" @click="$store.chat.navigateTo('docs')" aria-label="View all documents and comments">View all</button>
+                  </div>
+                  <div class="attention-card-list flightdeck-summary-card-list" x-show="$store.chat.autopilotOverviewDocuments.length > 0">
+                    <template x-for="doc in $store.chat.autopilotOverviewDocuments.slice(0, 5)" :key="doc.id">
+                      <button type="button" class="attention-card flightdeck-summary-card flightdeck-summary-card-doc" @click="$store.chat.openAutopilotOverviewDocument(doc)" aria-label="Open selected document">
+                        <span class="attention-card-icon" aria-hidden="true" x-html="$store.chat.getAttentionIconSvg('doc')"></span>
+                        <span class="attention-card-content">
+                          <span class="attention-card-kicker" x-text="doc.reason"></span>
+                          <span class="attention-card-title" x-text="doc.title"></span>
+                          <span class="attention-card-subtitle" x-text="doc.subtitle"></span>
+                        </span>
+                        <span class="attention-card-meta">
+                          <span class="attention-card-time">
+                            <span x-text="$store.chat.formatRelativeTime(doc.activityAt)"></span>
+                            <span x-show="doc.activityAt" x-text="new Date(doc.activityAt).toLocaleString()"></span>
+                          </span>
+                          <span class="attention-card-action">Open doc</span>
+                        </span>
+                      </button>
+                    </template>
+                  </div>
+                  <p class="settings-field-help" x-show="$store.chat.autopilotOverviewDocuments.length === 0">No recent document activity for this context.</p>
+                </section>
+
+                <section class="flightdeck-summary-panel flightdeck-summary-panel-file" data-testid="flightdeck-summary-files">
+                  <div class="autopilot-panel-heading">
+                    <h3>Files</h3>
+                    <button type="button" class="btn-secondary btn-compact" @click="$store.chat.navigateTo('files')" aria-label="View all files">View all</button>
+                  </div>
+                  <div class="attention-card-list flightdeck-summary-card-list" x-show="$store.chat.autopilotOverviewFiles.length > 0">
+                    <template x-for="file in $store.chat.autopilotOverviewFiles.slice(0, 5)" :key="file.id">
+                      <button type="button" class="attention-card flightdeck-summary-card flightdeck-summary-card-file" @click="$store.chat.openFileBrowserSource(file)" aria-label="Open selected file">
+                        <span class="attention-card-icon" aria-hidden="true" x-html="$store.chat.getAttentionIconSvg('doc')"></span>
+                        <span class="attention-card-content">
+                          <span class="attention-card-kicker" x-text="file.source_label"></span>
+                          <span class="attention-card-title" x-text="file.name"></span>
+                          <span class="attention-card-subtitle" x-text="file.reason"></span>
+                        </span>
+                        <span class="attention-card-meta">
+                          <span class="attention-card-time">
+                            <span x-text="$store.chat.fileUpdatedLabel(file)"></span>
+                            <span x-text="file.object_id"></span>
+                          </span>
+                          <span class="attention-card-action">Open file</span>
+                        </span>
+                      </button>
+                    </template>
+                  </div>
+                  <p class="settings-field-help" x-show="$store.chat.autopilotOverviewFiles.length === 0">No matching files.</p>
+                </section>
+              </div>
+            </div>
+          </section>
           </div>
         </template>
 
@@ -2407,7 +2514,12 @@
 
         <template x-if="$store.chat.navSection === 'chat'">
           <div class="chat-section">
-            <div class="chat-channel-header" x-show="$store.chat.navSection === 'chat'" x-cloak>
+            <div
+              class="chat-channel-header"
+              :class="{ 'pg-all-scopes-context': $store.chat.pgContextAllScopesSelected }"
+              x-show="$store.chat.navSection === 'chat'"
+              x-cloak
+            >
               <div
                 class="channel-row-scope-switcher"
                 x-data="{ bpIdx: 0, open: false, query: '' }"
@@ -2430,7 +2542,7 @@
                     <template x-for="(board, idx) in $store.chat.filterFlightDeckScopeOptions(query)" :key="board.id">
                       <li
                         class="board-picker-typeahead-option"
-                        :class="{ 'board-picker-typeahead-active': $store.chat.selectedBoardId === board.id, 'board-picker-typeahead-highlight': idx === bpIdx }"
+                        :class="{ 'board-picker-typeahead-active': $store.chat.isFlightDeckScopeOptionActive(board), 'board-picker-typeahead-highlight': idx === bpIdx }"
                         @click="$store.chat.selectBoard(board.id); open = false; query = ''"
                         @mouseenter="bpIdx = idx"
                         x-text="board.label"
@@ -2442,12 +2554,32 @@
                 <span class="channel-row-scope-separator" aria-hidden="true">|</span>
               </div>
               <div class="chat-channel-tab-scroll" role="tablist" aria-label="Chat channels">
-                <template x-for="ch in $store.chat.scopeFilteredChannels" :key="ch.record_id">
+                <div
+                  class="chat-channel-tab-item channel-home-tab-item"
+                  :class="{ active: $store.chat.pgContextAllScopesSelected }"
+                >
+                  <button
+                    type="button"
+                    class="chat-channel-tab chat-channel-home-tab"
+                    role="tab"
+                    :aria-selected="$store.chat.pgContextAllScopesSelected"
+                    @click="$store.chat.openAllScopesOverview()"
+                    title="All scopes overview"
+                    aria-label="All scopes overview"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M3 11.5 12 4l9 7.5"></path>
+                      <path d="M5 10.5V20h14v-9.5"></path>
+                      <path d="M9.5 20v-5h5v5"></path>
+                    </svg>
+                  </button>
+                </div>
+                <template x-for="ch in $store.chat.pgContextChannels" :key="ch.record_id">
                   <div
                     class="chat-channel-tab-item"
                     draggable="true"
                     :class="{
-                      active: $store.chat.selectedChannelId === ch.record_id,
+                      active: $store.chat.pgContextSelectedChannelId === ch.record_id,
                       'chat-channel-tab-unread': $store.chat.isChannelUnread(ch.record_id),
                       'chat-channel-tab-dragging': $store.chat.channelDragSourceId === ch.record_id
                     }"
@@ -2460,14 +2592,14 @@
                       type="button"
                       class="chat-channel-tab"
                       role="tab"
-                      :aria-selected="$store.chat.selectedChannelId === ch.record_id"
+                      :aria-selected="$store.chat.pgContextSelectedChannelId === ch.record_id"
                       @click="$store.chat.selectChannel(ch.record_id)"
                     >
                       <span class="channel-hash">#</span>
                       <span class="chat-channel-tab-label" x-text="$store.chat.getChannelLabel(ch)"></span>
                       <span class="unread-dot unread-dot-channel" x-show="$store.chat.isChannelUnread(ch.record_id)" x-cloak></span>
                     </button>
-                    <div class="chat-channel-menu chat-channel-tab-menu" x-show="$store.chat.selectedChannelId === ch.record_id" x-cloak>
+                    <div class="chat-channel-menu chat-channel-tab-menu" x-show="$store.chat.pgContextSelectedChannelId === ch.record_id" x-cloak>
                       <button
                         type="button"
                         class="chat-channel-menu-button"
@@ -2490,6 +2622,28 @@
                   <path d="M12 5v14M5 12h14"/>
                 </svg>
               </button>
+              <div class="chat-channel-header-actions">
+                <button
+                  type="button"
+                  class="chat-channel-header-icon-btn"
+                  @click="$store.chat.toggleAppHeaderHidden()"
+                  :title="$store.chat.appHeaderHidden ? 'Show header' : 'Full screen'"
+                  :aria-label="$store.chat.appHeaderHidden ? 'Show header' : 'Full screen'"
+                >
+                  <svg x-show="!$store.chat.appHeaderHidden" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="15 3 21 3 21 9"></polyline>
+                    <polyline points="9 21 3 21 3 15"></polyline>
+                    <line x1="21" y1="3" x2="14" y2="10"></line>
+                    <line x1="3" y1="21" x2="10" y2="14"></line>
+                  </svg>
+                  <svg x-show="$store.chat.appHeaderHidden" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="4 14 10 14 10 20"></polyline>
+                    <polyline points="20 10 14 10 14 4"></polyline>
+                    <line x1="14" y1="10" x2="21" y2="3"></line>
+                    <line x1="3" y1="21" x2="10" y2="14"></line>
+                  </svg>
+                </button>
+              </div>
             </div>
 
           <div class="chat-layout" :class="{ 'chat-layout-thread-full': $store.chat.activeThreadId && $store.chat.threadSize === 'full', 'chat-layout-thread-open': !!$store.chat.activeThreadId }">
@@ -2523,6 +2677,8 @@
                       </button>
                       <div class="chat-msg-actions-popover" x-show="$store.chat.isMessageActionsMenuOpen(msg.record_id)" x-cloak x-transition>
                         <button type="button" :data-record-id="msg.record_id" data-source-surface="main_feed" data-chat-get-it-done="true">Get it done</button>
+                        <button type="button" @click.stop.prevent="$store.chat.copyMessageRawText(msg.record_id)">Copy message</button>
+                        <button type="button" class="chat-msg-actions-danger" @click.stop.prevent="$store.chat.openChatDeleteConfirm('message', msg.record_id)">Delete message</button>
                         <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop.prevent="$store.chat.inspectMessageSyncStatus(msg.record_id)">Check sync status</button>
                       </div>
                     </div>
@@ -2671,9 +2827,6 @@
                   <h3>Thread</h3>
                 </div>
                 <div class="thread-header-actions">
-                  <button class="thread-delete-btn" @click="$store.chat.deleteActiveThread()" type="button" title="Delete thread">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-                  </button>
                   <button class="thread-resize-btn" @click="$store.chat.cycleThreadSize()" type="button"
                     :title="$store.chat.threadSize === 'full' ? 'Exit full screen' : 'Full screen'"
                     :aria-label="$store.chat.threadSize === 'full' ? 'Exit full screen' : 'Full screen'">
@@ -2704,6 +2857,10 @@
                       </button>
                       <div class="chat-msg-actions-popover" x-show="$store.chat.isMessageActionsMenuOpen($store.chat.getThreadParentMessage()?.record_id)" x-cloak x-transition>
                         <button type="button" :data-record-id="$store.chat.getThreadParentMessage()?.record_id || ''" data-source-surface="thread_parent" data-chat-get-it-done="true">Get it done</button>
+                        <button type="button" @click.stop.prevent="$store.chat.copyMessageRawText($store.chat.getThreadParentMessage()?.record_id)">Copy message</button>
+                        <button type="button" @click.stop.prevent="$store.chat.copyThreadRawText($store.chat.getThreadParentMessage()?.record_id)">Copy thread</button>
+                        <button type="button" class="chat-msg-actions-danger" @click.stop.prevent="$store.chat.openChatDeleteConfirm('message', $store.chat.getThreadParentMessage()?.record_id)">Delete message</button>
+                        <button type="button" class="chat-msg-actions-danger" @click.stop.prevent="$store.chat.openChatDeleteConfirm('thread', $store.chat.getThreadParentMessage()?.record_id)">Delete thread</button>
                         <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop.prevent="$store.chat.inspectMessageSyncStatus($store.chat.getThreadParentMessage()?.record_id)">Check sync status</button>
                       </div>
                     </div>
@@ -2775,6 +2932,8 @@
                       </button>
                       <div class="chat-msg-actions-popover" x-show="$store.chat.isMessageActionsMenuOpen(reply.record_id)" x-cloak x-transition>
                         <button type="button" :data-record-id="reply.record_id" data-source-surface="thread_reply" data-chat-get-it-done="true">Get it done</button>
+                        <button type="button" @click.stop.prevent="$store.chat.copyMessageRawText(reply.record_id)">Copy message</button>
+                        <button type="button" class="chat-msg-actions-danger" @click.stop.prevent="$store.chat.openChatDeleteConfirm('message', reply.record_id)">Delete message</button>
                         <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop.prevent="$store.chat.inspectMessageSyncStatus(reply.record_id)">Check sync status</button>
                       </div>
                     </div>
@@ -4193,10 +4352,23 @@
                         <span>Scope</span>
                         <select
                           x-model="item.scope_id"
+                          @change="item.channel_id = ($store.chat.fileUploadChannelOptions(item.scope_id)[0]?.id || '')"
                           :disabled="!$store.chat.canEditFileUploadItem(item)"
                         >
                           <option value="">Select scope</option>
                           <template x-for="option in $store.chat.fileUploadScopeOptions" :key="option.id">
+                            <option :value="option.id" x-text="option.label"></option>
+                          </template>
+                        </select>
+                      </label>
+                      <label>
+                        <span>Channel</span>
+                        <select
+                          x-model="item.channel_id"
+                          :disabled="!$store.chat.canEditFileUploadItem(item)"
+                        >
+                          <option value="">Select channel</option>
+                          <template x-for="option in $store.chat.fileUploadChannelOptions(item.scope_id)" :key="option.id">
                             <option :value="option.id" x-text="option.label"></option>
                           </template>
                         </select>
@@ -4255,6 +4427,7 @@
                     <code class="file-object-id" x-text="row.object_id"></code>
                   </div>
                   <div class="file-row-actions">
+                    <button type="button" class="file-action-btn" x-show="$store.chat.canMoveFileBrowserRow(row)" @click="$store.chat.openFileMoveModal(row)">Move</button>
                     <button type="button" class="file-action-btn" @click="$store.chat.openFileBrowserSource(row)">Open</button>
                     <button type="button" class="file-action-btn" @click="$store.chat.downloadFileBrowserRow(row)">Download</button>
                   </div>
@@ -4391,54 +4564,39 @@
         </template>
 
         <template x-if="$store.chat.navSection === 'autopilot'">
-          <section class="autopilot-overview-section">
+          <section class="autopilot-overview-section" data-testid="autopilot-overview-page">
             <div class="autopilot-overview-header">
               <div>
-                <p class="autopilot-overview-greeting" x-text="$store.chat.autopilotOverviewGreeting"></p>
-                <h2>Autopilot Overview</h2>
+                <h2>Welcome <span x-text="$store.chat.greetingName"></span>, where will we focus today?</h2>
                 <p x-text="$store.chat.autopilotOverviewContextLabel"></p>
               </div>
-              <button type="button" class="btn-confirm" @click="$store.chat.openHarnessLink()" :disabled="!$store.chat.hasHarnessLink">Open Autopilot</button>
+              <section class="my-agents-panel" aria-label="My Agents">
+                <h3>My Agents</h3>
+                <button
+                  type="button"
+                  class="autopilot-agent-launcher"
+                  @click="$store.chat.openHarnessLink()"
+                  :disabled="!$store.chat.hasHarnessLink"
+                  :title="$store.chat.workspaceHarnessUrl"
+                  aria-label="Dive deeper in Autopilot"
+                >
+                  <span class="autopilot-agent-avatar-ring">
+                    <template x-if="$store.chat.harnessAgentAvatarUrl">
+                      <img :src="$store.chat.harnessAgentAvatarUrl" alt="" />
+                    </template>
+                    <template x-if="!$store.chat.harnessAgentAvatarUrl">
+                      <span x-text="$store.chat.getInitials($store.chat.harnessAgentLabel || 'Autopilot')"></span>
+                    </template>
+                  </span>
+                  <span class="autopilot-agent-launcher-copy">
+                    <strong x-text="$store.chat.harnessAgentLabel || 'Autopilot agent'"></strong>
+                    <small>Dive Deeper in Autopilot</small>
+                  </span>
+                </button>
+              </section>
             </div>
 
-            <div class="autopilot-overview-toolbar">
-              <select class="files-filter-select" x-model="$store.chat.autopilotOverviewScopeFilter" @change="$store.chat.handleAutopilotOverviewScopeChange()">
-                <template x-for="option in $store.chat.autopilotOverviewScopeOptions" :key="option.id">
-                  <option :value="option.id" x-text="option.label"></option>
-                </template>
-              </select>
-              <select class="files-filter-select" x-model="$store.chat.autopilotOverviewChannelFilter" :disabled="!$store.chat.autopilotOverviewIsScoped || $store.chat.autopilotOverviewChannelOptions.length === 0">
-                <template x-for="option in $store.chat.autopilotOverviewChannelOptions" :key="option.id">
-                  <option :value="option.id" x-text="option.label"></option>
-                </template>
-              </select>
-              <p class="settings-field-help" x-show="$store.chat.autopilotOverviewIsScoped && !$store.chat.autopilotOverviewContext.channelId">Selected scope has no chat channel.</p>
-            </div>
-
-            <div class="autopilot-overview-stats">
-              <article>
-                <span>Threads</span>
-                <strong x-text="$store.chat.autopilotOverviewStats.threads"></strong>
-              </article>
-              <article>
-                <span>Tasks</span>
-                <strong x-text="$store.chat.autopilotOverviewStats.tasks"></strong>
-              </article>
-              <article>
-                <span>Docs</span>
-                <strong x-text="$store.chat.autopilotOverviewStats.documents"></strong>
-              </article>
-              <article>
-                <span>Unresolved comments</span>
-                <strong x-text="$store.chat.autopilotOverviewStats.unresolvedDocComments"></strong>
-              </article>
-              <article>
-                <span>Files</span>
-                <strong x-text="$store.chat.autopilotOverviewStats.files"></strong>
-              </article>
-            </div>
-
-            <section class="autopilot-daily-scope">
+            <section class="autopilot-daily-scope" data-testid="autopilot-overview-daily-scope">
               <div>
                 <span class="daily-note-eyebrow">Daily Scope</span>
                 <h3 x-text="$store.chat.autopilotOverviewDailyNote.title"></h3>
@@ -4449,98 +4607,104 @@
                   <span x-show="$store.chat.autopilotOverviewDailyNote.duplicateCount > 0" x-text="`${$store.chat.autopilotOverviewDailyNote.duplicateCount} duplicate note${$store.chat.autopilotOverviewDailyNote.duplicateCount === 1 ? '' : 's'}`"></span>
                 </div>
               </div>
-              <button type="button" class="btn-secondary" @click="$store.chat.openAutopilotOverviewDailyNote()" x-text="$store.chat.autopilotOverviewDailyNote.note ? 'Open note' : 'Create note'"></button>
+              <button type="button" class="btn-secondary" @click="$store.chat.openAutopilotOverviewDailyNote()" :aria-label="$store.chat.autopilotOverviewDailyNote.note ? 'Open Daily Scope note' : 'Create Daily Scope note'" x-text="$store.chat.autopilotOverviewDailyNote.note ? 'Open note' : 'Create note'"></button>
             </section>
 
-            <template x-if="$store.chat.autopilotOverviewDiagnostics.length > 0">
-              <div class="autopilot-overview-diagnostics">
-                <template x-for="item in $store.chat.autopilotOverviewDiagnostics" :key="item">
-                  <p x-text="item"></p>
-                </template>
-              </div>
-            </template>
-
             <div class="autopilot-overview-grid">
-              <section class="autopilot-overview-panel">
-                <div class="autopilot-panel-heading">
-                  <h3>Recent Threads</h3>
-                  <button type="button" class="btn-secondary btn-compact" @click="$store.chat.navigateTo('chat')">View all</button>
-                </div>
-                <div class="autopilot-overview-list" x-show="$store.chat.autopilotOverviewThreads.length > 0">
-                  <template x-for="thread in $store.chat.autopilotOverviewThreads.slice(0, 5)" :key="thread.id">
-                    <button type="button" class="autopilot-overview-row" @click="$store.chat.openAutopilotOverviewThread(thread)">
-                      <span class="autopilot-row-title" x-text="thread.title"></span>
-                      <span class="autopilot-row-meta">
-                        <span x-text="thread.channelLabel"></span>
-                        <span x-text="$store.chat.formatRelativeTime(thread.latestMessageUpdatedAt)"></span>
-                      </span>
-                      <span class="autopilot-row-preview" x-text="thread.latestMessage"></span>
-                    </button>
-                  </template>
-                </div>
-                <p class="settings-field-help" x-show="$store.chat.autopilotOverviewThreads.length === 0">No matching threads.</p>
-              </section>
+              <div class="autopilot-overview-column">
+                <section class="autopilot-overview-panel" data-testid="autopilot-overview-recent-threads">
+                  <div class="autopilot-panel-heading">
+                    <h3>Threads</h3>
+                    <button type="button" class="btn-secondary btn-compact" @click="$store.chat.navigateTo('chat')" aria-label="View all recent threads" data-testid="autopilot-overview-threads-view-all">View all</button>
+                  </div>
+                  <div class="autopilot-overview-list" x-show="$store.chat.autopilotOverviewThreads.length > 0" data-testid="autopilot-overview-threads-list">
+                    <template x-for="thread in $store.chat.autopilotOverviewThreads.slice(0, 5)" :key="thread.id">
+                      <button type="button" class="pg-thread-summary autopilot-thread-card" @click="$store.chat.openAutopilotOverviewThread(thread)" aria-label="Open selected thread" data-testid="autopilot-overview-thread-row">
+                        <span class="chat-thread-preview">
+                          <span class="chat-thread-preview-count" x-text="thread.channelLabel"></span>
+                          <span class="chat-thread-preview-link" x-text="thread.title"></span>
+                        </span>
+                        <span class="chat-thread-latest-preview" x-text="thread.latestMessage"></span>
+                        <span class="autopilot-row-meta">
+                          <span x-text="thread.messageCount + ' ' + (thread.messageCount === 1 ? 'message' : 'messages')"></span>
+                          <span x-text="$store.chat.formatRelativeTime(thread.latestMessageUpdatedAt)"></span>
+                        </span>
+                      </button>
+                    </template>
+                  </div>
+                  <p class="settings-field-help" x-show="$store.chat.autopilotOverviewThreads.length === 0">No matching threads.</p>
+                </section>
 
-              <section class="autopilot-overview-panel">
-                <div class="autopilot-panel-heading">
-                  <h3>Recent Tasks and Comments</h3>
-                  <button type="button" class="btn-secondary btn-compact" @click="$store.chat.navigateTo('tasks')">View all</button>
-                </div>
-                <div class="autopilot-overview-list" x-show="$store.chat.autopilotOverviewTasks.length > 0">
-                  <template x-for="task in $store.chat.autopilotOverviewTasks.slice(0, 5)" :key="task.id">
-                    <button type="button" class="autopilot-overview-row" @click="$store.chat.openAutopilotOverviewTask(task)">
-                      <span class="autopilot-row-title" x-text="task.title"></span>
-                      <span class="autopilot-row-meta">
-                        <span x-text="task.subtitle"></span>
-                        <span x-text="task.reason"></span>
-                        <span x-text="$store.chat.formatRelativeTime(task.activityAt)"></span>
-                      </span>
-                    </button>
-                  </template>
-                </div>
-                <p class="settings-field-help" x-show="$store.chat.autopilotOverviewTasks.length === 0">No recent task activity for this context.</p>
-              </section>
+                <section class="autopilot-overview-panel" data-testid="autopilot-overview-recent-tasks">
+                  <div class="autopilot-panel-heading">
+                    <h3>Tasks</h3>
+                    <button type="button" class="btn-secondary btn-compact" @click="$store.chat.navigateTo('tasks')" aria-label="View all recent tasks and comments" data-testid="autopilot-overview-tasks-view-all">View all</button>
+                  </div>
+                  <div class="task-list-rows autopilot-overview-list" x-show="$store.chat.autopilotOverviewTasks.length > 0" data-testid="autopilot-overview-tasks-list">
+                    <template x-for="task in $store.chat.autopilotOverviewTasks.slice(0, 5)" :key="task.id">
+                      <button type="button" class="task-list-row task-list-row-parent autopilot-task-row" @click="$store.chat.openAutopilotOverviewTask(task)" aria-label="Open selected task" data-testid="autopilot-overview-task-row">
+                        <span class="task-list-title" x-text="task.title"></span>
+                        <span class="badge badge-date" x-text="task.subtitle"></span>
+                        <span class="autopilot-row-meta">
+                          <span x-text="task.reason"></span>
+                          <span x-text="$store.chat.formatRelativeTime(task.activityAt)"></span>
+                        </span>
+                      </button>
+                    </template>
+                  </div>
+                  <p class="settings-field-help" x-show="$store.chat.autopilotOverviewTasks.length === 0">No recent task activity for this context.</p>
+                </section>
+              </div>
 
-              <section class="autopilot-overview-panel">
-                <div class="autopilot-panel-heading">
-                  <h3>Docs and Comments</h3>
-                  <button type="button" class="btn-secondary btn-compact" @click="$store.chat.navigateTo('docs')">View all</button>
-                </div>
-                <div class="autopilot-overview-list" x-show="$store.chat.autopilotOverviewDocuments.length > 0">
-                  <template x-for="doc in $store.chat.autopilotOverviewDocuments.slice(0, 5)" :key="doc.id">
-                    <button type="button" class="autopilot-overview-row" @click="$store.chat.openAutopilotOverviewDocument(doc)">
-                      <span class="autopilot-row-title" x-text="doc.title"></span>
-                      <span class="autopilot-row-meta">
-                        <span x-text="doc.reason"></span>
-                        <span x-text="$store.chat.formatRelativeTime(doc.activityAt)"></span>
-                      </span>
-                      <span class="autopilot-row-preview" x-text="doc.subtitle"></span>
-                    </button>
-                  </template>
-                </div>
-                <p class="settings-field-help" x-show="$store.chat.autopilotOverviewDocuments.length === 0">No recent document activity for this context.</p>
-              </section>
+              <div class="autopilot-overview-column">
+                <section class="autopilot-overview-panel" data-testid="autopilot-overview-documents">
+                  <div class="autopilot-panel-heading">
+                    <h3>Docs and Comments</h3>
+                    <button type="button" class="btn-secondary btn-compact" @click="$store.chat.navigateTo('docs')" aria-label="View all documents and comments" data-testid="autopilot-overview-documents-view-all">View all</button>
+                  </div>
+                  <div class="doc-items autopilot-overview-list" x-show="$store.chat.autopilotOverviewDocuments.length > 0" data-testid="autopilot-overview-documents-list">
+                    <template x-for="doc in $store.chat.autopilotOverviewDocuments.slice(0, 5)" :key="doc.id">
+                      <button type="button" class="doc-item autopilot-doc-row" @click="$store.chat.openAutopilotOverviewDocument(doc)" aria-label="Open selected document" data-testid="autopilot-overview-document-row">
+                        <span class="doc-item-icon">DOC</span>
+                        <span class="doc-item-title" x-text="doc.title"></span>
+                        <span class="doc-item-meta">
+                          <span x-text="doc.reason"></span>
+                          <span x-text="$store.chat.formatRelativeTime(doc.activityAt)"></span>
+                        </span>
+                      </button>
+                    </template>
+                  </div>
+                  <p class="settings-field-help" x-show="$store.chat.autopilotOverviewDocuments.length === 0">No recent document activity for this context.</p>
+                </section>
 
-              <section class="autopilot-overview-panel">
-                <div class="autopilot-panel-heading">
-                  <h3>Files</h3>
-                  <button type="button" class="btn-secondary btn-compact" @click="$store.chat.navigateTo('files')">View all</button>
-                </div>
-                <div class="autopilot-overview-list" x-show="$store.chat.autopilotOverviewFiles.length > 0">
-                  <template x-for="file in $store.chat.autopilotOverviewFiles.slice(0, 5)" :key="file.id">
-                    <button type="button" class="autopilot-overview-row" @click="$store.chat.openFileBrowserSource(file)">
-                      <span class="autopilot-row-title" x-text="file.name"></span>
-                      <span class="autopilot-row-meta">
-                        <span x-text="file.source_label"></span>
-                        <span x-text="file.reason"></span>
-                        <span x-text="$store.chat.fileUpdatedLabel(file)"></span>
-                      </span>
-                      <span class="autopilot-row-preview" x-text="file.object_id"></span>
-                    </button>
-                  </template>
-                </div>
-                <p class="settings-field-help" x-show="$store.chat.autopilotOverviewFiles.length === 0">No matching files.</p>
-              </section>
+                <section class="autopilot-overview-panel" data-testid="autopilot-overview-files">
+                  <div class="autopilot-panel-heading">
+                    <h3>Files</h3>
+                    <button type="button" class="btn-secondary btn-compact" @click="$store.chat.navigateTo('files')" aria-label="View all files" data-testid="autopilot-overview-files-view-all">View all</button>
+                  </div>
+                  <div class="autopilot-overview-list" x-show="$store.chat.autopilotOverviewFiles.length > 0" data-testid="autopilot-overview-files-list">
+                    <template x-for="file in $store.chat.autopilotOverviewFiles.slice(0, 5)" :key="file.id">
+                      <button type="button" class="file-row autopilot-file-row" @click="$store.chat.openFileBrowserSource(file)" aria-label="Open selected file" data-testid="autopilot-overview-file-row">
+                        <span class="file-thumb" :data-kind="file.kind || file.source_type || 'document'">
+                          <span class="file-thumb-icon" x-text="file.kind === 'audio' ? 'AUD' : 'FILE'"></span>
+                        </span>
+                        <span class="file-row-main">
+                          <span class="file-row-title">
+                            <span x-text="file.name"></span>
+                            <span class="file-kind-pill" x-text="file.source_label"></span>
+                          </span>
+                          <span class="file-row-meta">
+                            <span x-text="file.reason"></span>
+                            <span x-text="$store.chat.fileUpdatedLabel(file)"></span>
+                          </span>
+                          <span class="file-object-id" x-text="file.object_id"></span>
+                        </span>
+                      </button>
+                    </template>
+                  </div>
+                  <p class="settings-field-help" x-show="$store.chat.autopilotOverviewFiles.length === 0">No matching files.</p>
+                </section>
+              </div>
             </div>
           </section>
         </template>
@@ -5182,17 +5346,60 @@
             <div class="settings-panel-header">
               <div>
                 <h2>Autopilot</h2>
-                <p>Workspace-level Wingman Autopilot URL synced through SuperBased settings records.</p>
+                <p>Select the Wingman agent and the Autopilot site that agent runs on.</p>
               </div>
             </div>
-            <label class="settings-field-label" for="wingman-harness-input">Wingman Autopilot URL</label>
+            <template x-if="$store.chat.workspaceHarnessAgentNpub">
+              <div class="new-channel-resolved-profile settings-selected-agent">
+                <button type="button" class="identity-avatar-button" @click.stop="$store.chat.openIdentityCard($event, $store.chat.workspaceHarnessAgentNpub)" :title="$store.chat.harnessAgentLabel">
+                  <template x-if="$store.chat.harnessAgentAvatarUrl">
+                    <img class="new-channel-avatar" :src="$store.chat.harnessAgentAvatarUrl" />
+                  </template>
+                  <template x-if="!$store.chat.harnessAgentAvatarUrl">
+                    <div class="new-channel-avatar new-channel-avatar-fallback" x-text="$store.chat.getInitials($store.chat.harnessAgentLabel)"></div>
+                  </template>
+                </button>
+                <div class="docs-share-suggestion-copy">
+                  <span class="new-channel-profile-name" x-text="$store.chat.harnessAgentLabel"></span>
+                  <small x-text="$store.chat.getSenderSecondaryLabel($store.chat.workspaceHarnessAgentNpub)"></small>
+                </div>
+                <button type="button" class="task-inline-clear-btn" @click="$store.chat.clearHarnessAgent()">Clear</button>
+              </div>
+            </template>
+            <label class="settings-field-label" for="wingman-harness-agent-input">Autopilot agent</label>
+            <input
+              id="wingman-harness-agent-input"
+              type="text"
+              x-model="$store.chat.wingmanHarnessAgentQuery"
+              @input="$store.chat.handleHarnessAgentInput($event.target.value)"
+              placeholder="Search workspace users and agents"
+            />
+            <ul class="docs-share-suggestions" x-show="$store.chat.harnessAgentSuggestions.length > 0">
+              <template x-for="person in $store.chat.harnessAgentSuggestions" :key="`harness-agent-${person.npub}`">
+                <li>
+                  <button type="button" class="docs-share-suggestion" @click="$store.chat.selectHarnessAgent(person.npub)">
+                    <template x-if="person.avatarUrl">
+                      <img class="new-channel-avatar" :src="person.avatarUrl" />
+                    </template>
+                    <template x-if="!person.avatarUrl">
+                      <div class="new-channel-avatar new-channel-avatar-fallback" x-text="$store.chat.getInitials(person.label)"></div>
+                    </template>
+                    <span class="docs-share-suggestion-copy">
+                      <strong x-text="person.label"></strong>
+                      <small x-text="person.subtitle"></small>
+                    </span>
+                  </button>
+                </li>
+              </template>
+            </ul>
+            <label class="settings-field-label" for="wingman-harness-input">Autopilot URL</label>
             <input
               id="wingman-harness-input"
               type="text"
               x-model="$store.chat.wingmanHarnessInput"
               @input="$store.chat.handleHarnessInput($event.target.value)"
               @keydown.enter.prevent="$store.chat.saveHarnessSettings()"
-              placeholder="wm21.otherstuff.ai or https://wm21.otherstuff.ai"
+              placeholder="rick.runwingman.com or https://rick.runwingman.com"
             />
             <p class="settings-field-help">
               Current workspace:
@@ -5201,7 +5408,7 @@
             <p class="error-text" x-show="$store.chat.wingmanHarnessError" x-text="$store.chat.wingmanHarnessError"></p>
             <div class="settings-actions">
               <button type="button" class="btn-confirm" @click="$store.chat.saveHarnessSettings()" :disabled="!$store.chat.wingmanHarnessDirty">Save Autopilot</button>
-              <button type="button" class="btn-cancel" @click="$store.chat.openHarnessLink()" :disabled="!$store.chat.hasHarnessLink">Open Autopilot</button>
+              <button type="button" class="btn-cancel" @click="$store.chat.openHarnessLink()" :disabled="!$store.chat.hasHarnessLink">Test link</button>
             </div>
           </section>
 
@@ -5315,14 +5522,14 @@
                 <div class="scope-card" :data-level="s1.level" :id="'scope-' + s1.record_id" x-data="{ expanded: false, actionsOpen: false }">
                   <div class="scope-card-header">
                     <span class="scope-level-badge" x-show="!$store.chat.isTowerPgMode" :data-level="s1.level" x-text="$store.chat.scopeLevelLabel(s1.level)"></span>
-                    <div class="scope-card-actions" x-show="$store.chat.canAdminWorkspace && !$store.chat.isTowerPgMode">
+                    <div class="scope-card-actions" x-show="$store.chat.canAdminWorkspace">
                       <div class="doc-actions-menu scope-actions-menu" @click.outside="actionsOpen = false">
                         <button type="button" class="doc-actions-toggle" title="Scope actions" aria-label="Scope actions" @click.stop="actionsOpen = !actionsOpen">
                           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/></svg>
                         </button>
                         <div class="doc-actions-popover" x-show="actionsOpen" x-cloak x-transition>
 	                          <button x-show="!$store.chat.isTowerPgMode && parseInt(s1.level.slice(1)) < 5" type="button" @click.stop="$store.chat.startNewScope('l' + (parseInt(s1.level.slice(1)) + 1), s1.record_id); actionsOpen = false">Add child scope</button>
-	                          <button type="button" @click.stop="$store.chat.startEditScope(s1.record_id); actionsOpen = false">Edit scope</button>
+	                          <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop="$store.chat.startEditScope(s1.record_id); actionsOpen = false">Edit scope</button>
 	                          <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop="$store.chat.openRecordStatusModal({ familyId: 'scope', recordId: s1.record_id, label: s1.title || 'Untitled scope' }); actionsOpen = false">Check status</button>
 	                          <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop="$store.chat.reapplyScopeGroupCrypto(s1.record_id); actionsOpen = false" :disabled="$store.chat.scopePolicyRepairBusy">Reapply group crypto</button>
                           <button type="button" class="doc-actions-delete" @click.stop="if(confirm('Delete this scope and its children?')) $store.chat.deleteScope(s1.record_id); actionsOpen = false">Delete scope</button>
@@ -5620,6 +5827,18 @@
                     </select>
                   </div>
                 </template>
+                <div class="scope-field" x-show="$store.chat.isTowerPgMode">
+                  <label class="scope-field-label">Template</label>
+                  <select
+                    x-model="$store.chat.newScopeTemplateId"
+                    @change="$store.chat.selectNewScopeTemplate($event.target.value)"
+                  >
+                    <option value="">Blank scope</option>
+                    <template x-for="template in $store.chat.scopeTemplateOptions" :key="template.id">
+                      <option :value="template.id" x-text="template.title"></option>
+                    </template>
+                  </select>
+                </div>
                 <div class="scope-field">
                   <label class="scope-field-label">Title</label>
                   <input
@@ -5640,6 +5859,20 @@
                     @keydown.escape="$store.chat.cancelNewScope()"
                   />
                 </div>
+                <template x-for="field in $store.chat.newScopeTemplateFields" :key="`scope-template-field-${field.name}`">
+                  <div class="scope-field">
+                    <label class="scope-field-label" x-text="field.label"></label>
+                    <input
+                      type="text"
+                      :value="$store.chat.newScopeTemplateValues[field.name] || ''"
+                      :placeholder="field.name === 'workingdir' ? '/Users/mini/code/project' : ''"
+                      @input="$store.chat.setNewScopeTemplateValue(field.name, $event.target.value)"
+                      @keydown.enter.prevent="$store.chat.addScope()"
+                      @keydown.escape="$store.chat.cancelNewScope()"
+                    />
+                  </div>
+                </template>
+                <p class="files-upload-error scope-template-error" x-show="$store.chat.newScopeTemplateError" x-text="$store.chat.newScopeTemplateError"></p>
                 <div class="scope-field scope-field-wide">
                   <label class="scope-field-label" x-text="$store.chat.isTowerPgMode ? 'Owner group' : 'Default groups'"></label>
                   <div class="scope-groups-list" x-show="$store.chat.newScopeAssignedGroupIds.length > 0">
@@ -5733,8 +5966,8 @@
 
               <template x-if="$store.chat.showNewScopeForm">
                 <div class="scope-modal-actions">
-                  <button type="button" class="scope-cancel-btn" @click="$store.chat.cancelNewScope()">Cancel</button>
-                  <button type="button" class="scope-save-btn" @click="$store.chat.addScope()">Create</button>
+                  <button type="button" class="scope-cancel-btn" @click="$store.chat.cancelNewScope()" :disabled="$store.chat.newScopeSubmitting">Cancel</button>
+                  <button type="button" class="scope-save-btn" @click="$store.chat.addScope()" :disabled="$store.chat.newScopeSubmitting" x-text="$store.chat.newScopeSubmitting ? 'Creating...' : 'Create'"></button>
                 </div>
               </template>
               <template x-if="!$store.chat.showNewScopeForm">
@@ -6499,6 +6732,31 @@
               </div>
             </div>
 
+            <section class="channel-metadata-panel" x-show="$store.chat.isTowerPgMode">
+              <label class="task-field-label" for="channel-base-prompt-input">Base prompt</label>
+              <textarea
+                id="channel-base-prompt-input"
+                class="new-channel-input channel-base-prompt-input"
+                rows="7"
+                placeholder="Describe how Autopilot should use this channel and the base project context to include with messages."
+                x-model="$store.chat.channelSettingsBasePrompt"
+                :disabled="$store.chat.channelSettingsSaving"
+                aria-label="Channel base prompt"
+                data-testid="channel-base-prompt-input"
+              ></textarea>
+              <div class="channel-metadata-actions">
+                <button
+                  type="button"
+                  class="btn-confirm"
+                  @click="$store.chat.saveChannelBasePrompt()"
+                  :disabled="$store.chat.channelSettingsSaving"
+                  x-text="$store.chat.channelSettingsSaving ? 'Saving...' : 'Save prompt'"
+                ></button>
+                <p class="settings-success" x-show="$store.chat.channelSettingsNotice" x-text="$store.chat.channelSettingsNotice"></p>
+                <p class="groups-subtitle channel-access-error" x-show="$store.chat.channelSettingsError" x-text="$store.chat.channelSettingsError"></p>
+              </div>
+            </section>
+
             <section class="channel-access-panel" x-show="$store.chat.isTowerPgMode">
               <div class="channel-access-header">
                 <h4>Channel access</h4>
@@ -6843,6 +7101,19 @@
 
                   <label class="new-channel-label">Description <span class="new-channel-optional">(optional)</span></label>
                   <input class="new-channel-input" type="text" placeholder="What's this channel about?" x-model="$store.chat.newChannelDescription" aria-label="Channel description" data-testid="new-channel-description-input" />
+
+                  <div x-show="$store.chat.isTowerPgMode" x-cloak>
+                    <label class="new-channel-label" for="new-channel-base-prompt-input">Base prompt <span class="new-channel-optional">(optional)</span></label>
+                    <textarea
+                      id="new-channel-base-prompt-input"
+                      class="new-channel-input new-channel-textarea"
+                      rows="5"
+                      placeholder="Describe how Autopilot should use this channel and the base project context to include with messages."
+                      x-model="$store.chat.newChannelBasePrompt"
+                      aria-label="Channel base prompt"
+                      data-testid="new-channel-base-prompt-input"
+                    ></textarea>
+                  </div>
 
                   <div class="new-channel-access-editor" x-show="$store.chat.isTowerPgMode">
                     <div class="new-channel-access-header">
@@ -7218,6 +7489,26 @@
               <button type="button" class="btn-confirm" @click="$store.chat.saveDailyNoteEditor()" :disabled="$store.chat.dailyNoteEditorSaving">
                 <span x-show="!$store.chat.dailyNoteEditorSaving">Save daily note</span>
                 <span x-show="$store.chat.dailyNoteEditorSaving">Saving...</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="doc-modal-backdrop" x-show="$store.chat.chatDeleteConfirm.open" x-cloak @click.self="$store.chat.closeChatDeleteConfirm()">
+          <div class="doc-modal-card chat-delete-confirm-modal">
+            <button class="modal-close" type="button" @click="$store.chat.closeChatDeleteConfirm()">&times;</button>
+            <div class="chat-delete-confirm-header">
+              <h3 x-text="$store.chat.chatDeleteConfirm.title || 'Delete'"></h3>
+            </div>
+            <p class="doc-comment-modal-copy" x-text="$store.chat.chatDeleteConfirm.message"></p>
+            <template x-if="$store.chat.chatDeleteConfirm.error">
+              <p class="error-text" x-text="$store.chat.chatDeleteConfirm.error"></p>
+            </template>
+            <div class="new-doc-modal-actions">
+              <button type="button" class="btn-cancel" @click="$store.chat.closeChatDeleteConfirm()" :disabled="$store.chat.chatDeleteConfirm.submitting">Cancel</button>
+              <button type="button" class="btn-delete-doc-confirm" @click="$store.chat.confirmChatDelete()" :disabled="$store.chat.chatDeleteConfirm.submitting">
+                <span x-show="!$store.chat.chatDeleteConfirm.submitting">Delete</span>
+                <span x-show="$store.chat.chatDeleteConfirm.submitting">Deleting...</span>
               </button>
             </div>
           </div>

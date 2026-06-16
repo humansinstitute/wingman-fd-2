@@ -40,10 +40,25 @@ async function resolveDocumentContent(data = {}) {
   try {
     const bytes = await downloadStorageObject(storage.content_storage_object_id);
     const raw = new TextDecoder().decode(bytes);
-    const parsed = JSON.parse(raw);
-    const model = parsed?.content_model && typeof parsed.content_model === 'object'
-      ? parsed.content_model
-      : parsed;
+    let model;
+    try {
+      const parsed = JSON.parse(raw);
+      model = parsed?.content_model && typeof parsed.content_model === 'object'
+        ? parsed.content_model
+        : parsed;
+    } catch (parseError) {
+      const contentType = String(storage.content_storage_content_type || '').toLowerCase();
+      const storageFormat = String(storage.content_storage_format || '').toLowerCase();
+      if (contentType.includes('markdown') || storageFormat === 'flightdeck_pg_doc_body') {
+        return {
+          content: raw,
+          content_format: data.content_format,
+          content_blocks: data.content_blocks,
+          content_storage_status: 'loaded',
+        };
+      }
+      throw parseError;
+    }
     return {
       content: model.content ?? data.content ?? '',
       content_format: model.content_format ?? data.content_format,

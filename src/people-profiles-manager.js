@@ -640,6 +640,10 @@ export const peopleProfilesManagerMixin = {
     return this.findPeopleSuggestions(this.defaultAgentQuery, [this.defaultAgentNpub]);
   },
 
+  get harnessAgentSuggestions() {
+    return this.findPeopleSuggestions(this.wingmanHarnessAgentQuery, [this.workspaceHarnessAgentNpub]);
+  },
+
   get defaultAgentLabel() {
     return this.defaultAgentNpub ? this.getSenderName(this.defaultAgentNpub) : '';
   },

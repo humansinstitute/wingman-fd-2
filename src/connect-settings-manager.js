@@ -154,6 +154,33 @@ export const connectSettingsManagerMixin = {
     this.wingmanHarnessError = null;
   },
 
+  handleHarnessAgentInput(value) {
+    this.wingmanHarnessAgentQuery = value;
+    this.wingmanHarnessDirty = true;
+    this.wingmanHarnessError = null;
+    if (this.wingmanHarnessAgentQuery.startsWith('npub1') && this.wingmanHarnessAgentQuery.length >= 20) {
+      this.resolveChatProfile(this.wingmanHarnessAgentQuery);
+    }
+  },
+
+  async selectHarnessAgent(npub) {
+    const nextNpub = String(npub || '').trim();
+    this.workspaceHarnessAgentNpub = nextNpub;
+    this.wingmanHarnessAgentQuery = '';
+    this.wingmanHarnessDirty = true;
+    this.wingmanHarnessError = null;
+    if (nextNpub) {
+      await this.rememberPeople([nextNpub], 'autopilot-agent');
+    }
+  },
+
+  clearHarnessAgent() {
+    this.workspaceHarnessAgentNpub = '';
+    this.wingmanHarnessAgentQuery = '';
+    this.wingmanHarnessDirty = true;
+    this.wingmanHarnessError = null;
+  },
+
   handleDefaultAgentInput(value) {
     this.defaultAgentQuery = value;
     if (this.defaultAgentQuery.startsWith('npub1') && this.defaultAgentQuery.length >= 20) {

@@ -28,6 +28,10 @@ function descriptor(overrides = {}) {
       descriptor: '/api/v4/flightdeck-pg/workspaces/workspace-1/descriptor',
       me: '/api/v4/flightdeck-pg/workspaces/workspace-1/me',
     },
+    metadata: {
+      wingman_harness_url: 'https://rick.runwingman.com',
+      wingman_harness_agent_npub: 'npub1wingman21',
+    },
     ...Object.fromEntries(Object.entries(overrides).filter(([key]) => key !== 'identity')),
   };
 }
@@ -45,6 +49,10 @@ describe('PG workspace descriptors', () => {
       workspaceId: 'workspace-1',
       appNpub: 'flightdeck_pg',
       label: 'Wingmen',
+      metadata: {
+        wingman_harness_url: 'https://rick.runwingman.com',
+        wingman_harness_agent_npub: 'npub1wingman21',
+      },
       capabilities: ['pg_scopes', 'pg_channels'],
     });
   });
@@ -75,6 +83,10 @@ describe('PG workspace descriptors', () => {
       pgSessionNpub: 'npub1pete',
       pgBackendMode: true,
       pgDescriptorVerifiedAt: '2026-06-05T00:00:00.000Z',
+      metadata: {
+        wingman_harness_url: 'https://rick.runwingman.com',
+        wingman_harness_agent_npub: 'npub1wingman21',
+      },
       capabilities: ['pg_scopes', 'pg_channels'],
     });
     expect(entry.connectionToken).toBe('');

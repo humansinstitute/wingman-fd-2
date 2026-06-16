@@ -162,6 +162,7 @@ export const SHELL_STATE_KEYS = Object.freeze([
   'workspaceSettingsVersion',
   'workspaceSettingsGroupIds',
   'workspaceHarnessUrl',
+  'workspaceHarnessAgentNpub',
   'workspaceProfileNameInput',
   'workspaceProfileSlugInput',
   'workspaceProfileDescriptionInput',
@@ -179,6 +180,7 @@ export const SHELL_STATE_KEYS = Object.freeze([
 
   // Harness
   'wingmanHarnessInput',
+  'wingmanHarnessAgentQuery',
   'wingmanHarnessError',
   'wingmanHarnessDirty',
 ]);
@@ -341,6 +343,7 @@ export function createShellState(options = {}) {
     workspaceSettingsVersion: 0,
     workspaceSettingsGroupIds: [],
     workspaceHarnessUrl: '',
+    workspaceHarnessAgentNpub: '',
     workspaceProfileNameInput: '',
     workspaceProfileSlugInput: '',
     workspaceProfileDescriptionInput: '',
@@ -358,6 +361,7 @@ export function createShellState(options = {}) {
 
     // ── Harness ───────────────────────────────────────────────
     wingmanHarnessInput: '',
+    wingmanHarnessAgentQuery: '',
     wingmanHarnessError: null,
     wingmanHarnessDirty: false,
 
@@ -1008,6 +1012,7 @@ export function createShellState(options = {}) {
       this.workspaceSettingsVersion = 0;
       this.workspaceSettingsGroupIds = [];
       this.workspaceHarnessUrl = '';
+      this.workspaceHarnessAgentNpub = '';
       this.revokeWorkspaceAvatarPreviewObjectUrl();
       this.hasBootstrappedUnreadTracking = false;
       this.workspaceProfileNameInput = '';
@@ -1022,6 +1027,7 @@ export function createShellState(options = {}) {
       this.defaultAgentQuery = '';
       this.hasForcedTaskFamilyBackfill = false;
       this.wingmanHarnessInput = '';
+      this.wingmanHarnessAgentQuery = '';
       this.wingmanHarnessError = null;
       this.wingmanHarnessDirty = false;
       this.hasForcedInitialBackfill = false;

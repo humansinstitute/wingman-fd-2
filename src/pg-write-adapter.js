@@ -4,9 +4,16 @@ import {
   createTowerPgChannelFile,
   createTowerPgChannelMessage,
   createTowerPgChannelTask,
+  createTowerPgDocComment,
   createTowerPgTaskComment,
+  deleteTowerPgDocComment,
   deleteTowerPgDoc,
+  deleteTowerPgMessage,
+  deleteTowerPgTask,
+  deleteTowerPgThread,
   updateTowerPgDoc,
+  updateTowerPgDocComment,
+  updateTowerPgFile,
   updateTowerPgTask,
   updateTowerPgTaskState,
 } from './api.js';
@@ -15,6 +22,7 @@ import {
   mapPgDocToLocal,
   mapPgFileToLocalDocument,
   mapPgMessageToLocal,
+  mapPgDocCommentToLocal,
   mapPgTaskToLocal,
   mapPgTaskCommentToLocal,
   resolveTowerPgWorkspaceContext,
@@ -72,6 +80,7 @@ function resolveTowerPgChannelForRecord(store, record = {}) {
 function pgMetadataWithThread(metadata = {}, threadId = null) {
   const base = metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? { ...metadata } : {};
   if (threadId) base.thread_id = threadId;
+  else delete base.thread_id;
   return base;
 }
 
@@ -132,6 +141,7 @@ export async function updateTowerPgDocFromLocal(store, document, previousDocumen
   const body = addPgEditLeaseToSaveBody(store, previousDocument || document, 'document', {
     row_version: previousDocument?.version || document.version || undefined,
     title: document.title || 'Untitled document',
+    channel_id: document.pg_channel_id || document.channel_id || undefined,
     storage_object_id: document.content_storage_object_id || document.storage_object_id,
     summary: document.content || null,
     metadata: pgMetadataWithThread(document.pg_metadata || document.metadata, document.pg_thread_id || document.thread_id),
@@ -164,29 +174,49 @@ export async function createTowerPgFileFromLocal(store, file) {
   return mapPgFileToLocalDocument(result.file, { workspaceOwnerNpub: context.workspaceOwnerNpub });
 }
 
+export async function updateTowerPgFileFromLocal(store, file, previous = null) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  if (!context.workspaceId || !context.workspaceOwnerNpub || !context.baseUrl || !file?.record_id) throw new Error('Tower PG file is not ready');
+  const { recordContext, channel } = resolveTowerPgChannelForRecord(store, file);
+  if (!channel?.record_id) throw new Error('Selected PG channel does not match the file scope');
+  const result = await updateTowerPgFile(context.workspaceId, file.record_id, {
+    row_version: previous?.version || file.version || undefined,
+    channel_id: channel.record_id,
+    display_name: file.display_name || file.title || null,
+    description: file.description || file.content || null,
+    metadata: pgMetadataWithThread(file.pg_metadata || file.metadata, recordContext.threadId),
+  }, pgRequestOptions(context));
+  return mapPgFileToLocalDocument(result.file, { workspaceOwnerNpub: context.workspaceOwnerNpub });
+}
+
 export async function createTowerPgAudioNoteFromLocal(store, audioNote) {
   const context = resolveTowerPgWorkspaceContext(store);
   if (!context.workspaceId || !context.workspaceOwnerNpub || !context.baseUrl) throw new Error('Tower PG workspace is not ready');
   const { recordContext, channel } = resolveTowerPgChannelForRecord(store, audioNote);
   if (!channel?.record_id) throw new Error('Selected PG channel does not match the audio note scope');
   const targetType = pgAudioTargetType(audioNote.target_record_family_hash);
-  const result = await createTowerPgChannelAudioNote(context.workspaceId, channel.record_id, {
+  const targetId = trimText(audioNote.target_record_id);
+  const title = trimText(audioNote.title);
+  const transcriptPreview = typeof audioNote.transcript_preview === 'string' ? audioNote.transcript_preview : '';
+  const summary = typeof audioNote.summary === 'string' ? audioNote.summary : '';
+  const durationSeconds = Number(audioNote.duration_seconds);
+  const audioBody = {
     storage_object_id: audioNote.storage_object_id,
     mime_type: audioNote.mime_type || 'audio/webm;codecs=opus',
-    title: audioNote.title || null,
-    thread_id: recordContext.threadId || null,
-    target_type: targetType,
-    target_id: targetType ? audioNote.target_record_id || null : null,
-    duration_seconds: audioNote.duration_seconds ?? null,
+    ...(title ? { title } : {}),
+    ...(recordContext.threadId ? { thread_id: recordContext.threadId } : {}),
+    ...(targetType && targetId ? { target_type: targetType, target_id: targetId } : {}),
+    ...(Number.isFinite(durationSeconds) ? { duration_seconds: durationSeconds } : {}),
     size_bytes: audioNote.size_bytes ?? 0,
     media_encryption: audioNote.media_encryption || {},
     waveform_preview: audioNote.waveform_preview || [],
     transcript_status: audioNote.transcript_status || 'not_requested',
-    transcript_preview: audioNote.transcript_preview || null,
-    summary: audioNote.summary || null,
+    ...(transcriptPreview ? { transcript_preview: transcriptPreview } : {}),
+    ...(summary ? { summary } : {}),
     record_state: audioNote.record_state || 'active',
     metadata: audioNote.pg_metadata || audioNote.metadata || {},
-  }, pgRequestOptions(context));
+  };
+  const result = await createTowerPgChannelAudioNote(context.workspaceId, channel.record_id, audioBody, pgRequestOptions(context));
   return mapPgAudioNoteToLocal(result.audio_note, {
     workspaceOwnerNpub: context.workspaceOwnerNpub,
     senderNpub: store?.session?.npub,
@@ -224,6 +254,16 @@ export async function updateTowerPgTaskFromLocal(store, task, previousTask = nul
   return mapPgTaskToLocal(result.task, { workspaceOwnerNpub: context.workspaceOwnerNpub });
 }
 
+export async function deleteTowerPgTaskFromLocal(store, task) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  if (!context.workspaceId || !task?.record_id) throw new Error('Tower PG task is not ready');
+  const result = await deleteTowerPgTask(context.workspaceId, task.record_id, {
+    rowVersion: task.version || undefined,
+    ...pgRequestOptions(context),
+  });
+  return mapPgTaskToLocal(result.task, { workspaceOwnerNpub: context.workspaceOwnerNpub });
+}
+
 export async function createTowerPgTaskCommentFromLocal(store, comment) {
   const context = resolveTowerPgWorkspaceContext(store);
   if (!context.workspaceId || !comment?.target_record_id) throw new Error('Tower PG task comments are not ready');
@@ -235,6 +275,62 @@ export async function createTowerPgTaskCommentFromLocal(store, comment) {
     workspaceOwnerNpub: context.workspaceOwnerNpub,
     senderNpub: store?.session?.npub,
   });
+}
+
+export async function createTowerPgDocCommentFromLocal(store, comment) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  if (!context.workspaceId || !comment?.target_record_id) throw new Error('Tower PG document comments are not ready');
+  const metadata = comment.pg_metadata && typeof comment.pg_metadata === 'object' && !Array.isArray(comment.pg_metadata)
+    ? { ...comment.pg_metadata }
+    : {};
+  if (comment.anchor_block_id) metadata.anchor_block_id = comment.anchor_block_id;
+  if (Number.isFinite(Number(comment.anchor_line_number))) metadata.anchor_line_number = Number(comment.anchor_line_number);
+  metadata.comment_status = comment.comment_status || metadata.comment_status || 'open';
+  const body = {
+    body: comment.body,
+    ...(comment.parent_comment_id ? { parent_comment_id: comment.parent_comment_id } : {}),
+    metadata,
+  };
+  const result = await createTowerPgDocComment(context.workspaceId, comment.target_record_id, body, pgRequestOptions(context));
+  return mapPgDocCommentToLocal(result.comment, {
+    workspaceOwnerNpub: context.workspaceOwnerNpub,
+    senderNpub: store?.session?.npub,
+  });
+}
+
+export async function updateTowerPgDocCommentFromLocal(store, comment) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  if (!context.workspaceId || !comment?.target_record_id || !comment?.record_id) throw new Error('Tower PG document comments are not ready');
+  const metadata = comment.pg_metadata && typeof comment.pg_metadata === 'object' && !Array.isArray(comment.pg_metadata)
+    ? { ...comment.pg_metadata }
+    : {};
+  if (comment.anchor_block_id) metadata.anchor_block_id = comment.anchor_block_id;
+  if (Number.isFinite(Number(comment.anchor_line_number))) metadata.anchor_line_number = Number(comment.anchor_line_number);
+  metadata.comment_status = comment.comment_status || metadata.comment_status || 'open';
+  const result = await updateTowerPgDocComment(context.workspaceId, comment.target_record_id, comment.record_id, {
+    comment_status: metadata.comment_status,
+    row_version: comment.previous_version || comment.version || undefined,
+  }, pgRequestOptions(context));
+  return mapPgDocCommentToLocal(result.comment, {
+    workspaceOwnerNpub: context.workspaceOwnerNpub,
+    senderNpub: store?.session?.npub,
+  });
+}
+
+export async function deleteTowerPgDocCommentFromLocal(store, comment) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  if (!context.workspaceId || !comment?.target_record_id || !comment?.record_id) throw new Error('Tower PG document comments are not ready');
+  const result = await deleteTowerPgDocComment(context.workspaceId, comment.target_record_id, comment.record_id, {
+    rowVersion: comment.version || undefined,
+    ...pgRequestOptions(context),
+  });
+  return {
+    ...mapPgDocCommentToLocal(result.comment, {
+      workspaceOwnerNpub: context.workspaceOwnerNpub,
+      senderNpub: store?.session?.npub,
+    }),
+    record_state: 'deleted',
+  };
 }
 
 export async function createTowerPgMessageFromLocal(store, message, options = {}) {
@@ -275,4 +371,30 @@ export async function createTowerPgMessageFromLocal(store, message, options = {}
     senderNpub: store?.session?.npub,
     threadById,
   });
+}
+
+export async function deleteTowerPgMessageFromLocal(store, message) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  if (!context.workspaceId || !message?.record_id) throw new Error('Tower PG message is not ready');
+  const result = await deleteTowerPgMessage(context.workspaceId, message.record_id, {
+    rowVersion: message.version || undefined,
+    ...pgRequestOptions(context),
+  });
+  return {
+    ...mapPgMessageToLocal(result.message, {
+      workspaceOwnerNpub: context.workspaceOwnerNpub,
+      senderNpub: store?.session?.npub,
+    }),
+    record_state: 'deleted',
+  };
+}
+
+export async function deleteTowerPgThreadFromLocal(store, parentMessage) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  const threadId = trimText(parentMessage?.pg_thread_id);
+  if (!context.workspaceId || !threadId) throw new Error('Tower PG thread is not ready');
+  const result = await deleteTowerPgThread(context.workspaceId, threadId, {
+    ...pgRequestOptions(context),
+  });
+  return result.thread;
 }

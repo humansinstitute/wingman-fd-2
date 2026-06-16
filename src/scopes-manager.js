@@ -19,8 +19,10 @@ import {
   addPendingWrite,
 } from './db.js';
 import {
+  createTowerPgScopeChannel,
   createTowerPgWorkspaceScope,
   deleteTowerPgWorkspaceScope,
+  updateTowerPgDoc,
 } from './api.js';
 import {
   outboundScope,
@@ -60,9 +62,18 @@ import {
 } from './preferred-write-group.js';
 import { isTowerPgBackendMode } from './backend-mode.js';
 import {
+  mapPgChannelToLocal,
+  mapPgDocToLocal,
   hydrateTowerPgScopes,
   resolveTowerPgWorkspaceContext,
 } from './pg-read-hydrator.js';
+import { getPgChannelScopeId } from './pg-record-context.js';
+import { addPgEditLeaseToSaveBody } from './pg-edit-session.js';
+import {
+  SCOPE_TEMPLATES,
+  getScopeTemplate,
+  renderScopeTemplate,
+} from './scope-templates.js';
 
 // ---------------------------------------------------------------------------
 // Pure utility functions (no `this` dependency)
@@ -122,6 +133,18 @@ const SCOPE_REPAIR_FAMILY_OPTIONS = Object.freeze([
 // ---------------------------------------------------------------------------
 
 export const scopesManagerMixin = {
+  get scopeTemplateOptions() {
+    return SCOPE_TEMPLATES;
+  },
+
+  get selectedNewScopeTemplate() {
+    return getScopeTemplate(this.newScopeTemplateId);
+  },
+
+  get newScopeTemplateFields() {
+    const template = this.selectedNewScopeTemplate;
+    return (template?.variables || []).filter((variable) => variable?.name && variable.name !== 'title');
+  },
 
   buildScopeRepairProgressRows(counts = {}) {
     return SCOPE_REPAIR_FAMILY_OPTIONS.map((family) => ({
@@ -477,6 +500,9 @@ export const scopesManagerMixin = {
     this.docScopeModalSubmitting = true;
     try {
       if (this.docScopeTargetType === 'bulk-documents') {
+        if (this.selectedDocument?.record_id && this.docScopeTargetIds.includes(this.selectedDocument.record_id)) {
+          await this.flushSelectedDocumentAutosaveBeforeScopeChange(this.selectedDocument);
+        }
         for (const item of this.activeDocScopeTargets) {
           await this.updateDocScope(item, this.docScopeModalSelectedId, { sync: false });
         }
@@ -484,7 +510,8 @@ export const scopesManagerMixin = {
       } else if (this.docScopeTargetType === 'directory') {
         await this.updateDirectoryScope(target, this.docScopeModalSelectedId);
       } else {
-        await this.updateDocScope(target, this.docScopeModalSelectedId);
+        const doc = await this.flushSelectedDocumentAutosaveBeforeScopeChange(target);
+        await this.updateDocScope(doc, this.docScopeModalSelectedId);
       }
       this.closeDocScopeModal();
     } finally {
@@ -540,8 +567,9 @@ export const scopesManagerMixin = {
   },
 
   async selectScopeForDoc(scopeId) {
-    const doc = this.selectedDocument;
+    let doc = this.selectedDocument;
     if (!doc || !this.session?.npub) return;
+    doc = await this.flushSelectedDocumentAutosaveBeforeScopeChange(doc);
     if (isTowerPgBackendMode()) {
       this.error = 'Moving PG documents between scopes is not available yet.';
       this.closeScopePicker();
@@ -549,6 +577,108 @@ export const scopesManagerMixin = {
     }
     await this.updateDocScope(doc, scopeId);
     this.closeScopePicker();
+  },
+
+  async flushSelectedDocumentAutosaveBeforeScopeChange(doc = null) {
+    const targetId = String(doc?.record_id || this.selectedDocument?.record_id || '').trim();
+    if (!targetId || this.selectedDocType !== 'document') return doc || this.selectedDocument || null;
+    if (this.docAutosaveTimer) {
+      clearTimeout(this.docAutosaveTimer);
+      this.docAutosaveTimer = null;
+    }
+    const shouldSave = this.docsEditorOpen
+      || this.docAutosaveState === 'pending'
+      || this.docAutosaveState === 'saving';
+    if (shouldSave && typeof this.saveSelectedDocItem === 'function') {
+      const saved = await this.saveSelectedDocItem({ autosave: true });
+      if (saved?.record_id === targetId) return saved;
+    }
+    return this.documents?.find((item) => item?.record_id === targetId) || this.selectedDocument || doc;
+  },
+
+  async moveOpenDocumentToScopeBoard(scopeId, doc = null) {
+    const targetScopeId = String(scopeId || '').trim();
+    if (!targetScopeId || targetScopeId === '__all__' || targetScopeId === '__recent__' || targetScopeId === '__unscoped__') return;
+    if (isTowerPgBackendMode()) {
+      const savedDoc = await this.flushSelectedDocumentAutosaveBeforeScopeChange(doc || this.selectedDocument);
+      if (!savedDoc || savedDoc.scope_id === targetScopeId) return;
+      const channel = (this.channels || []).find((entry) => entry?.record_id
+        && entry.record_state !== 'deleted'
+        && getPgChannelScopeId(entry) === targetScopeId) || null;
+      if (!channel?.record_id) {
+        this.error = 'Select or create a PG channel in this scope before moving the document.';
+        return;
+      }
+      const metadata = savedDoc.metadata && typeof savedDoc.metadata === 'object' && !Array.isArray(savedDoc.metadata)
+        ? { ...savedDoc.metadata }
+        : {};
+      delete metadata.thread_id;
+      const pgMetadata = savedDoc.pg_metadata && typeof savedDoc.pg_metadata === 'object' && !Array.isArray(savedDoc.pg_metadata)
+        ? { ...savedDoc.pg_metadata }
+        : {};
+      delete pgMetadata.thread_id;
+      const moving = this.normalizeDocumentRowGroupRefs({
+        ...savedDoc,
+        ...this.buildScopeAssignment(targetScopeId),
+        metadata,
+        pg_metadata: pgMetadata,
+        pg_channel_id: channel.record_id,
+        pg_thread_id: null,
+        thread_id: null,
+        sync_status: 'pending',
+        updated_at: new Date().toISOString(),
+      });
+      await upsertDocument(moving);
+      this.patchDocumentLocal(moving);
+      try {
+        const context = resolveTowerPgWorkspaceContext(this);
+        const body = addPgEditLeaseToSaveBody(this, savedDoc, 'document', {
+          row_version: savedDoc.version || undefined,
+          title: moving.title || 'Untitled document',
+          channel_id: channel.record_id,
+          storage_object_id: moving.content_storage_object_id || moving.storage_object_id,
+          summary: moving.content || null,
+          metadata: moving.pg_metadata || moving.metadata || {},
+        });
+        const result = await updateTowerPgDoc(context.workspaceId, moving.record_id, body, {
+          baseUrl: context.baseUrl,
+          appNpub: context.appNpub,
+        });
+        const accepted = mapPgDocToLocal(result.doc, { workspaceOwnerNpub: context.workspaceOwnerNpub });
+        const canonical = this.normalizeDocumentRowGroupRefs({
+          ...accepted,
+          content: moving.content,
+          content_format: moving.content_format,
+          content_blocks: moving.content_blocks,
+          content_storage_object_id: moving.content_storage_object_id,
+          content_storage_format: moving.content_storage_format,
+          content_storage_content_type: moving.content_storage_content_type,
+          content_size_bytes: moving.content_size_bytes,
+          content_sha256_hex: moving.content_sha256_hex,
+          content_storage_status: moving.content_storage_status,
+          content_storage_error: moving.content_storage_error,
+          references: moving.references,
+        });
+        await upsertDocument(canonical);
+        this.patchDocumentLocal(canonical);
+        this.selectedChannelId = channel.record_id;
+        this.docAutosaveState = 'saved';
+        this.scheduleDocumentsRefresh?.('PG document scope move');
+      } catch (error) {
+        const failed = { ...moving, sync_status: 'failed', updated_at: new Date().toISOString() };
+        await upsertDocument(failed);
+        this.patchDocumentLocal(failed);
+        this.docAutosaveState = 'error';
+        this.error = error?.message || 'Failed to move PG document.';
+        throw error;
+      }
+      return;
+    }
+    const targetDoc = doc || this.selectedDocument;
+    if (!targetDoc || targetDoc.scope_id === targetScopeId) return;
+    const savedDoc = await this.flushSelectedDocumentAutosaveBeforeScopeChange(targetDoc);
+    if (!savedDoc || savedDoc.scope_id === targetScopeId) return;
+    await this.updateDocScope(savedDoc, targetScopeId);
   },
 
   async clearDocScope() {
@@ -795,6 +925,7 @@ export const scopesManagerMixin = {
     }
     const title = String(this.newScopeTitle || '').trim();
     if (!title || !this.session?.npub) return;
+    if (this.newScopeSubmitting) return;
 
     if (isTowerPgBackendMode()) {
       const groupIds = normalizeGroupIds(this.newScopeAssignedGroupIds)
@@ -805,18 +936,79 @@ export const scopesManagerMixin = {
         this.error = 'Flight Deck PG workspace is not connected.';
         return;
       }
-      await createTowerPgWorkspaceScope(workspaceId, {
-        name: title,
-        description: this.newScopeDescription || '',
-        kind: 'project',
-        owner_group_id: groupIds[0] || null,
-      }, { baseUrl, appNpub });
+      let renderedTemplate = null;
+      this.newScopeTemplateError = '';
+      if (this.newScopeTemplateId) {
+        try {
+          renderedTemplate = renderScopeTemplate(this.selectedNewScopeTemplate, {
+            ...(this.newScopeTemplateValues || {}),
+            title,
+          });
+        } catch (error) {
+          this.newScopeTemplateError = error?.message || 'Fill in the template fields before creating this scope.';
+          return;
+        }
+      }
+      this.newScopeSubmitting = true;
+      try {
+        const scopeDescription = String(this.newScopeDescription || '').trim()
+          || String(renderedTemplate?.scope?.description || '').trim();
+        const scopeResult = await createTowerPgWorkspaceScope(workspaceId, {
+          name: title,
+          description: scopeDescription,
+          kind: 'project',
+          owner_group_id: groupIds[0] || null,
+        }, { baseUrl, appNpub });
+        const scopeId = String(scopeResult?.scope?.id || scopeResult?.scope?.record_id || '').trim();
+        if (renderedTemplate?.channels?.length > 0) {
+          if (!scopeId) throw new Error('Tower did not return a scope id for template channel creation.');
+          const { workspaceOwnerNpub } = resolveTowerPgWorkspaceContext(this);
+          const grants = groupIds[0]
+            ? [{
+              principal_type: 'group',
+              principal_id: groupIds[0],
+              access_level: 'manage',
+            }]
+            : [];
+          const createdChannels = [];
+          for (const channel of renderedTemplate.channels) {
+            const result = await createTowerPgScopeChannel(workspaceId, scopeId, {
+              name: String(channel.title || channel.name || '').trim(),
+              description: String(channel.description || '').trim() || undefined,
+              metadata: {
+                basePrompt: String(channel.basePrompt || '').trim(),
+              },
+              kind: 'channel',
+              grants,
+            }, { baseUrl, appNpub });
+            const channelRow = mapPgChannelToLocal(result.channel, { workspaceOwnerNpub });
+            createdChannels.push(channelRow);
+            try {
+              await upsertChannel(channelRow);
+            } catch {
+              // The following refresh is authoritative; cache write can be unavailable in tests.
+            }
+          }
+          if (createdChannels.length > 0) {
+            const createdIds = new Set(createdChannels.map((channel) => channel.record_id));
+            this.channels = [
+              ...(this.channels || []).filter((channel) => !createdIds.has(channel.record_id)),
+              ...createdChannels,
+            ];
+          }
+        }
+      } finally {
+        this.newScopeSubmitting = false;
+      }
       this.newScopeTitle = '';
       this.newScopeDescription = '';
       this.newScopeLevel = 'l1';
       this.newScopeParentId = null;
       this.newScopeAssignedGroupIds = [];
       this.newScopeGroupQuery = '';
+      this.newScopeTemplateId = '';
+      this.newScopeTemplateValues = {};
+      this.newScopeTemplateError = '';
       this.showNewScopeForm = false;
       await this.refreshScopes();
       return;
@@ -904,6 +1096,10 @@ export const scopesManagerMixin = {
     this.newScopeDescription = '';
     this.newScopeAssignedGroupIds = this.getDefaultScopeGroupIds(nextLevel, nextParentId);
     this.newScopeGroupQuery = '';
+    this.newScopeTemplateId = '';
+    this.newScopeTemplateValues = {};
+    this.newScopeTemplateError = '';
+    this.newScopeSubmitting = false;
     this.showNewScopeForm = true;
   },
 
@@ -913,6 +1109,29 @@ export const scopesManagerMixin = {
     this.newScopeDescription = '';
     this.newScopeAssignedGroupIds = [];
     this.newScopeGroupQuery = '';
+    this.newScopeTemplateId = '';
+    this.newScopeTemplateValues = {};
+    this.newScopeTemplateError = '';
+    this.newScopeSubmitting = false;
+  },
+
+  selectNewScopeTemplate(templateId) {
+    this.newScopeTemplateId = String(templateId || '').trim();
+    this.newScopeTemplateValues = {};
+    this.newScopeTemplateError = '';
+    for (const field of this.newScopeTemplateFields) {
+      this.newScopeTemplateValues[field.name] = '';
+    }
+  },
+
+  setNewScopeTemplateValue(name, value) {
+    const key = String(name || '').trim();
+    if (!key) return;
+    this.newScopeTemplateValues = {
+      ...(this.newScopeTemplateValues || {}),
+      [key]: value,
+    };
+    this.newScopeTemplateError = '';
   },
 
   startEditScope(scopeId) {

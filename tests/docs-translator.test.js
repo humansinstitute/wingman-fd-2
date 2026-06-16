@@ -196,6 +196,43 @@ describe('docs translator', () => {
     expect(row.content_storage_object_id).toBe('storage-doc-1');
   });
 
+  it('materializes raw Markdown PG document bodies', async () => {
+    downloadStorageObject.mockResolvedValue(new TextEncoder().encode('# Updated\n\nPipeline body'));
+
+    const row = await inboundDocument({
+      record_id: 'doc-pg-markdown',
+      owner_npub: 'npub_owner',
+      version: 1,
+      updated_at: '2026-06-15T00:00:00Z',
+      owner_payload: {
+        ciphertext: JSON.stringify({
+          app_namespace: 'coworker',
+          collection_space: 'document',
+          schema_version: 1,
+          record_id: 'doc-pg-markdown',
+          data: {
+            title: 'PG document',
+            content: '# Original',
+            content_format: null,
+            content_blocks: [],
+            content_storage_object_id: 'storage-doc-markdown',
+            content_storage_format: 'flightdeck_pg_doc_body',
+            content_storage_content_type: 'text/markdown; charset=utf-8',
+            content_size_bytes: 24,
+            content_sha256_hex: 'def456',
+            parent_directory_id: null,
+            shares: [],
+          },
+        }),
+      },
+      group_payloads: [],
+    });
+
+    expect(downloadStorageObject).toHaveBeenCalledWith('storage-doc-markdown');
+    expect(row.content).toBe('# Updated\n\nPipeline body');
+    expect(row.content_storage_status).toBe('loaded');
+  });
+
   it('builds a storage-backed document envelope without embedding the full body', async () => {
     const envelope = await outboundDocument({
       record_id: 'doc-storage',

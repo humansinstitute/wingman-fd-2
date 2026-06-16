@@ -1,12 +1,16 @@
+import { readFileSync } from 'node:fs';
+
 import { describe, expect, it } from 'vitest';
 
 import {
+  autopilotOverviewManagerMixin,
   buildAutopilotOverviewDocuments,
   buildAutopilotOverviewFiles,
   buildAutopilotOverviewTasks,
   buildAutopilotOverviewThreads,
   countUnresolvedDocumentComments,
 } from '../src/autopilot-overview-manager.js';
+import { buildPgChannelTaskBoardId } from '../src/pg-record-context.js';
 import { recordFamilyHash } from '../src/translators/chat.js';
 
 describe('autopilot overview manager', () => {
@@ -69,6 +73,98 @@ describe('autopilot overview manager', () => {
       selectedScopeId: 'scope-a',
       selectedChannelId: 'chan-b',
     })).toEqual([]);
+  });
+
+  it('uses resolved DM channel names in thread cards instead of raw npubs', () => {
+    const rows = buildAutopilotOverviewThreads({
+      channels: [{
+        record_id: 'dm-1',
+        title: 'DM: npub1wingman21',
+        channel_type: 'dm',
+        participant_npubs: ['npub1pete', 'npub1wingman21'],
+      }],
+      messages: [{
+        record_id: 'thread-dm',
+        channel_id: 'dm-1',
+        body: 'Hello',
+        updated_at: '2026-06-15T10:00:00.000Z',
+      }],
+      sessionNpub: 'npub1pete',
+      getSenderName: (npub) => (npub === 'npub1wingman21' ? 'Wingman 21' : npub),
+    });
+
+    expect(rows[0].channelLabel).toBe('Wingman 21');
+  });
+
+  it('opens an overview thread directly after selecting its channel', async () => {
+    const calls = [];
+    const store = {
+      ...autopilotOverviewManagerMixin,
+      focusMessageId: null,
+      navigateTo(section) {
+        calls.push(['navigateTo', section]);
+      },
+      async selectChannel(recordId, options) {
+        calls.push(['selectChannel', recordId, options]);
+      },
+      openThread(recordId, options) {
+        calls.push(['openThread', recordId, options]);
+      },
+    };
+
+    await store.openAutopilotOverviewThread({
+      id: 'thread-id',
+      rootRecordId: 'root-message-id',
+      channelId: 'chan-a',
+    });
+
+    expect(store.focusMessageId).toBe('root-message-id');
+    expect(calls).toEqual([
+      ['navigateTo', 'chat'],
+      ['selectChannel', 'chan-a', { syncRoute: false, scrollToLatest: false }],
+      ['openThread', 'root-message-id', { scrollToLatest: false }],
+    ]);
+  });
+
+  it('derives overview context from the existing selected channel and scope state', () => {
+    const store = Object.assign(Object.create(autopilotOverviewManagerMixin), {
+      channels,
+      selectedBoardId: buildPgChannelTaskBoardId('chan-a'),
+      pgContextSelectedChannelId: 'chan-a',
+      selectedChannelId: 'chan-b',
+      scopesMap: new Map([
+        ['scope-a', { record_id: 'scope-a', title: 'Implementation' }],
+        ['scope-b', { record_id: 'scope-b', title: 'Design' }],
+      ]),
+    });
+
+    expect(store.autopilotOverviewContext).toEqual({
+      mode: 'context',
+      scopeId: 'scope-a',
+      channelId: 'chan-a',
+    });
+  });
+
+  it('treats explicit All scope as unfiltered even when a previous channel is remembered', () => {
+    const store = Object.assign(Object.create(autopilotOverviewManagerMixin), {
+      channels,
+      messages,
+      selectedBoardId: '__all__',
+      pgContextSelectedChannelId: null,
+      selectedChannelId: 'chan-a',
+      scopesMap: new Map([
+        ['scope-a', { record_id: 'scope-a', title: 'Implementation' }],
+        ['scope-b', { record_id: 'scope-b', title: 'Design' }],
+      ]),
+    });
+
+    expect(store.autopilotOverviewContext).toEqual({
+      mode: 'all',
+      scopeId: 'all',
+      channelId: 'all',
+    });
+    expect(store.autopilotOverviewContextLabel).toBe('All workspace activity');
+    expect(store.autopilotOverviewThreads.map((thread) => thread.channelId).sort()).toEqual(['chan-a', 'chan-b']);
   });
 
   it('counts only unresolved document comments', () => {
@@ -169,6 +265,25 @@ describe('autopilot overview manager', () => {
     });
   });
 
+  it('keeps file-backed document records out of the overview document rows', () => {
+    const rows = buildAutopilotOverviewDocuments({
+      documents: [
+        { record_id: 'doc-a', title: 'Real doc', updated_at: '2026-06-15T10:00:00.000Z', scope_id: 'scope-a', pg_channel_id: 'chan-a' },
+        {
+          record_id: 'file-a',
+          title: 'Uploaded file.pdf',
+          updated_at: '2026-06-15T11:00:00.000Z',
+          scope_id: 'scope-a',
+          pg_channel_id: 'chan-a',
+          pg_record_type: 'file',
+          pg_storage_object_id: 'storage-file-a',
+        },
+      ],
+    });
+
+    expect(rows.map((row) => row.recordId)).toEqual(['doc-a']);
+  });
+
   it('excludes ambiguous records from scope and channel filtered task rows', () => {
     const rows = buildAutopilotOverviewTasks({
       tasks: [
@@ -202,5 +317,59 @@ describe('autopilot overview manager', () => {
 
     expect(scopedRows.map((row) => row.object_id)).toEqual(['kept']);
     expect(scopedRows.diagnostics).toEqual(['1 file record is hidden because scope/channel is missing.']);
+  });
+
+  it('orders files by created or uploaded fallback timestamps when updated time is absent', () => {
+    const rows = buildAutopilotOverviewFiles([
+      { object_id: 'older-upload', name: 'Older upload', uploaded_at: '2026-06-15T08:00:00.000Z' },
+      { object_id: 'newer-created', name: 'Newer created', created_at: '2026-06-15T11:00:00.000Z' },
+      { object_id: 'middle-upload', name: 'Middle upload', uploaded_at: '2026-06-15T10:00:00.000Z' },
+    ]);
+
+    expect(rows.map((row) => row.object_id)).toEqual(['newer-created', 'middle-upload', 'older-upload']);
+    expect(rows.map((row) => row.activityAt)).toEqual([
+      '2026-06-15T11:00:00.000Z',
+      '2026-06-15T10:00:00.000Z',
+      '2026-06-15T08:00:00.000Z',
+    ]);
+  });
+
+  it('keeps document body storage rows out of overview files', () => {
+    const rows = buildAutopilotOverviewFiles([
+      { object_id: 'doc-body', name: 'Scratch pad', source_type: 'document', kind: 'document', updated_at: '2026-06-15T10:00:00.000Z' },
+      { object_id: 'attachment', name: 'Upload.pdf', source_type: 'document', kind: 'file', updated_at: '2026-06-15T11:00:00.000Z' },
+    ]);
+
+    expect(rows.map((row) => row.object_id)).toEqual(['attachment']);
+  });
+
+  it('includes stable overview test ids and accessible labels', () => {
+    const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+
+    [
+      'data-testid="autopilot-overview-page"',
+      'data-testid="autopilot-overview-daily-scope"',
+      'data-testid="autopilot-overview-recent-threads"',
+      'data-testid="autopilot-overview-recent-tasks"',
+      'data-testid="autopilot-overview-documents"',
+      'data-testid="autopilot-overview-files"',
+      'data-testid="autopilot-overview-threads-list"',
+      'data-testid="autopilot-overview-tasks-list"',
+      'data-testid="autopilot-overview-documents-list"',
+      'data-testid="autopilot-overview-files-list"',
+      'aria-label="View all recent threads"',
+      'aria-label="Open selected thread"',
+    ].forEach((expected) => {
+      expect(html).toContain(expected);
+    });
+
+    [
+      'data-testid="autopilot-overview-scope-select"',
+      'data-testid="autopilot-overview-channel-select"',
+      'aria-label="Filter Autopilot Overview by scope"',
+      'aria-label="Filter Autopilot Overview by chat channel"',
+    ].forEach((removed) => {
+      expect(html).not.toContain(removed);
+    });
   });
 });

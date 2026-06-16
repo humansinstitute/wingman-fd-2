@@ -23,9 +23,11 @@ import { onboardingAnnouncementsManagerMixin } from './onboarding-announcements-
 import { unreadStoreMixin } from './unread-store.js';
 import { reportsManagerMixin } from './reports-manager.js';
 import { filesManagerMixin } from './files-manager.js';
+import { writeContextManagerMixin } from './write-context-manager.js';
 import { autopilotOverviewManagerMixin } from './autopilot-overview-manager.js';
 import {
   hydrateTowerPgDailyNotes,
+  hydrateTowerPgDoc,
   hydrateTowerPgDocumentsAndFiles,
   hydrateTowerPgTask,
   hydrateTowerPgTaskComments,
@@ -37,6 +39,7 @@ import {
   createTowerPgTaskCommentFromLocal,
   createTowerPgTaskFromLocal,
   deleteTowerPgDocFromLocal,
+  deleteTowerPgTaskFromLocal,
   updateTowerPgTaskFromLocal,
 } from './pg-write-adapter.js';
 import {
@@ -255,7 +258,6 @@ import { isTowerPgBackendMode } from './backend-mode.js';
 import {
   buildPgChannelTaskBoardId,
   parsePgTaskBoardId,
-  resolvePgRecordContext,
 } from './pg-record-context.js';
 import { createTowerPgFileFromLocal } from './pg-write-adapter.js';
 
@@ -284,6 +286,18 @@ function dedupeRowsByRecordId(rows = []) {
     result.push(row);
   }
   return result;
+}
+
+function documentRecordSignature(document = {}) {
+  return [
+    defaultRecordSignature(document),
+    String(document?.title || ''),
+    String(document?.content || ''),
+    String(document?.content_storage_object_id || ''),
+    String(document?.content_sha256_hex || ''),
+    String(document?.content_storage_status || ''),
+    String(document?.content_storage_error || ''),
+  ].join('|');
 }
 
 const NUMBER_FORMATTER = new Intl.NumberFormat();
@@ -393,6 +407,7 @@ export function initApp() {
     navSection: initialRoute.section,
     navCollapsed: true,
     mobileNavOpen: false,
+    appHeaderHidden: false,
     routeSyncPaused: false,
     popstateHandler: null,
     showAvatarMenu: false,
@@ -515,6 +530,15 @@ export function initApp() {
     expandedChatMessageIds: [],
     truncatedChatMessageIds: [],
     messageActionsMenuId: null,
+    chatDeleteConfirm: {
+      open: false,
+      mode: '',
+      recordId: '',
+      title: '',
+      message: '',
+      submitting: false,
+      error: '',
+    },
     chatProfiles: {},
     identityCard: {
       open: false,
@@ -644,6 +668,12 @@ export function initApp() {
     collapsedSections: {},
     taskBoardScopeSetupInFlight: false,
     newTaskTitle: '',
+    showWriteContextModal: false,
+    writeContextPendingAction: null,
+    writeContextScopeId: '',
+    writeContextChannelId: '',
+    writeContextError: '',
+    writeContextSubmitting: false,
     newSubtaskTitle: '',
     newTaskCommentBody: '',
     copiedTaskLinkId: null,
@@ -691,6 +721,10 @@ export function initApp() {
     newScopeParentId: null,
     newScopeAssignedGroupIds: [],
     newScopeGroupQuery: '',
+    newScopeTemplateId: '',
+    newScopeTemplateValues: {},
+    newScopeTemplateError: '',
+    newScopeSubmitting: false,
     showNewScopeForm: false,
     scopeNavFocus: null,
     editingScopeId: null,
@@ -803,11 +837,16 @@ export function initApp() {
     newChannelDmNpub: '',
     newChannelName: '',
     newChannelDescription: '',
+    newChannelBasePrompt: '',
     newChannelGroupId: '',
     newChannelAccessPrincipalDraft: '',
     newChannelAccessRows: [],
     newChannelAccessLoading: false,
     newChannelAccessError: '',
+    channelSettingsBasePrompt: '',
+    channelSettingsSaving: false,
+    channelSettingsNotice: '',
+    channelSettingsError: '',
     superbasedTokenInput: '',
     superbasedError: null,
     knownWorkspaces: [],
@@ -823,6 +862,7 @@ export function initApp() {
     workspaceSettingsVersion: 0,
     workspaceSettingsGroupIds: [],
     workspaceHarnessUrl: '',
+    workspaceHarnessAgentNpub: '',
     workspaceProfileNameInput: '',
     workspaceProfileSlugInput: '',
     workspaceProfileDescriptionInput: '',
@@ -837,6 +877,7 @@ export function initApp() {
     defaultAgentNpub: '',
     defaultAgentQuery: '',
     wingmanHarnessInput: '',
+    wingmanHarnessAgentQuery: '',
     wingmanHarnessError: null,
     wingmanHarnessDirty: false,
     repairSelectedFamilyIds: ['comment', 'audio_note'],
@@ -913,8 +954,6 @@ export function initApp() {
     dispatchJobId: null,
     dispatchGoal: '',
     jobRunsFilterJobId: '',
-    autopilotOverviewScopeFilter: 'all',
-    autopilotOverviewChannelFilter: 'all',
     jobRunsFilterStatus: '',
 
     showWorkspaceBootstrapModal: false,
@@ -1105,6 +1144,14 @@ export function initApp() {
 
     get hasHarnessLink() {
       return Boolean(this.workspaceHarnessUrl);
+    },
+
+    get harnessAgentLabel() {
+      return this.workspaceHarnessAgentNpub ? this.getSenderName(this.workspaceHarnessAgentNpub) : '';
+    },
+
+    get harnessAgentAvatarUrl() {
+      return this.workspaceHarnessAgentNpub ? this.getSenderAvatar(this.workspaceHarnessAgentNpub) : null;
     },
 
     // chat message getters applied via chatMessageManagerMixin (applyMixins)
@@ -2237,6 +2284,7 @@ export function initApp() {
       this.workspaceSettingsVersion = 0;
       this.workspaceSettingsGroupIds = [];
       this.workspaceHarnessUrl = '';
+      this.workspaceHarnessAgentNpub = '';
       this.revokeWorkspaceAvatarPreviewObjectUrl();
       this.hasBootstrappedUnreadTracking = false;
       this.workspaceProfileNameInput = '';
@@ -2251,6 +2299,7 @@ export function initApp() {
       this.defaultAgentQuery = '';
       this.hasForcedTaskFamilyBackfill = false;
       this.wingmanHarnessInput = '';
+      this.wingmanHarnessAgentQuery = '';
       this.wingmanHarnessError = null;
       this.wingmanHarnessDirty = false;
       this.hasForcedInitialBackfill = false;
@@ -2279,6 +2328,10 @@ export function initApp() {
         return;
       }
       this.navCollapsed = !this.navCollapsed;
+    },
+
+    toggleAppHeaderHidden() {
+      this.appHeaderHidden = !this.appHeaderHidden;
     },
 
     openChannelSettings(channelId = null) {
@@ -2434,7 +2487,7 @@ export function initApp() {
       const nextDocuments = Array.isArray(documents)
         ? documents.map((item) => this.normalizeDocumentRowGroupRefs ? this.normalizeDocumentRowGroupRefs(item) : item)
         : [];
-      if (!sameListBySignature(this.documents, nextDocuments)) {
+      if (!sameListBySignature(this.documents, nextDocuments, documentRecordSignature)) {
         this.documents = nextDocuments;
       }
       this.refreshOpenDocFromLatestDocument({ force: false });
@@ -3774,20 +3827,18 @@ export function initApp() {
       let pgContext = null;
       let targetScopeId = String(options.scopeId || this.selectedBoardId || '').trim();
       if (isTowerPgBackendMode()) {
-        try {
-          pgContext = resolvePgRecordContext(this, {
-            scopeId: options.scopeId,
-            boardId: options.boardId || this.selectedBoardId,
-            channelId: options.channelId,
-            threadId: options.threadId,
-            includeActiveThread: options.includeActiveThread === true,
-            threadMessageId: options.threadMessageId,
-          });
-          targetScopeId = pgContext.scopeId;
-        } catch (error) {
-          this.error = error?.message || 'Select a channel before creating a PG task.';
-          return null;
+        pgContext = this.resolvePgWriteContext?.({
+          scopeId: options.scopeId,
+          boardId: options.boardId || this.selectedBoardId,
+          channelId: options.channelId,
+          threadId: options.threadId,
+          includeActiveThread: options.includeActiveThread === true,
+          threadMessageId: options.threadMessageId,
+        }) || null;
+        if (!pgContext) {
+          return this.openWriteContextModal?.('task', { options }) || null;
         }
+        targetScopeId = pgContext.scopeId;
       }
       if (!targetScopeId) {
         this.error = 'Select a scope board first.';
@@ -4682,6 +4733,25 @@ export function initApp() {
     },
 
     async _softDeleteTask(task) {
+      if (isTowerPgBackendMode() && task?.pg_backend) {
+        const updated = toRaw({
+          ...task,
+          record_state: 'deleted',
+          sync_status: 'pending',
+          updated_at: new Date().toISOString(),
+        });
+        await upsertTask(updated);
+        this.tasks = this.tasks.filter(t => t.record_id !== task.record_id);
+        try {
+          await deleteTowerPgTaskFromLocal(this, task);
+        } catch (error) {
+          const failed = { ...updated, sync_status: 'failed', updated_at: new Date().toISOString() };
+          await upsertTask(failed);
+          this.tasks = mergeTaskIntoList(this.tasks, failed);
+          throw error;
+        }
+        return;
+      }
       const nextVersion = (task.version ?? 1) + 1;
       const updated = toRaw({
         ...task,
@@ -6306,6 +6376,13 @@ export function initApp() {
     async openChatDocModal(recordId, options = {}) {
       const docId = String(recordId || '').trim();
       if (!docId) return;
+      if (isTowerPgBackendMode()) {
+        try {
+          await hydrateTowerPgDoc(this, docId);
+        } catch (error) {
+          console.warn('[flightdeck] PG document refresh failed before chat modal open', error);
+        }
+      }
       let doc = this.documents.find((item) => item.record_id === docId);
       if (!doc) {
         doc = await getDocumentById(docId);
@@ -6650,22 +6727,25 @@ export function initApp() {
         this.error = 'Missing storage owner for uploaded file.';
         return true;
       }
+      let pgContext = null;
+      if (isTowerPgBackendMode()) {
+        pgContext = this.resolvePgWriteContext?.({
+          scopeId: options.scopeId,
+          channelId: options.channelId,
+          threadId: options.threadId,
+          threadMessageId: options.threadMessageId,
+          includeActiveThread: options.includeActiveThread === true,
+        }) || null;
+        if (!pgContext) {
+          return this.openWriteContextModal?.('inline-file', { file, event, options }) || true;
+        }
+      }
 
       const token = '[ Uploading file... ]';
       this.insertTextIntoModel(modelKey, event?.target, token);
       if (options.uploadCounterContext) this.incrementInlineUploadCount(options.uploadCounterContext);
 
       try {
-        let pgContext = null;
-        if (isTowerPgBackendMode()) {
-          pgContext = resolvePgRecordContext(this, {
-            scopeId: options.scopeId,
-            channelId: options.channelId,
-            threadId: options.threadId,
-            threadMessageId: options.threadMessageId,
-            includeActiveThread: options.includeActiveThread === true,
-          });
-        }
         const bytes = new Uint8Array(await file.arrayBuffer());
         const fileName = String(file.name || '').trim() || this.defaultPastedImageName(file, options.fileLabel || 'file');
         const prepared = await this.prepareStorageObjectForCurrentWorkspace(buildStoragePrepareBody({
@@ -6858,9 +6938,10 @@ export function initApp() {
     docsManagerMixin,
     jobsManagerMixin,
     audioRecordingManagerMixin,
-    autopilotOverviewManagerMixin,
     storageImageManagerMixin,
     filesManagerMixin,
+    autopilotOverviewManagerMixin,
+    writeContextManagerMixin,
     sectionLiveQueryMixin,
     unreadStoreMixin,
     reportsManagerMixin,

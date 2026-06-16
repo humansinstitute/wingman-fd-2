@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   resolveGroupId,
   getScopeAncestorPath,
@@ -612,7 +612,7 @@ describe('computeBoardScopedTasks', () => {
     ).map((task) => task.record_id)).toEqual(['t-thread']);
   });
 
-  it('keeps Flight Deck scope options scope-only while deriving PG channel thread context', () => {
+  it('keeps Flight Deck scope options as scopes while deriving PG channel thread context', () => {
     const store = Object.create(taskBoardStateMixin);
     Object.defineProperty(store, 'scopesMap', {
       configurable: true,
@@ -655,6 +655,13 @@ describe('computeBoardScopedTasks', () => {
 
   it('reconciles selected channel when selecting a PG scope board outside chat', () => {
     const store = Object.create(taskBoardStateMixin);
+    Object.defineProperty(store, 'scopesMap', {
+      configurable: true,
+      value: new Map([
+        ['scope-marketing', { record_id: 'scope-marketing', title: 'Marketing', level: 'product' }],
+        ['scope-ops', { record_id: 'scope-ops', title: 'Ops', level: 'product' }],
+      ]),
+    });
     Object.assign(store, {
       currentWorkspace: { pgBackendMode: true },
       navSection: 'tasks',
@@ -673,12 +680,45 @@ describe('computeBoardScopedTasks', () => {
 
     store.selectBoard('scope-ops');
 
-    expect(store.selectedBoardId).toBe('scope-ops');
+    expect(store.selectedBoardId).toBe(buildPgChannelTaskBoardId('channel-standup'));
     expect(store.selectedChannelId).toBe('channel-standup');
+    expect(store.focusScopeTitle).toBe('Ops');
   });
 
-  it('selects a channel context by jumping from All to the channel scope', () => {
+  it('moves an open document to a newly selected docs scope board', () => {
+    const openDoc = { record_id: 'doc-1', scope_id: 'scope-marketing' };
+    const moveOpenDocumentToScopeBoard = vi.fn();
     const store = Object.create(taskBoardStateMixin);
+    Object.assign(store, {
+      currentWorkspace: { pgBackendMode: false },
+      navSection: 'docs',
+      docsEditorOpen: true,
+      selectedDocument: openDoc,
+      selectedBoardId: 'scope-marketing',
+      selectedChannelId: null,
+      showTaskDetail: false,
+      persistSelectedBoardId() {},
+      clearSelectedTasks() {},
+      normalizeTaskFilterTags() {},
+      closeBoardPicker() {},
+      syncRoute() {},
+      moveOpenDocumentToScopeBoard,
+    });
+
+    store.selectBoard('scope-ops');
+
+    expect(store.selectedBoardId).toBe('scope-ops');
+    expect(moveOpenDocumentToScopeBoard).toHaveBeenCalledWith('scope-ops', openDoc);
+  });
+
+  it('selects a channel context by jumping from All to the channel board', () => {
+    const store = Object.create(taskBoardStateMixin);
+    Object.defineProperty(store, 'scopesMap', {
+      configurable: true,
+      value: new Map([
+        ['scope-product', product],
+      ]),
+    });
     Object.assign(store, {
       currentWorkspace: { pgBackendMode: true },
       navSection: 'status',
@@ -687,6 +727,7 @@ describe('computeBoardScopedTasks', () => {
       channels: [
         { record_id: 'channel-home', title: 'Home', scope_id: 'scope-product', record_state: 'active' },
       ],
+      tasks: [],
       showTaskDetail: false,
       persistSelectedBoardId() {},
       clearSelectedTasks() {},
@@ -697,8 +738,94 @@ describe('computeBoardScopedTasks', () => {
 
     store.selectPgChannelContext('channel-home');
 
-    expect(store.selectedBoardId).toBe('scope-product');
+    expect(store.selectedBoardId).toBe(buildPgChannelTaskBoardId('channel-home'));
     expect(store.selectedChannelId).toBe('channel-home');
+    expect(store.focusScopeTitle).toBe('Product X');
+  });
+
+  it('treats All scopes as the selected PG context instead of highlighting the chat channel', () => {
+    const store = Object.create(taskBoardStateMixin);
+    Object.defineProperty(store, 'scopesMap', {
+      configurable: true,
+      value: new Map([
+        ['scope-product', product],
+      ]),
+    });
+    Object.assign(store, {
+      currentWorkspace: { pgBackendMode: true },
+      selectedBoardId: ALL_TASK_BOARD_ID,
+      selectedChannelId: 'channel-home',
+      channels: [
+        { record_id: 'channel-home', title: 'Home', scope_id: 'scope-product', record_state: 'active' },
+      ],
+      getChannelLabel(channel) {
+        return channel.title;
+      },
+    });
+
+    expect(store.pgContextAllScopesSelected).toBe(true);
+    expect(store.pgContextSelectedChannelId).toBeNull();
+  });
+
+  it('orders PG context channels by scope number/name and channel number/name', () => {
+    const scopeAlpha = { record_id: 'scope-alpha', title: 'Alpha', sort_order: 2, record_state: 'active' };
+    const scopeBeta = { record_id: 'scope-beta', title: 'Beta', sort_order: 1, record_state: 'active' };
+    const store = Object.create(taskBoardStateMixin);
+    Object.defineProperty(store, 'scopesMap', {
+      configurable: true,
+      value: new Map([
+        ['scope-alpha', scopeAlpha],
+        ['scope-beta', scopeBeta],
+      ]),
+    });
+    Object.assign(store, {
+      currentWorkspace: { pgBackendMode: true },
+      selectedBoardId: ALL_TASK_BOARD_ID,
+      selectedChannelId: null,
+      channels: [
+        { record_id: 'alpha-zulu', title: 'Zulu', scope_id: 'scope-alpha', sort_order: 2, record_state: 'active' },
+        { record_id: 'beta-later', title: 'Later', scope_id: 'scope-beta', sort_order: 2, record_state: 'active' },
+        { record_id: 'alpha-alpha', title: 'Alpha', scope_id: 'scope-alpha', sort_order: 1, record_state: 'active' },
+        { record_id: 'beta-first', title: 'First', scope_id: 'scope-beta', sort_order: 1, record_state: 'active' },
+      ],
+      getChannelLabel(channel) {
+        return channel.title;
+      },
+    });
+
+    expect(store.pgContextChannels.map((channel) => channel.record_id)).toEqual([
+      'beta-first',
+      'beta-later',
+      'alpha-alpha',
+      'alpha-zulu',
+    ]);
+  });
+
+  it('opens the all-scopes overview from the PG context home tab', () => {
+    const navigateTo = vi.fn();
+    const store = Object.create(taskBoardStateMixin);
+    Object.assign(store, {
+      currentWorkspace: { pgBackendMode: true },
+      navSection: 'docs',
+      selectedBoardId: buildPgChannelTaskBoardId('channel-home'),
+      selectedChannelId: 'channel-home',
+      channels: [
+        { record_id: 'channel-home', title: 'Home', scope_id: 'scope-product', record_state: 'active' },
+      ],
+      tasks: [],
+      showTaskDetail: false,
+      persistSelectedBoardId() {},
+      clearSelectedTasks() {},
+      normalizeTaskFilterTags() {},
+      closeBoardPicker() {},
+      syncRoute() {},
+      navigateTo,
+    });
+
+    store.openAllScopesOverview();
+
+    expect(store.selectedBoardId).toBe(ALL_TASK_BOARD_ID);
+    expect(navigateTo).toHaveBeenCalledWith('status');
   });
 });
 

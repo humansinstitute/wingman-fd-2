@@ -38,6 +38,7 @@ export async function inboundWorkspaceSettings(record) {
     workspace_description: workspaceDescription,
     workspace_avatar_url: workspaceAvatarUrl || null,
     wingman_harness_url: normalizeHarnessUrl(data.wingman_harness_url),
+    wingman_harness_agent_npub: String(data.wingman_harness_agent_npub || '').trim(),
     triggers: Array.isArray(data.triggers) ? data.triggers : [],
     channel_order: channelOrder,
     group_ids: (record.group_payloads || []).map((groupPayload) => groupPayload.group_id || groupPayload.group_npub),
@@ -56,6 +57,7 @@ export async function outboundWorkspaceSettings({
   workspace_description = '',
   workspace_avatar_url = null,
   wingman_harness_url = '',
+  wingman_harness_agent_npub = '',
   triggers = [],
   channel_order = [],
   group_ids = [],
@@ -76,6 +78,7 @@ export async function outboundWorkspaceSettings({
       workspace_description: String(workspace_description || '').trim(),
       workspace_avatar_url: workspace_avatar_url == null ? null : (String(workspace_avatar_url || '').trim() || null),
       wingman_harness_url: normalizeHarnessUrl(wingman_harness_url),
+      wingman_harness_agent_npub: String(wingman_harness_agent_npub || '').trim(),
       triggers: Array.isArray(triggers) ? triggers : [],
       channel_order: Array.isArray(channel_order)
         ? channel_order.map((id) => String(id || '').trim()).filter(Boolean)

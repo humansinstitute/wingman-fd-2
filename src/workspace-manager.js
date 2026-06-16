@@ -543,13 +543,25 @@ export const workspaceManagerMixin = {
 
   applyWorkspaceSettingsRow(row, options = {}) {
     const overwriteInput = options.overwriteInput !== false;
+    const pgMetadata = row ? null : (this.currentWorkspace?.metadata || this.currentWorkspace?.pgDescriptor?.metadata || null);
+    const source = row || (isTowerPgBackendMode() && pgMetadata ? {
+      record_id: '',
+      version: 0,
+      group_ids: [],
+      wingman_harness_url: pgMetadata.wingman_harness_url || pgMetadata.autopilot_url || '',
+      wingman_harness_agent_npub: pgMetadata.wingman_harness_agent_npub || pgMetadata.autopilot_agent_npub || '',
+      triggers: [],
+      channel_order: this.channelOrder || [],
+    } : null);
     this.workspaceSettingsRecordId = row?.record_id || '';
     this.workspaceSettingsVersion = Number(row?.version || 0);
     this.workspaceSettingsGroupIds = Array.isArray(row?.group_ids) ? [...row.group_ids] : [];
-    this.workspaceHarnessUrl = String(row?.wingman_harness_url || '').trim();
-    this.workspaceTriggers = Array.isArray(row?.triggers) ? [...row.triggers] : [];
-    const rowChannelOrder = Array.isArray(row?.channel_order)
-      ? row.channel_order.map((id) => String(id || '').trim()).filter(Boolean)
+    this.workspaceHarnessUrl = String(source?.wingman_harness_url || '').trim();
+    this.workspaceHarnessAgentNpub = String(source?.wingman_harness_agent_npub || '').trim();
+    if (this.workspaceHarnessAgentNpub) this.resolveChatProfile?.(this.workspaceHarnessAgentNpub);
+    this.workspaceTriggers = Array.isArray(source?.triggers) ? [...source.triggers] : [];
+    const rowChannelOrder = Array.isArray(source?.channel_order)
+      ? source.channel_order.map((id) => String(id || '').trim()).filter(Boolean)
       : [];
     this.channelOrder = Array.isArray(this.channels) && this.channels.length > 0
       ? normalizeChannelOrder(rowChannelOrder, this.channels)
@@ -559,6 +571,7 @@ export const workspaceManagerMixin = {
     }
     if (overwriteInput || !this.wingmanHarnessDirty) {
       this.wingmanHarnessInput = this.workspaceHarnessUrl;
+      this.wingmanHarnessAgentQuery = '';
       this.wingmanHarnessDirty = false;
     }
   },
@@ -797,13 +810,6 @@ export const workspaceManagerMixin = {
       this.wingmanHarnessError = msg;
       return;
     }
-    if (isTowerPgBackendMode()) {
-      const msg = 'Shared automation settings are not available for Tower PG workspaces yet.';
-      if (triggerOnly) throw new Error(msg);
-      this.wingmanHarnessError = msg;
-      return;
-    }
-
     let normalizedUrl;
     if (triggerOnly) {
       // When saving triggers, use the stored harness URL, not the input field
@@ -815,6 +821,57 @@ export const workspaceManagerMixin = {
         this.wingmanHarnessError = 'Enter a valid harness hostname or URL';
         return;
       }
+      const selectedAgentNpub = String(this.workspaceHarnessAgentNpub || '').trim();
+      if (normalizedUrl && !selectedAgentNpub) {
+        this.wingmanHarnessError = 'Select the Wingman agent for this Autopilot URL.';
+        return;
+      }
+      if (!normalizedUrl && selectedAgentNpub) {
+        this.wingmanHarnessError = 'Enter the Autopilot URL for the selected agent.';
+        return;
+      }
+    }
+
+    if (isTowerPgBackendMode()) {
+      if (triggerOnly) return null;
+      const workspace = this.currentWorkspace;
+      if (!workspace?.workspaceId) {
+        this.wingmanHarnessError = 'Tower PG workspace id is missing.';
+        return null;
+      }
+      const harnessAgentNpub = String(this.workspaceHarnessAgentNpub || '').trim();
+      const metadata = {
+        ...(workspace.metadata || workspace.pgDescriptor?.metadata || {}),
+        wingman_harness_url: normalizedUrl,
+        wingman_harness_agent_npub: harnessAgentNpub,
+      };
+      const response = await updateTowerPgWorkspace(workspace.workspaceId, {
+        name: workspace.name || this.currentWorkspaceName || 'Workspace',
+        slug: workspace.slug || '',
+        description: workspace.description || '',
+        avatar_url: workspace.avatarUrl || null,
+        metadata,
+      }, {
+        baseUrl: workspace.directHttpsUrl || this.currentWorkspaceBackendUrl,
+        appNpub: workspace.appNpub || FLIGHT_DECK_PG_APP_NPUB,
+      });
+      const nextMetadata = response?.metadata || response?.workspace?.metadata || metadata;
+      const nextWorkspace = normalizeWorkspaceEntry({
+        ...workspace,
+        metadata: nextMetadata,
+        pgDescriptor: response?.workspace || {
+          ...(workspace.pgDescriptor || {}),
+          metadata: nextMetadata,
+        },
+      });
+      if (nextWorkspace) this.mergeKnownWorkspaces([nextWorkspace]);
+      this.applyWorkspaceSettingsRow({
+        wingman_harness_url: normalizedUrl,
+        wingman_harness_agent_npub: harnessAgentNpub,
+        triggers: [],
+        channel_order: this.channelOrder || [],
+      });
+      return response;
     }
 
     const now = new Date().toISOString();
@@ -834,6 +891,9 @@ export const workspaceManagerMixin = {
     const workspaceName = existing?.workspace_name ?? String(this.workspaceProfileNameInput || '').trim();
     const workspaceDescription = existing?.workspace_description ?? String(this.workspaceProfileDescriptionInput || '').trim();
     const workspaceAvatarUrl = (existing?.workspace_avatar_url ?? String(this.workspaceProfileAvatarInput || '').trim()) || null;
+    const harnessAgentNpub = triggerOnly
+      ? String(existing?.wingman_harness_agent_npub ?? this.workspaceHarnessAgentNpub ?? '').trim()
+      : String(this.workspaceHarnessAgentNpub || '').trim();
 
     const localRow = {
       workspace_owner_npub: workspaceOwnerNpub,
@@ -843,6 +903,7 @@ export const workspaceManagerMixin = {
       workspace_description: workspaceDescription,
       workspace_avatar_url: workspaceAvatarUrl,
       wingman_harness_url: normalizedUrl,
+      wingman_harness_agent_npub: harnessAgentNpub,
       triggers: toRaw(this.workspaceTriggers || []),
       group_ids: groupIds,
       sync_status: 'pending',
@@ -866,6 +927,7 @@ export const workspaceManagerMixin = {
       workspace_description: workspaceDescription,
       workspace_avatar_url: workspaceAvatarUrl,
       wingman_harness_url: normalizedUrl,
+      wingman_harness_agent_npub: harnessAgentNpub,
       triggers: toRaw(this.workspaceTriggers || []),
       group_ids: writeFields.group_ids,
       version: nextVersion,
@@ -915,6 +977,7 @@ export const workspaceManagerMixin = {
     const workspaceDescription = existing?.workspace_description ?? String(this.workspaceProfileDescriptionInput || '').trim();
     const workspaceAvatarUrl = (existing?.workspace_avatar_url ?? String(this.workspaceProfileAvatarInput || '').trim()) || null;
     const harnessUrl = existing?.wingman_harness_url ?? this.workspaceHarnessUrl ?? '';
+    const harnessAgentNpub = existing?.wingman_harness_agent_npub ?? this.workspaceHarnessAgentNpub ?? '';
     const triggers = Array.isArray(existing?.triggers) ? existing.triggers : toRaw(this.workspaceTriggers || []);
     const writeGroupRef = this.getWorkspaceSettingsGroupRef()
       || this.getWorkspaceAdminGroupRef()
@@ -933,6 +996,7 @@ export const workspaceManagerMixin = {
       workspace_description: workspaceDescription,
       workspace_avatar_url: workspaceAvatarUrl,
       wingman_harness_url: harnessUrl,
+      wingman_harness_agent_npub: harnessAgentNpub,
       triggers,
       channel_order: normalizedOrder,
       group_ids: [writeGroupRef],
@@ -957,6 +1021,7 @@ export const workspaceManagerMixin = {
       workspace_description: workspaceDescription,
       workspace_avatar_url: workspaceAvatarUrl,
       wingman_harness_url: harnessUrl,
+      wingman_harness_agent_npub: harnessAgentNpub,
       triggers,
       channel_order: normalizedOrder,
       group_ids: writeFields.group_ids,

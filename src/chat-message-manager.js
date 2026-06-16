@@ -46,7 +46,11 @@ import { sameListBySignature } from './utils/state-helpers.js';
 import { getRecordWriteFieldsForStore } from './preferred-write-group.js';
 import { isTowerPgBackendMode } from './backend-mode.js';
 import { DM_SCOPE_ID, buildDmChannelDescription, findExistingDmChannel } from './dm-scope.js';
-import { createTowerPgMessageFromLocal } from './pg-write-adapter.js';
+import {
+  createTowerPgMessageFromLocal,
+  deleteTowerPgMessageFromLocal,
+  deleteTowerPgThreadFromLocal,
+} from './pg-write-adapter.js';
 import { resolveTowerPgWorkspaceContext } from './pg-read-hydrator.js';
 import { resolvePgThreadId } from './pg-record-context.js';
 import { buildSectionUrl, parseRouteLocation } from './route-helpers.js';
@@ -196,7 +200,10 @@ function getChatDerivedState(store) {
     return previous.value;
   }
 
-  const messages = attachTargetAudioNotesToMessages(sourceMessages, audioNotes);
+  const messages = attachTargetAudioNotesToMessages(
+    sourceMessages.filter((message) => String(message?.record_state || 'active') !== 'deleted'),
+    audioNotes,
+  );
   const mainFeedMessages = rankMainFeedMessages(messages);
   const resolvedMainFeedVisibleCount = resolveVisibleThreadReplyCount(
     mainFeedMessages,
@@ -975,11 +982,6 @@ export const chatMessageManagerMixin = {
       this.error = 'Select a channel first';
       return;
     }
-    if (isTowerPgBackendMode() && drafts.length > 0) {
-      this.error = 'Audio drafts are not available in Tower PG chat yet.';
-      return;
-    }
-
     const channel = this.selectedChannel;
     if (!channel) {
       this.error = 'Channel not found';
@@ -1033,6 +1035,31 @@ export const chatMessageManagerMixin = {
         await replaceMessageRecord(localRow.record_id, accepted);
         this.messages = this.messages.filter((message) => message.record_id !== localRow.record_id);
         this.patchMessageLocal(accepted);
+        if (drafts.length > 0) {
+          try {
+            const { attachments: pgAudioAttachments } = await this.materializeAudioDrafts({
+              drafts,
+              target_record_id: accepted.record_id,
+              target_record_family_hash: recordFamilyHash('chat_message'),
+              scopeId: accepted.pg_scope_id,
+              channelId: accepted.channel_id,
+              threadId: accepted.pg_thread_id,
+            });
+            if (pgAudioAttachments.length > 0) {
+              const existingAttachments = Array.isArray(accepted.attachments) ? accepted.attachments : [];
+              const acceptedWithAudio = {
+                ...accepted,
+                attachments: [...existingAttachments, ...pgAudioAttachments],
+              };
+              await upsertMessage(acceptedWithAudio);
+              this.messages = this.messages.filter((message) => message.record_id !== accepted.record_id);
+              this.patchMessageLocal(acceptedWithAudio);
+            }
+          } catch (audioError) {
+            this.messageAudioDrafts = drafts;
+            this.error = `Message sent, but failed to attach voice note: ${audioError?.message || 'Failed to sync PG audio note'}`;
+          }
+        }
         this.scheduleChatFeedScrollToBottom();
         Promise.resolve()
           .then(() => this.refreshMessages({ scrollToLatest: true }))
@@ -1084,11 +1111,6 @@ export const chatMessageManagerMixin = {
       this.error = 'Open a thread first';
       return;
     }
-    if (isTowerPgBackendMode() && drafts.length > 0) {
-      this.error = 'Audio drafts are not available in Tower PG chat yet.';
-      return;
-    }
-
     const channel = this.selectedChannel;
     if (!channel) {
       this.error = 'Channel not found';
@@ -1142,6 +1164,31 @@ export const chatMessageManagerMixin = {
         await replaceMessageRecord(localRow.record_id, accepted);
         this.messages = this.messages.filter((message) => message.record_id !== localRow.record_id);
         this.patchMessageLocal(accepted);
+        if (drafts.length > 0) {
+          try {
+            const { attachments: pgAudioAttachments } = await this.materializeAudioDrafts({
+              drafts,
+              target_record_id: accepted.record_id,
+              target_record_family_hash: recordFamilyHash('chat_message'),
+              scopeId: accepted.pg_scope_id,
+              channelId: accepted.channel_id,
+              threadId: accepted.pg_thread_id,
+            });
+            if (pgAudioAttachments.length > 0) {
+              const existingAttachments = Array.isArray(accepted.attachments) ? accepted.attachments : [];
+              const acceptedWithAudio = {
+                ...accepted,
+                attachments: [...existingAttachments, ...pgAudioAttachments],
+              };
+              await upsertMessage(acceptedWithAudio);
+              this.messages = this.messages.filter((message) => message.record_id !== accepted.record_id);
+              this.patchMessageLocal(acceptedWithAudio);
+            }
+          } catch (audioError) {
+            this.threadAudioDrafts = drafts;
+            this.error = `Reply sent, but failed to attach voice note: ${audioError?.message || 'Failed to sync PG audio note'}`;
+          }
+        }
         this.scheduleThreadRepliesScrollToBottom();
         Promise.resolve()
           .then(() => this.refreshMessages({ scrollThreadToLatest: true }))
@@ -1200,6 +1247,127 @@ export const chatMessageManagerMixin = {
       this.messageActionsMenuId = null;
     } else {
       this.messageActionsMenuId = recordId;
+    }
+  },
+
+  getChatMessageById(recordId) {
+    const id = String(recordId || '').trim();
+    if (!id) return null;
+    return this.messages.find((message) => message.record_id === id) || null;
+  },
+
+  async copyTextToClipboard(text) {
+    const value = String(text ?? '');
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return;
+    }
+    if (typeof document === 'undefined') return;
+    const textarea = document.createElement('textarea');
+    textarea.value = value;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand?.('copy');
+    textarea.remove();
+  },
+
+  async copyMessageRawText(recordId) {
+    this.error = null;
+    const message = this.getChatMessageById(recordId);
+    if (!message) {
+      this.error = 'Message not found';
+      return;
+    }
+    try {
+      await this.copyTextToClipboard(message.body || '');
+      this.closeMessageActionsMenu();
+    } catch (error) {
+      this.error = error?.message || 'Failed to copy message text.';
+    }
+  },
+
+  buildThreadRawText(recordId) {
+    const parent = this.getChatMessageById(recordId);
+    if (!parent) return '';
+    const messages = [parent, ...this.getThreadReplies(parent.record_id)]
+      .filter((message) => String(message?.record_state || 'active') !== 'deleted');
+    return messages.map((message) => {
+      const sender = this.getSenderName?.(message.sender_npub) || message.sender_npub || 'Unknown';
+      const timestamp = message.updated_at || message.created_at || '';
+      const body = message.body || '';
+      return `[${timestamp}] ${sender}\n${body}`;
+    }).join('\n\n');
+  },
+
+  async copyThreadRawText(recordId) {
+    this.error = null;
+    const raw = this.buildThreadRawText(recordId);
+    if (!raw) {
+      this.error = 'Thread not found';
+      return;
+    }
+    try {
+      await this.copyTextToClipboard(raw);
+      this.closeMessageActionsMenu();
+    } catch (error) {
+      this.error = error?.message || 'Failed to copy thread text.';
+    }
+  },
+
+  openChatDeleteConfirm(mode, recordId) {
+    const targetMode = mode === 'thread' ? 'thread' : 'message';
+    const message = this.getChatMessageById(recordId);
+    if (!message) {
+      this.error = targetMode === 'thread' ? 'Thread not found' : 'Message not found';
+      return;
+    }
+    this.closeMessageActionsMenu();
+    this.chatDeleteConfirm = {
+      open: true,
+      mode: targetMode,
+      recordId: message.record_id,
+      title: targetMode === 'thread' ? 'Delete Thread' : 'Delete Message',
+      message: targetMode === 'thread'
+        ? 'Delete this thread and all replies? This cannot be undone.'
+        : 'Delete this message? This cannot be undone.',
+      submitting: false,
+      error: '',
+    };
+  },
+
+  closeChatDeleteConfirm() {
+    this.chatDeleteConfirm = {
+      open: false,
+      mode: '',
+      recordId: '',
+      title: '',
+      message: '',
+      submitting: false,
+      error: '',
+    };
+  },
+
+  async confirmChatDelete() {
+    const state = this.chatDeleteConfirm || {};
+    if (!state.open || !state.recordId) return;
+    this.chatDeleteConfirm = { ...state, submitting: true, error: '' };
+    try {
+      if (state.mode === 'thread') {
+        await this.deleteChatThreadByParentId(state.recordId);
+      } else {
+        await this.deleteChatMessageById(state.recordId);
+      }
+      this.closeChatDeleteConfirm();
+    } catch (error) {
+      this.chatDeleteConfirm = {
+        ...this.chatDeleteConfirm,
+        submitting: false,
+        error: error?.message || 'Delete failed.',
+      };
+      this.error = this.chatDeleteConfirm.error;
     }
   },
 
@@ -1620,23 +1788,66 @@ export const chatMessageManagerMixin = {
       this.error = 'Open a thread first';
       return;
     }
-    if (isTowerPgBackendMode()) {
-      this.error = 'Deleting PG threads is not available yet.';
+    this.openChatDeleteConfirm('thread', parent.record_id);
+  },
+
+  async deleteChatMessageById(recordId) {
+    this.error = null;
+    const message = this.getChatMessageById(recordId);
+    if (!message) throw new Error('Message not found');
+    if (isTowerPgBackendMode() && message.pg_backend) {
+      const accepted = await deleteTowerPgMessageFromLocal(this, message);
+      await upsertMessage(accepted);
+      this.messages = this.messages
+        .filter((candidate) => candidate.record_id !== message.record_id)
+        .concat(accepted);
+      if (this.activeThreadId === message.record_id) this.closeThread({ syncRoute: false });
       return;
     }
+    await this.softDeleteChatMessages([message], 'Chat message delete');
+    if (this.activeThreadId === message.record_id) this.closeThread({ syncRoute: false });
+  },
 
-    if (typeof window !== 'undefined') {
-      const confirmed = window.confirm('Delete this thread and its replies?');
-      if (!confirmed) return;
+  async deleteChatThreadByParentId(recordId) {
+    this.error = null;
+    const parent = this.getChatMessageById(recordId);
+    if (!parent) throw new Error('Thread not found');
+    const threadMessages = [parent, ...this.getThreadReplies(parent.record_id)];
+    if (isTowerPgBackendMode() && parent.pg_backend) {
+      await deleteTowerPgThreadFromLocal(this, parent);
+      const now = new Date().toISOString();
+      for (const message of threadMessages) {
+        await upsertMessage({
+          ...message,
+          record_state: 'deleted',
+          sync_status: 'synced',
+          version: (message.version ?? 1) + 1,
+          updated_at: now,
+        });
+      }
+      this.messages = this.messages.map((message) => (
+        threadMessages.some((deleted) => deleted.record_id === message.record_id)
+          ? { ...message, record_state: 'deleted', sync_status: 'synced', updated_at: now }
+          : message
+      ));
+      if (this.activeThreadId === parent.record_id) this.closeThread({ syncRoute: false });
+      return;
     }
+    await this.softDeleteChatMessages(threadMessages, 'Chat thread delete');
+    if (this.activeThreadId === parent.record_id) this.closeThread({ syncRoute: false });
+  },
 
-    const channel = this.selectedChannel;
-    const threadMessages = [parent, ...this.threadMessages];
+  async softDeleteChatMessages(messagesToDelete, label = 'Chat message delete') {
+    const messages = Array.isArray(messagesToDelete) ? messagesToDelete.filter(Boolean) : [];
+    if (messages.length === 0) return;
+    const channel = this.selectedChannel
+      || this.channels.find((candidate) => candidate.record_id === messages[0]?.channel_id)
+      || null;
     const channelWriteFields = await getRecordWriteFieldsForStore(this, channel, {
-      label: 'Chat thread delete',
+      label,
     });
 
-    for (const message of threadMessages) {
+    for (const message of messages) {
       const nextVersion = (message.version ?? 1) + 1;
       await upsertMessage({
         ...message,
@@ -1667,8 +1878,11 @@ export const chatMessageManagerMixin = {
       });
     }
 
+    this.messages = this.messages.map((message) => (
+      messages.some((deleted) => deleted.record_id === message.record_id)
+        ? { ...message, record_state: 'deleted', sync_status: 'pending' }
+        : message
+    ));
     await this.flushAndBackgroundSync();
-    this.closeThread();
-    await this.refreshMessages();
   },
 };

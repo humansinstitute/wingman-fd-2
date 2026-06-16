@@ -34,6 +34,7 @@ describe('settings translator', () => {
             workspace_description: 'Workspace profile',
             workspace_avatar_url: 'storage://avatar-1',
             wingman_harness_url: 'wm21.otherstuff.ai',
+            wingman_harness_agent_npub: 'npub1agent',
             channel_order: ['chan-b', 'chan-a'],
           },
         }),
@@ -47,6 +48,7 @@ describe('settings translator', () => {
     expect(row.workspace_description).toBe('Workspace profile');
     expect(row.workspace_avatar_url).toBe('storage://avatar-1');
     expect(row.wingman_harness_url).toBe('https://wm21.otherstuff.ai');
+    expect(row.wingman_harness_agent_npub).toBe('npub1agent');
     expect(row.channel_order).toEqual(['chan-b', 'chan-a']);
     expect(row.group_ids).toEqual(['gpub_workspace']);
     expect(row.sync_status).toBe('synced');
@@ -62,6 +64,7 @@ describe('settings translator', () => {
       workspace_description: 'Workspace profile',
       workspace_avatar_url: 'storage://avatar-1',
       wingman_harness_url: 'wm3.otherstuff.ai',
+      wingman_harness_agent_npub: 'npub1agent',
       channel_order: ['chan-b', '', 'chan-a'],
       group_ids: ['gpub_workspace'],
       signature_npub: 'npub_member',
@@ -79,6 +82,7 @@ describe('settings translator', () => {
     expect(payload.data.workspace_description).toBe('Workspace profile');
     expect(payload.data.workspace_avatar_url).toBe('storage://avatar-1');
     expect(payload.data.wingman_harness_url).toBe('https://wm3.otherstuff.ai');
+    expect(payload.data.wingman_harness_agent_npub).toBe('npub1agent');
     expect(payload.data.channel_order).toEqual(['chan-b', 'chan-a']);
   });
 

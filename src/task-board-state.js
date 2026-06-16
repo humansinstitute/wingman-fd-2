@@ -375,6 +375,68 @@ function getBoardChannel(store, boardContext) {
   return (store?.channels || []).find((channel) => channel?.record_id === channelId && channel.record_state !== 'deleted') || null;
 }
 
+const SORT_NUMBER_KEYS = Object.freeze([
+  'sort_order',
+  'display_order',
+  'order',
+  'position',
+  'rank',
+  'board_order',
+]);
+
+function getSortNumber(record = {}, fallbackLabel = '') {
+  const metadata = record?.metadata && typeof record.metadata === 'object' ? record.metadata : {};
+  for (const source of [record, metadata]) {
+    for (const key of SORT_NUMBER_KEYS) {
+      const value = Number(source?.[key]);
+      if (Number.isFinite(value)) return value;
+    }
+  }
+  const leadingNumber = String(fallbackLabel || record?.title || record?.name || '').trim().match(/^(\d+(?:\.\d+)?)/);
+  if (leadingNumber) {
+    const value = Number(leadingNumber[1]);
+    if (Number.isFinite(value)) return value;
+  }
+  return null;
+}
+
+function compareNumberThenLabel(left = {}, right = {}, leftLabel = '', rightLabel = '') {
+  const leftNumber = getSortNumber(left, leftLabel);
+  const rightNumber = getSortNumber(right, rightLabel);
+  if (leftNumber !== null || rightNumber !== null) {
+    if (leftNumber === null) return 1;
+    if (rightNumber === null) return -1;
+    if (leftNumber !== rightNumber) return leftNumber - rightNumber;
+  }
+  return String(leftLabel || left?.title || left?.name || '').localeCompare(
+    String(rightLabel || right?.title || right?.name || ''),
+    undefined,
+    { numeric: true, sensitivity: 'base' },
+  );
+}
+
+function comparePgContextChannels(store, left = {}, right = {}) {
+  const leftScopeId = getPgChannelScopeId(left) || '';
+  const rightScopeId = getPgChannelScopeId(right) || '';
+  if (leftScopeId !== rightScopeId) {
+    const leftScope = leftScopeId ? store?.scopesMap?.get(leftScopeId) || {} : {};
+    const rightScope = rightScopeId ? store?.scopesMap?.get(rightScopeId) || {} : {};
+    const scopeOrder = compareNumberThenLabel(
+      leftScope,
+      rightScope,
+      leftScope?.title || leftScopeId || 'Unscoped',
+      rightScope?.title || rightScopeId || 'Unscoped',
+    );
+    if (scopeOrder !== 0) return scopeOrder;
+    return leftScopeId.localeCompare(rightScopeId, undefined, { numeric: true, sensitivity: 'base' });
+  }
+  const leftLabel = String(store?.getChannelLabel?.(left) || left?.title || left?.name || '').trim();
+  const rightLabel = String(store?.getChannelLabel?.(right) || right?.title || right?.name || '').trim();
+  const channelOrder = compareNumberThenLabel(left, right, leftLabel, rightLabel);
+  if (channelOrder !== 0) return channelOrder;
+  return String(left?.record_id || '').localeCompare(String(right?.record_id || ''));
+}
+
 function getDerivedSelectedBoardScope(store, scopesMap) {
   const selectedBoardId = store?.selectedBoardId;
   const boardContext = parsePgTaskBoardId(selectedBoardId);
@@ -1226,6 +1288,12 @@ export const taskBoardStateMixin = {
     return this.flightDeckScopeOptions.filter((board) => this.getTaskBoardSearchText(board.id).includes(needle));
   },
 
+  isFlightDeckScopeOptionActive(board = {}) {
+    if (!board?.id) return false;
+    if (this.selectedBoardId === board.id) return true;
+    return isPgWorkspaceStore(this) && this.pgContextScopeId === board.id;
+  },
+
   get focusScopeTitle() {
     if (this.selectedBoardScope) {
       return String(this.selectedBoardScope.title || '').trim() || 'Untitled scope';
@@ -1293,6 +1361,11 @@ export const taskBoardStateMixin = {
     return this.pgContextScopeId ? this.scopesMap.get(this.pgContextScopeId) || null : null;
   },
 
+  get pgContextAllScopesSelected() {
+    const board = parsePgTaskBoardId(this.selectedBoardId);
+    return board.type === 'scope' && board.scopeId === ALL_TASK_BOARD_ID;
+  },
+
   get pgContextChannels() {
     if (!this.showPgTaskBoardZoomControls) return [];
     const scopeId = this.pgContextScopeId;
@@ -1301,12 +1374,13 @@ export const taskBoardStateMixin = {
         if (!channel?.record_id || channel.record_state === 'deleted') return false;
         return !scopeId || getPgChannelScopeId(channel) === scopeId;
       })
-      .sort((left, right) => String(this.getChannelLabel?.(left) || left.title || '').localeCompare(String(this.getChannelLabel?.(right) || right.title || '')));
+      .sort((left, right) => comparePgContextChannels(this, left, right));
   },
 
   get pgContextSelectedChannelId() {
     const board = parsePgTaskBoardId(this.selectedBoardId);
     if (board.channelId) return board.channelId;
+    if (board.type === 'scope' && board.scopeId === ALL_TASK_BOARD_ID) return null;
     if (this.selectedChannelId && this.pgContextChannels.some((channel) => channel.record_id === this.selectedChannelId)) return this.selectedChannelId;
     return null;
   },
@@ -1391,14 +1465,13 @@ export const taskBoardStateMixin = {
   selectPgChannelContext(channelId) {
     const normalizedChannelId = String(channelId || '').trim();
     if (!normalizedChannelId) return;
-    const channel = (this.channels || []).find((entry) => entry?.record_id === normalizedChannelId && entry.record_state !== 'deleted') || null;
-    const scopeId = getPgChannelScopeId(channel);
     this.selectedChannelId = normalizedChannelId;
-    if (scopeId) {
-      this.selectBoard(scopeId);
-      return;
-    }
     this.selectBoard(buildPgChannelTaskBoardId(normalizedChannelId));
+  },
+
+  openAllScopesOverview() {
+    this.selectBoard(ALL_TASK_BOARD_ID);
+    if (typeof this.navigateTo === 'function') this.navigateTo('status');
   },
 
   selectPgThreadContext(channelId, threadId) {
@@ -1411,6 +1484,21 @@ export const taskBoardStateMixin = {
   get preferredTaskBoardId() {
     const activeTasks = this.tasks.filter((task) => task.record_state !== 'deleted');
     const boards = this.taskBoards.filter((b) => b.id !== UNSCOPED_TASK_BOARD_ID);
+    if (isPgWorkspaceStore(this)) {
+      const channelBoards = boards.filter((board) => board.zoom === 'channel' && board.channelId);
+      if (channelBoards.length > 0) {
+        let bestBoard = channelBoards[0];
+        let bestCount = -1;
+        for (const board of channelBoards) {
+          const count = activeTasks.filter((task) => getTaskPgChannelId(task) === board.channelId).length;
+          if (count > bestCount) {
+            bestCount = count;
+            bestBoard = board;
+          }
+        }
+        return bestBoard.id;
+      }
+    }
     if (boards.length > 0) {
       let bestBoard = boards[0];
       let bestCount = 0;
@@ -1682,14 +1770,36 @@ export const taskBoardStateMixin = {
   },
 
   selectBoard(boardId) {
+    const requestedBoard = parsePgTaskBoardId(boardId);
+    let nextBoardId = boardId;
+    if (isPgWorkspaceStore(this)
+      && requestedBoard.type === 'scope'
+      && requestedBoard.scopeId
+      && requestedBoard.scopeId !== ALL_TASK_BOARD_ID
+      && requestedBoard.scopeId !== RECENT_TASK_BOARD_ID
+      && requestedBoard.scopeId !== UNSCOPED_TASK_BOARD_ID) {
+      const channels = Array.isArray(this.channels) ? this.channels : [];
+      const selected = channels.find((channel) => channel?.record_id === this.selectedChannelId
+        && channel.record_state !== 'deleted'
+        && getPgChannelScopeId(channel) === requestedBoard.scopeId) || null;
+      const scopedChannel = selected || channels.find((channel) => channel?.record_id
+        && channel.record_state !== 'deleted'
+        && getPgChannelScopeId(channel) === requestedBoard.scopeId) || null;
+      if (scopedChannel?.record_id) nextBoardId = buildPgChannelTaskBoardId(scopedChannel.record_id);
+    }
     const previousChannelId = this.selectedChannelId;
-    this.selectedBoardId = boardId;
-    this.persistSelectedBoardId(boardId);
+    const openDocument = this.navSection === 'docs'
+      && this.docsEditorOpen
+      && this.selectedDocument?.record_id
+      ? this.selectedDocument
+      : null;
+    this.selectedBoardId = nextBoardId;
+    this.persistSelectedBoardId(nextBoardId);
     this.showBoardDescendantTasks = false;
     this.clearSelectedTasks();
     this.normalizeTaskFilterTags();
     this.closeBoardPicker();
-    this.syncSelectedChannelForPgBoard(boardId);
+    this.syncSelectedChannelForPgBoard(nextBoardId);
     if (this.navSection === 'chat') {
       this.ensureSelectedChatChannelInScope?.({ syncRoute: false });
       if (this.selectedChannelId && this.selectedChannelId !== previousChannelId) {
@@ -1698,6 +1808,14 @@ export const taskBoardStateMixin = {
         this.stopSelectedChannelLiveQuery?.();
         void this.applyMessages?.([], { scrollToLatest: false });
       }
+    }
+    const selectedBoard = requestedBoard.type === 'scope' ? requestedBoard : parsePgTaskBoardId(nextBoardId);
+    if (openDocument
+      && selectedBoard.type === 'scope'
+      && selectedBoard.scopeId
+      && selectedBoard.scopeId !== openDocument.scope_id
+      && typeof this.moveOpenDocumentToScopeBoard === 'function') {
+      void this.moveOpenDocumentToScopeBoard(selectedBoard.scopeId, openDocument);
     }
     if (this.showTaskDetail) this.closeTaskDetail();
     else this.syncRoute();

@@ -4,6 +4,8 @@ import {
   hydrateTowerPgChannelMessages,
   hydrateTowerPgEventUpdates,
   hydrateTowerPgAudioNotes,
+  hydrateTowerPgDoc,
+  hydrateTowerPgDocComments,
   hydrateTowerPgDocumentsAndFiles,
   hydrateTowerPgScopes,
   hydrateTowerPgTask,
@@ -12,11 +14,13 @@ import {
   mapPgChannelToLocal,
   mapPgAudioNoteToLocal,
   mapPgDocToLocal,
+  mapPgDocCommentToLocal,
   mapPgFileToLocalDocument,
   mapPgMessageToLocal,
   mapPgScopeToLocal,
   mapPgTaskToLocal,
   mapPgTaskCommentToLocal,
+  mergePgHydratedTasksWithLocal,
   mapPgThreadToLocal,
   resolveTowerPgWorkspaceContext,
 } from '../src/pg-read-hydrator.js';
@@ -141,6 +145,7 @@ describe('PG read hydrator', () => {
       scope_id: 'scope-1',
       name: 'Flight Deck PG',
       kind: 'chat',
+      metadata: { basePrompt: 'Channel context' },
       participant_npubs: ['npub1alice', 'npub1bob', 'npub1alice'],
       group_ids: ['group-1', 'group-1'],
       row_version: 3,
@@ -151,6 +156,7 @@ describe('PG read hydrator', () => {
       title: 'Flight Deck PG',
       scope_id: 'scope-1',
       scope_l1_id: 'scope-1',
+      metadata: { basePrompt: 'Channel context' },
       participant_npubs: ['npub1alice', 'npub1bob'],
       group_ids: ['group-1'],
       sync_status: 'synced',
@@ -315,6 +321,46 @@ describe('PG read hydrator', () => {
       record_id: 'comment-1',
       sender_npub: 'npub1alice',
       pg_record_type: 'task_comment',
+    });
+  });
+
+  it('maps PG doc comments into anchored classic comment rows', () => {
+    expect(mapPgDocCommentToLocal({
+      id: 'doc-comment-1',
+      workspace_id: 'workspace-1',
+      scope_id: 'scope-1',
+      channel_id: 'channel-1',
+      doc_id: 'doc-1',
+      parent_comment_id: 'root-1',
+      body: 'Doc comment',
+        metadata: {
+          anchor_block_id: 'block-1',
+          anchor_line_number: 7,
+          comment_status: 'open',
+          client_record_id: 'local-comment-1',
+        },
+      created_by_actor_id: 'actor-1',
+      row_version: 2,
+    }, {
+      workspaceOwnerNpub: 'npub1owner',
+      senderNpub: 'npub1viewer',
+      actorNpubByActorId: new Map([['actor-1', 'npub1alice']]),
+    })).toMatchObject({
+      record_id: 'doc-comment-1',
+      owner_npub: 'npub1owner',
+      target_record_id: 'doc-1',
+      target_record_family_hash: expect.stringContaining(':document'),
+      parent_comment_id: 'root-1',
+      anchor_block_id: 'block-1',
+      anchor_line_number: 7,
+      comment_status: 'open',
+      sender_npub: 'npub1alice',
+      sync_status: 'synced',
+      version: 2,
+      pg_backend: true,
+      pg_record_type: 'doc_comment',
+      pg_channel_id: 'channel-1',
+      pg_client_record_id: 'local-comment-1',
     });
   });
 
@@ -817,6 +863,55 @@ describe('PG read hydrator', () => {
     expect(target.applyTasks).toHaveBeenCalledWith(tasks);
   });
 
+  it('keeps newer local PG task rows when task hydration returns stale rows', async () => {
+    const target = store({
+      scopes: [{ record_id: 'scope-1', record_state: 'active' }],
+      channels: [{ record_id: 'channel-1', record_state: 'active' }],
+      tasks: [{
+        record_id: 'task-1',
+        owner_npub: 'npub1owner',
+        title: 'Task',
+        state: 'done',
+        version: 3,
+        sync_status: 'synced',
+        record_state: 'active',
+        pg_backend: true,
+      }],
+    });
+    const getTowerPgChannelTasks = vi.fn(async () => ({
+      tasks: [{
+        id: 'task-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        title: 'Task',
+        state: 'in_progress',
+        row_version: 2,
+      }],
+    }));
+    const getTowerPgScopeTasks = vi.fn(async () => ({ tasks: [] }));
+    const replaceTasksForOwner = vi.fn(async () => 1);
+
+    const tasks = await hydrateTowerPgTasks(target, {
+      getTowerPgChannelTasks,
+      getTowerPgScopeTasks,
+      replaceTasksForOwner,
+    });
+
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]).toMatchObject({ record_id: 'task-1', state: 'done', version: 3 });
+    expect(replaceTasksForOwner).toHaveBeenCalledWith('npub1owner', tasks);
+    expect(target.applyTasks).toHaveBeenCalledWith(tasks);
+  });
+
+  it('prefers hydrated PG task rows when they are as new as local rows', () => {
+    const result = mergePgHydratedTasksWithLocal(
+      [{ record_id: 'task-1', state: 'done', version: 3, pg_backend: true }],
+      [{ record_id: 'task-1', state: 'in_progress', version: 3, pg_backend: true }],
+    );
+
+    expect(result).toEqual([{ record_id: 'task-1', state: 'done', version: 3, pg_backend: true }]);
+  });
+
   it('hydrates one PG task by id without replacing the whole local task set', async () => {
     const target = store({
       tasks: [{ record_id: 'existing-task', title: 'Existing task', record_state: 'active' }],
@@ -915,30 +1010,157 @@ describe('PG read hydrator', () => {
     expect(applyTaskComments).toHaveBeenCalledWith(comments);
   });
 
+  it('hydrates PG doc comments and replaces the local PG set for the doc', async () => {
+    const applyDocComments = vi.fn();
+    const getTowerPgDocComments = vi.fn(async () => ({
+      comments: [{
+        id: 'doc-comment-1',
+        workspace_id: 'workspace-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        doc_id: 'doc-1',
+        body: 'Doc comment',
+        metadata: {
+          anchor_block_id: 'block-1',
+          anchor_line_number: 3,
+        },
+        row_version: 1,
+      }],
+    }));
+    const replacePgCommentsForTarget = vi.fn(async () => 1);
+
+    const comments = await hydrateTowerPgDocComments(store({ applyDocComments }), 'doc-1', {
+      getTowerPgDocComments,
+      replacePgCommentsForTarget,
+    });
+
+    expect(getTowerPgDocComments).toHaveBeenCalledWith('workspace-1', 'doc-1', {
+      baseUrl: 'https://tower.example',
+      appNpub: 'flightdeck_pg',
+    });
+    expect(replacePgCommentsForTarget).toHaveBeenCalledWith('doc-1', expect.arrayContaining([
+      expect.objectContaining({
+        record_id: 'doc-comment-1',
+        target_record_id: 'doc-1',
+        anchor_block_id: 'block-1',
+        anchor_line_number: 3,
+        pg_backend: true,
+      }),
+    ]));
+    expect(applyDocComments).toHaveBeenCalledWith(comments);
+  });
+
   it('hydrates PG docs and files from accessible channels', async () => {
     const target = store({
       channels: [{ record_id: 'channel-1', record_state: 'active' }],
     });
     const getTowerPgChannelDocs = vi.fn(async () => ({
-      docs: [{ id: 'doc-1', scope_id: 'scope-1', channel_id: 'channel-1', storage_object_id: 'object-doc', title: 'Doc' }],
+      docs: [{
+        id: 'doc-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        storage_object_id: 'object-doc',
+        title: 'Doc',
+        summary: 'Old inline summary',
+        body: {
+          storage_object: {
+            content_type: 'application/vnd.wingman.flightdeck.document-content+json',
+            size_bytes: 128,
+            sha256_hex: 'abc123',
+          },
+        },
+      }],
     }));
     const getTowerPgChannelFiles = vi.fn(async () => ({
       files: [{ id: 'file-1', scope_id: 'scope-1', channel_id: 'channel-1', storage_object_id: 'object-file', display_name: 'File.pdf' }],
     }));
     const replaceDocumentsForOwner = vi.fn(async () => 2);
+    const downloadStorageObject = vi.fn(async () => new TextEncoder().encode(JSON.stringify({
+      format: 'document_content_v1',
+      content_model: {
+        content: '# Updated stored body',
+        content_format: null,
+        content_blocks: [],
+      },
+    })));
 
     const documents = await hydrateTowerPgDocumentsAndFiles(target, {
       getTowerPgChannelDocs,
       getTowerPgChannelFiles,
       replaceDocumentsForOwner,
+      downloadStorageObject,
     });
 
     expect(documents).toEqual([
-      expect.objectContaining({ record_id: 'doc-1', pg_record_type: 'doc' }),
+      expect.objectContaining({
+        record_id: 'doc-1',
+        pg_record_type: 'doc',
+        content: '# Updated stored body',
+        content_storage_status: 'loaded',
+      }),
       expect.objectContaining({ record_id: 'file-1', pg_record_type: 'file' }),
     ]);
+    expect(downloadStorageObject).toHaveBeenCalledWith('object-doc');
     expect(replaceDocumentsForOwner).toHaveBeenCalledWith('npub1owner', documents);
     expect(target.applyDocuments).toHaveBeenCalledWith(documents);
+  });
+
+  it('hydrates a selected PG doc directly from the typed body route', async () => {
+    const target = store({
+      selectedDocType: 'document',
+      selectedDocId: 'doc-1',
+      patchDocumentLocal: vi.fn(),
+      applySelectedDocument: vi.fn(),
+    });
+    const getTowerPgDocBody = vi.fn(async () => ({
+      doc: {
+        id: 'doc-1',
+        workspace_id: 'workspace-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        storage_object_id: 'object-new',
+        title: 'Doc',
+        summary: 'Old summary',
+        row_version: 15,
+        body: {
+          object_id: 'object-new',
+          storage_object: {
+            content_type: 'text/markdown; charset=utf-8',
+            size_bytes: 17,
+            sha256_hex: 'abc123',
+          },
+        },
+      },
+      body: {
+        object_id: 'object-new',
+        content_type: 'text/markdown; charset=utf-8',
+        size_bytes: 17,
+        sha256_hex: 'abc123',
+        encoding: 'base64',
+        base64_data: btoa('# Fresh PG body'),
+      },
+    }));
+    const upsertDocument = vi.fn();
+
+    const row = await hydrateTowerPgDoc(target, 'doc-1', {
+      getTowerPgDocBody,
+      upsertDocument,
+    });
+
+    expect(row).toMatchObject({
+      record_id: 'doc-1',
+      content: '# Fresh PG body',
+      content_storage_object_id: 'object-new',
+      content_storage_status: 'loaded',
+      version: 15,
+    });
+    expect(getTowerPgDocBody).toHaveBeenCalledWith('workspace-1', 'doc-1', {
+      baseUrl: 'https://tower.example',
+      appNpub: 'flightdeck_pg',
+    });
+    expect(upsertDocument).toHaveBeenCalledWith(row);
+    expect(target.patchDocumentLocal).toHaveBeenCalledWith(row);
+    expect(target.applySelectedDocument).toHaveBeenCalledWith(row);
   });
 
   it('hydrates PG audio notes from accessible channels', async () => {

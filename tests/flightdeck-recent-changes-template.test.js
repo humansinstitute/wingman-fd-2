@@ -4,47 +4,58 @@ import { resolve } from 'node:path';
 
 const INDEX_PATH = resolve(process.cwd(), 'index.html');
 
-describe('flight deck attention feed template', () => {
-  it('labels the attention panel and renders grouped attention cards', () => {
+describe('flight deck summary template', () => {
+  it('renders the summary overview on the Flight Deck home page', () => {
     const html = readFileSync(INDEX_PATH, 'utf8');
 
-    expect(html).toContain('<h3>Needs Attention</h3>');
-    expect(html).toContain('x-text="$store.chat.attentionFeedSummary"');
-    expect(html).toContain('x-for="group in $store.chat.attentionFeedGroups"');
-    expect(html).toContain('x-for="item in group.items"');
-    expect(html).toContain('@click="$store.chat.openAttentionItem(item)"');
-    expect(html).toContain('@change="$store.chat.refreshStatusRecentChanges({ force: true })"');
-  });
-
-  it('renders recent scope shortcuts under the Flight Deck scope selector', () => {
-    const html = readFileSync(INDEX_PATH, 'utf8');
     const statusIndex = html.indexOf('navSection === \'status\'');
-    const tasksIndex = html.indexOf('<!-- ═══ TASKS SECTION ═══ -->');
-    const scopeInputIndex = html.indexOf('id="flightdeck-scope-select"');
-    const scopeRowCloseIndex = html.indexOf('</div>\n            <template x-if="$store.chat.recentFocusAreas.length > 0">', scopeInputIndex);
-    const focusIndex = html.indexOf('class="focus-areas-panel flightdeck-focus-areas"');
+    const summaryIndex = html.indexOf('data-testid="flightdeck-summary-overview"', statusIndex);
 
-    expect(statusIndex).toBeGreaterThan(-1);
-    expect(scopeInputIndex).toBeGreaterThan(statusIndex);
-    expect(scopeRowCloseIndex).toBeGreaterThan(scopeInputIndex);
-    expect(focusIndex).toBeGreaterThan(statusIndex);
-    expect(focusIndex).toBeGreaterThan(scopeRowCloseIndex);
-    expect(focusIndex).toBeLessThan(tasksIndex);
-    expect(html).not.toContain('class="focus-areas-heading"');
-    expect(html).not.toContain('>Focus Areas<');
-    expect(html).toContain('aria-label="Recent scope shortcuts"');
-    expect(html).toContain('x-for="area in $store.chat.recentFocusAreas"');
-    expect(html).toContain('@click="$store.chat.selectBoard(area.id)"');
+    expect(summaryIndex).toBeGreaterThan(statusIndex);
+    expect(html).toContain('Welcome <span x-text="$store.chat.greetingName"></span>, where will we focus today?');
+    expect(html).toContain('x-text="$store.chat.autopilotOverviewContextLabel"');
+    expect(html).toContain('class="my-agents-panel" aria-label="My Agents"');
+    expect(html).toContain('<h3>My Agents</h3>');
+    expect(html).toContain('class="autopilot-agent-launcher"');
+    expect(html).toContain('Dive Deeper in Autopilot');
+    expect(html).toContain('class="autopilot-agent-avatar-ring"');
+    expect(html).toContain('x-text="$store.chat.harnessAgentLabel || \'Autopilot agent\'"');
+    expect(html).not.toContain('aria-label="Open Autopilot">Open Autopilot</button>');
+    expect(html).not.toContain('class="autopilot-overview-greeting"');
+    expect(html).not.toContain('x-text="$store.chat.autopilotOverviewGreeting"');
+    expect(html).toContain('data-testid="flightdeck-summary-daily-scope"');
+    expect(html).toContain('data-testid="flightdeck-summary-threads"');
+    expect(html).toContain('data-testid="flightdeck-summary-tasks"');
+    expect(html).toContain('data-testid="flightdeck-summary-documents"');
+    expect(html).toContain('data-testid="flightdeck-summary-files"');
   });
 
-  it('uses the side column for timing instead of duplicating approvals', () => {
+  it('uses attention card styles for summary rows', () => {
     const html = readFileSync(INDEX_PATH, 'utf8');
 
-    expect(html).toContain('<h3>Timing</h3>');
-    expect(html).toContain('x-show="$store.chat.statusTimingFeed.upcoming.length > 0"');
-    expect(html).toContain('x-show="$store.chat.statusTimingFeed.justGone.length > 0"');
-    expect(html).toContain('@click="$store.chat.openTimingItem(item)"');
-    expect(html).not.toContain('class="flightdeck-side-panel flightdeck-approvals-panel"');
+    expect(html).toContain('class="attention-card flightdeck-summary-card flightdeck-summary-card-chat"');
+    expect(html).toContain('class="attention-card flightdeck-summary-card flightdeck-summary-card-task"');
+    expect(html).toContain('class="attention-card flightdeck-summary-card flightdeck-summary-card-doc"');
+    expect(html).toContain('class="attention-card flightdeck-summary-card flightdeck-summary-card-file"');
+    expect(html).toContain('x-html="$store.chat.getAttentionIconSvg(\'chat\')"');
+    expect(html).toContain('x-html="$store.chat.getAttentionIconSvg(\'task\')"');
+    expect(html).toContain('x-html="$store.chat.getAttentionIconSvg(\'doc\')"');
+    expect(html).toContain('@click="$store.chat.openAutopilotOverviewThread(thread)"');
+    expect(html).toContain('@click="$store.chat.openAutopilotOverviewTask(task)"');
+    expect(html).toContain('@click="$store.chat.openAutopilotOverviewDocument(doc)"');
+    expect(html).toContain('@click="$store.chat.openFileBrowserSource(file)"');
+  });
+
+  it('configures Autopilot as an agent plus URL instead of a bare launcher button', () => {
+    const html = readFileSync(INDEX_PATH, 'utf8');
+
+    expect(html).toContain('id="wingman-harness-agent-input"');
+    expect(html).toContain('x-model="$store.chat.wingmanHarnessAgentQuery"');
+    expect(html).toContain('@input="$store.chat.handleHarnessAgentInput($event.target.value)"');
+    expect(html).toContain('x-show="$store.chat.harnessAgentSuggestions.length > 0"');
+    expect(html).toContain('@click="$store.chat.selectHarnessAgent(person.npub)"');
+    expect(html).toContain('id="wingman-harness-input"');
+    expect(html).toContain('Test link');
   });
 
   it('does not expose the removed calendar surface', () => {
@@ -118,10 +129,18 @@ describe('flight deck attention feed template', () => {
   it('renders chat channels as in-view tabs instead of sidebar rows', () => {
     const html = readFileSync(INDEX_PATH, 'utf8');
 
-    expect(html).toContain('class="chat-channel-header" x-show="$store.chat.navSection === \'chat\'"');
+    expect(html).toContain('class="page-header" x-show="!$store.chat.appHeaderHidden"');
+    expect(html).toContain('x-show="$store.chat.navSection === \'chat\'"');
     expect(html).toContain('class="chat-channel-tab-item"');
     expect(html).toContain('class="chat-channel-tab-scroll" role="tablist" aria-label="Chat channels"');
     expect(html).toContain('class="chat-channel-tab"');
+    expect(html).toContain('class="chat-channel-header-icon-btn"');
+    expect(html).toContain('@click="$store.chat.toggleAppHeaderHidden()"');
+    expect(html).toContain('@click="$store.chat.openAllScopesOverview()"');
+    expect(html).toContain('x-for="ch in $store.chat.pgContextChannels"');
+    expect(html).toContain('active: $store.chat.pgContextSelectedChannelId === ch.record_id');
+    expect(html).not.toContain('class="app-header-icon-btn"');
+    expect(html).not.toContain('class="app-header-restore"');
     expect(html).toContain('draggable="true"');
     expect(html).toContain('@dragstart="$store.chat.startChannelTabDrag(ch.record_id, $event)"');
     expect(html).toContain('@drop.prevent="$store.chat.dropChannelTab(ch.record_id, $event)"');

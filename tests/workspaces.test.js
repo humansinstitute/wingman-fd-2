@@ -118,6 +118,28 @@ describe('workspace entry normalization', () => {
     });
   });
 
+  it('stores workspace metadata objects from Tower PG payloads', () => {
+    const workspace = normalizeWorkspaceEntry({
+      workspace_owner_npub: 'npub1workspace',
+      workspace_id: 'workspace-1',
+      service_npub: 'npub1tower',
+      direct_https_url: 'https://tower.example',
+      metadata: {
+        wingman_harness_url: 'https://rick.runwingman.com',
+        wingman_harness_agent_npub: 'npub1wingman21',
+      },
+    });
+
+    expect(workspace).toMatchObject({
+      workspaceOwnerNpub: 'npub1workspace',
+      workspaceId: 'workspace-1',
+      metadata: {
+        wingman_harness_url: 'https://rick.runwingman.com',
+        wingman_harness_agent_npub: 'npub1wingman21',
+      },
+    });
+  });
+
   it('keeps distinct entries for the same workspace pubkey on different services', () => {
     const merged = mergeWorkspaceEntries([], [
       {

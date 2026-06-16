@@ -36,6 +36,7 @@ import {
   getTowerPgWorkspaceMembers,
   removeTowerPgWorkspaceChildGroup,
   removeTowerPgWorkspaceGroupMember,
+  updateTowerPgChannel,
   updateTowerPgChannelGrant,
 } from './api.js';
 import {
@@ -78,6 +79,7 @@ import {
   mapPgChannelToLocal,
   resolveTowerPgWorkspaceContext,
 } from './pg-read-hydrator.js';
+import { buildPgChannelTaskBoardId } from './pg-record-context.js';
 
 // ---------------------------------------------------------------------------
 
@@ -729,7 +731,7 @@ export const channelsManagerMixin = {
     return filterChannelsByScope(
       this.channels,
       this.selectedBoardId,
-      this.selectedBoardScope,
+      this.pgContextScope || this.selectedBoardScope,
       this.scopesMap,
     );
   },
@@ -1080,6 +1082,9 @@ export const channelsManagerMixin = {
     this.closeScopePicker();
     this.closeChannelScopePicker();
     this.channelDeleteConfirmArmed = false;
+    this.channelSettingsBasePrompt = String(selectedChannel.metadata?.basePrompt || '');
+    this.channelSettingsNotice = '';
+    this.channelSettingsError = '';
     this.showChannelSettingsModal = true;
     if (isTowerPgBackendMode()) {
       this.preparePgChannelAccessPanel();
@@ -1089,7 +1094,48 @@ export const channelsManagerMixin = {
   closeChannelSettings() {
     this.closeChannelScopePicker();
     this.channelDeleteConfirmArmed = false;
+    this.channelSettingsNotice = '';
+    this.channelSettingsError = '';
     this.showChannelSettingsModal = false;
+  },
+
+  async saveChannelBasePrompt() {
+    if (!isTowerPgBackendMode()) return;
+    const channel = this.selectedChannel || this.channels?.find((candidate) => candidate?.record_id === this.selectedChannelId);
+    if (!channel?.record_id) {
+      this.channelSettingsError = 'Select a channel first.';
+      return;
+    }
+    this.channelSettingsSaving = true;
+    this.channelSettingsNotice = '';
+    this.channelSettingsError = '';
+    try {
+      const { workspaceId, baseUrl, appNpub, workspaceOwnerNpub } = resolveTowerPgWorkspaceContext(this);
+      if (!workspaceId || !baseUrl) throw new Error('Flight Deck PG workspace is not connected');
+      const metadata = {
+        ...(channel.metadata && typeof channel.metadata === 'object' && !Array.isArray(channel.metadata) ? channel.metadata : {}),
+        basePrompt: String(this.channelSettingsBasePrompt || '').trim(),
+      };
+      const result = await updateTowerPgChannel(workspaceId, channel.record_id, { metadata }, { baseUrl, appNpub });
+      const updatedChannel = mapPgChannelToLocal(result.channel, { workspaceOwnerNpub });
+      try {
+        await upsertChannel(updatedChannel);
+      } catch (cacheError) {
+        flightDeckLog('warn', 'settings', 'PG channel cache write failed after metadata update', {
+          error: cacheError?.message || String(cacheError),
+        });
+      }
+      this.channels = (this.channels || []).map((candidate) =>
+        candidate?.record_id === updatedChannel.record_id ? updatedChannel : candidate
+      );
+      this.channelSettingsBasePrompt = String(updatedChannel.metadata?.basePrompt || '');
+      this.channelSettingsNotice = 'Channel prompt saved.';
+      this.scheduleChannelsRefresh?.('PG channel metadata update');
+    } catch (error) {
+      this.channelSettingsError = error?.message || 'Failed to save channel prompt.';
+    } finally {
+      this.channelSettingsSaving = false;
+    }
   },
 
   async preparePgChannelAccessPanel() {
@@ -1762,12 +1808,22 @@ export const channelsManagerMixin = {
     this.selectedChannelId = recordId;
     const selectedChannel = (this.channels || []).find((channel) => channel?.record_id === recordId) || null;
     const selectedChannelScopeId = getChannelScopeId(selectedChannel);
-    const shouldPromoteScope = selectedChannelScopeId
+    const isPgWorkspace = Boolean(this.currentWorkspace?.pgBackendMode || this.pgBackendMode);
+    const shouldPromoteScope = !isPgWorkspace && selectedChannelScopeId
       && this.selectedBoardId !== selectedChannelScopeId
       && (!this.selectedBoardId
         || this.selectedBoardId === '__all__'
         || this.selectedBoardId === '__recent__'
         || this.selectedBoardId === '__unscoped__');
+    if (isPgWorkspace && selectedChannel?.record_id) {
+      const nextBoardId = buildPgChannelTaskBoardId(selectedChannel.record_id);
+      if (nextBoardId && this.selectedBoardId !== nextBoardId) {
+        this.selectedBoardId = nextBoardId;
+        this.persistSelectedBoardId?.(nextBoardId);
+        this.showBoardDescendantTasks = false;
+        this.normalizeTaskFilterTags?.();
+      }
+    }
     if (shouldPromoteScope) {
       this.selectBoard?.(selectedChannelScopeId);
     }
@@ -1859,6 +1915,7 @@ export const channelsManagerMixin = {
     this.newChannelDmNpub = '';
     this.newChannelName = '';
     this.newChannelDescription = '';
+    this.newChannelBasePrompt = '';
     this.newChannelGroupId = '';
     this.newChannelAccessLoading = false;
     this.newChannelAccessError = '';
@@ -2095,6 +2152,9 @@ export const channelsManagerMixin = {
         const result = await createTowerPgScopeChannel(workspaceId, scopeId, {
           name: title,
           description: String(this.newChannelDescription || '').trim() || undefined,
+          metadata: {
+            basePrompt: String(this.newChannelBasePrompt || '').trim(),
+          },
           kind: 'channel',
           grants: initialGrants,
         }, { baseUrl, appNpub });

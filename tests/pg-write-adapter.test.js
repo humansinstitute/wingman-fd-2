@@ -1,13 +1,20 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   createTowerPgAudioNoteFromLocal,
+  createTowerPgDocCommentFromLocal,
   createTowerPgDocFromLocal,
   createTowerPgFileFromLocal,
   createTowerPgMessageFromLocal,
   createTowerPgTaskCommentFromLocal,
   createTowerPgTaskFromLocal,
+  deleteTowerPgDocCommentFromLocal,
+  deleteTowerPgMessageFromLocal,
+  deleteTowerPgTaskFromLocal,
+  deleteTowerPgThreadFromLocal,
   resolveTowerPgTaskChannel,
+  updateTowerPgDocCommentFromLocal,
   updateTowerPgDocFromLocal,
+  updateTowerPgFileFromLocal,
   updateTowerPgTaskFromLocal,
 } from '../src/pg-write-adapter.js';
 import { recordFamilyHash } from '../src/translators/chat.js';
@@ -19,7 +26,12 @@ vi.mock('../src/api.js', () => ({
   createTowerPgChannelFile: vi.fn(),
   createTowerPgChannelMessage: vi.fn(),
   createTowerPgChannelTask: vi.fn(),
+  createTowerPgDocComment: vi.fn(),
   createTowerPgTaskComment: vi.fn(),
+  deleteTowerPgDocComment: vi.fn(),
+  deleteTowerPgTask: vi.fn(),
+  deleteTowerPgMessage: vi.fn(),
+  deleteTowerPgThread: vi.fn(),
   getTowerPgChannelAudioNotes: vi.fn(),
   getTowerPgChannelDocs: vi.fn(),
   getTowerPgChannelFiles: vi.fn(),
@@ -33,6 +45,8 @@ vi.mock('../src/api.js', () => ({
   releaseTowerPgEditLease: vi.fn(),
   renewTowerPgEditLease: vi.fn(),
   updateTowerPgDoc: vi.fn(),
+  updateTowerPgDocComment: vi.fn(),
+  updateTowerPgFile: vi.fn(),
   updateTowerPgTask: vi.fn(),
   updateTowerPgTaskState: vi.fn(),
 }));
@@ -212,6 +226,43 @@ describe('PG write adapter', () => {
     })).rejects.toThrow('Selected PG channel does not belong to the requested scope');
   });
 
+  it('updates Tower PG files with a new channel and row version', async () => {
+    const api = await import('../src/api.js');
+    api.updateTowerPgFile.mockResolvedValue({
+      file: {
+        id: 'file-1',
+        workspace_id: 'workspace-1',
+        scope_id: 'scope-2',
+        channel_id: 'channel-2',
+        storage_object_id: 'storage-file',
+        display_name: 'File.pdf',
+        metadata: {},
+        row_version: 6,
+      },
+    });
+
+    const file = await updateTowerPgFileFromLocal(store(), {
+      record_id: 'file-1',
+      title: 'File.pdf',
+      pg_record_type: 'file',
+      pg_storage_object_id: 'storage-file',
+      scope_id: 'scope-2',
+      pg_channel_id: 'channel-2',
+      version: 5,
+    }, {
+      version: 4,
+    });
+
+    expect(api.updateTowerPgFile).toHaveBeenCalledWith('workspace-1', 'file-1', {
+      row_version: 4,
+      channel_id: 'channel-2',
+      display_name: 'File.pdf',
+      description: null,
+      metadata: {},
+    }, { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
+    expect(file).toMatchObject({ record_id: 'file-1', pg_channel_id: 'channel-2', version: 6 });
+  });
+
   it('creates Tower PG audio notes with selected channel and first-class thread context', async () => {
     const api = await import('../src/api.js');
     api.createTowerPgChannelAudioNote.mockResolvedValue({
@@ -241,12 +292,15 @@ describe('PG write adapter', () => {
       target_record_id: 'message-1',
     });
 
+    const body = api.createTowerPgChannelAudioNote.mock.calls[0][2];
     expect(api.createTowerPgChannelAudioNote).toHaveBeenCalledWith('workspace-1', 'channel-1', expect.objectContaining({
       storage_object_id: 'storage-audio',
       thread_id: 'thread-1',
       target_type: 'message',
       target_id: 'message-1',
     }), { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
+    expect(body).not.toHaveProperty('transcript_preview');
+    expect(body).not.toHaveProperty('summary');
     expect(audio).toMatchObject({ record_id: 'audio-1', pg_channel_id: 'channel-1', pg_thread_id: 'thread-1' });
   });
 
@@ -323,6 +377,36 @@ describe('PG write adapter', () => {
     }), { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
   });
 
+  it('deletes Tower PG tasks through the typed delete endpoint', async () => {
+    const api = await import('../src/api.js');
+    api.deleteTowerPgTask.mockResolvedValue({
+      task: {
+        id: 'task-1',
+        workspace_id: 'workspace-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        title: 'Deleted',
+        state: 'new',
+        priority: 'sand',
+        row_version: 4,
+      },
+    });
+
+    const task = await deleteTowerPgTaskFromLocal(store(), {
+      record_id: 'task-1',
+      pg_backend: true,
+      sync_status: 'synced',
+      version: 3,
+    });
+
+    expect(api.deleteTowerPgTask).toHaveBeenCalledWith('workspace-1', 'task-1', {
+      rowVersion: 3,
+      baseUrl: 'https://tower.example',
+      appNpub: 'flightdeck_pg',
+    });
+    expect(task).toMatchObject({ record_id: 'task-1', version: 4, pg_channel_id: 'channel-1' });
+  });
+
   it('adds PG edit lease token and row version to synced document save payloads', async () => {
     const api = await import('../src/api.js');
     api.updateTowerPgDoc.mockResolvedValue({
@@ -347,6 +431,7 @@ describe('PG write adapter', () => {
       sync_status: 'synced',
       title: 'Doc edited',
       content: 'Body',
+      pg_channel_id: 'channel-1',
       content_storage_object_id: 'storage-doc',
       version: 5,
     }, {
@@ -359,6 +444,7 @@ describe('PG write adapter', () => {
     expect(api.updateTowerPgDoc).toHaveBeenCalledWith('workspace-1', 'doc-1', expect.objectContaining({
       row_version: 4,
       lease_token: 'doc-lease-token',
+      channel_id: 'channel-1',
     }), { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
   });
 
@@ -461,5 +547,184 @@ describe('PG write adapter', () => {
       pg_backend: true,
       pg_record_type: 'task_comment',
     });
+  });
+
+  it('creates Tower PG document comments with anchor metadata', async () => {
+    const api = await import('../src/api.js');
+    api.createTowerPgDocComment.mockResolvedValue({
+      comment: {
+        id: 'doc-comment-1',
+        workspace_id: 'workspace-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        doc_id: 'doc-1',
+        parent_comment_id: null,
+        body: 'Doc comment',
+        metadata: {
+          anchor_block_id: 'block-1',
+          anchor_line_number: 12,
+          comment_status: 'open',
+        },
+        row_version: 1,
+      },
+    });
+
+    const comment = await createTowerPgDocCommentFromLocal(store(), {
+      target_record_id: 'doc-1',
+      body: 'Doc comment',
+      anchor_block_id: 'block-1',
+      anchor_line_number: 12,
+      comment_status: 'open',
+      pg_metadata: {
+        client_record_id: 'local-comment-1',
+      },
+    });
+
+    expect(api.createTowerPgDocComment).toHaveBeenCalledWith('workspace-1', 'doc-1', {
+      body: 'Doc comment',
+      metadata: {
+        anchor_block_id: 'block-1',
+        anchor_line_number: 12,
+        comment_status: 'open',
+        client_record_id: 'local-comment-1',
+      },
+    }, { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
+    expect(comment).toMatchObject({
+      record_id: 'doc-comment-1',
+      target_record_id: 'doc-1',
+      target_record_family_hash: recordFamilyHash('document'),
+      anchor_block_id: 'block-1',
+      anchor_line_number: 12,
+      pg_record_type: 'doc_comment',
+    });
+  });
+
+  it('updates Tower PG document comment status', async () => {
+    const api = await import('../src/api.js');
+    api.updateTowerPgDocComment.mockResolvedValue({
+      comment: {
+        id: 'doc-comment-1',
+        workspace_id: 'workspace-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        doc_id: 'doc-1',
+        parent_comment_id: null,
+        body: 'Doc comment',
+        metadata: {
+          anchor_block_id: 'block-1',
+          anchor_line_number: 12,
+          comment_status: 'resolved',
+        },
+        row_version: 2,
+      },
+    });
+
+    const comment = await updateTowerPgDocCommentFromLocal(store(), {
+      record_id: 'doc-comment-1',
+      target_record_id: 'doc-1',
+      body: 'Doc comment',
+      anchor_block_id: 'block-1',
+      anchor_line_number: 12,
+      comment_status: 'resolved',
+      previous_version: 1,
+      version: 2,
+    });
+
+    expect(api.updateTowerPgDocComment).toHaveBeenCalledWith('workspace-1', 'doc-1', 'doc-comment-1', {
+      comment_status: 'resolved',
+      row_version: 1,
+    }, { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
+    expect(comment).toMatchObject({
+      record_id: 'doc-comment-1',
+      comment_status: 'resolved',
+      version: 2,
+      pg_record_type: 'doc_comment',
+    });
+  });
+
+  it('deletes Tower PG document comments and maps the local row as deleted', async () => {
+    const api = await import('../src/api.js');
+    api.deleteTowerPgDocComment.mockResolvedValue({
+      comment: {
+        id: 'doc-comment-1',
+        workspace_id: 'workspace-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        doc_id: 'doc-1',
+        parent_comment_id: null,
+        body: 'Doc comment',
+        metadata: {
+          comment_status: 'open',
+        },
+        row_version: 2,
+      },
+    });
+
+    const comment = await deleteTowerPgDocCommentFromLocal(store(), {
+      record_id: 'doc-comment-1',
+      target_record_id: 'doc-1',
+      version: 1,
+    });
+
+    expect(api.deleteTowerPgDocComment).toHaveBeenCalledWith('workspace-1', 'doc-1', 'doc-comment-1', {
+      rowVersion: 1,
+      baseUrl: 'https://tower.example',
+      appNpub: 'flightdeck_pg',
+    });
+    expect(comment).toMatchObject({
+      record_id: 'doc-comment-1',
+      record_state: 'deleted',
+      pg_record_type: 'doc_comment',
+    });
+  });
+
+  it('deletes Tower PG messages and maps the local row as deleted', async () => {
+    const api = await import('../src/api.js');
+    api.deleteTowerPgMessage.mockResolvedValue({
+      message: {
+        id: 'message-1',
+        workspace_id: 'workspace-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        body: 'Deleted',
+        row_version: 2,
+      },
+    });
+
+    const message = await deleteTowerPgMessageFromLocal(store(), {
+      record_id: 'message-1',
+      channel_id: 'channel-1',
+      body: 'Deleted',
+      version: 1,
+    });
+
+    expect(api.deleteTowerPgMessage).toHaveBeenCalledWith('workspace-1', 'message-1', {
+      rowVersion: 1,
+      baseUrl: 'https://tower.example',
+      appNpub: 'flightdeck_pg',
+    });
+    expect(message).toMatchObject({
+      record_id: 'message-1',
+      record_state: 'deleted',
+      pg_backend: true,
+    });
+  });
+
+  it('deletes Tower PG threads by PG thread id', async () => {
+    const api = await import('../src/api.js');
+    api.deleteTowerPgThread.mockResolvedValue({
+      thread: { id: 'thread-1' },
+    });
+
+    const thread = await deleteTowerPgThreadFromLocal(store(), {
+      record_id: 'message-1',
+      pg_thread_id: 'thread-1',
+    });
+
+    expect(api.deleteTowerPgThread).toHaveBeenCalledWith('workspace-1', 'thread-1', {
+      baseUrl: 'https://tower.example',
+      appNpub: 'flightdeck_pg',
+    });
+    expect(thread).toEqual({ id: 'thread-1' });
   });
 });

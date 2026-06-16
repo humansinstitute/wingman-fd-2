@@ -194,6 +194,9 @@ export function normalizeWorkspaceEntry(raw = {}) {
     ?? raw.workspaceAvatarUrl
     ?? null,
   );
+  const metadata = raw.metadata && typeof raw.metadata === 'object' && !Array.isArray(raw.metadata)
+    ? raw.metadata
+    : {};
 
   const connectionToken = pgBackendMode
     ? token
@@ -220,6 +223,7 @@ export function normalizeWorkspaceEntry(raw = {}) {
     slug,
     description,
     avatarUrl,
+    metadata,
     directHttpsUrl,
     serviceNpub,
     towerServiceNpub,
@@ -272,6 +276,7 @@ function normalizeWorkspacePatch(raw = {}) {
     [['slug'], 'slug'],
     [['description', 'workspace_description', 'workspaceDescription'], 'description'],
     [['avatarUrl', 'avatar_url', 'workspace_avatar_url', 'workspaceAvatarUrl'], 'avatarUrl'],
+    [['metadata'], 'metadata'],
     [['directHttpsUrl', 'direct_https_url', 'backendUrl', 'httpUrl'], 'directHttpsUrl'],
     [['serviceNpub', 'service_npub'], 'serviceNpub'],
     [['towerServiceNpub', 'tower_service_npub'], 'towerServiceNpub'],

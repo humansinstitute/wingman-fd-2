@@ -15,6 +15,8 @@ function createStore(overrides = {}) {
     currentWorkspaceOwnerNpub: '',
     defaultAgentNpub: '',
     defaultAgentQuery: '',
+    workspaceHarnessAgentNpub: '',
+    wingmanHarnessAgentQuery: '',
     wingmanHarnessInput: '',
     wingmanHarnessDirty: false,
     wingmanHarnessError: null,
@@ -93,6 +95,28 @@ describe('settings methods', () => {
     });
     fn('some-query');
     expect(store.defaultAgentQuery).toBe('some-query');
+  });
+
+  it('handleHarnessAgentInput updates query and marks harness settings dirty', () => {
+    const { fn, store } = bindMethod('handleHarnessAgentInput', {
+      wingmanHarnessAgentQuery: '',
+      wingmanHarnessDirty: false,
+      wingmanHarnessError: 'old',
+    });
+    fn('Wingman 21');
+    expect(store.wingmanHarnessAgentQuery).toBe('Wingman 21');
+    expect(store.wingmanHarnessDirty).toBe(true);
+    expect(store.wingmanHarnessError).toBeNull();
+  });
+
+  it('selectHarnessAgent sets the Autopilot agent without saving until Save Autopilot', async () => {
+    const { fn, store } = bindMethod('selectHarnessAgent');
+    await fn('npub1agent');
+    expect(store.workspaceHarnessAgentNpub).toBe('npub1agent');
+    expect(store.wingmanHarnessAgentQuery).toBe('');
+    expect(store.wingmanHarnessDirty).toBe(true);
+    expect(store.rememberPeople).toHaveBeenCalledWith(['npub1agent'], 'autopilot-agent');
+    expect(store.persistWorkspaceSettings).not.toHaveBeenCalled();
   });
 
   it('handleDefaultAgentInput resolves profile for npub-like input', () => {

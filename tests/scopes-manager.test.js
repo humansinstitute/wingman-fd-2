@@ -1,8 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
+  createTowerPgScopeChannel: vi.fn(),
   createTowerPgWorkspaceScope: vi.fn(),
+  updateTowerPgDoc: vi.fn(),
   hydrateTowerPgScopes: vi.fn(),
+  mapPgChannelToLocal: vi.fn((channel = {}) => ({
+    record_id: channel.id,
+    title: channel.name,
+    scope_id: channel.scope_id,
+    metadata: channel.metadata || {},
+    record_state: 'active',
+  })),
+  mapPgDocToLocal: vi.fn((doc = {}) => ({
+    record_id: doc.id,
+    pg_backend: true,
+    scope_id: doc.scope_id,
+    pg_channel_id: doc.channel_id,
+    title: doc.title,
+    version: doc.row_version,
+  })),
   isTowerPgBackendMode: vi.fn(() => false),
   resolveTowerPgWorkspaceContext: vi.fn(() => ({
     workspaceId: 'workspace-1',
@@ -12,7 +29,9 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../src/api.js', () => ({
+  createTowerPgScopeChannel: mocks.createTowerPgScopeChannel,
   createTowerPgWorkspaceScope: mocks.createTowerPgWorkspaceScope,
+  updateTowerPgDoc: mocks.updateTowerPgDoc,
 }));
 
 vi.mock('../src/backend-mode.js', () => ({
@@ -21,6 +40,8 @@ vi.mock('../src/backend-mode.js', () => ({
 
 vi.mock('../src/pg-read-hydrator.js', () => ({
   hydrateTowerPgScopes: mocks.hydrateTowerPgScopes,
+  mapPgChannelToLocal: mocks.mapPgChannelToLocal,
+  mapPgDocToLocal: mocks.mapPgDocToLocal,
   resolveTowerPgWorkspaceContext: mocks.resolveTowerPgWorkspaceContext,
 }));
 
@@ -34,7 +55,31 @@ import {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.createTowerPgWorkspaceScope.mockResolvedValue({ scope: { id: 'scope-1' } });
+  mocks.createTowerPgScopeChannel.mockImplementation(async (_workspaceId, scopeId, body) => ({
+    channel: {
+      id: `channel-${String(body.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+      name: body.name,
+      scope_id: scopeId,
+      metadata: body.metadata || {},
+    },
+  }));
+  mocks.updateTowerPgDoc.mockResolvedValue({ doc: { id: 'doc-1' } });
   mocks.hydrateTowerPgScopes.mockResolvedValue([]);
+  mocks.mapPgChannelToLocal.mockImplementation((channel = {}) => ({
+    record_id: channel.id,
+    title: channel.name,
+    scope_id: channel.scope_id,
+    metadata: channel.metadata || {},
+    record_state: 'active',
+  }));
+  mocks.mapPgDocToLocal.mockImplementation((doc = {}) => ({
+    record_id: doc.id,
+    pg_backend: true,
+    scope_id: doc.scope_id,
+    pg_channel_id: doc.channel_id,
+    title: doc.title,
+    version: doc.row_version,
+  }));
   mocks.isTowerPgBackendMode.mockReturnValue(false);
   mocks.resolveTowerPgWorkspaceContext.mockReturnValue({
     workspaceId: 'workspace-1',
@@ -227,6 +272,50 @@ describe('scopes-manager pure utilities', () => {
     });
   });
 
+  describe('document scope assignment', () => {
+    it('flushes pending document edits before moving the selected document scope', async () => {
+      const timer = setTimeout(() => {}, 1000);
+      const originalDoc = {
+        record_id: 'doc-1',
+        title: 'Draft',
+        content: 'before',
+        scope_id: 'scope-old',
+        version: 1,
+      };
+      const savedDoc = {
+        ...originalDoc,
+        content: 'after',
+        version: 2,
+      };
+      const saveSelectedDocItem = vi.fn(async function saveSelectedDocItem() {
+        this.selectedDocument = savedDoc;
+        this.documents = [savedDoc];
+        return savedDoc;
+      });
+      const updateDocScope = vi.fn();
+      const closeScopePicker = vi.fn();
+      const store = createScopeStore({
+        session: { npub: 'npub1user' },
+        selectedDocType: 'document',
+        selectedDocument: originalDoc,
+        documents: [originalDoc],
+        docsEditorOpen: true,
+        docAutosaveState: 'pending',
+        docAutosaveTimer: timer,
+        saveSelectedDocItem,
+        updateDocScope,
+        closeScopePicker,
+      });
+
+      await store.selectScopeForDoc('scope-new');
+
+      expect(store.docAutosaveTimer).toBeNull();
+      expect(saveSelectedDocItem).toHaveBeenCalledWith({ autosave: true });
+      expect(updateDocScope).toHaveBeenCalledWith(savedDoc, 'scope-new');
+      expect(closeScopePicker).toHaveBeenCalled();
+    });
+  });
+
   describe('Tower PG scope state', () => {
     it('forces new scopes to the top-level PG model', () => {
       mocks.isTowerPgBackendMode.mockReturnValue(true);
@@ -278,6 +367,71 @@ describe('scopes-manager pure utilities', () => {
       expect(store.showNewScopeForm).toBe(false);
       expect(store.newScopeLevel).toBe('l1');
       expect(store.newScopeParentId).toBe(null);
+    });
+
+    it('creates Product template channels with rendered base prompts after creating a PG scope', async () => {
+      mocks.isTowerPgBackendMode.mockReturnValue(true);
+      const refreshScopes = vi.fn(async () => []);
+      const store = createScopeStore({
+        session: { npub: 'npub1pete' },
+        channels: [],
+        newScopeTitle: 'Product Score',
+        newScopeDescription: '',
+        newScopeAssignedGroupIds: ['group-1'],
+        newScopeTemplateId: 'product',
+        newScopeTemplateValues: {
+          workingdir: '/Users/mini/code/product-score',
+        },
+        resolveGroupId(groupId) {
+          return groupId || null;
+        },
+        refreshScopes,
+      });
+
+      await store.addScope();
+
+      expect(mocks.createTowerPgWorkspaceScope).toHaveBeenCalledWith('workspace-1', {
+        name: 'Product Score',
+        description: 'Product scope for Product Score. Code/work directory: /Users/mini/code/product-score.',
+        kind: 'project',
+        owner_group_id: 'group-1',
+      }, {
+        baseUrl: 'https://tower.example',
+        appNpub: 'flightdeck_pg',
+      });
+      expect(mocks.createTowerPgScopeChannel).toHaveBeenCalledTimes(4);
+      expect(mocks.createTowerPgScopeChannel).toHaveBeenCalledWith('workspace-1', 'scope-1', expect.objectContaining({
+        name: 'Features',
+        metadata: {
+          basePrompt: expect.stringContaining('feature work on the Product Score project'),
+        },
+        grants: [{
+          principal_type: 'group',
+          principal_id: 'group-1',
+          access_level: 'manage',
+        }],
+      }), {
+        baseUrl: 'https://tower.example',
+        appNpub: 'flightdeck_pg',
+      });
+      expect(mocks.createTowerPgScopeChannel).toHaveBeenCalledWith('workspace-1', 'scope-1', expect.objectContaining({
+        name: 'Implementation',
+        metadata: {
+          basePrompt: expect.stringContaining('Working directory: /Users/mini/code/product-score'),
+        },
+      }), {
+        baseUrl: 'https://tower.example',
+        appNpub: 'flightdeck_pg',
+      });
+      expect(store.channels.map((channel) => channel.title)).toEqual([
+        'Features',
+        'Implementation',
+        'Bugs',
+        'Refactoring',
+      ]);
+      expect(store.newScopeTemplateId).toBe('');
+      expect(store.newScopeTemplateValues).toEqual({});
+      expect(refreshScopes).toHaveBeenCalledTimes(1);
     });
 
     it('keeps the PG scope owner group as a single group selection', () => {

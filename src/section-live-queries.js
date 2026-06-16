@@ -200,6 +200,26 @@ function buildWorkspaceSpecs(store) {
     case 'status':
       sectionSpecs = [
         {
+          key: 'status:messages',
+          query: () => getMessagesByOwner(ownerNpub),
+          onNext: (messages) => store.applyFileMessages(messages),
+        },
+        {
+          key: 'status:comments',
+          query: () => getCommentsByOwner(ownerNpub),
+          onNext: (comments) => store.applyFileComments(comments),
+        },
+        {
+          key: 'status:directories',
+          query: () => getDirectoriesByOwner(ownerNpub),
+          onNext: (directories) => store.applyDirectories(directories),
+        },
+        {
+          key: 'status:documents',
+          query: () => getDocumentsByOwner(ownerNpub),
+          onNext: (documents) => store.applyDocuments(documents),
+        },
+        {
           key: 'status:tasks',
           query: () => getTasksByOwner(ownerNpub),
           onNext: (tasks) => store.applyTasks(tasks),

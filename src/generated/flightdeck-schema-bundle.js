@@ -2,7 +2,7 @@
 // Do not edit by hand.
 export const FLIGHT_DECK_SCHEMA_BUNDLE = {
   "bundle_schema_version": 1,
-  "schema_hash": "6e55b8f5069c87335f5b429408ef5a745dff6b7085d1340f04a5700ac556f745",
+  "schema_hash": "1ad95d46d0c553b7fc34434039f51003fef5f5ca52746c164bada149eb5ad5b3",
   "schemas": [
     {
       "collection_space": "agent_chat_trigger",
@@ -2339,6 +2339,9 @@ export const FLIGHT_DECK_SCHEMA_BUNDLE = {
                 "type": "string"
               },
               "wingman_harness_url": {
+                "type": "string"
+              },
+              "wingman_harness_agent_npub": {
                 "type": "string"
               },
               "triggers": {

@@ -18,6 +18,8 @@ vi.mock('../src/backend-mode.js', () => ({
 
 vi.mock('../src/pg-write-adapter.js', () => ({
   createTowerPgMessageFromLocal: vi.fn(),
+  deleteTowerPgMessageFromLocal: vi.fn(),
+  deleteTowerPgThreadFromLocal: vi.fn(),
 }));
 
 import { isTowerPgBackendMode } from '../src/backend-mode.js';
@@ -25,6 +27,10 @@ import { chatMessageManagerMixin } from '../src/chat-message-manager.js';
 import { createChatThreadFlowDispatchState } from '../src/chat-thread-flow-dispatch.js';
 import { createChatGetItDoneState } from '../src/chat-get-it-done.js';
 import { createTowerPgMessageFromLocal } from '../src/pg-write-adapter.js';
+import {
+  deleteTowerPgMessageFromLocal,
+  deleteTowerPgThreadFromLocal,
+} from '../src/pg-write-adapter.js';
 import {
   clearRuntimeData,
   deleteWorkspaceDb,
@@ -36,6 +42,8 @@ import {
 beforeEach(() => {
   isTowerPgBackendMode.mockReturnValue(false);
   createTowerPgMessageFromLocal.mockReset();
+  deleteTowerPgMessageFromLocal.mockReset();
+  deleteTowerPgThreadFromLocal.mockReset();
 });
 
 // ---------------------------------------------------------------------------
@@ -72,6 +80,15 @@ function createStore(overrides = {}) {
     flowStartTarget: null,
     flowStartContext: '',
     messageActionsMenuId: null,
+    chatDeleteConfirm: {
+      open: false,
+      mode: '',
+      recordId: '',
+      title: '',
+      message: '',
+      submitting: false,
+      error: '',
+    },
     error: null,
     session: null,
     botNpub: '',
@@ -983,6 +1000,78 @@ describe('sendMessage', () => {
     }
   });
 
+  it('attaches PG audio drafts after the accepted message id is known', async () => {
+    const workspaceDbKey = 'chat-message-manager-send-message-pg-audio';
+    openWorkspaceDb(workspaceDbKey);
+    await clearRuntimeData();
+    isTowerPgBackendMode.mockReturnValue(true);
+    createTowerPgMessageFromLocal.mockImplementation(async (_store, localRow) => ({
+      record_id: 'pg-message-1',
+      channel_id: localRow.channel_id,
+      parent_message_id: null,
+      body: localRow.body,
+      attachments: [],
+      sender_npub: localRow.sender_npub,
+      sync_status: 'synced',
+      record_state: 'active',
+      version: 1,
+      updated_at: '2026-06-06T01:00:00.000Z',
+      pg_backend: true,
+      pg_record_type: 'message',
+      pg_scope_id: 'scope-1',
+      pg_thread_id: 'pg-thread-1',
+    }));
+
+    try {
+      const materializeAudioDrafts = vi.fn().mockResolvedValue({
+        attachments: [{
+          kind: 'audio',
+          audio_note_record_id: 'audio-pg-1',
+          title: 'Voice note',
+          duration_seconds: 12,
+        }],
+      });
+      const { fn, store } = bindMethod('sendMessage', {
+        session: { npub: 'npub1viewer' },
+        workspaceOwnerNpub: 'npub1owner',
+        selectedChannelId: 'ch1',
+        channels: [{ record_id: 'ch1', owner_npub: 'npub1owner', group_ids: [] }],
+        messageInput: 'hello pg audio',
+        messageAudioDrafts: [{ draft_id: 'draft-1', title: 'Voice note', storage_object_id: 'storage-1' }],
+        materializeAudioDrafts,
+      });
+
+      await fn();
+
+      const localRecordId = createTowerPgMessageFromLocal.mock.calls[0][1].record_id;
+      expect(materializeAudioDrafts).toHaveBeenCalledWith(expect.objectContaining({
+        drafts: [{ draft_id: 'draft-1', title: 'Voice note', storage_object_id: 'storage-1' }],
+        target_record_id: 'pg-message-1',
+        target_record_family_hash: 'mock:chat_message',
+        scopeId: 'scope-1',
+        channelId: 'ch1',
+        threadId: 'pg-thread-1',
+      }));
+      expect(materializeAudioDrafts.mock.calls[0][0].target_record_id).not.toBe(localRecordId);
+      expect(await getMessageById('pg-message-1')).toMatchObject({
+        record_id: 'pg-message-1',
+        attachments: [{
+          kind: 'audio',
+          audio_note_record_id: 'audio-pg-1',
+          title: 'Voice note',
+          duration_seconds: 12,
+        }],
+      });
+      expect(store.messages[0]).toMatchObject({
+        record_id: 'pg-message-1',
+        attachments: [expect.objectContaining({ audio_note_record_id: 'audio-pg-1' })],
+      });
+      expect(store.error).toBeNull();
+    } finally {
+      await deleteWorkspaceDb(workspaceDbKey);
+    }
+  });
+
   it('repairs agent DM access before sending a PG message', async () => {
     const workspaceDbKey = 'chat-message-manager-send-agent-dm-pg';
     openWorkspaceDb(workspaceDbKey);
@@ -1200,6 +1289,94 @@ describe('sendThreadReply', () => {
       await deleteWorkspaceDb(workspaceDbKey);
     }
   });
+
+  it('attaches PG audio drafts to accepted thread replies', async () => {
+    const workspaceDbKey = 'chat-message-manager-send-thread-reply-pg-audio';
+    openWorkspaceDb(workspaceDbKey);
+    await clearRuntimeData();
+    isTowerPgBackendMode.mockReturnValue(true);
+    createTowerPgMessageFromLocal.mockImplementation(async (_store, localRow) => ({
+      record_id: 'pg-reply-1',
+      channel_id: localRow.channel_id,
+      parent_message_id: localRow.parent_message_id,
+      body: localRow.body,
+      attachments: [],
+      sender_npub: localRow.sender_npub,
+      sync_status: 'synced',
+      record_state: 'active',
+      version: 1,
+      updated_at: '2026-06-06T01:01:00.000Z',
+      pg_backend: true,
+      pg_record_type: 'message',
+      pg_scope_id: 'scope-1',
+      pg_thread_id: 'pg-thread-1',
+    }));
+
+    try {
+      const rootMessage = {
+        record_id: 'root-1',
+        channel_id: 'ch1',
+        parent_message_id: null,
+        body: 'Root',
+        sender_npub: 'npub1viewer',
+        sync_status: 'synced',
+        record_state: 'active',
+        updated_at: '2026-06-06T01:00:00.000Z',
+        pg_backend: true,
+        pg_scope_id: 'scope-1',
+        pg_thread_id: 'pg-thread-1',
+      };
+      await upsertMessage(rootMessage);
+      const materializeAudioDrafts = vi.fn().mockResolvedValue({
+        attachments: [{
+          kind: 'audio',
+          audio_note_record_id: 'audio-reply-pg-1',
+          title: 'Reply voice note',
+          duration_seconds: 8,
+        }],
+      });
+      const { fn, store } = bindMethod('sendThreadReply', {
+        session: { npub: 'npub1viewer' },
+        workspaceOwnerNpub: 'npub1owner',
+        selectedChannelId: 'ch1',
+        activeThreadId: 'root-1',
+        threadInput: 'reply pg audio',
+        threadAudioDrafts: [{ draft_id: 'draft-reply-1', title: 'Reply voice note', storage_object_id: 'storage-2' }],
+        channels: [{ record_id: 'ch1', owner_npub: 'npub1owner', group_ids: [] }],
+        messages: [rootMessage],
+        materializeAudioDrafts,
+      });
+
+      await fn();
+
+      const localRecordId = createTowerPgMessageFromLocal.mock.calls[0][1].record_id;
+      expect(materializeAudioDrafts).toHaveBeenCalledWith(expect.objectContaining({
+        drafts: [{ draft_id: 'draft-reply-1', title: 'Reply voice note', storage_object_id: 'storage-2' }],
+        target_record_id: 'pg-reply-1',
+        target_record_family_hash: 'mock:chat_message',
+        scopeId: 'scope-1',
+        channelId: 'ch1',
+        threadId: 'pg-thread-1',
+      }));
+      expect(materializeAudioDrafts.mock.calls[0][0].target_record_id).not.toBe(localRecordId);
+      expect(await getMessageById('pg-reply-1')).toMatchObject({
+        record_id: 'pg-reply-1',
+        attachments: [{
+          kind: 'audio',
+          audio_note_record_id: 'audio-reply-pg-1',
+          title: 'Reply voice note',
+          duration_seconds: 8,
+        }],
+      });
+      expect(store.threadMessages[0]).toMatchObject({
+        record_id: 'pg-reply-1',
+        attachments: [expect.objectContaining({ audio_note_record_id: 'audio-reply-pg-1' })],
+      });
+      expect(store.error).toBeNull();
+    } finally {
+      await deleteWorkspaceDb(workspaceDbKey);
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1214,6 +1391,21 @@ describe('deleteActiveThread', () => {
     });
     await fn();
     expect(store.error).toBe('Open a thread first');
+  });
+
+  it('opens the delete thread confirmation when a thread is active', async () => {
+    const { fn, store } = bindMethod('deleteActiveThread', {
+      activeThreadId: 'root-1',
+      selectedChannelId: 'ch1',
+      messages: [{ record_id: 'root-1', channel_id: 'ch1', body: 'Root', parent_message_id: null }],
+    });
+    await fn();
+    expect(store.chatDeleteConfirm).toMatchObject({
+      open: true,
+      mode: 'thread',
+      recordId: 'root-1',
+      title: 'Delete Thread',
+    });
   });
 });
 
@@ -1343,6 +1535,146 @@ describe('chat message actions menu', () => {
       recordId: 'msg-unknown',
       label: 'Chat message',
     });
+  });
+
+  it('copyMessageRawText writes the stored markdown body to clipboard', async () => {
+    const copyTextToClipboard = vi.fn();
+    const { fn, store } = bindMethod('copyMessageRawText', {
+      copyTextToClipboard,
+      messageActionsMenuId: 'msg-1',
+      messages: [{
+        record_id: 'msg-1',
+        body: 'Hello ![image](storage://image-1)',
+      }],
+    });
+
+    await fn('msg-1');
+
+    expect(copyTextToClipboard).toHaveBeenCalledWith('Hello ![image](storage://image-1)');
+    expect(store.messageActionsMenuId).toBeNull();
+  });
+
+  it('copyThreadRawText writes a raw parent and replies transcript', async () => {
+    const copyTextToClipboard = vi.fn();
+    const { fn } = bindMethod('copyThreadRawText', {
+      copyTextToClipboard,
+      getSenderName: vi.fn((npub) => (npub === 'npub1a' ? 'Alice' : 'Bob')),
+      messages: [
+        { record_id: 'root-1', body: 'Root **markdown**', sender_npub: 'npub1a', parent_message_id: null, updated_at: '2026-06-01T00:00:00.000Z' },
+        { record_id: 'reply-1', body: 'Reply ![x](storage://img)', sender_npub: 'npub1b', parent_message_id: 'root-1', updated_at: '2026-06-01T00:01:00.000Z' },
+      ],
+    });
+
+    await fn('root-1');
+
+    expect(copyTextToClipboard.mock.calls[0][0]).toContain('Root **markdown**');
+    expect(copyTextToClipboard.mock.calls[0][0]).toContain('Reply ![x](storage://img)');
+  });
+
+  it('openChatDeleteConfirm prepares a delete modal for messages', () => {
+    const { fn, store } = bindMethod('openChatDeleteConfirm', {
+      messageActionsMenuId: 'msg-1',
+      messages: [{ record_id: 'msg-1', body: 'Hello' }],
+    });
+
+    fn('message', 'msg-1');
+
+    expect(store.chatDeleteConfirm).toMatchObject({
+      open: true,
+      mode: 'message',
+      recordId: 'msg-1',
+      title: 'Delete Message',
+    });
+    expect(store.messageActionsMenuId).toBeNull();
+  });
+
+  it('deleteChatMessageById deletes PG messages through Tower and hides them locally', async () => {
+    const workspaceDbKey = 'chat-message-manager-delete-pg-message';
+    openWorkspaceDb(workspaceDbKey);
+    await clearRuntimeData();
+    isTowerPgBackendMode.mockReturnValue(true);
+    deleteTowerPgMessageFromLocal.mockResolvedValue({
+      record_id: 'pg-message-1',
+      channel_id: 'ch1',
+      body: 'Delete me',
+      record_state: 'deleted',
+      sync_status: 'synced',
+      pg_backend: true,
+    });
+
+    try {
+      const message = {
+        record_id: 'pg-message-1',
+        channel_id: 'ch1',
+        body: 'Delete me',
+        parent_message_id: null,
+        record_state: 'active',
+        sync_status: 'synced',
+        pg_backend: true,
+      };
+      await upsertMessage(message);
+      const { fn, store } = bindMethod('deleteChatMessageById', {
+        messages: [message],
+      });
+
+      await fn('pg-message-1');
+
+      expect(deleteTowerPgMessageFromLocal).toHaveBeenCalledWith(store, message);
+      expect(store.mainFeedMessages).toEqual([]);
+      expect(await getMessageById('pg-message-1')).toMatchObject({ record_state: 'deleted' });
+    } finally {
+      await deleteWorkspaceDb(workspaceDbKey);
+    }
+  });
+
+  it('deleteChatThreadByParentId deletes PG threads through Tower and hides parent plus replies locally', async () => {
+    const workspaceDbKey = 'chat-message-manager-delete-pg-thread';
+    openWorkspaceDb(workspaceDbKey);
+    await clearRuntimeData();
+    isTowerPgBackendMode.mockReturnValue(true);
+    deleteTowerPgThreadFromLocal.mockResolvedValue({ id: 'thread-1' });
+
+    try {
+      const parent = {
+        record_id: 'root-1',
+        channel_id: 'ch1',
+        body: 'Root',
+        parent_message_id: null,
+        record_state: 'active',
+        sync_status: 'synced',
+        pg_backend: true,
+        pg_thread_id: 'thread-1',
+      };
+      const reply = {
+        record_id: 'reply-1',
+        channel_id: 'ch1',
+        body: 'Reply',
+        parent_message_id: 'root-1',
+        record_state: 'active',
+        sync_status: 'synced',
+        pg_backend: true,
+        pg_thread_id: 'thread-1',
+      };
+      await upsertMessage(parent);
+      await upsertMessage(reply);
+      const { fn, store } = bindMethod('deleteChatThreadByParentId', {
+        activeThreadId: 'root-1',
+        messages: [parent, reply],
+        closeThread: vi.fn(function closeThread() {
+          this.activeThreadId = null;
+        }),
+      });
+
+      await fn('root-1');
+
+      expect(deleteTowerPgThreadFromLocal).toHaveBeenCalledWith(store, parent);
+      expect(store.mainFeedMessages).toEqual([]);
+      expect(store.threadMessages).toEqual([]);
+      expect(await getMessageById('root-1')).toMatchObject({ record_state: 'deleted' });
+      expect(await getMessageById('reply-1')).toMatchObject({ record_state: 'deleted' });
+    } finally {
+      await deleteWorkspaceDb(workspaceDbKey);
+    }
   });
 });
 

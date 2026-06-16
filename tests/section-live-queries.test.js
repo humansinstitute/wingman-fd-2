@@ -52,6 +52,10 @@ describe('section live query plan', () => {
     expect(plan.workspace).toEqual([
       'ws:scopes',
       'ws:channels',
+      'status:messages',
+      'status:comments',
+      'status:directories',
+      'status:documents',
       'status:tasks',
     ]);
     expect(plan.detail).toEqual([]);

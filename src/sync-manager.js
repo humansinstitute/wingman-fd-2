@@ -221,6 +221,7 @@ export const syncManagerMixin = {
       workspace_description: String(this.workspaceProfileDescriptionInput || this.currentWorkspace?.description || '').trim(),
       workspace_avatar_url: String(this.workspaceProfileAvatarInput || this.currentWorkspace?.avatarUrl || '').trim() || null,
       wingman_harness_url: String(this.workspaceHarnessUrl || '').trim(),
+      wingman_harness_agent_npub: String(this.workspaceHarnessAgentNpub || '').trim(),
       triggers: Array.isArray(this.workspaceTriggers) ? this.workspaceTriggers : [],
       channel_order: Array.isArray(this.channelOrder) ? this.channelOrder : [],
       group_ids: Array.isArray(this.workspaceSettingsGroupIds) ? this.workspaceSettingsGroupIds : [],

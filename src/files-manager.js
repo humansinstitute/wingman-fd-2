@@ -5,7 +5,7 @@ import {
   uploadStorageObject,
 } from './api.js';
 import { upsertDocument } from './db.js';
-import { createTowerPgFileFromLocal } from './pg-write-adapter.js';
+import { createTowerPgFileFromLocal, updateTowerPgFileFromLocal } from './pg-write-adapter.js';
 import { buildStoragePrepareBody } from './storage-payloads.js';
 import { recordFamilyHash } from './translators/chat.js';
 
@@ -69,6 +69,19 @@ function getRecordScopeId(row = {}) {
   ) || null;
 }
 
+function getScopeBoardOptions(store = {}) {
+  const source = Array.isArray(store.taskBoards) && store.taskBoards.length > 0
+    ? store.taskBoards
+    : (store.flightDeckScopeOptions || []);
+  return source.filter((option) =>
+    option?.zoom === 'scope'
+    && option.id
+    && option.id !== 'all'
+    && option.id !== '__all__'
+    && option.id !== UNSCOPED_TASK_BOARD_ID
+  );
+}
+
 function matchesScope(rowScopeId, selectedScopeId, scopesMap) {
   const selected = normalizeString(selectedScopeId);
   const rowScope = normalizeString(rowScopeId);
@@ -120,13 +133,14 @@ async function sha256HexForBytes(bytes) {
     .join('');
 }
 
-export function buildFileUploadQueueItem(file, { scopeId = null } = {}) {
+export function buildFileUploadQueueItem(file, { scopeId = null, channelId = null } = {}) {
   return {
     id: fileUploadId(),
     file,
     original_name: defaultFileUploadName(file),
     name: defaultFileUploadName(file),
     scope_id: normalizeString(scopeId),
+    channel_id: normalizeString(channelId),
     status: 'queued',
     progress: 0,
     error: '',
@@ -452,9 +466,9 @@ export const filesManagerMixin = {
   get fileUploadScopeOptions() {
     const seen = new Set();
     const options = [];
-    for (const option of this.flightDeckScopeOptions || []) {
+    for (const option of getScopeBoardOptions(this)) {
       const id = normalizeString(option?.id);
-      if (!id || id === 'all' || id === '__all__' || id === UNSCOPED_TASK_BOARD_ID || seen.has(id)) continue;
+      if (!id || seen.has(id)) continue;
       seen.add(id);
       options.push({ id, label: option.label || id });
     }
@@ -468,6 +482,18 @@ export const filesManagerMixin = {
       });
     }
     return options;
+  },
+
+  fileUploadChannelOptions(scopeId = '') {
+    const requestedScopeId = normalizeString(scopeId);
+    return (this.channels || [])
+      .filter((channel) => channel?.record_id && channel.record_state !== 'deleted')
+      .filter((channel) => !requestedScopeId || getRecordScopeId(channel) === requestedScopeId)
+      .map((channel) => ({
+        id: channel.record_id,
+        label: this.getChannelLabel?.(channel) || channel.title || channel.name || channel.record_id,
+      }))
+      .sort((left, right) => String(left.label || '').localeCompare(String(right.label || '')));
   },
 
   isFileUploadBusy(item = {}) {
@@ -511,9 +537,14 @@ export const filesManagerMixin = {
     this.fileUploadItems = (this.fileUploadItems || []).filter((item) => this.isFileUploadBusy(item));
   },
 
-  resolveFileUploadChannel(scopeId) {
+  resolveFileUploadChannel(scopeId, channelId = null) {
     const requestedScopeId = normalizeString(scopeId) || this.defaultFileUploadScopeId;
     const channels = (this.channels || []).filter((channel) => channel?.record_state !== 'deleted');
+    const requestedChannelId = normalizeString(channelId);
+    if (requestedChannelId) {
+      const requested = channels.find((channel) => channel.record_id === requestedChannelId);
+      return requested?.record_id && (!requestedScopeId || getRecordScopeId(requested) === requestedScopeId) ? requested : null;
+    }
     const selected = channels.find((channel) => channel.record_id === this.pgContextSelectedChannelId);
     if (selected?.record_id && (!requestedScopeId || getRecordScopeId(selected) === requestedScopeId)) return selected;
     return channels.find((channel) => getRecordScopeId(channel) === requestedScopeId) || null;
@@ -543,7 +574,7 @@ export const filesManagerMixin = {
     return true;
   },
 
-  async enqueueFileUploads(files = []) {
+  async enqueueFileUploads(files = [], options = {}) {
     const nextFiles = [...files].filter(Boolean);
     if (nextFiles.length === 0) return [];
     if (!this.isTowerPgMode) {
@@ -554,10 +585,19 @@ export const filesManagerMixin = {
       this.fileUploadError = 'Sign in and select a workspace before uploading files.';
       return [];
     }
+    const selectedContext = this.resolvePgWriteContext?.({
+      scopeId: options.scopeId,
+      channelId: options.channelId,
+      boardId: options.boardId || this.selectedBoardId,
+    }) || null;
+    if (!selectedContext) {
+      return this.openWriteContextModal?.('files', { files: nextFiles, options }) || [];
+    }
     this.fileUploadOpen = true;
     this.fileUploadError = '';
-    const defaultScopeId = this.defaultFileUploadScopeId;
-    const items = nextFiles.map((file) => buildFileUploadQueueItem(file, { scopeId: defaultScopeId }));
+    const defaultScopeId = selectedContext.scopeId;
+    const defaultChannelId = selectedContext.channelId;
+    const items = nextFiles.map((file) => buildFileUploadQueueItem(file, { scopeId: defaultScopeId, channelId: defaultChannelId }));
     this.fileUploadItems = [...items, ...(this.fileUploadItems || [])];
     for (const item of items) {
       void this.startFileUploadItem(item.id);
@@ -593,7 +633,7 @@ export const filesManagerMixin = {
 
       const latest = (this.fileUploadItems || []).find((item) => item.id === id) || initial;
       const scopeId = normalizeString(latest.scope_id) || this.defaultFileUploadScopeId;
-      const channel = this.resolveFileUploadChannel(scopeId);
+      const channel = this.resolveFileUploadChannel(scopeId, latest.channel_id);
       if (!channel?.record_id) throw new Error('Select a scope with a channel before uploading this file.');
       const displayName = normalizeString(latest.name) || defaultFileUploadName(initial.file);
       const threadId = this.resolveFileUploadThreadId(channel.record_id);
@@ -659,8 +699,7 @@ export const filesManagerMixin = {
       { id: 'all', label: 'All scopes' },
       { id: UNSCOPED_TASK_BOARD_ID, label: 'Unscoped' },
     ];
-    for (const option of this.flightDeckScopeOptions || []) {
-      if (!option?.id || option.id === UNSCOPED_TASK_BOARD_ID || option.id === 'all' || option.id === '__all__') continue;
+    for (const option of getScopeBoardOptions(this)) {
       options.push({ id: option.id, label: option.label || option.id });
     }
     return options;
@@ -746,6 +785,61 @@ export const filesManagerMixin = {
     if (row.kind === 'audio') return `${safeName}.webm`;
     if (row.kind === 'document') return `${safeName}.json`;
     return safeName;
+  },
+
+  canMoveFileBrowserRow(row = {}) {
+    if (!this.isTowerPgMode) return false;
+    if (row.source_type !== 'document' || !row.source_record_id) return false;
+    const document = (this.documents || []).find((item) => item?.record_id === row.source_record_id) || null;
+    return Boolean(document?.pg_backend && (document.pg_record_type === 'file' || document.pg_storage_object_id));
+  },
+
+  openFileMoveModal(row = {}) {
+    if (!this.canMoveFileBrowserRow(row)) return null;
+    return this.openWriteContextModal?.('file-move', {
+      row,
+      options: {
+        scopeId: row.scope_id,
+        channelId: row.channel_id,
+      },
+    });
+  },
+
+  async moveFileBrowserRowToContext(row = {}, options = {}) {
+    if (!this.canMoveFileBrowserRow(row)) return null;
+    const document = (this.documents || []).find((item) => item?.record_id === row.source_record_id) || null;
+    const channel = this.resolveFileUploadChannel(options.scopeId, options.channelId);
+    if (!document || !channel?.record_id) {
+      this.error = 'Select a scope with a channel before moving this file.';
+      return null;
+    }
+    const scopeId = getRecordScopeId(channel);
+    const previous = { ...document };
+    const updated = {
+      ...document,
+      ...this.buildScopeAssignment(scopeId),
+      pg_channel_id: channel.record_id,
+      pg_thread_id: null,
+      thread_id: null,
+      sync_status: 'pending',
+      updated_at: new Date().toISOString(),
+    };
+    await upsertDocument(updated);
+    this.patchDocumentLocal?.(updated);
+    try {
+      const accepted = await updateTowerPgFileFromLocal(this, updated, previous);
+      await upsertDocument(accepted);
+      this.patchDocumentLocal?.(accepted);
+      this.selectPgChannelContext?.(accepted.pg_channel_id || channel.record_id);
+      this.scheduleDocumentsRefresh?.('PG file move');
+      return accepted;
+    } catch (error) {
+      const failed = { ...updated, sync_status: 'failed', updated_at: new Date().toISOString() };
+      await upsertDocument(failed);
+      this.patchDocumentLocal?.(failed);
+      this.error = error?.message || 'Failed to move file.';
+      throw error;
+    }
   },
 
   openFileBrowserSource(row = {}) {

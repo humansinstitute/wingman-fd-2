@@ -18,6 +18,7 @@ vi.mock('../src/api.js', async () => {
     deleteTowerPgChannelGrant: vi.fn(),
     getTowerPgChannelGrants: vi.fn(),
     getTowerPgWorkspaceMembers: vi.fn(),
+    updateTowerPgChannel: vi.fn(),
     updateTowerPgChannelGrant: vi.fn(),
   };
 });
@@ -43,6 +44,7 @@ import {
   deleteTowerPgChannelGrant,
   getTowerPgChannelGrants,
   getTowerPgWorkspaceMembers,
+  updateTowerPgChannel,
   updateTowerPgChannelGrant,
 } from '../src/api.js';
 import { isTowerPgBackendMode } from '../src/backend-mode.js';
@@ -72,6 +74,7 @@ import {
   permissionsForPgChannelCapacity,
 } from '../src/channels-manager.js';
 import { DM_SCOPE_ID, buildDmChannelDescription } from '../src/dm-scope.js';
+import { buildPgChannelTaskBoardId } from '../src/pg-record-context.js';
 
 const channelsManagerSource = fs.readFileSync(
   path.resolve(import.meta.dirname, '..', 'src', 'channels-manager.js'),
@@ -89,6 +92,15 @@ beforeEach(() => {
   addTowerPgWorkspaceGroupMember.mockResolvedValue({ membership: { id: 'membership-new' } });
   getTowerPgChannelGrants.mockResolvedValue({ grants: [] });
   getTowerPgWorkspaceMembers.mockResolvedValue({ members: [] });
+  updateTowerPgChannel.mockResolvedValue({
+    channel: {
+      id: 'channel-1',
+      name: 'Ops',
+      scope_id: 'scope-a',
+      kind: 'channel',
+      metadata: { basePrompt: 'Saved prompt' },
+    },
+  });
   updateTowerPgChannelGrant.mockResolvedValue({ grants: [] });
   hydrateTowerPgAudioNotes.mockResolvedValue(undefined);
   hydrateTowerPgChannels.mockResolvedValue(undefined);
@@ -240,6 +252,56 @@ describe('channels-manager pure utilities', () => {
 
     expect(store.selectChannel).toHaveBeenCalledWith('ch-a', { syncRoute: false });
     expect(store.selectedChannelId).toBe('ch-a');
+  });
+
+  it('filters visible channels by PG context scope when the active task board is channel-backed', () => {
+    const scopesMap = new Map([
+      ['scope-a', { record_id: 'scope-a', level: 'l1', title: 'Scope A' }],
+      ['scope-b', { record_id: 'scope-b', level: 'l1', title: 'Scope B' }],
+    ]);
+    const store = applyChannelMixin({
+      channels: [
+        { record_id: 'ch-a', title: 'A', scope_id: 'scope-a', scope_l1_id: 'scope-a' },
+        { record_id: 'ch-b', title: 'B', scope_id: 'scope-b', scope_l1_id: 'scope-b' },
+      ],
+      selectedBoardId: buildPgChannelTaskBoardId('ch-a'),
+      selectedBoardScope: null,
+      pgContextScope: scopesMap.get('scope-a'),
+      scopesMap,
+    });
+
+    expect(store.scopeFilteredChannels.map((channel) => channel.record_id)).toEqual(['ch-a']);
+  });
+
+  it('updates PG board context when selecting a chat channel in a PG workspace', async () => {
+    const persistSelectedBoardId = vi.fn();
+    const store = applyChannelMixin({
+      currentWorkspace: { pgBackendMode: true },
+      channels: [
+        { record_id: 'ch-a', title: 'A', scope_id: 'scope-a', scope_l1_id: 'scope-a' },
+        { record_id: 'ch-b', title: 'B', scope_id: 'scope-b', scope_l1_id: 'scope-b' },
+      ],
+      selectedBoardId: buildPgChannelTaskBoardId('ch-a'),
+      selectedChannelId: 'ch-a',
+      MAIN_FEED_PAGE_SIZE: 50,
+      closeThread: vi.fn(),
+      applyMessages: vi.fn(),
+      startSelectedChannelLiveQuery: vi.fn(),
+      refreshMessages: vi.fn(),
+      refreshDailyNotes: vi.fn(),
+      syncRoute: vi.fn(),
+      ensureBackgroundSync: vi.fn(),
+      captureSelectedChannelUnreadSnapshot: vi.fn(),
+      markChannelRead: vi.fn(),
+      persistSelectedBoardId,
+      normalizeTaskFilterTags: vi.fn(),
+    });
+
+    await store.selectChannel('ch-b', { syncRoute: false });
+
+    expect(store.selectedChannelId).toBe('ch-b');
+    expect(store.selectedBoardId).toBe(buildPgChannelTaskBoardId('ch-b'));
+    expect(persistSelectedBoardId).toHaveBeenCalledWith(buildPgChannelTaskBoardId('ch-b'));
   });
 
   it('reconciles the selected chat channel when channels hydrate for the active scope', async () => {
@@ -418,6 +480,7 @@ describe('channels-manager pure utilities', () => {
       workspaceOwnerNpub: 'npub1workspace',
       newChannelName: 'Ops',
       newChannelDescription: 'Operations work',
+      newChannelBasePrompt: 'Use this for operations context.',
       newChannelAccessRows: [
         { principal_type: 'group', principal_id: 'group-workspace', capacity: 'viewer' },
         { principal_type: 'actor', principal_id: 'actor-owner', capacity: 'manager' },
@@ -436,6 +499,9 @@ describe('channels-manager pure utilities', () => {
     expect(createTowerPgScopeChannel).toHaveBeenCalledWith('workspace-1', 'scope-a', {
       name: 'Ops',
       description: 'Operations work',
+      metadata: {
+        basePrompt: 'Use this for operations context.',
+      },
       kind: 'channel',
       grants: [
         {
@@ -577,6 +643,9 @@ describe('channels-manager pure utilities', () => {
     expect(createTowerPgScopeChannel).toHaveBeenCalledWith('workspace-1', 'scope-a', {
       name: 'Ops',
       description: undefined,
+      metadata: {
+        basePrompt: '',
+      },
       kind: 'channel',
       grants: [
         {
@@ -794,7 +863,7 @@ describe('channels-manager pure utilities', () => {
     const store = createPgGrantStore({
       channels: [
         { record_id: 'channel-1', title: 'Old channel' },
-        { record_id: 'channel-2', title: 'Target channel' },
+        { record_id: 'channel-2', title: 'Target channel', metadata: { basePrompt: 'Existing prompt' } },
       ],
       selectedChannelId: 'channel-1',
       closeScopePicker: vi.fn(),
@@ -805,8 +874,43 @@ describe('channels-manager pure utilities', () => {
     channelsManagerMixin.openChannelSettings.call(store, 'channel-2');
 
     expect(store.selectedChannelId).toBe('channel-2');
+    expect(store.channelSettingsBasePrompt).toBe('Existing prompt');
     expect(store.showChannelSettingsModal).toBe(true);
     expect(store.preparePgChannelAccessPanel).toHaveBeenCalledOnce();
+  });
+
+  it('saves PG channel base prompt metadata', async () => {
+    updateTowerPgChannel.mockResolvedValueOnce({
+      channel: {
+        id: 'channel-1',
+        workspace_id: 'workspace-1',
+        scope_id: 'scope-a',
+        name: 'Ops',
+        description: 'Operations',
+        kind: 'channel',
+        metadata: { basePrompt: 'New prompt', retained: true },
+      },
+    });
+    const store = createPgGrantStore({
+      channels: [{
+        record_id: 'channel-1',
+        title: 'Ops',
+        description: 'Operations',
+        scope_id: 'scope-a',
+        metadata: { basePrompt: 'Old prompt', retained: true },
+      }],
+      channelSettingsBasePrompt: 'New prompt',
+      scheduleChannelsRefresh: vi.fn(),
+    });
+
+    await store.saveChannelBasePrompt();
+
+    expect(updateTowerPgChannel).toHaveBeenCalledWith('workspace-1', 'channel-1', {
+      metadata: { basePrompt: 'New prompt', retained: true },
+    }, { baseUrl: 'https://tower.example', appNpub: 'flightdeck-app' });
+    expect(store.channels[0].metadata).toEqual({ basePrompt: 'New prompt', retained: true });
+    expect(store.channelSettingsNotice).toBe('Channel prompt saved.');
+    expect(store.scheduleChannelsRefresh).toHaveBeenCalledWith('PG channel metadata update');
   });
 
   // --- mapGroupEntry ---

@@ -97,6 +97,9 @@ export function parsePgWorkspaceDescriptor(input) {
     : [];
   const label = trimText(descriptor.label || descriptor.name) || 'Flight Deck workspace';
   const description = trimText(descriptor.description);
+  const metadata = descriptor.metadata && typeof descriptor.metadata === 'object' && !Array.isArray(descriptor.metadata)
+    ? descriptor.metadata
+    : {};
 
   return {
     type: PG_WORKSPACE_DESCRIPTOR_TYPE,
@@ -109,6 +112,7 @@ export function parsePgWorkspaceDescriptor(input) {
     appNpub,
     label,
     description,
+    metadata,
     capabilities,
     links: {
       ...links,
@@ -159,6 +163,7 @@ export function pgWorkspaceEntryFromDescriptor(input, options = {}) {
     slug: options.slug || '',
     description: descriptor.description,
     avatarUrl: null,
+    metadata: descriptor.metadata,
     directHttpsUrl: descriptor.towerBaseUrl,
     serviceNpub: descriptor.towerServiceNpub,
     towerServiceNpub: descriptor.towerServiceNpub,

@@ -5,6 +5,9 @@ import {
   getTowerPgChannelDocs,
   getTowerPgChannelFiles,
   getTowerPgDailyNotes,
+  getTowerPgDoc,
+  getTowerPgDocBody,
+  getTowerPgDocComments,
   getTowerPgChannelMessages,
   getTowerPgReactions,
   getTowerPgChannelTasks,
@@ -15,6 +18,7 @@ import {
   getTowerPgScopeTasks,
   getTowerPgWorkspaceMembers,
   getTowerPgWorkspaceScopes,
+  downloadStorageObject,
 } from './api.js';
 import {
   replaceAudioNotesForOwner,
@@ -30,6 +34,7 @@ import {
   replacePgTasksForChannel,
   replaceTasksForOwner,
   replaceScopesForOwner,
+  upsertDocument,
   upsertTask,
 } from './db.js';
 import { recordFamilyHash } from './translators/chat.js';
@@ -52,6 +57,11 @@ function isoTimestamp(value) {
 function rowVersion(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
+function base64ToBytes(base64) {
+  const binary = atob(String(base64 || '').trim());
+  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
 }
 
 function pgMetadataThreadId(record = {}) {
@@ -238,6 +248,9 @@ export function mapPgChannelToLocal(channel, { workspaceOwnerNpub } = {}) {
     owner_npub: ownerNpub,
     title: trimText(channel?.name || channel?.title) || 'Untitled channel',
     description: trimText(channel?.description),
+    metadata: channel?.metadata && typeof channel.metadata === 'object' && !Array.isArray(channel.metadata)
+      ? channel.metadata
+      : {},
     channel_type: trimText(channel?.kind),
     group_ids: normalizeTextArray(channel?.group_ids || channel?.groupIds),
     participant_npubs: normalizeTextArray(channel?.participant_npubs || channel?.participantNpubs),
@@ -373,6 +386,28 @@ export function mapPgTaskToLocal(task, { workspaceOwnerNpub } = {}) {
   };
 }
 
+export function mergePgHydratedTasksWithLocal(hydratedTasks = [], localTasks = []) {
+  const mergedById = new Map();
+  for (const task of Array.isArray(hydratedTasks) ? hydratedTasks : []) {
+    if (task?.record_id) mergedById.set(task.record_id, task);
+  }
+
+  for (const localTask of Array.isArray(localTasks) ? localTasks : []) {
+    const recordId = trimText(localTask?.record_id);
+    if (!recordId || localTask?.pg_backend !== true || localTask?.record_state === 'deleted') continue;
+    const hydratedTask = mergedById.get(recordId);
+    if (!hydratedTask) continue;
+
+    const localVersion = Number(localTask.version ?? 0) || 0;
+    const hydratedVersion = Number(hydratedTask.version ?? 0) || 0;
+    if (localVersion > hydratedVersion) {
+      mergedById.set(recordId, localTask);
+    }
+  }
+
+  return [...mergedById.values()];
+}
+
 export function mapPgTaskCommentToLocal(comment, {
   workspaceOwnerNpub,
   senderNpub,
@@ -402,6 +437,46 @@ export function mapPgTaskCommentToLocal(comment, {
     pg_thread_id: trimText(comment?.thread_id) || null,
     pg_created_by_actor_id: trimText(comment?.created_by_actor_id),
     pg_updated_by_actor_id: trimText(comment?.updated_by_actor_id),
+  };
+}
+
+export function mapPgDocCommentToLocal(comment, {
+  workspaceOwnerNpub,
+  senderNpub,
+  actorNpubByActorId = new Map(),
+} = {}) {
+  const updatedAt = isoTimestamp(comment?.updated_at || comment?.created_at);
+  const metadata = comment?.metadata && typeof comment.metadata === 'object' && !Array.isArray(comment.metadata)
+    ? comment.metadata
+    : {};
+  const anchorLine = Number(metadata.anchor_line_number);
+  return {
+    record_id: trimText(comment?.id || comment?.record_id),
+    owner_npub: trimText(workspaceOwnerNpub),
+    target_record_id: trimText(comment?.doc_id || comment?.target_record_id),
+    target_record_family_hash: recordFamilyHash('document'),
+    parent_comment_id: trimText(comment?.parent_comment_id) || null,
+    anchor_block_id: trimText(metadata.anchor_block_id) || null,
+    anchor_line_number: Number.isFinite(anchorLine) && anchorLine > 0 ? anchorLine : 1,
+    comment_status: trimText(metadata.comment_status) || 'open',
+    body: trimText(comment?.body),
+    attachments: [],
+    sender_npub: resolveSenderNpub(comment, actorNpubByActorId)
+      || trimText(senderNpub),
+    sync_status: 'synced',
+    record_state: 'active',
+    version: rowVersion(comment?.row_version || comment?.version),
+    created_at: isoTimestamp(comment?.created_at || updatedAt),
+    updated_at: updatedAt,
+    pg_backend: true,
+    pg_record_type: 'doc_comment',
+    pg_workspace_id: trimText(comment?.workspace_id),
+    pg_scope_id: trimText(comment?.scope_id),
+    pg_channel_id: trimText(comment?.channel_id),
+    pg_created_by_actor_id: trimText(comment?.created_by_actor_id),
+    pg_updated_by_actor_id: trimText(comment?.updated_by_actor_id),
+    pg_client_record_id: trimText(metadata.client_record_id),
+    pg_metadata: metadata,
   };
 }
 
@@ -453,6 +528,85 @@ export function mapPgDocToLocal(doc, { workspaceOwnerNpub } = {}) {
     pg_created_by_actor_id: trimText(doc?.created_by_actor_id),
     pg_updated_by_actor_id: trimText(doc?.updated_by_actor_id),
   };
+}
+
+function resolveStoredDocumentContent(raw, fallback = {}) {
+  try {
+    const parsed = JSON.parse(raw);
+    const model = parsed?.content_model && typeof parsed.content_model === 'object'
+      ? parsed.content_model
+      : parsed;
+    if (typeof model?.content === 'string') {
+      return {
+        content: model.content,
+        content_format: model.content_format ?? fallback.content_format ?? null,
+        content_blocks: Array.isArray(model.content_blocks)
+          ? model.content_blocks
+          : (Array.isArray(fallback.content_blocks) ? fallback.content_blocks : []),
+      };
+    }
+  } catch {
+    // Older PG agent helpers wrote raw Markdown. Treat it as the document body.
+  }
+  return {
+    content: raw,
+    content_format: fallback.content_format ?? null,
+    content_blocks: Array.isArray(fallback.content_blocks) ? fallback.content_blocks : [],
+  };
+}
+
+async function hydratePgDocStorageContent(row, deps = {}) {
+  const objectId = trimText(row?.content_storage_object_id);
+  if (!objectId || row?.pg_record_type !== 'doc') return row;
+  const readStorageObject = deps.downloadStorageObject || downloadStorageObject;
+  try {
+    const bytes = await readStorageObject(objectId);
+    const raw = new TextDecoder().decode(bytes);
+    const resolved = resolveStoredDocumentContent(raw, row);
+    return {
+      ...row,
+      ...resolved,
+      content_storage_status: 'loaded',
+      content_storage_error: null,
+    };
+  } catch (error) {
+    return {
+      ...row,
+      content_storage_status: 'error',
+      content_storage_error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function hydratePgDocStorageContents(rows, deps = {}) {
+  return Promise.all((Array.isArray(rows) ? rows : []).map((row) => hydratePgDocStorageContent(row, deps)));
+}
+
+async function hydratePgDocBodyContent(row, bodyResult = null) {
+  const encoded = trimText(bodyResult?.body?.base64_data);
+  if (!encoded) return hydratePgDocStorageContent(row);
+  try {
+    const raw = new TextDecoder().decode(base64ToBytes(encoded));
+    const resolved = resolveStoredDocumentContent(raw, row);
+    return {
+      ...row,
+      ...resolved,
+      content_storage_status: 'loaded',
+      content_storage_error: null,
+      content_storage_object_id: trimText(bodyResult?.body?.object_id) || row.content_storage_object_id,
+      content_storage_content_type: trimText(bodyResult?.body?.content_type) || row.content_storage_content_type,
+      content_size_bytes: Number.isFinite(Number(bodyResult?.body?.size_bytes))
+        ? Number(bodyResult.body.size_bytes)
+        : row.content_size_bytes,
+      content_sha256_hex: trimText(bodyResult?.body?.sha256_hex) || row.content_sha256_hex,
+    };
+  } catch (error) {
+    return {
+      ...row,
+      content_storage_status: 'error',
+      content_storage_error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 export function mapPgFileToLocalDocument(file, { workspaceOwnerNpub } = {}) {
@@ -867,15 +1021,70 @@ export async function hydrateTowerPgChannelDocumentsAndFiles(store, channelId, d
       appNpub: context.appNpub,
     }),
   ]);
-  const documents = [
-    ...(Array.isArray(docsResult?.docs) ? docsResult.docs : [])
+  const docRows = await hydratePgDocStorageContents(
+    (Array.isArray(docsResult?.docs) ? docsResult.docs : [])
       .map((doc) => mapPgDocToLocal(doc, { workspaceOwnerNpub: context.workspaceOwnerNpub })),
+    deps,
+  );
+  const documents = [
+    ...docRows,
     ...(Array.isArray(filesResult?.files) ? filesResult.files : [])
       .map((file) => mapPgFileToLocalDocument(file, { workspaceOwnerNpub: context.workspaceOwnerNpub })),
   ].filter((doc) => doc.record_id);
   await replaceDocuments(targetChannelId, documents);
   await mergeStoreChannelRows(store, 'documents', 'applyDocuments', targetChannelId, documents);
   return documents;
+}
+
+export async function hydrateTowerPgDoc(store, docId, deps = {}) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  const recordId = trimText(docId);
+  if (!context.workspaceId || !context.workspaceOwnerNpub || !context.baseUrl || !recordId) return null;
+
+  const readDoc = deps.getTowerPgDoc || getTowerPgDoc;
+  const readDocBody = deps.getTowerPgDocBody || getTowerPgDocBody;
+  let result = null;
+  let doc = null;
+  try {
+    result = await readDocBody(context.workspaceId, recordId, {
+      baseUrl: context.baseUrl,
+      appNpub: context.appNpub,
+    });
+    doc = result?.doc || null;
+  } catch (bodyError) {
+    result = null;
+    const fallback = await readDoc(context.workspaceId, recordId, {
+      baseUrl: context.baseUrl,
+      appNpub: context.appNpub,
+    });
+    doc = fallback?.doc || null;
+  }
+
+  if (!doc) return null;
+  const row = mapPgDocToLocal(doc, { workspaceOwnerNpub: context.workspaceOwnerNpub });
+  if (!row.record_id) return null;
+  const hydrated = result?.body
+    ? await hydratePgDocBodyContent(row, result)
+    : await hydratePgDocStorageContent(row, deps);
+
+  await (deps.upsertDocument || upsertDocument)(hydrated);
+  if (typeof store.patchDocumentLocal === 'function') {
+    store.patchDocumentLocal(hydrated);
+  } else if (typeof store.applyDocuments === 'function') {
+    const existing = Array.isArray(store.documents) ? store.documents : [];
+    store.applyDocuments([
+      ...existing.filter((item) => item?.record_id !== hydrated.record_id),
+      hydrated,
+    ]);
+  }
+  if (
+    typeof store.applySelectedDocument === 'function'
+    && store.selectedDocType === 'document'
+    && store.selectedDocId === hydrated.record_id
+  ) {
+    await store.applySelectedDocument(hydrated);
+  }
+  return hydrated;
 }
 
 export async function hydrateTowerPgChannelAudioNotes(store, channelId, deps = {}) {
@@ -1054,7 +1263,7 @@ export async function hydrateTowerPgTasks(store, deps = {}) {
     }
   }
 
-  const tasks = [...taskById.values()];
+  const tasks = mergePgHydratedTasksWithLocal([...taskById.values()], store.tasks);
   await replaceTasks(context.workspaceOwnerNpub, tasks);
   if (typeof store.applyTasks === 'function') await store.applyTasks(tasks);
   return tasks;
@@ -1080,6 +1289,29 @@ export async function hydrateTowerPgTaskComments(store, taskId, deps = {}) {
     .filter((comment) => comment.record_id && comment.target_record_id);
   await replaceComments(recordId, comments);
   if (typeof store.applyTaskComments === 'function') await store.applyTaskComments(comments);
+  return comments;
+}
+
+export async function hydrateTowerPgDocComments(store, docId, deps = {}) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  const recordId = trimText(docId);
+  if (!context.workspaceId || !context.workspaceOwnerNpub || !context.baseUrl || !recordId) return [];
+  const readDocComments = deps.getTowerPgDocComments || getTowerPgDocComments;
+  const replaceComments = deps.replacePgCommentsForTarget || replacePgCommentsForTarget;
+  const actorNpubByActorId = await resolveActorNpubByActorIdWithFallback(store, deps, context);
+  const result = await readDocComments(context.workspaceId, recordId, {
+    baseUrl: context.baseUrl,
+    appNpub: context.appNpub,
+  });
+  const comments = (Array.isArray(result?.comments) ? result.comments : [])
+    .map((comment) => mapPgDocCommentToLocal(comment, {
+      workspaceOwnerNpub: context.workspaceOwnerNpub,
+      senderNpub: '',
+      actorNpubByActorId,
+    }))
+    .filter((comment) => comment.record_id && comment.target_record_id);
+  await replaceComments(recordId, comments);
+  if (typeof store.applyDocComments === 'function') await store.applyDocComments(comments);
   return comments;
 }
 
@@ -1125,10 +1357,14 @@ export async function hydrateTowerPgDocumentsAndFiles(store, deps = {}) {
       readDocs(context.workspaceId, channel.record_id, { baseUrl: context.baseUrl, appNpub: context.appNpub }),
       readFiles(context.workspaceId, channel.record_id, { baseUrl: context.baseUrl, appNpub: context.appNpub }),
     ]);
-    documents.push(
-      ...(Array.isArray(docsResult?.docs) ? docsResult.docs : [])
+    const docRows = await hydratePgDocStorageContents(
+      (Array.isArray(docsResult?.docs) ? docsResult.docs : [])
         .map((doc) => mapPgDocToLocal(doc, { workspaceOwnerNpub: context.workspaceOwnerNpub }))
         .filter((doc) => doc.record_id),
+      deps,
+    );
+    documents.push(
+      ...docRows,
       ...(Array.isArray(filesResult?.files) ? filesResult.files : [])
         .map((file) => mapPgFileToLocalDocument(file, { workspaceOwnerNpub: context.workspaceOwnerNpub }))
         .filter((doc) => doc.record_id),

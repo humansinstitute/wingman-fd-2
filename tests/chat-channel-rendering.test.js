@@ -29,7 +29,7 @@ describe('Chat channel rendering hooks', () => {
   it('renders the PG work context bar first in status, tasks, docs, and files', () => {
     const statusSectionIndex = html.indexOf('class="status-section"');
     const statusContextIndex = html.indexOf('class="pg-work-context-bar"', statusSectionIndex);
-    const statusHeroIndex = html.indexOf('class="flightdeck-hero"', statusSectionIndex);
+    const statusSummaryIndex = html.indexOf('data-testid="flightdeck-summary-overview"', statusSectionIndex);
     const taskSectionIndex = html.indexOf('class="tasks-section"');
     const taskContextIndex = html.indexOf('class="pg-work-context-bar"', taskSectionIndex);
     const taskCreateIndex = html.indexOf('class="task-create-bar"', taskSectionIndex);
@@ -41,7 +41,7 @@ describe('Chat channel rendering hooks', () => {
     const filesHeaderIndex = html.indexOf('class="files-header"', filesSectionIndex);
 
     expect(statusContextIndex).toBeGreaterThan(statusSectionIndex);
-    expect(statusContextIndex).toBeLessThan(statusHeroIndex);
+    expect(statusContextIndex).toBeLessThan(statusSummaryIndex);
     expect(taskContextIndex).toBeGreaterThan(taskSectionIndex);
     expect(taskContextIndex).toBeLessThan(taskCreateIndex);
     expect(docsContextIndex).toBeGreaterThan(docsViewIndex);
@@ -59,6 +59,47 @@ describe('Chat channel rendering hooks', () => {
       expect(contextBar).toContain('class="chat-channel-menu chat-channel-tab-menu"');
       expect(contextBar).toContain('@click.stop.prevent="$store.chat.openChannelSettings(channel.record_id)"');
     }
+  });
+
+  it('renders the fullscreen header toggle in the shared PG channel bar', () => {
+    const globalBarIndex = html.indexOf('class="global-pg-channel-bar"');
+    const globalBarEndIndex = html.indexOf('<template x-if="$store.chat.navSection === \'status\'">', globalBarIndex);
+    const globalBar = html.slice(globalBarIndex, globalBarEndIndex);
+
+    expect(globalBarIndex).toBeGreaterThan(-1);
+    expect(globalBar).toContain('class="chat-channel-header-icon-btn"');
+    expect(globalBar).toContain('@click="$store.chat.toggleAppHeaderHidden()"');
+    expect(globalBar).toContain(":title=\"$store.chat.appHeaderHidden ? 'Show header' : 'Full screen'\"");
+  });
+
+  it('renders an all-scopes home tab before shared PG channel tabs', () => {
+    const globalBarIndex = html.indexOf('class="global-pg-channel-bar"');
+    const globalBarEndIndex = html.indexOf('<template x-if="$store.chat.navSection === \'status\'">', globalBarIndex);
+    const globalBar = html.slice(globalBarIndex, globalBarEndIndex);
+    const homeIndex = globalBar.indexOf('class="chat-channel-tab-item channel-home-tab-item"');
+    const channelLoopIndex = globalBar.indexOf('<template x-for="channel in $store.chat.pgContextChannels"');
+
+    expect(homeIndex).toBeGreaterThan(-1);
+    expect(homeIndex).toBeLessThan(channelLoopIndex);
+    expect(globalBar).toContain("pg-all-scopes-context");
+    expect(globalBar).toContain('@click="$store.chat.openAllScopesOverview()"');
+    expect(globalBar).toContain(':class="{ active: $store.chat.pgContextAllScopesSelected }"');
+  });
+
+  it('uses the same PG context controls in the chat channel bar', () => {
+    const chatBarIndex = html.indexOf('aria-label="Chat channels"');
+    const chatBarEndIndex = html.indexOf('<div class="chat-layout"', chatBarIndex);
+    const chatBar = html.slice(chatBarIndex, chatBarEndIndex);
+    const homeIndex = chatBar.indexOf('class="chat-channel-tab-item channel-home-tab-item"');
+    const channelLoopIndex = chatBar.indexOf('<template x-for="ch in $store.chat.pgContextChannels"');
+
+    expect(chatBarIndex).toBeGreaterThan(-1);
+    expect(homeIndex).toBeGreaterThan(-1);
+    expect(homeIndex).toBeLessThan(channelLoopIndex);
+    expect(chatBar).toContain('@click="$store.chat.openAllScopesOverview()"');
+    expect(chatBar).toContain('active: $store.chat.pgContextSelectedChannelId === ch.record_id');
+    expect(chatBar).toContain(':aria-selected="$store.chat.pgContextSelectedChannelId === ch.record_id"');
+    expect(chatBar).not.toContain('scopeFilteredChannels');
   });
 
   it('keeps channel tabs text-only while labels resolve through getChannelLabel', () => {

@@ -20,6 +20,7 @@ import {
   replaceDocumentRecord,
   upsertDirectory,
   upsertComment,
+  replaceCommentRecord,
   getCommentsByTarget,
   getAudioNoteById,
   addPendingWrite,
@@ -37,15 +38,19 @@ import {
   acquireRecordCheckout,
   completeStorageObject,
   fetchRecordHistory,
+  getTowerPgDocVersions,
   prepareStorageObject,
   prepareTowerPgStorageObject,
   releaseRecordCheckout,
   uploadStorageObject,
 } from './api.js';
 import {
+  createTowerPgDocCommentFromLocal,
   createTowerPgDocFromLocal,
+  deleteTowerPgDocCommentFromLocal,
   deleteTowerPgDocFromLocal,
   updateTowerPgDocFromLocal,
+  updateTowerPgDocCommentFromLocal,
 } from './pg-write-adapter.js';
 import { inboundDocument } from './translators/docs.js';
 import { renderMarkdownToHtml, hydrateStorageImageMarkup } from './markdown.js';
@@ -76,8 +81,7 @@ import {
 } from './lock-managed-records.js';
 import { resolveFlightDeckRecordCheckoutPolicy } from './record-checkout-policy.js';
 import { isTowerPgBackendMode } from './backend-mode.js';
-import { resolvePgRecordContext } from './pg-record-context.js';
-import { resolveTowerPgWorkspaceContext } from './pg-read-hydrator.js';
+import { hydrateTowerPgDoc, hydrateTowerPgDocComments, resolveTowerPgWorkspaceContext } from './pg-read-hydrator.js';
 import {
   acquirePgEditLeaseForRecord,
   getPgEditLeaseSession,
@@ -761,6 +765,16 @@ export const docsManagerMixin = {
       [recordId]: false,
     };
     this.loadDocEditorFromSelection();
+    if (isTowerPgBackendMode()) {
+      void hydrateTowerPgDoc(this, recordId)
+        .then((fresh) => {
+          if (!fresh || this.selectedDocType !== 'document' || this.selectedDocId !== recordId) return;
+          this.refreshOpenDocFromLatestDocument({ force: true });
+        })
+        .catch((error) => {
+          console.warn('[flightdeck] PG document refresh failed after open', error);
+        });
+    }
     this.loadDocComments(recordId, {
       allowBackfill: options.allowCommentBackfill !== false,
     });
@@ -869,6 +883,15 @@ export const docsManagerMixin = {
   async loadDocComments(docId, options = {}) {
     if (!docId) {
       this.applyDocComments([]);
+      return;
+    }
+    if (isTowerPgBackendMode()) {
+      try {
+        await hydrateTowerPgDocComments(this, docId);
+      } catch (error) {
+        this.error = error?.message || 'Failed to load PG document comments.';
+        await this.applyDocComments([]);
+      }
       return;
     }
     this.startDocCommentsLiveQuery(docId);
@@ -1071,7 +1094,7 @@ export const docsManagerMixin = {
     const startLine = Number(block?.start_line);
     if (!Number.isFinite(startLine) && !block?.id) return [];
     return this.docComments
-      .filter((comment) => commentBelongsToDocBlock(comment, block))
+      .filter((comment) => !comment.parent_comment_id && commentBelongsToDocBlock(comment, block))
       .sort((a, b) => this.compareDocCommentsByAnchor(a, b));
   },
 
@@ -1179,7 +1202,57 @@ export const docsManagerMixin = {
     }
     if ((!body && drafts.length === 0) || !doc || !this.session?.npub) return;
     if (isTowerPgBackendMode()) {
-      this.error = 'PG document comments are not available yet.';
+      if (!body) {
+        this.error = 'Text is required for PG document comments.';
+        return;
+      }
+      if (drafts.length > 0) {
+        this.error = 'Audio drafts are not available in PG document comments yet.';
+        return;
+      }
+      const now = new Date().toISOString();
+      const localRow = {
+        record_id: crypto.randomUUID(),
+        owner_npub: this.workspaceOwnerNpub,
+        target_record_id: doc.record_id,
+        target_record_family_hash: recordFamilyHash('document'),
+        parent_comment_id: null,
+        anchor_block_id: this.docCommentAnchorBlockId || null,
+        anchor_line_number: this.docCommentAnchorLine || 1,
+        comment_status: 'open',
+        body,
+        attachments: [],
+        sender_npub: this.session.npub,
+        record_state: 'active',
+        version: 1,
+        created_at: now,
+        updated_at: now,
+        pg_backend: true,
+        pg_channel_id: doc.pg_channel_id || doc.channel_id || null,
+        pg_metadata: {
+          client_record_id: null,
+        },
+      };
+      localRow.pg_metadata.client_record_id = localRow.record_id;
+      await upsertComment(localRow);
+      this.docComments = [...this.docComments, localRow]
+        .sort((a, b) => String(a.updated_at || '').localeCompare(String(b.updated_at || '')));
+      this.scheduleStorageImageHydration();
+      this.selectDocCommentThread(localRow.record_id, { syncRoute: false });
+      this.closeDocCommentModal();
+      this.syncRoute();
+      try {
+        const accepted = await createTowerPgDocCommentFromLocal(this, localRow);
+        await replaceCommentRecord(localRow.record_id, accepted);
+        this.docComments = this.docComments
+          .filter((comment) => comment.record_id !== localRow.record_id)
+          .concat(accepted)
+          .sort((a, b) => String(a.updated_at || '').localeCompare(String(b.updated_at || '')));
+        this.selectedDocCommentId = accepted.record_id;
+        this.scheduleDocCommentConnectorUpdate();
+      } catch (error) {
+        this.error = error?.message || 'Failed to sync PG document comment.';
+      }
       return;
     }
 
@@ -1247,7 +1320,56 @@ export const docsManagerMixin = {
     }
     if ((!body && drafts.length === 0) || !doc || !root || !this.session?.npub) return;
     if (isTowerPgBackendMode()) {
-      this.error = 'PG document comment replies are not available yet.';
+      if (!body) {
+        this.error = 'Text is required for PG document comment replies.';
+        return;
+      }
+      if (drafts.length > 0) {
+        this.error = 'Audio drafts are not available in PG document comment replies yet.';
+        return;
+      }
+      const now = new Date().toISOString();
+      const localRow = {
+        record_id: crypto.randomUUID(),
+        owner_npub: this.workspaceOwnerNpub,
+        target_record_id: doc.record_id,
+        target_record_family_hash: recordFamilyHash('document'),
+        parent_comment_id: root.record_id,
+        anchor_block_id: root.anchor_block_id || null,
+        anchor_line_number: root.anchor_line_number || 1,
+        comment_status: 'open',
+        body,
+        attachments: [],
+        sender_npub: this.session.npub,
+        record_state: 'active',
+        version: 1,
+        created_at: now,
+        updated_at: now,
+        pg_backend: true,
+        pg_channel_id: doc.pg_channel_id || doc.channel_id || null,
+        pg_metadata: {
+          client_record_id: null,
+        },
+      };
+      localRow.pg_metadata.client_record_id = localRow.record_id;
+      await upsertComment(localRow);
+      this.docComments = [...this.docComments, localRow]
+        .sort((a, b) => String(a.updated_at || '').localeCompare(String(b.updated_at || '')));
+      this.scheduleStorageImageHydration();
+      this.newDocCommentReplyBody = '';
+      this.docCommentReplyAudioDrafts = [];
+      this.scheduleDocCommentConnectorUpdate();
+      try {
+        const accepted = await createTowerPgDocCommentFromLocal(this, localRow);
+        await replaceCommentRecord(localRow.record_id, accepted);
+        this.docComments = this.docComments
+          .filter((comment) => comment.record_id !== localRow.record_id)
+          .concat(accepted)
+          .sort((a, b) => String(a.updated_at || '').localeCompare(String(b.updated_at || '')));
+        this.scheduleDocCommentConnectorUpdate();
+      } catch (error) {
+        this.error = error?.message || 'Failed to sync PG document comment reply.';
+      }
       return;
     }
 
@@ -1307,12 +1429,38 @@ export const docsManagerMixin = {
     const comment = this.getDocCommentById(commentId);
     const doc = this.selectedDocument;
     if (!comment || !doc || !this.session?.npub) return;
-    if (isTowerPgBackendMode()) {
-      this.error = 'PG document comment status changes are not available yet.';
-      return;
-    }
     const status = nextStatus === 'resolved' ? 'resolved' : 'open';
     if ((comment.comment_status || 'open') === status) return;
+    if (isTowerPgBackendMode()) {
+      const updated = {
+        ...comment,
+        comment_status: status,
+        pg_metadata: {
+          ...(comment.pg_metadata && typeof comment.pg_metadata === 'object' && !Array.isArray(comment.pg_metadata) ? comment.pg_metadata : {}),
+          comment_status: status,
+        },
+        previous_version: comment.version ?? 1,
+        version: (comment.version ?? 1) + 1,
+        updated_at: new Date().toISOString(),
+      };
+      await upsertComment(updated);
+      this.docComments = this.docComments.map((candidate) =>
+        candidate.record_id === comment.record_id ? updated : candidate
+      );
+      this.syncRoute();
+      this.scheduleDocCommentConnectorUpdate();
+      try {
+        const accepted = await updateTowerPgDocCommentFromLocal(this, updated);
+        await replaceCommentRecord(comment.record_id, accepted);
+        this.docComments = this.docComments.map((candidate) =>
+          candidate.record_id === comment.record_id ? accepted : candidate
+        );
+        this.scheduleDocCommentConnectorUpdate();
+      } catch (error) {
+        this.error = error?.message || 'Failed to sync PG document comment status.';
+      }
+      return;
+    }
     const targetGroupIds = await this.getEncryptableDocCommentGroupIdsForWrite(doc);
     if (targetGroupIds == null) return;
 
@@ -1349,7 +1497,41 @@ export const docsManagerMixin = {
     const doc = this.selectedDocument;
     if (!comment || !doc || !this.session?.npub) return;
     if (isTowerPgBackendMode()) {
-      this.error = 'PG document comment deletion is not available yet.';
+      const confirmed = typeof window === 'undefined' || typeof window.confirm !== 'function'
+        ? true
+        : window.confirm('Remove this comment thread? This cannot be undone.');
+      if (!confirmed) return;
+      const now = new Date().toISOString();
+      const idsToDelete = new Set([comment.record_id]);
+      if (!comment.parent_comment_id) {
+        for (const reply of this.getDocCommentReplies(comment.record_id)) idsToDelete.add(reply.record_id);
+      }
+      const updatedComments = this.docComments.map((candidate) =>
+        idsToDelete.has(candidate.record_id)
+          ? {
+              ...candidate,
+              record_state: 'deleted',
+              version: (candidate.version ?? 1) + 1,
+              updated_at: now,
+            }
+          : candidate
+      );
+      for (const updated of updatedComments.filter((candidate) => idsToDelete.has(candidate.record_id))) {
+        await upsertComment(updated);
+      }
+      this.docComments = updatedComments;
+      if (idsToDelete.has(this.selectedDocCommentId)) {
+        this.selectedDocCommentId = null;
+        this.newDocCommentReplyBody = '';
+        this.clearDocCommentConnector();
+      }
+      this.syncRoute();
+      this.scheduleDocCommentConnectorUpdate();
+      try {
+        await deleteTowerPgDocCommentFromLocal(this, comment);
+      } catch (error) {
+        this.error = error?.message || 'Failed to delete PG document comment.';
+      }
       return;
     }
     const targetGroupIds = await this.getEncryptableDocCommentGroupIdsForWrite(doc);
@@ -2145,18 +2327,16 @@ export const docsManagerMixin = {
     let pgContext = null;
     let scopeId = options.scopeId || this.getDefaultDocScopeId(parentDirectoryId);
     if (isTowerPgBackendMode()) {
-      try {
-        pgContext = resolvePgRecordContext(this, {
-          scopeId,
-          channelId: options.channelId,
-          threadId: options.threadId,
-          boardId: options.boardId || this.selectedBoardId,
-        });
-        scopeId = pgContext.scopeId;
-      } catch (error) {
-        this.error = error?.message || 'Select a channel before creating a PG document.';
-        return null;
+      pgContext = this.resolvePgWriteContext?.({
+        scopeId,
+        channelId: options.channelId,
+        threadId: options.threadId,
+        boardId: options.boardId || this.selectedBoardId,
+      }) || null;
+      if (!pgContext) {
+        return this.openWriteContextModal?.('document', { title, options }) || null;
       }
+      scopeId = pgContext.scopeId;
     }
     const scopedAccess = this.buildDocAccessForScope(scopeId, this.getInheritedDirectoryShares(parentDirectoryId));
     if (!scopedAccess?.scope_id) {
@@ -2679,6 +2859,7 @@ export const docsManagerMixin = {
 
   async openDocVersioning() {
     if (!this.selectedDocId || this.selectedDocType !== 'document') return;
+    const selectedDoc = this.selectedDocument;
     this.docVersioningOpen = true;
     this.docVersionHistory = [];
     this.docVersioningLoading = true;
@@ -2688,6 +2869,36 @@ export const docsManagerMixin = {
     this.syncRoute();
 
     try {
+      if (isTowerPgBackendMode() && selectedDoc?.pg_backend) {
+        const context = resolveTowerPgWorkspaceContext(this);
+        if (!context.workspaceId) {
+          this.docVersioningError = 'Tower PG workspace is not ready.';
+          return;
+        }
+        const result = await getTowerPgDocVersions(context.workspaceId, this.selectedDocId, {
+          baseUrl: context.baseUrl,
+          appNpub: context.appNpub,
+          limit: 50,
+        });
+        const versions = Array.isArray(result?.versions) ? result.versions : [];
+        const decoded = versions.map((ver) => {
+          const content = ver?.content && typeof ver.content === 'object' ? ver.content : {};
+          return {
+            version: ver.version ?? ver.row_version ?? 0,
+            title: ver.title || 'Untitled',
+            content: typeof content.content === 'string' ? content.content : '',
+            content_format: content.content_format || null,
+            content_blocks: Array.isArray(content.content_blocks) ? content.content_blocks : [],
+            updated_at: ver.updated_at || '',
+            operation: ver.operation || 'updated',
+            actor_npub: ver.actor_npub || null,
+          };
+        });
+        decoded.sort((a, b) => b.version - a.version);
+        this.docVersionHistory = decoded;
+        if (decoded.length > 0) this.selectDocVersion(0);
+        return;
+      }
       const ownerNpub = this.workspaceOwnerNpub || this.session?.npub;
       const viewerNpub = this.session?.npub;
       if (!ownerNpub) {

@@ -20,5 +20,7 @@ describe('files upload UI', () => {
     expect(html).toContain('@change="$store.chat.handleFileUploadInput($event)"');
     expect(html).toContain('x-model="item.name"');
     expect(html).toContain('x-model="item.scope_id"');
+    expect(html).toContain('x-show="$store.chat.canMoveFileBrowserRow(row)"');
+    expect(html).toContain('@click="$store.chat.openFileMoveModal(row)"');
   });
 });

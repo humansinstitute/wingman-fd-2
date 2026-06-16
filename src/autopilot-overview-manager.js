@@ -1,3 +1,8 @@
+import {
+  getPgChannelScopeId,
+  parsePgTaskBoardId,
+} from './pg-record-context.js';
+import { resolveChannelLabel } from './channel-labels.js';
 import { recordFamilyHash } from './translators/chat.js';
 
 const UNSCOPED_SCOPE_ID = '__unscoped__';
@@ -32,6 +37,16 @@ function recordScopeId(row = {}) {
   );
 }
 
+function isFileBackedDocument(row = {}) {
+  return normalizeString(row.pg_record_type) === 'file'
+    || Boolean(normalizeString(row.pg_storage_object_id));
+}
+
+function isDocumentBodyStorageRow(row = {}) {
+  return normalizeString(row.source_type) === 'document'
+    && normalizeString(row.kind) === 'document';
+}
+
 function scopeMatches(rowScopeId, selectedScopeId, scopesMap) {
   const selected = normalizeString(selectedScopeId);
   const rowScope = normalizeString(rowScopeId);
@@ -54,32 +69,48 @@ function scopeMatches(rowScopeId, selectedScopeId, scopesMap) {
 function buildOverviewContext({ selectedScopeId = ALL_SCOPE_ID, selectedChannelId = ALL_CHANNEL_ID } = {}) {
   const scopeId = normalizeString(selectedScopeId);
   const channelId = normalizeString(selectedChannelId);
-  if (!scopeId || scopeId === ALL_SCOPE_ID || scopeId === '__all__') {
+  const hasScope = Boolean(scopeId && scopeId !== ALL_SCOPE_ID && scopeId !== '__all__' && scopeId !== '__recent__');
+  const hasChannel = Boolean(channelId && channelId !== ALL_CHANNEL_ID);
+  if (!hasScope && !hasChannel) {
     return { mode: 'all', scopeId: ALL_SCOPE_ID, channelId: ALL_CHANNEL_ID };
   }
   return {
-    mode: 'scope_channel',
-    scopeId,
-    channelId: channelId && channelId !== ALL_CHANNEL_ID ? channelId : '',
+    mode: 'context',
+    scopeId: hasScope ? scopeId : '',
+    channelId: hasChannel ? channelId : '',
   };
 }
 
 function rowMatchesContext(row = {}, context = {}, scopesMap = null) {
-  if (context.mode !== 'scope_channel') return { matches: true, missing: false };
+  if (context.mode === 'all') return { matches: true, missing: false };
   const rowScope = recordScopeId(row);
   const rowChannel = normalizeString(row.channel_id || row.pg_channel_id || '');
   const hasScope = Boolean(rowScope);
   const hasChannel = Boolean(rowChannel);
-  const scopeOk = scopeMatches(rowScope, context.scopeId, scopesMap);
-  const channelOk = Boolean(context.channelId) && rowChannel === context.channelId;
+  const wantsScope = Boolean(context.scopeId);
+  const wantsChannel = Boolean(context.channelId);
+  const scopeOk = !wantsScope || scopeMatches(rowScope, context.scopeId, scopesMap);
+  const channelOk = !wantsChannel || rowChannel === context.channelId;
   return {
     matches: scopeOk && channelOk,
-    missing: !hasScope || !hasChannel,
+    missing: (wantsScope && !hasScope) || (wantsChannel && !hasChannel),
   };
 }
 
 function channelLabel(channel = {}) {
   return normalizeString(channel.title || channel.name || channel.label) || 'Chat';
+}
+
+function overviewChannelLabel(channel = {}, options = {}) {
+  if (typeof options.getChannelLabel === 'function') {
+    const label = normalizeString(options.getChannelLabel(channel));
+    if (label) return label;
+  }
+  return resolveChannelLabel(channel, {
+    sessionNpub: options.sessionNpub,
+    getParticipants: options.getParticipants,
+    getSenderName: options.getSenderName,
+  }) || channelLabel(channel);
 }
 
 function readableTitle(row = {}, fallback = 'Untitled') {
@@ -102,12 +133,48 @@ function mergeComments(...sources) {
   return [...rows.values()];
 }
 
+function findActiveChannel(channels = [], channelId = '') {
+  const id = normalizeString(channelId);
+  if (!id) return null;
+  return (Array.isArray(channels) ? channels : [])
+    .find((channel) => channel?.record_id === id && channel.record_state !== 'deleted') || null;
+}
+
+function resolveOverviewChannelId(store = {}) {
+  const board = parsePgTaskBoardId(store.selectedBoardId);
+  if (board.type === 'scope') {
+    const scopeId = normalizeString(board.scopeId);
+    if (scopeId === ALL_SCOPE_ID || scopeId === '__all__' || scopeId === '__recent__') return '';
+  }
+  return normalizeString(
+    store.pgContextSelectedChannelId
+    || board.channelId
+    || store.selectedChannelId
+    || ''
+  );
+}
+
+function resolveOverviewScopeId(store = {}) {
+  const board = parsePgTaskBoardId(store.selectedBoardId);
+  if (board.type === 'scope') {
+    const scopeId = normalizeString(board.scopeId);
+    if (scopeId === ALL_SCOPE_ID || scopeId === '__all__' || scopeId === '__recent__') return '';
+    if (scopeId && scopeId !== ALL_SCOPE_ID && scopeId !== '__all__' && scopeId !== '__recent__') return scopeId;
+  }
+  const channel = findActiveChannel(store.channels, resolveOverviewChannelId(store));
+  return getPgChannelScopeId(channel) || '';
+}
+
 export function buildAutopilotOverviewThreads({
   channels = [],
   messages = [],
   selectedScopeId = ALL_SCOPE_ID,
   selectedChannelId = ALL_CHANNEL_ID,
   scopesMap = null,
+  getChannelLabel = null,
+  getParticipants = null,
+  getSenderName = null,
+  sessionNpub = '',
 } = {}) {
   const context = buildOverviewContext({ selectedScopeId, selectedChannelId });
   const channelById = new Map(
@@ -136,7 +203,7 @@ export function buildAutopilotOverviewThreads({
       threadRows.set(threadId, {
         id: threadId,
         channelId: message.channel_id,
-        channelLabel: channelLabel(channel),
+        channelLabel: overviewChannelLabel(channel, { getChannelLabel, getParticipants, getSenderName, sessionNpub }),
         scopeId: channelScopeId || null,
         title: rootTitle || '(empty thread)',
         latestMessage: normalizeString(message.body),
@@ -263,6 +330,7 @@ export function buildAutopilotOverviewDocuments({
 
   for (const document of Array.isArray(documents) ? documents : []) {
     if (!document?.record_id || document.record_state === 'deleted') continue;
+    if (isFileBackedDocument(document)) continue;
     const match = rowMatchesContext(document, context, scopesMap);
     if (!match.matches) {
       if (match.missing) hiddenMissingContext += 1;
@@ -336,6 +404,7 @@ export function buildAutopilotOverviewFiles(rows = [], {
   const filtered = [];
   let hiddenMissingContext = 0;
   for (const row of Array.isArray(rows) ? rows : []) {
+    if (isDocumentBodyStorageRow(row)) continue;
     const match = rowMatchesContext(row, context, scopesMap);
     if (match.matches) {
       filtered.push({
@@ -351,7 +420,7 @@ export function buildAutopilotOverviewFiles(rows = [], {
     diagnostics.push(`${hiddenMissingContext} file ${hiddenMissingContext === 1 ? 'record is' : 'records are'} hidden because scope/channel is missing.`);
   }
   const sorted = filtered.sort((left, right) => {
-    const ts = timestampMs(right.updated_at) - timestampMs(left.updated_at);
+    const ts = timestampMs(right.activityAt) - timestampMs(left.activityAt);
     if (ts !== 0) return ts;
     const name = String(left.name || '').localeCompare(String(right.name || ''));
     if (name !== 0) return name;
@@ -364,21 +433,24 @@ export function buildAutopilotOverviewFiles(rows = [], {
 export const autopilotOverviewManagerMixin = {
   get autopilotOverviewContext() {
     return buildOverviewContext({
-      selectedScopeId: this.autopilotOverviewScopeFilter,
-      selectedChannelId: this.autopilotOverviewChannelFilter,
+      selectedScopeId: resolveOverviewScopeId(this),
+      selectedChannelId: resolveOverviewChannelId(this),
     });
   },
 
   get autopilotOverviewIsScoped() {
-    return this.autopilotOverviewContext.mode === 'scope_channel';
+    return this.autopilotOverviewContext.mode !== 'all';
   },
 
   get autopilotOverviewContextLabel() {
     if (!this.autopilotOverviewIsScoped) return 'All workspace activity';
-    const scope = this.autopilotOverviewScopeOptions.find((option) => option.id === this.autopilotOverviewScopeFilter);
-    const channel = this.autopilotOverviewChannelOptions.find((option) => option.id === this.autopilotOverviewChannelFilter);
-    if (!this.autopilotOverviewContext.channelId) return `${scope?.label || 'Selected scope'} has no chat channel`;
-    return `${scope?.label || 'Selected scope'} / ${channel?.label || 'Selected chat'}`;
+    const context = this.autopilotOverviewContext;
+    const scope = context.scopeId ? this.scopesMap?.get?.(context.scopeId) : null;
+    const channel = findActiveChannel(this.channels, context.channelId);
+    const scopeLabel = scope ? (this.getScopeBreadcrumb?.(scope.record_id) || scope.title || 'Selected scope') : '';
+    const channelLabelText = channel ? (this.getChannelLabel ? this.getChannelLabel(channel) : channelLabel(channel)) : '';
+    if (scopeLabel && channelLabelText) return `${scopeLabel} / ${channelLabelText}`;
+    return channelLabelText || scopeLabel || 'Selected context';
   },
 
   get autopilotOverviewGreeting() {
@@ -390,35 +462,6 @@ export const autopilotOverviewManagerMixin = {
     return `${greeting}, ${name && name !== npub ? name : fallback}`;
   },
 
-  get autopilotOverviewScopeOptions() {
-    const options = [{ id: ALL_SCOPE_ID, label: 'All scopes' }, { id: UNSCOPED_SCOPE_ID, label: 'Unscoped' }];
-    const seen = new Set(options.map((option) => option.id));
-    for (const option of this.fileScopeOptions || []) {
-      const id = normalizeString(option.id);
-      if (!id || seen.has(id) || id === '__all__') continue;
-      seen.add(id);
-      options.push({ id, label: option.label || id });
-    }
-    return options;
-  },
-
-  get autopilotOverviewChannelOptions() {
-    const context = this.autopilotOverviewContext;
-    const options = context.mode === 'all' ? [{ id: ALL_CHANNEL_ID, label: 'All chats' }] : [];
-    const channels = (this.channels || [])
-      .filter((channel) => {
-        if (!channel?.record_id || channel.record_state === 'deleted') return false;
-        if (context.mode !== 'scope_channel') return true;
-        return scopeMatches(recordScopeId(channel), context.scopeId, this.scopesMap);
-      })
-      .map((channel) => ({
-        id: channel.record_id,
-        label: this.getChannelLabel ? this.getChannelLabel(channel) : channelLabel(channel),
-      }))
-      .sort((left, right) => String(left.label || '').localeCompare(String(right.label || '')));
-    return [...options, ...channels];
-  },
-
   get autopilotOverviewComments() {
     return mergeComments(this.fileComments, this.docComments, this.taskComments);
   },
@@ -427,16 +470,20 @@ export const autopilotOverviewManagerMixin = {
     return buildAutopilotOverviewThreads({
       channels: this.channels,
       messages: this.fileMessages?.length ? this.fileMessages : this.messages,
-      selectedScopeId: this.autopilotOverviewScopeFilter,
-      selectedChannelId: this.autopilotOverviewChannelFilter,
+      selectedScopeId: this.autopilotOverviewContext.scopeId,
+      selectedChannelId: this.autopilotOverviewContext.channelId,
       scopesMap: this.scopesMap,
+      getChannelLabel: this.getChannelLabel?.bind?.(this),
+      getParticipants: this.getChannelParticipants?.bind?.(this),
+      getSenderName: this.getSenderName?.bind?.(this),
+      sessionNpub: this.session?.npub || this.signingNpub || '',
     });
   },
 
   get autopilotOverviewFiles() {
     return buildAutopilotOverviewFiles(this.fileBrowserRows, {
-      selectedScopeId: this.autopilotOverviewScopeFilter,
-      selectedChannelId: this.autopilotOverviewChannelFilter,
+      selectedScopeId: this.autopilotOverviewContext.scopeId,
+      selectedChannelId: this.autopilotOverviewContext.channelId,
       scopesMap: this.scopesMap,
     });
   },
@@ -445,8 +492,8 @@ export const autopilotOverviewManagerMixin = {
     return buildAutopilotOverviewTasks({
       tasks: this.tasks,
       comments: this.autopilotOverviewComments,
-      selectedScopeId: this.autopilotOverviewScopeFilter,
-      selectedChannelId: this.autopilotOverviewChannelFilter,
+      selectedScopeId: this.autopilotOverviewContext.scopeId,
+      selectedChannelId: this.autopilotOverviewContext.channelId,
       scopesMap: this.scopesMap,
     });
   },
@@ -455,8 +502,8 @@ export const autopilotOverviewManagerMixin = {
     return buildAutopilotOverviewDocuments({
       documents: this.documents,
       comments: this.autopilotOverviewComments,
-      selectedScopeId: this.autopilotOverviewScopeFilter,
-      selectedChannelId: this.autopilotOverviewChannelFilter,
+      selectedScopeId: this.autopilotOverviewContext.scopeId,
+      selectedChannelId: this.autopilotOverviewContext.channelId,
       scopesMap: this.scopesMap,
     });
   },
@@ -470,7 +517,7 @@ export const autopilotOverviewManagerMixin = {
         if (context.mode === 'all') return !note.pg_scope_id && !note.pg_channel_id && !note.metadata?.scope_id && !note.metadata?.channel_id;
         const scopeId = note.metadata?.scope_id || note.pg_scope_id || '';
         const channelId = note.metadata?.channel_id || note.pg_channel_id || '';
-        return scopeId === context.scopeId && channelId === context.channelId;
+        return (!context.scopeId || scopeId === context.scopeId) && (!context.channelId || channelId === context.channelId);
       })
       .sort((left, right) => {
         const ts = timestampMs(right.updated_at) - timestampMs(left.updated_at);
@@ -488,41 +535,13 @@ export const autopilotOverviewManagerMixin = {
     };
   },
 
-  get autopilotOverviewUnresolvedDocCommentCount() {
-    return this.autopilotOverviewDocuments.reduce((total, row) => total + Number(row.count || 0), 0);
-  },
-
-  get autopilotOverviewStats() {
-    return {
-      threads: this.autopilotOverviewThreads.length,
-      tasks: this.autopilotOverviewTasks.length,
-      documents: this.autopilotOverviewDocuments.length,
-      unresolvedDocComments: this.autopilotOverviewUnresolvedDocCommentCount,
-      files: this.autopilotOverviewFiles.length,
-    };
-  },
-
-  get autopilotOverviewDiagnostics() {
-    return [
-      ...(this.autopilotOverviewTasks.diagnostics || []),
-      ...(this.autopilotOverviewDocuments.diagnostics || []),
-      ...(this.autopilotOverviewFiles.diagnostics || []),
-    ];
-  },
-
-  handleAutopilotOverviewScopeChange() {
-    if (!this.autopilotOverviewScopeFilter || this.autopilotOverviewScopeFilter === ALL_SCOPE_ID) {
-      this.autopilotOverviewChannelFilter = ALL_CHANNEL_ID;
-      return;
-    }
-    const firstChannel = this.autopilotOverviewChannelOptions[0];
-    this.autopilotOverviewChannelFilter = firstChannel?.id || '';
-  },
-
-  openAutopilotOverviewThread(thread = {}) {
-    if (!thread?.channelId) return;
+  async openAutopilotOverviewThread(thread = {}) {
+    const threadId = thread?.rootRecordId || thread?.id;
+    if (!thread?.channelId || !threadId) return;
     this.navigateTo('chat');
-    this.selectChannel(thread.channelId);
+    await this.selectChannel(thread.channelId, { syncRoute: false, scrollToLatest: false });
+    this.focusMessageId = threadId;
+    this.openThread(threadId, { scrollToLatest: false });
   },
 
   openAutopilotOverviewTask(row = {}) {
