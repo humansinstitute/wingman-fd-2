@@ -2637,6 +2637,23 @@ button:disabled {
   white-space: nowrap;
 }
 
+.attention-card-new-dot,
+.overview-row-new-dot {
+  position: absolute;
+  top: 0.55rem;
+  right: 0.55rem;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: var(--danger);
+  box-shadow: 0 0 0 2px #ffffff;
+  z-index: 2;
+}
+
+.attention-card-unread {
+  border-color: rgba(220, 38, 38, 0.28);
+}
+
 .attention-feed-header select {
   min-width: min(100%, 38rem);
 }
@@ -8463,9 +8480,18 @@ button:disabled {
 
 .autopilot-task-row,
 .autopilot-doc-row {
+  position: relative;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: #ffffff;
+}
+
+.autopilot-thread-card {
+  position: relative;
+}
+
+.overview-row-unread {
+  border-color: rgba(220, 38, 38, 0.28);
 }
 
 .autopilot-row-meta {

@@ -49,13 +49,18 @@ describe('autopilot overview manager', () => {
   ];
 
   it('orders threads by latest message, not thread root timestamp', () => {
-    const rows = buildAutopilotOverviewThreads({ channels, messages });
+    const rows = buildAutopilotOverviewThreads({
+      channels,
+      messages,
+      unreadChannelMap: { 'chan-a': true },
+    });
 
     expect(rows.map((row) => row.id)).toEqual(['thread-a', 'thread-b']);
     expect(rows[0]).toMatchObject({
       latestMessage: 'Newest reply',
       latestMessageUpdatedAt: '2026-06-15T10:20:00.000Z',
       messageCount: 3,
+      isUnread: true,
     });
   });
 
@@ -223,6 +228,7 @@ describe('autopilot overview manager', () => {
           updated_at: '2026-06-15T10:30:00.000Z',
         },
       ],
+      unreadTaskMap: { 'task-b': true },
     });
 
     expect(rows.map((row) => row.recordId)).toEqual(['task-b', 'task-a']);
@@ -230,6 +236,7 @@ describe('autopilot overview manager', () => {
       reason: '2 recent comments',
       count: 2,
       activityAt: '2026-06-15T11:00:00.000Z',
+      isUnread: true,
     });
   });
 
@@ -255,6 +262,7 @@ describe('autopilot overview manager', () => {
           updated_at: '2026-06-15T12:00:00.000Z',
         },
       ],
+      unreadDocumentMap: { 'doc-b': true },
     });
 
     expect(rows.map((row) => row.recordId)).toEqual(['doc-b', 'doc-a']);
@@ -262,6 +270,7 @@ describe('autopilot overview manager', () => {
       reason: '1 unresolved comment',
       count: 1,
       activityAt: '2026-06-15T11:00:00.000Z',
+      isUnread: true,
     });
   });
 

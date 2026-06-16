@@ -23,6 +23,7 @@ import {
   getSyncState,
   isWorkspaceDbOpenForKey,
 } from './db.js';
+import { recordFamilyHash } from './translators/chat.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -41,18 +42,21 @@ async function cursorRecordId(viewerNpub, cursorKey) {
 }
 
 async function loadUnreadCursorMap(viewerNpub) {
-  const [navRows, channelRows, taskRows] = await Promise.all([
+  const [navRows, channelRows, taskRows, docRows] = await Promise.all([
     getReadCursorsByKeys(viewerNpub, ['chat:nav', 'tasks:nav', 'docs:nav']),
     getReadCursorsByPrefix(viewerNpub, 'chat:channel:'),
     getReadCursorsByPrefix(viewerNpub, 'tasks:item:'),
+    getReadCursorsByPrefix(viewerNpub, 'docs:item:'),
   ]);
 
   const cursorMap = {};
-  for (const row of [...navRows, ...channelRows, ...taskRows]) {
+  for (const row of [...navRows, ...channelRows, ...taskRows, ...docRows]) {
     cursorMap[row.cursor_key] = row.read_until;
   }
   return cursorMap;
 }
+
+const DOCUMENT_FAMILY = recordFamilyHash('document');
 
 export function pickEffectiveReadUntil(navReadUntil = null, itemReadUntil = null) {
   if (itemReadUntil && (!navReadUntil || itemReadUntil > navReadUntil)) {
@@ -128,6 +132,50 @@ export function hasUnreadTasks(unreadTaskItems) {
   return Object.values(unreadTaskItems).some((v) => v);
 }
 
+export function computeUnreadDocumentMap(documents, comments, cursorMap, viewerNpub) {
+  const navReadUntil = cursorMap['docs:nav'] || null;
+  if (!navReadUntil) return {};
+
+  const commentsByDocument = new Map();
+  for (const comment of Array.isArray(comments) ? comments : []) {
+    if (!comment?.record_id || comment.record_state === 'deleted') continue;
+    if (comment.target_record_family_hash && comment.target_record_family_hash !== DOCUMENT_FAMILY) continue;
+    const targetId = String(comment.target_record_id || '').trim();
+    if (!targetId) continue;
+    const latest = commentsByDocument.get(targetId);
+    if (!latest || String(comment.updated_at || '') > String(latest.updated_at || '')) {
+      commentsByDocument.set(targetId, comment);
+    }
+  }
+
+  const result = {};
+  for (const doc of Array.isArray(documents) ? documents : []) {
+    if (!doc?.record_id || doc.record_state === 'deleted') continue;
+    const docKey = `docs:item:${doc.record_id}`;
+    const docReadUntil = cursorMap[docKey] || null;
+    let effectiveReadUntil = pickEffectiveReadUntil(navReadUntil, docReadUntil);
+
+    if (
+      viewerNpub
+      && doc.owner_npub === viewerNpub
+      && doc.created_at
+      && doc.created_at > effectiveReadUntil
+    ) {
+      effectiveReadUntil = doc.created_at;
+    }
+
+    const latestComment = commentsByDocument.get(doc.record_id);
+    const latestActivityAt = [doc.updated_at || '', latestComment?.updated_at || '']
+      .filter(Boolean)
+      .sort()
+      .at(-1) || '';
+    if (latestActivityAt && latestActivityAt > effectiveReadUntil) {
+      result[doc.record_id] = true;
+    }
+  }
+  return result;
+}
+
 /**
  * Determine whether the tasks:nav cursor should be auto-seeded.
  * Returns true when tasks exist in the DB but no cursor has been set yet
@@ -151,6 +199,8 @@ export const unreadStoreMixin = {
   _unreadChannels: {},
   // Per-task unread map: { taskRecordId: boolean }
   _unreadTaskItems: {},
+  // Per-document unread map: { documentRecordId: boolean }
+  _unreadDocItems: {},
 
   get unreadChat() { return this._unreadChat; },
   get unreadTasks() { return this._unreadTasks; },
@@ -179,6 +229,10 @@ export const unreadStoreMixin = {
 
   isTaskUnread(taskId) {
     return this._unreadTaskItems[taskId] === true;
+  },
+
+  isDocUnread(docId) {
+    return this._unreadDocItems[docId] === true;
   },
 
   /**
@@ -249,6 +303,10 @@ export const unreadStoreMixin = {
           this._unreadTaskItems = computeUnreadTaskMap(allTasks, cursorMap, viewerNpub);
           this._unreadTasks = hasUnreadTasks(this._unreadTaskItems);
         }
+        const docs = Array.isArray(this.documents) ? this.documents : [];
+        const comments = Array.isArray(this.autopilotOverviewComments) ? this.autopilotOverviewComments : [];
+        this._unreadDocItems = computeUnreadDocumentMap(docs, comments, await loadUnreadCursorMap(viewerNpub), viewerNpub);
+        this._unreadDocs = this._unreadDocs || Object.values(this._unreadDocItems).some(Boolean);
         return;
       }
 
@@ -265,6 +323,14 @@ export const unreadStoreMixin = {
       const docsReadUntil = cursorMap['docs:nav'] || '1970-01-01T00:00:00.000Z';
       const latestDoc = await db.documents.where('updated_at').above(docsReadUntil).first();
       this._unreadDocs = latestDoc != null && latestDoc.record_state !== 'deleted';
+      const allDocs = Array.isArray(this.documents) && this.documents.length > 0
+        ? this.documents
+        : await db.documents.toArray();
+      const allComments = Array.isArray(this.autopilotOverviewComments) && this.autopilotOverviewComments.length > 0
+        ? this.autopilotOverviewComments
+        : await db.comments.toArray();
+      this._unreadDocItems = computeUnreadDocumentMap(allDocs, allComments, cursorMap, viewerNpub);
+      this._unreadDocs = this._unreadDocs || Object.values(this._unreadDocItems).some(Boolean);
 
       // --- Per-channel unread (batched) ---
       const channels = Array.isArray(this.channels)
@@ -359,7 +425,10 @@ export const unreadStoreMixin = {
     // Immediately clear the flag
     if (section === 'chat') this._unreadChat = false;
     if (section === 'tasks') this._unreadTasks = false;
-    if (section === 'docs') this._unreadDocs = false;
+    if (section === 'docs') {
+      this._unreadDocs = false;
+      this._unreadDocItems = {};
+    }
   },
 
   /**
@@ -406,6 +475,24 @@ export const unreadStoreMixin = {
     // Immediately clear the task flag and re-derive nav dot
     this._unreadTaskItems = { ...this._unreadTaskItems, [taskId]: false };
     this._unreadTasks = hasUnreadTasks(this._unreadTaskItems);
+  },
+
+  async markDocRead(docId) {
+    const viewerNpub = this.session?.npub;
+    if (!viewerNpub || !docId) return;
+
+    const cursorKey = `docs:item:${docId}`;
+    const recordId = await cursorRecordId(viewerNpub, cursorKey);
+    const now = new Date().toISOString();
+    await upsertReadCursor({
+      record_id: recordId,
+      cursor_key: cursorKey,
+      viewer_npub: viewerNpub,
+      read_until: now,
+    });
+
+    this._unreadDocItems = { ...this._unreadDocItems, [docId]: false };
+    this._unreadDocs = Object.values(this._unreadDocItems).some(Boolean);
   },
 
   /**

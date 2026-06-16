@@ -37,6 +37,8 @@ describe('flight deck summary template', () => {
     expect(html).toContain('class="attention-card flightdeck-summary-card flightdeck-summary-card-task"');
     expect(html).toContain('class="attention-card flightdeck-summary-card flightdeck-summary-card-doc"');
     expect(html).toContain('class="attention-card flightdeck-summary-card flightdeck-summary-card-file"');
+    expect(html).toContain('attention-card-new-dot');
+    expect(html).toContain('overview-row-new-dot');
     expect(html).toContain('x-html="$store.chat.getAttentionIconSvg(\'chat\')"');
     expect(html).toContain('x-html="$store.chat.getAttentionIconSvg(\'task\')"');
     expect(html).toContain('x-html="$store.chat.getAttentionIconSvg(\'doc\')"');

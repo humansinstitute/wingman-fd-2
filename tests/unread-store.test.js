@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import * as unreadStoreModule from '../src/unread-store.js';
+import { recordFamilyHash } from '../src/translators/chat.js';
 import {
+  computeUnreadDocumentMap,
   computeUnreadTaskMap,
   isMessageUnreadAtCutoff,
   pickEffectiveReadUntil,
@@ -56,6 +58,38 @@ describe('computeUnreadTaskMap', () => {
     expect(unread).toEqual({
       'task-2': true,
     });
+  });
+});
+
+describe('computeUnreadDocumentMap', () => {
+  it('marks a document unread when a newer comment exists after the docs cursor', () => {
+    const unread = computeUnreadDocumentMap([
+      {
+        record_id: 'doc-1',
+        owner_npub: 'npub1other',
+        record_state: 'active',
+        updated_at: '2026-06-15T09:00:00.000Z',
+      },
+      {
+        record_id: 'doc-2',
+        owner_npub: 'npub1other',
+        record_state: 'active',
+        updated_at: '2026-06-15T09:00:00.000Z',
+      },
+    ], [
+      {
+        record_id: 'comment-1',
+        target_record_id: 'doc-1',
+        target_record_family_hash: recordFamilyHash('document'),
+        updated_at: '2026-06-15T11:00:00.000Z',
+        record_state: 'active',
+      },
+    ], {
+      'docs:nav': '2026-06-15T10:00:00.000Z',
+      'docs:item:doc-2': '2026-06-15T12:00:00.000Z',
+    }, 'npub1viewer');
+
+    expect(unread).toEqual({ 'doc-1': true });
   });
 });
 

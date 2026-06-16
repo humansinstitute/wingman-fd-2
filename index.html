@@ -1171,7 +1171,8 @@
                   </div>
                   <div class="attention-card-list flightdeck-summary-card-list" x-show="$store.chat.autopilotOverviewThreads.length > 0">
                     <template x-for="thread in $store.chat.autopilotOverviewThreads.slice(0, 5)" :key="thread.id">
-                      <button type="button" class="attention-card flightdeck-summary-card flightdeck-summary-card-chat" @click="$store.chat.openAutopilotOverviewThread(thread)" aria-label="Open selected thread">
+                      <button type="button" class="attention-card flightdeck-summary-card flightdeck-summary-card-chat" :class="{ 'attention-card-unread': thread.isUnread }" @click="$store.chat.openAutopilotOverviewThread(thread)" aria-label="Open selected thread">
+                        <span class="attention-card-new-dot" x-show="thread.isUnread" aria-label="New activity"></span>
                         <span class="attention-card-icon" aria-hidden="true" x-html="$store.chat.getAttentionIconSvg('chat')"></span>
                         <span class="attention-card-content">
                           <span class="attention-card-kicker" x-text="thread.channelLabel"></span>
@@ -1198,7 +1199,8 @@
                   </div>
                   <div class="attention-card-list flightdeck-summary-card-list" x-show="$store.chat.autopilotOverviewTasks.length > 0">
                     <template x-for="task in $store.chat.autopilotOverviewTasks.slice(0, 5)" :key="task.id">
-                      <button type="button" class="attention-card flightdeck-summary-card flightdeck-summary-card-task" @click="$store.chat.openAutopilotOverviewTask(task)" aria-label="Open selected task">
+                      <button type="button" class="attention-card flightdeck-summary-card flightdeck-summary-card-task" :class="{ 'attention-card-unread': task.isUnread }" @click="$store.chat.openAutopilotOverviewTask(task)" aria-label="Open selected task">
+                        <span class="attention-card-new-dot" x-show="task.isUnread" aria-label="New activity"></span>
                         <span class="attention-card-icon" aria-hidden="true" x-html="$store.chat.getAttentionIconSvg('task')"></span>
                         <span class="attention-card-content">
                           <span class="attention-card-kicker" x-text="task.subtitle"></span>
@@ -1227,7 +1229,8 @@
                   </div>
                   <div class="attention-card-list flightdeck-summary-card-list" x-show="$store.chat.autopilotOverviewDocuments.length > 0">
                     <template x-for="doc in $store.chat.autopilotOverviewDocuments.slice(0, 5)" :key="doc.id">
-                      <button type="button" class="attention-card flightdeck-summary-card flightdeck-summary-card-doc" @click="$store.chat.openAutopilotOverviewDocument(doc)" aria-label="Open selected document">
+                      <button type="button" class="attention-card flightdeck-summary-card flightdeck-summary-card-doc" :class="{ 'attention-card-unread': doc.isUnread }" @click="$store.chat.openAutopilotOverviewDocument(doc)" aria-label="Open selected document">
+                        <span class="attention-card-new-dot" x-show="doc.isUnread" aria-label="New activity"></span>
                         <span class="attention-card-icon" aria-hidden="true" x-html="$store.chat.getAttentionIconSvg('doc')"></span>
                         <span class="attention-card-content">
                           <span class="attention-card-kicker" x-text="doc.reason"></span>
@@ -4619,7 +4622,8 @@
                   </div>
                   <div class="autopilot-overview-list" x-show="$store.chat.autopilotOverviewThreads.length > 0" data-testid="autopilot-overview-threads-list">
                     <template x-for="thread in $store.chat.autopilotOverviewThreads.slice(0, 5)" :key="thread.id">
-                      <button type="button" class="pg-thread-summary autopilot-thread-card" @click="$store.chat.openAutopilotOverviewThread(thread)" aria-label="Open selected thread" data-testid="autopilot-overview-thread-row">
+                      <button type="button" class="pg-thread-summary autopilot-thread-card" :class="{ 'overview-row-unread': thread.isUnread }" @click="$store.chat.openAutopilotOverviewThread(thread)" aria-label="Open selected thread" data-testid="autopilot-overview-thread-row">
+                        <span class="overview-row-new-dot" x-show="thread.isUnread" aria-label="New activity"></span>
                         <span class="chat-thread-preview">
                           <span class="chat-thread-preview-count" x-text="thread.channelLabel"></span>
                           <span class="chat-thread-preview-link" x-text="thread.title"></span>
@@ -4642,7 +4646,8 @@
                   </div>
                   <div class="task-list-rows autopilot-overview-list" x-show="$store.chat.autopilotOverviewTasks.length > 0" data-testid="autopilot-overview-tasks-list">
                     <template x-for="task in $store.chat.autopilotOverviewTasks.slice(0, 5)" :key="task.id">
-                      <button type="button" class="task-list-row task-list-row-parent autopilot-task-row" @click="$store.chat.openAutopilotOverviewTask(task)" aria-label="Open selected task" data-testid="autopilot-overview-task-row">
+                      <button type="button" class="task-list-row task-list-row-parent autopilot-task-row" :class="{ 'overview-row-unread': task.isUnread }" @click="$store.chat.openAutopilotOverviewTask(task)" aria-label="Open selected task" data-testid="autopilot-overview-task-row">
+                        <span class="overview-row-new-dot" x-show="task.isUnread" aria-label="New activity"></span>
                         <span class="task-list-title" x-text="task.title"></span>
                         <span class="badge badge-date" x-text="task.subtitle"></span>
                         <span class="autopilot-row-meta">
@@ -4664,7 +4669,8 @@
                   </div>
                   <div class="doc-items autopilot-overview-list" x-show="$store.chat.autopilotOverviewDocuments.length > 0" data-testid="autopilot-overview-documents-list">
                     <template x-for="doc in $store.chat.autopilotOverviewDocuments.slice(0, 5)" :key="doc.id">
-                      <button type="button" class="doc-item autopilot-doc-row" @click="$store.chat.openAutopilotOverviewDocument(doc)" aria-label="Open selected document" data-testid="autopilot-overview-document-row">
+                      <button type="button" class="doc-item autopilot-doc-row" :class="{ 'overview-row-unread': doc.isUnread }" @click="$store.chat.openAutopilotOverviewDocument(doc)" aria-label="Open selected document" data-testid="autopilot-overview-document-row">
+                        <span class="overview-row-new-dot" x-show="doc.isUnread" aria-label="New activity"></span>
                         <span class="doc-item-icon">DOC</span>
                         <span class="doc-item-title" x-text="doc.title"></span>
                         <span class="doc-item-meta">

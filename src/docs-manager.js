@@ -778,6 +778,7 @@ export const docsManagerMixin = {
     this.loadDocComments(recordId, {
       allowBackfill: options.allowCommentBackfill !== false,
     });
+    this.markDocRead?.(recordId);
     if (options.syncRoute !== false) this.syncRoute();
     if (options.ensureSync !== false) this.ensureBackgroundSync(true);
   },

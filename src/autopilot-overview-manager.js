@@ -175,6 +175,7 @@ export function buildAutopilotOverviewThreads({
   getParticipants = null,
   getSenderName = null,
   sessionNpub = '',
+  unreadChannelMap = {},
 } = {}) {
   const context = buildOverviewContext({ selectedScopeId, selectedChannelId });
   const channelById = new Map(
@@ -211,11 +212,13 @@ export function buildAutopilotOverviewThreads({
         latestMessageSender: message.sender_npub || '',
         messageCount: 1,
         rootRecordId: isThreadRoot ? message.record_id : threadId,
+        isUnread: unreadChannelMap?.[message.channel_id] === true,
       });
       continue;
     }
 
     existing.messageCount += 1;
+    existing.isUnread = existing.isUnread || unreadChannelMap?.[message.channel_id] === true;
     if (isThreadRoot && rootTitle) {
       existing.title = rootTitle;
       existing.rootRecordId = message.record_id;
@@ -240,6 +243,7 @@ export function buildAutopilotOverviewTasks({
   selectedScopeId = ALL_SCOPE_ID,
   selectedChannelId = ALL_CHANNEL_ID,
   scopesMap = null,
+  unreadTaskMap = {},
 } = {}) {
   const context = buildOverviewContext({ selectedScopeId, selectedChannelId });
   const taskComments = new Map();
@@ -285,6 +289,7 @@ export function buildAutopilotOverviewTasks({
       activityAt,
       actorNpub: latestComment?.sender_npub || task.updated_by_npub || task.sender_npub || '',
       count: commentsForTask.length,
+      isUnread: unreadTaskMap?.[task.record_id] === true,
       context: {
         scopeId: recordScopeId(task) || null,
         channelId: task.pg_channel_id || task.channel_id || null,
@@ -310,6 +315,7 @@ export function buildAutopilotOverviewDocuments({
   selectedScopeId = ALL_SCOPE_ID,
   selectedChannelId = ALL_CHANNEL_ID,
   scopesMap = null,
+  unreadDocumentMap = {},
 } = {}) {
   const context = buildOverviewContext({ selectedScopeId, selectedChannelId });
   const commentsByDocument = new Map();
@@ -359,6 +365,7 @@ export function buildAutopilotOverviewDocuments({
       count: commentsForDocument.length,
       latestCommentAt,
       commentDrove,
+      isUnread: unreadDocumentMap?.[document.record_id] === true,
       context: {
         scopeId: recordScopeId(document) || null,
         channelId: document.pg_channel_id || document.channel_id || null,
@@ -477,6 +484,7 @@ export const autopilotOverviewManagerMixin = {
       getParticipants: this.getChannelParticipants?.bind?.(this),
       getSenderName: this.getSenderName?.bind?.(this),
       sessionNpub: this.session?.npub || this.signingNpub || '',
+      unreadChannelMap: this._unreadChannels || {},
     });
   },
 
@@ -485,6 +493,7 @@ export const autopilotOverviewManagerMixin = {
       selectedScopeId: this.autopilotOverviewContext.scopeId,
       selectedChannelId: this.autopilotOverviewContext.channelId,
       scopesMap: this.scopesMap,
+      unreadTaskMap: this._unreadTaskItems || {},
     });
   },
 
@@ -495,6 +504,7 @@ export const autopilotOverviewManagerMixin = {
       selectedScopeId: this.autopilotOverviewContext.scopeId,
       selectedChannelId: this.autopilotOverviewContext.channelId,
       scopesMap: this.scopesMap,
+      unreadDocumentMap: this._unreadDocItems || {},
     });
   },
 
