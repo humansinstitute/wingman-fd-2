@@ -29,6 +29,37 @@ function timestampMs(value) {
   return Number.isFinite(ts) ? ts : 0;
 }
 
+function parseDateKey(value) {
+  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function shiftDateKey(value, deltaDays) {
+  const date = parseDateKey(value);
+  if (!date) return String(value || '');
+  date.setUTCDate(date.getUTCDate() + deltaDays);
+  return date.toISOString().slice(0, 10);
+}
+
+function dateOrdinal(day) {
+  if (day >= 11 && day <= 13) return 'th';
+  switch (day % 10) {
+    case 1: return 'st';
+    case 2: return 'nd';
+    case 3: return 'rd';
+    default: return 'th';
+  }
+}
+
+function formatDailyScopeDate(value) {
+  const date = parseDateKey(value);
+  if (!date) return String(value || '');
+  const day = date.getUTCDate();
+  return `${day}${dateOrdinal(day)} ${date.toLocaleString('en-GB', { month: 'long', timeZone: 'UTC' })} ${date.getUTCFullYear()}`;
+}
+
 function newestIso(left, right) {
   return timestampMs(left) >= timestampMs(right) ? (left || '') : (right || '');
 }
@@ -446,6 +477,24 @@ export function buildAutopilotOverviewFiles(rows = [], {
 }
 
 export const autopilotOverviewManagerMixin = {
+  get autopilotOverviewDailyScopeDateKey() {
+    return this.dailyScopeSelectedDate || this.getTodayDateKey?.() || new Date().toISOString().slice(0, 10);
+  },
+
+  get autopilotOverviewDailyScopeCanGoNext() {
+    const today = this.getTodayDateKey?.() || new Date().toISOString().slice(0, 10);
+    return this.autopilotOverviewDailyScopeDateKey < today;
+  },
+
+  showPreviousDailyScopeNote() {
+    this.dailyScopeSelectedDate = shiftDateKey(this.autopilotOverviewDailyScopeDateKey, -1);
+  },
+
+  showNextDailyScopeNote() {
+    if (!this.autopilotOverviewDailyScopeCanGoNext) return;
+    this.dailyScopeSelectedDate = shiftDateKey(this.autopilotOverviewDailyScopeDateKey, 1);
+  },
+
   get autopilotOverviewContext() {
     return buildOverviewContext({
       selectedScopeId: resolveOverviewScopeId(this),
@@ -527,9 +576,9 @@ export const autopilotOverviewManagerMixin = {
   },
 
   get autopilotOverviewDailyNote() {
-    const today = this.getTodayDateKey?.() || new Date().toISOString().slice(0, 10);
+    const selectedDate = this.autopilotOverviewDailyScopeDateKey;
     const notes = (this.dailyNotes || [])
-      .filter((note) => note?.record_state !== 'deleted' && String(note.note_date || '') === today)
+      .filter((note) => note?.record_state !== 'deleted' && String(note.note_date || '') === selectedDate)
       .sort((left, right) => {
         const ts = timestampMs(right.updated_at) - timestampMs(left.updated_at);
         if (ts !== 0) return ts;
@@ -551,6 +600,7 @@ export const autopilotOverviewManagerMixin = {
     const source = String(note?.metadata?.source || note?.source || 'manual').trim();
     const title = String(note?.title || '').trim();
     const displayTitle = !title || title.toLowerCase() === 'daily note' ? 'Daily Note' : title;
+    const titleWithDate = `${displayTitle} ${formatDailyScopeDate(selectedDate)}`.trim();
     const resolvedUpdatedBy = updatedByNpub ? normalizeString(this.getSenderName?.(updatedByNpub)) : '';
     const selfNpubs = [
       this.session?.npub,
@@ -565,15 +615,17 @@ export const autopilotOverviewManagerMixin = {
     return {
       note,
       duplicateCount: Math.max(0, notes.length - 1),
-      title: displayTitle,
+      dateKey: selectedDate,
+      title: titleWithDate,
       progress: items.length > 0 ? `${done}/${items.length} done` : 'No tasks yet',
       items,
-      body: narrative || 'Create your Daily Scope for today.',
+      body: narrative || `Create Daily Note for ${formatDailyScopeDate(selectedDate)}.`,
       hasMoreBody: narrative.length > 120,
       source: source.toLowerCase() === 'manual note' ? 'manual' : source,
       updatedBy,
       updatedByLabel,
       updatedAt: note?.updated_at || '',
+      metaLabel: note ? `Updated ${updatedByLabel || (source.toLowerCase() === 'manual note' ? 'manual' : source)}${note?.updated_at ? ` ${this.formatRelativeTime?.(note.updated_at) || ''}` : ''}`.trim() : 'Not created yet',
     };
   },
 

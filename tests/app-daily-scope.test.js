@@ -215,4 +215,38 @@ describe('app Daily Scope behavior', () => {
       ]),
     }));
   });
+
+  it('creates a missing Daily Scope note for the selected overview date', async () => {
+    const store = await createStore();
+    Object.assign(store, {
+      dailyNotes: [],
+      dailyScopeSelectedDate: '2026-06-16',
+      getTodayDateKey: () => '2026-06-17',
+      getDailyNoteScopeMetadata: () => ({}),
+    });
+    upsertTowerPgDailyNoteMock.mockResolvedValueOnce({
+      daily_note: {
+        id: 'daily-yesterday',
+        owner_actor_id: 'owner-actor-1',
+        owner_actor_npub: 'npub-human',
+        note_date: '2026-06-16',
+        title: 'Daily note',
+        body: '',
+        focus: '',
+        items: [],
+        status: 'active',
+        row_version: 1,
+        updated_at: '2026-06-16T09:00:00.000Z',
+      },
+    });
+
+    await store.openDailyNoteEditor();
+
+    expect(upsertTowerPgDailyNoteMock).toHaveBeenCalledWith('workspace-1', expect.objectContaining({
+      note_date: '2026-06-16',
+      title: 'Daily note',
+    }), { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
+    expect(store.dailyNoteEditorOpen).toBe(true);
+    expect(store.dailyNoteEditorRecordId).toBe('daily-yesterday');
+  });
 });

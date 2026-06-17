@@ -211,11 +211,13 @@ describe('autopilot overview manager', () => {
     expect(store.autopilotOverviewDailyNote).toEqual(expect.objectContaining({
       note: expect.objectContaining({ record_id: 'daily-newer' }),
       duplicateCount: 1,
-      title: 'Daily Note',
+      dateKey: '2026-06-17',
+      title: 'Daily Note 17th June 2026',
       progress: '1/4 done',
       body: 'Narrative should not render in the preview card',
       hasMoreBody: false,
       updatedByLabel: 'Pete Winn',
+      metaLabel: 'Updated Pete Winn',
       items: [
         { id: 'one', text: 'Deploy Kindling Pipelines', completed: true },
         { id: 'two', text: 'Kick Off Plantrite', completed: false },
@@ -245,6 +247,35 @@ describe('autopilot overview manager', () => {
       updatedByLabel: '',
       source: 'manual',
     }));
+  });
+
+  it('pages Daily Scope dates and shows an empty create state for missing days', () => {
+    const store = Object.assign(Object.create(autopilotOverviewManagerMixin), {
+      getTodayDateKey: () => '2026-06-17',
+      dailyScopeSelectedDate: '',
+      dailyNotes: [],
+    });
+
+    expect(store.autopilotOverviewDailyNote).toEqual(expect.objectContaining({
+      dateKey: '2026-06-17',
+      title: 'Daily Note 17th June 2026',
+      body: 'Create Daily Note for 17th June 2026.',
+      metaLabel: 'Not created yet',
+    }));
+    expect(store.autopilotOverviewDailyScopeCanGoNext).toBe(false);
+
+    store.showPreviousDailyScopeNote();
+
+    expect(store.dailyScopeSelectedDate).toBe('2026-06-16');
+    expect(store.autopilotOverviewDailyScopeCanGoNext).toBe(true);
+    expect(store.autopilotOverviewDailyNote).toEqual(expect.objectContaining({
+      dateKey: '2026-06-16',
+      title: 'Daily Note 16th June 2026',
+      body: 'Create Daily Note for 16th June 2026.',
+    }));
+
+    store.showNextDailyScopeNote();
+    expect(store.dailyScopeSelectedDate).toBe('2026-06-17');
   });
 
   it('counts only unresolved document comments', () => {

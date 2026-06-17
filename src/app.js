@@ -501,6 +501,7 @@ export function initApp() {
     groups: [],
     documents: [],
     dailyNotes: [],
+    dailyScopeSelectedDate: '',
     dailyNoteEditorOpen: false,
     dailyNoteEditorSaving: false,
     dailyNoteEditorError: '',
@@ -2529,6 +2530,10 @@ export function initApp() {
       return `${year}-${month}-${day}`;
     },
 
+    getDailyScopeDateKey() {
+      return this.dailyScopeSelectedDate || this.getTodayDateKey();
+    },
+
     getDailyNoteScopeMetadata() {
       const selectedChannelId = this.selectedChannelId || this.pgContextSelectedChannelId || '';
       const selectedChannel = selectedChannelId
@@ -2541,14 +2546,13 @@ export function initApp() {
       };
     },
 
-    getCurrentDailyNote() {
-      const today = this.getTodayDateKey();
+    getCurrentDailyNote(noteDate = this.getDailyScopeDateKey()) {
       const context = resolveTowerPgWorkspaceContext(this);
       const ownerNpub = context.workspaceOwnerNpub || '';
       const notes = (this.dailyNotes || [])
         .filter((note) =>
           note?.record_state !== 'deleted'
-          && String(note.note_date || '') === today
+          && String(note.note_date || '') === noteDate
           && (!ownerNpub || !note.owner_actor_npub || note.owner_actor_npub === ownerNpub || note.owner_npub === ownerNpub)
         )
         .sort((left, right) => {
@@ -2747,7 +2751,7 @@ export function initApp() {
         if (!context.workspaceId || !context.baseUrl) throw new Error('Flight Deck PG workspace is not connected.');
         const scopeMetadata = this.getDailyNoteScopeMetadata();
         const response = await upsertTowerPgDailyNote(context.workspaceId, {
-          note_date: this.getTodayDateKey(),
+          note_date: this.getDailyScopeDateKey(),
           title: 'Daily note',
           body: '',
           focus: '',
@@ -2779,7 +2783,7 @@ export function initApp() {
         const context = resolveTowerPgWorkspaceContext(this);
         if (!context.workspaceId || !context.baseUrl) throw new Error('Flight Deck PG workspace is not connected.');
         const response = await upsertTowerPgDailyNote(context.workspaceId, {
-          note_date: note.note_date || this.getTodayDateKey(),
+          note_date: note.note_date || this.getDailyScopeDateKey(),
           owner_actor_id: note.owner_actor_id || note.pg_owner_actor_id || undefined,
           title: this.dailyNoteEditorTitle.trim() || 'Daily note',
           body: this.dailyNoteEditorBody,
@@ -2824,7 +2828,7 @@ export function initApp() {
         const context = resolveTowerPgWorkspaceContext(this);
         if (!context.workspaceId || !context.baseUrl) throw new Error('Flight Deck PG workspace is not connected.');
         const response = await upsertTowerPgDailyNote(context.workspaceId, {
-          note_date: note.note_date || this.getTodayDateKey(),
+          note_date: note.note_date || this.getDailyScopeDateKey(),
           owner_actor_id: note.owner_actor_id || note.pg_owner_actor_id || undefined,
           title: note.title || 'Daily note',
           body: note.body || '',

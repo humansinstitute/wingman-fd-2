@@ -94,7 +94,8 @@ describe('Chat channel rendering hooks', () => {
   });
 
   it('uses the same PG context controls in the chat channel bar', () => {
-    const chatBarIndex = html.indexOf('aria-label="Chat channels"');
+    const chatSectionIndex = html.indexOf('class="chat-section"');
+    const chatBarIndex = html.indexOf('class="chat-channel-header"', chatSectionIndex);
     const chatBarEndIndex = html.indexOf('<div class="chat-layout"', chatBarIndex);
     const chatBar = html.slice(chatBarIndex, chatBarEndIndex);
     const avatarIndex = chatBar.indexOf('class="channel-row-workspace-avatar-btn"');
@@ -102,6 +103,7 @@ describe('Chat channel rendering hooks', () => {
     const homeIndex = chatBar.indexOf('class="chat-channel-tab-item channel-home-tab-item"');
     const channelLoopIndex = chatBar.indexOf('<template x-for="ch in $store.chat.pgContextChannels"');
 
+    expect(chatSectionIndex).toBeGreaterThan(-1);
     expect(chatBarIndex).toBeGreaterThan(-1);
     expect(avatarIndex).toBeGreaterThan(-1);
     expect(scopeSwitcherIndex).toBeGreaterThan(-1);

@@ -1177,9 +1177,13 @@
                   <span x-text="$store.chat.autopilotOverviewDailyNote.body"></span>
                   <span class="daily-note-more" x-show="$store.chat.autopilotOverviewDailyNote.hasMoreBody">... more</span>
                 </p>
-                <div class="autopilot-row-meta">
-                  <span x-text="`Updated ${$store.chat.autopilotOverviewDailyNote.updatedByLabel || $store.chat.autopilotOverviewDailyNote.source}${$store.chat.autopilotOverviewDailyNote.updatedAt ? ' ' + $store.chat.formatRelativeTime($store.chat.autopilotOverviewDailyNote.updatedAt) : ''}`"></span>
+                <div class="autopilot-row-meta daily-note-preview-meta">
+                  <span x-text="$store.chat.autopilotOverviewDailyNote.metaLabel"></span>
                   <span x-show="$store.chat.autopilotOverviewDailyNote.duplicateCount > 0" x-text="`${$store.chat.autopilotOverviewDailyNote.duplicateCount} duplicate note${$store.chat.autopilotOverviewDailyNote.duplicateCount === 1 ? '' : 's'}`"></span>
+                  <span class="daily-note-date-pager">
+                    <button type="button" @click.stop="$store.chat.showPreviousDailyScopeNote()" aria-label="Show previous Daily Note">&lt;</button>
+                    <button type="button" @click.stop="$store.chat.showNextDailyScopeNote()" :disabled="!$store.chat.autopilotOverviewDailyScopeCanGoNext" aria-label="Show next Daily Note">&gt;</button>
+                  </span>
                 </div>
               </div>
             </section>
@@ -4719,9 +4723,13 @@
                   <span x-text="$store.chat.autopilotOverviewDailyNote.body"></span>
                   <span class="daily-note-more" x-show="$store.chat.autopilotOverviewDailyNote.hasMoreBody">... more</span>
                 </p>
-                <div class="autopilot-row-meta">
-                  <span x-text="`Updated ${$store.chat.autopilotOverviewDailyNote.updatedByLabel || $store.chat.autopilotOverviewDailyNote.source}${$store.chat.autopilotOverviewDailyNote.updatedAt ? ' ' + $store.chat.formatRelativeTime($store.chat.autopilotOverviewDailyNote.updatedAt) : ''}`"></span>
+                <div class="autopilot-row-meta daily-note-preview-meta">
+                  <span x-text="$store.chat.autopilotOverviewDailyNote.metaLabel"></span>
                   <span x-show="$store.chat.autopilotOverviewDailyNote.duplicateCount > 0" x-text="`${$store.chat.autopilotOverviewDailyNote.duplicateCount} duplicate note${$store.chat.autopilotOverviewDailyNote.duplicateCount === 1 ? '' : 's'}`"></span>
+                  <span class="daily-note-date-pager">
+                    <button type="button" @click.stop="$store.chat.showPreviousDailyScopeNote()" aria-label="Show previous Daily Note">&lt;</button>
+                    <button type="button" @click.stop="$store.chat.showNextDailyScopeNote()" :disabled="!$store.chat.autopilotOverviewDailyScopeCanGoNext" aria-label="Show next Daily Note">&gt;</button>
+                  </span>
                 </div>
               </div>
             </section>
@@ -7588,7 +7596,7 @@
           <div class="doc-modal-card daily-note-modal">
             <button class="modal-close" type="button" @click="$store.chat.closeDailyNoteEditor()">&times;</button>
             <div class="daily-note-modal-meta">
-              <p class="doc-comment-modal-copy">Daily note for <span x-text="$store.chat.getTodayDateKey()"></span></p>
+              <p class="doc-comment-modal-copy">Daily note for <span x-text="$store.chat.getDailyScopeDateKey()"></span></p>
               <span x-show="$store.chat.dailyNoteEditorVersionLabel" x-text="$store.chat.dailyNoteEditorVersionLabel"></span>
             </div>
             <input class="daily-note-title-input" type="text" x-model="$store.chat.dailyNoteEditorTitle" placeholder="Daily Scope" />
