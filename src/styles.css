@@ -8826,47 +8826,46 @@ button:disabled {
   margin-left: auto;
   display: inline-flex;
   align-items: center;
-  gap: 0;
+  gap: 0.15rem;
   flex: 0 0 auto;
-  overflow: hidden;
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  border-radius: 999px;
-  background: rgba(248, 250, 252, 0.92);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .daily-note-date-pager button {
-  width: 1.55rem;
-  height: 1.35rem;
+  width: 1.45rem;
+  height: 1.45rem;
   border: 0;
-  border-radius: 0;
+  border-radius: 999px;
   background: transparent;
-  color: #64748b;
-  font: inherit;
-  font-size: 1rem;
-  font-weight: 700;
-  line-height: 1;
+  color: #94a3b8;
   cursor: pointer;
   display: grid;
   place-items: center;
+  padding: 0;
+  transition: background 120ms ease, color 120ms ease, opacity 120ms ease;
 }
 
-.daily-note-date-pager button + button {
-  border-left: 1px solid rgba(15, 23, 42, 0.08);
+.daily-note-date-pager svg {
+  width: 0.9rem;
+  height: 0.9rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .daily-note-date-pager button:hover:not(:disabled) {
-  background: rgba(37, 99, 235, 0.08);
-  color: #2563eb;
+  background: rgba(15, 23, 42, 0.06);
+  color: #334155;
 }
 
 .daily-note-date-pager button:focus-visible {
   outline: 2px solid rgba(37, 99, 235, 0.28);
-  outline-offset: -2px;
+  outline-offset: 1px;
 }
 
 .daily-note-date-pager button:disabled {
-  opacity: 0.35;
+  opacity: 0.25;
   cursor: not-allowed;
 }
 
