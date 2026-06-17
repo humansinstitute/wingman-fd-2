@@ -178,6 +178,7 @@ describe('autopilot overview manager', () => {
       pgContextSelectedChannelId: null,
       selectedChannelId: 'chan-a',
       getTodayDateKey: () => '2026-06-17',
+      getSenderName: (npub) => (npub === 'npub1pete' ? 'Pete Winn' : npub),
       dailyNotes: [
         {
           record_id: 'daily-older',
@@ -194,6 +195,7 @@ describe('autopilot overview manager', () => {
           title: 'Daily note',
           body: 'Narrative should not render in the preview card',
           focus: 'Deploy Kindling Pipelines, Kick Off Plantrite, Scout Cash',
+          updated_by_actor_npub: 'npub1pete',
           items: [
             { id: 'one', text: 'Deploy Kindling Pipelines', completed: true },
             { id: 'two', text: 'Kick Off Plantrite', completed: false },
@@ -213,12 +215,35 @@ describe('autopilot overview manager', () => {
       progress: '1/4 done',
       body: 'Narrative should not render in the preview card',
       hasMoreBody: false,
+      updatedByLabel: 'Pete Winn',
       items: [
         { id: 'one', text: 'Deploy Kindling Pipelines', completed: true },
         { id: 'two', text: 'Kick Off Plantrite', completed: false },
         { id: 'three', text: 'Scout Cash', completed: false },
         { id: 'four', text: 'Review Daily Scope', completed: false },
       ],
+    }));
+  });
+
+  it('does not expose raw pubkeys in the Daily Scope updated-by label', () => {
+    const store = Object.assign(Object.create(autopilotOverviewManagerMixin), {
+      getTodayDateKey: () => '2026-06-17',
+      getSenderName: (npub) => npub,
+      dailyNotes: [{
+        record_id: 'daily-key',
+        note_date: '2026-06-17',
+        title: 'Daily note',
+        body: 'Narrative',
+        updated_by_actor_npub: 'npub1abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz',
+        metadata: { source: 'manual' },
+        updated_at: '2026-06-17T09:00:00.000Z',
+      }],
+    });
+
+    expect(store.autopilotOverviewDailyNote).toEqual(expect.objectContaining({
+      updatedBy: 'npub1abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz',
+      updatedByLabel: '',
+      source: 'manual',
     }));
   });
 

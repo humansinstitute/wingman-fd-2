@@ -16,6 +16,14 @@ function normalizeString(value) {
   return String(value || '').trim();
 }
 
+function isKeyLikeDisplay(value) {
+  const text = normalizeString(value);
+  return /^npub1/i.test(text)
+    || /^nprofile1/i.test(text)
+    || /^[0-9a-f]{8}-[0-9a-f-]{8,}$/i.test(text)
+    || /^[0-9a-f]{24,}$/i.test(text);
+}
+
 function timestampMs(value) {
   const ts = Date.parse(value || '');
   return Number.isFinite(ts) ? ts : 0;
@@ -537,11 +545,23 @@ export const autopilotOverviewManagerMixin = {
       }))
       .filter((item) => item.text);
     const done = items.filter((item) => item?.completed === true).length;
-    const updatedBy = note?.updated_by_actor_npub || note?.updated_by_actor_id || '';
+    const updatedByNpub = normalizeString(note?.updated_by_actor_npub);
+    const updatedBy = updatedByNpub || normalizeString(note?.updated_by_actor_id);
     const narrative = String(note?.body || note?.focus || '').replace(/\s+/g, ' ').trim();
     const source = String(note?.metadata?.source || note?.source || 'manual').trim();
     const title = String(note?.title || '').trim();
     const displayTitle = !title || title.toLowerCase() === 'daily note' ? 'Daily Note' : title;
+    const resolvedUpdatedBy = updatedByNpub ? normalizeString(this.getSenderName?.(updatedByNpub)) : '';
+    const selfNpubs = [
+      this.session?.npub,
+      this.signingNpub,
+      this.ownerNpub,
+      this.currentWorkspaceOwnerNpub,
+      note?.owner_actor_npub,
+    ].map(normalizeString).filter(Boolean);
+    const updatedByLabel = resolvedUpdatedBy && !isKeyLikeDisplay(resolvedUpdatedBy)
+      ? resolvedUpdatedBy
+      : (updatedByNpub && selfNpubs.includes(updatedByNpub) ? 'you' : '');
     return {
       note,
       duplicateCount: Math.max(0, notes.length - 1),
@@ -552,6 +572,7 @@ export const autopilotOverviewManagerMixin = {
       hasMoreBody: narrative.length > 120,
       source: source.toLowerCase() === 'manual note' ? 'manual' : source,
       updatedBy,
+      updatedByLabel,
       updatedAt: note?.updated_at || '',
     };
   },

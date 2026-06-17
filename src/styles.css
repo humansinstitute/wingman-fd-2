@@ -4404,6 +4404,43 @@ button:disabled {
   background: #fff;
 }
 
+.channel-row-workspace-avatar-btn {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: #ffffff;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.channel-row-workspace-avatar-btn:hover {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+.channel-row-workspace-avatar {
+  width: 100%;
+  height: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  object-fit: cover;
+  border-radius: 50%;
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.channel-row-workspace-avatar-fallback {
+  background: #0f172a;
+  color: #ffffff;
+}
+
 .channel-row-scope-switcher {
   display: flex;
   align-items: center;
@@ -9967,6 +10004,7 @@ button:disabled {
     flex: 0 0 auto;
   }
 
+  .channel-row-workspace-avatar-btn,
   .channel-row-scope-switcher {
     display: none;
   }

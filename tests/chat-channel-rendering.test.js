@@ -76,13 +76,20 @@ describe('Chat channel rendering hooks', () => {
     const globalBarIndex = html.indexOf('class="global-pg-channel-bar"');
     const globalBarEndIndex = html.indexOf('<template x-if="$store.chat.navSection === \'status\'">', globalBarIndex);
     const globalBar = html.slice(globalBarIndex, globalBarEndIndex);
+    const avatarIndex = globalBar.indexOf('class="channel-row-workspace-avatar-btn"');
+    const scopeSwitcherIndex = globalBar.indexOf('class="channel-row-scope-switcher"');
     const homeIndex = globalBar.indexOf('class="chat-channel-tab-item channel-home-tab-item"');
     const channelLoopIndex = globalBar.indexOf('<template x-for="channel in $store.chat.pgContextChannels"');
 
+    expect(avatarIndex).toBeGreaterThan(-1);
+    expect(scopeSwitcherIndex).toBeGreaterThan(-1);
+    expect(avatarIndex).toBeLessThan(scopeSwitcherIndex);
     expect(homeIndex).toBeGreaterThan(-1);
     expect(homeIndex).toBeLessThan(channelLoopIndex);
     expect(globalBar).toContain("pg-all-scopes-context");
     expect(globalBar).toContain('@click="$store.chat.openAllScopesOverview()"');
+    expect(globalBar).toContain('currentWorkspaceAvatarUrl');
+    expect(globalBar).toContain('currentWorkspaceInitials');
     expect(globalBar).toContain(':class="{ active: $store.chat.pgContextAllScopesSelected }"');
   });
 
@@ -90,13 +97,19 @@ describe('Chat channel rendering hooks', () => {
     const chatBarIndex = html.indexOf('aria-label="Chat channels"');
     const chatBarEndIndex = html.indexOf('<div class="chat-layout"', chatBarIndex);
     const chatBar = html.slice(chatBarIndex, chatBarEndIndex);
+    const avatarIndex = chatBar.indexOf('class="channel-row-workspace-avatar-btn"');
+    const scopeSwitcherIndex = chatBar.indexOf('class="channel-row-scope-switcher"');
     const homeIndex = chatBar.indexOf('class="chat-channel-tab-item channel-home-tab-item"');
     const channelLoopIndex = chatBar.indexOf('<template x-for="ch in $store.chat.pgContextChannels"');
 
     expect(chatBarIndex).toBeGreaterThan(-1);
+    expect(avatarIndex).toBeGreaterThan(-1);
+    expect(scopeSwitcherIndex).toBeGreaterThan(-1);
+    expect(avatarIndex).toBeLessThan(scopeSwitcherIndex);
     expect(homeIndex).toBeGreaterThan(-1);
     expect(homeIndex).toBeLessThan(channelLoopIndex);
     expect(chatBar).toContain('@click="$store.chat.openAllScopesOverview()"');
+    expect(chatBar).toContain('currentWorkspaceAvatarUrl');
     expect(chatBar).toContain('active: $store.chat.pgContextSelectedChannelId === ch.record_id');
     expect(chatBar).toContain(':aria-selected="$store.chat.pgContextSelectedChannelId === ch.record_id"');
     expect(chatBar).not.toContain('scopeFilteredChannels');
