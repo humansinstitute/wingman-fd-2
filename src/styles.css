@@ -4329,6 +4329,23 @@ button:disabled {
     padding: 1rem;
   }
 
+  .flightdeck-summary-daily {
+    padding: 0.9rem 1rem;
+  }
+
+  .flightdeck-summary-daily .daily-note-preview-item {
+    max-width: min(260px, calc(100vw - 88px));
+  }
+
+  .flightdeck-summary-daily .daily-note-preview-meta {
+    flex-wrap: wrap;
+    row-gap: 0.25rem;
+  }
+
+  .flightdeck-summary-daily .daily-note-date-pager {
+    margin-left: auto;
+  }
+
   .flightdeck-reports-grid {
     grid-template-columns: 1fr;
   }
@@ -7590,6 +7607,8 @@ button:disabled {
   align-items: center;
   gap: 0.45rem;
   margin-top: 0.45rem;
+  width: 100%;
+  min-width: 0;
   max-width: 100%;
   overflow-x: auto;
   overflow-y: hidden;
@@ -8776,6 +8795,9 @@ button:disabled {
 
 .autopilot-daily-scope {
   display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
   min-height: 0;
   padding: 16px 20px;
   cursor: pointer;
@@ -8812,6 +8834,7 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  max-width: 100%;
   min-width: 0;
 }
 
@@ -8973,8 +8996,25 @@ button:disabled {
   }
 
   .autopilot-daily-scope {
-    align-items: flex-start;
-    flex-direction: column;
+    padding: 0.9rem 1rem;
+  }
+
+  .autopilot-daily-scope h3 {
+    font-size: 1rem;
+    line-height: 1.25;
+  }
+
+  .autopilot-daily-scope .daily-note-preview-item {
+    max-width: min(260px, calc(100vw - 88px));
+  }
+
+  .autopilot-daily-scope .daily-note-preview-meta {
+    flex-wrap: wrap;
+    row-gap: 0.25rem;
+  }
+
+  .autopilot-daily-scope .daily-note-date-pager {
+    margin-left: auto;
   }
 }
 
