@@ -2626,8 +2626,19 @@ export function initApp() {
     get harnessAgentDailyScopeAccessEnabled() {
       const agentNpub = this.workspaceHarnessAgentNpub || '';
       return Boolean(agentNpub && (this.dailyScopeAgentAccess || []).some((row) =>
-        (row.agent_actor_npub === agentNpub || row.agent_npub === agentNpub) && row.revoked_at == null && row.can_read !== false && row.can_write !== false
+        (row.agent_actor_npub === agentNpub || row.agent_npub === agentNpub || row.agent_actor_id === this.getPgWorkspaceMemberActorId?.(agentNpub)) && row.revoked_at == null && row.can_read !== false && row.can_write !== false
       ));
+    },
+
+    async getHarnessAgentDailyScopeActorId(agentNpub) {
+      const npub = String(agentNpub || '').trim();
+      if (!npub) return '';
+      let actorId = this.getPgWorkspaceMemberActorId?.(npub) || '';
+      if (!actorId) {
+        await this.refreshTowerPgWorkspaceMembers?.({ force: true, limit: 200 }).catch(() => []);
+        actorId = this.getPgWorkspaceMemberActorId?.(npub) || '';
+      }
+      return String(actorId || '').trim();
     },
 
     async toggleHarnessAgentDailyScopeAccess() {
@@ -2637,7 +2648,9 @@ export function initApp() {
       try {
         const context = resolveTowerPgWorkspaceContext(this);
         if (!context.workspaceId || !context.baseUrl) throw new Error('Flight Deck PG workspace is not connected.');
+        const agentActorId = await this.getHarnessAgentDailyScopeActorId(agentNpub);
         await upsertTowerPgDailyScopeAgentAccess(context.workspaceId, {
+          ...(agentActorId ? { agent_actor_id: agentActorId } : {}),
           agent_npub: agentNpub,
           can_read: !this.harnessAgentDailyScopeAccessEnabled,
           can_write: !this.harnessAgentDailyScopeAccessEnabled,

@@ -4,6 +4,8 @@ import path from 'node:path';
 
 const htmlPath = path.resolve(import.meta.dirname, '..', 'index.html');
 const html = fs.readFileSync(htmlPath, 'utf-8');
+const stylesPath = path.resolve(import.meta.dirname, '..', 'src', 'styles.css');
+const styles = fs.readFileSync(stylesPath, 'utf-8');
 
 describe('Chat channel rendering hooks', () => {
   it('renders explicit unread-row and divider hooks for chat messages', () => {
@@ -91,6 +93,11 @@ describe('Chat channel rendering hooks', () => {
     expect(globalBar).toContain('currentWorkspaceAvatarUrl');
     expect(globalBar).toContain('currentWorkspaceInitials');
     expect(globalBar).toContain(':class="{ active: $store.chat.pgContextAllScopesSelected }"');
+  });
+
+  it('keeps the channel row workspace avatar from inheriting global button padding', () => {
+    expect(styles).toMatch(/\.channel-row-workspace-avatar-btn\s*\{[\s\S]*padding:\s*0;/);
+    expect(styles).toMatch(/\.channel-row-workspace-avatar\s*\{[\s\S]*width:\s*28px;[\s\S]*height:\s*28px;/);
   });
 
   it('uses the same PG context controls in the chat channel bar', () => {

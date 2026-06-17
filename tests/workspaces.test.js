@@ -231,6 +231,31 @@ describe('workspace entry normalization', () => {
     });
   });
 
+  it('does not let sparse workspace refreshes erase an existing avatar', () => {
+    const existing = [{
+      workspaceOwnerNpub: 'npub1workspace',
+      name: 'Other Stuff',
+      description: 'Main workspace',
+      avatarUrl: 'storage://avatar-1',
+      directHttpsUrl: 'https://sb.example',
+      serviceNpub: 'npub1service',
+      appNpub: 'npub1app',
+    }];
+
+    const merged = mergeWorkspaceEntries(existing, [{
+      workspace_owner_npub: 'npub1workspace',
+      service_npub: 'npub1service',
+      avatarUrl: undefined,
+      name: 'Other Stuff',
+    }]);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toMatchObject({
+      workspaceOwnerNpub: 'npub1workspace',
+      avatarUrl: 'storage://avatar-1',
+    });
+  });
+
   it('does not let token-derived workspace metadata erase an existing workspace name', () => {
     const existing = [{
       workspaceOwnerNpub: 'npub1workspaceowner',

@@ -314,10 +314,13 @@ function normalizeWorkspacePatch(raw = {}) {
   ];
 
   for (const [keys, normalizedKey] of fieldMap) {
-    if (firstOwnValue(raw, keys).found) patch[normalizedKey] = normalized[normalizedKey];
+    const own = firstOwnValue(raw, keys);
+    if (own.found && own.value !== undefined) patch[normalizedKey] = normalized[normalizedKey];
   }
-  if (firstOwnValue(raw, ['relayUrls', 'relay_urls']).found) patch.relayUrls = normalized.relayUrls;
-  if (firstOwnValue(raw, ['pgSelfIndexRelays', 'pg_self_index_relays']).found) patch.pgSelfIndexRelays = normalized.pgSelfIndexRelays;
+  const relayUrls = firstOwnValue(raw, ['relayUrls', 'relay_urls']);
+  if (relayUrls.found && relayUrls.value !== undefined) patch.relayUrls = normalized.relayUrls;
+  const pgSelfIndexRelays = firstOwnValue(raw, ['pgSelfIndexRelays', 'pg_self_index_relays']);
+  if (pgSelfIndexRelays.found && pgSelfIndexRelays.value !== undefined) patch.pgSelfIndexRelays = normalized.pgSelfIndexRelays;
 
   return patch;
 }

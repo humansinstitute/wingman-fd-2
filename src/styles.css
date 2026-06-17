@@ -4412,6 +4412,7 @@ button:disabled {
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  padding: 0;
   border: 1px solid var(--border);
   border-radius: 50%;
   background: #ffffff;
@@ -4425,8 +4426,9 @@ button:disabled {
 }
 
 .channel-row-workspace-avatar {
-  width: 100%;
-  height: 100%;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
   display: inline-flex;
   align-items: center;
   justify-content: center;

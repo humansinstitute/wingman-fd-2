@@ -272,6 +272,62 @@ describe('PG workspace manager mode', () => {
     expect(store.startWorkspaceLiveQueries).toHaveBeenCalled();
   });
 
+  it('uploads PG workspace avatars without requiring a legacy admin group ref', async () => {
+    const api = await import('../src/api.js');
+    const db = await import('../src/db.js');
+    api.uploadStorageObject.mockResolvedValue({ object_id: 'storage-avatar-1' });
+    api.completeStorageObject.mockResolvedValue({ object_id: 'storage-avatar-1' });
+    db.cacheStorageImage.mockResolvedValue(undefined);
+
+    const workspace = {
+      workspaceKey: 'pg:npub1user::tower:npub1tower::workspace:npub1workspace::app:flightdeck_pg',
+      workspaceOwnerNpub: 'npub1owner',
+      workspaceId: 'workspace-1',
+      directHttpsUrl: 'https://tower.example',
+      pgSessionNpub: 'npub1user',
+      pgBackendMode: true,
+      pgMe: { permissions: ['workspace.manage'] },
+    };
+    const prepareStorageObjectForCurrentWorkspace = vi.fn().mockResolvedValue({
+      object_id: 'storage-avatar-1',
+      upload_url: '',
+    });
+    const store = await buildStore({
+      knownWorkspaces: [workspace],
+      selectedWorkspaceKey: workspace.workspaceKey,
+      currentWorkspaceOwnerNpub: 'npub1owner',
+      session: { npub: 'npub1user' },
+      groups: [],
+      prepareStorageObjectForCurrentWorkspace,
+      defaultPastedImageName: vi.fn(() => 'workspace-avatar.png'),
+      sha256HexForBytes: vi.fn().mockResolvedValue('sha256-avatar'),
+      rememberStorageImageUrl: vi.fn(),
+    });
+    const file = new File([new Uint8Array([1, 2, 3])], 'avatar.png', { type: 'image/png' });
+
+    const result = await store.uploadWorkspaceAvatarFile(file);
+
+    expect(result).toBe('storage://storage-avatar-1');
+    expect(prepareStorageObjectForCurrentWorkspace).toHaveBeenCalledWith(expect.objectContaining({
+      owner_npub: 'npub1owner',
+      content_type: 'image/png',
+      file_name: 'workspace-avatar.png',
+    }));
+    expect(prepareStorageObjectForCurrentWorkspace.mock.calls[0][0]).not.toHaveProperty('owner_group_id');
+    expect(prepareStorageObjectForCurrentWorkspace.mock.calls[0][0]).not.toHaveProperty('access_group_ids');
+    expect(api.uploadStorageObject).toHaveBeenCalledWith(
+      expect.objectContaining({ object_id: 'storage-avatar-1' }),
+      expect.any(Uint8Array),
+      'image/png',
+      { baseUrl: 'https://tower.example' },
+    );
+    expect(api.completeStorageObject).toHaveBeenCalledWith(
+      'storage-avatar-1',
+      { size_bytes: 3, sha256_hex: 'sha256-avatar' },
+      { baseUrl: 'https://tower.example' },
+    );
+  });
+
   it('rejects a cached PG workspace scoped to a different signer before Tower calls', async () => {
     const workspace = {
       workspaceKey: 'pg:npub1other::tower:npub1tower::workspace:npub1workspace::app:flightdeck_pg',

@@ -140,6 +140,7 @@ describe('app Daily Scope behavior', () => {
     const store = await createStore();
     Object.assign(store, {
       workspaceHarnessAgentNpub: 'npub-agent',
+      pgWorkspaceMembers: [{ actor_id: 'actor-agent', npub: 'npub-agent' }],
       dailyScopeAgentAccess: [],
     });
     upsertTowerPgDailyScopeAgentAccessMock.mockResolvedValueOnce({ access: { agent_actor_npub: 'npub-agent' } });
@@ -150,6 +151,7 @@ describe('app Daily Scope behavior', () => {
     await store.toggleHarnessAgentDailyScopeAccess();
 
     expect(upsertTowerPgDailyScopeAgentAccessMock).toHaveBeenCalledWith('workspace-1', {
+      agent_actor_id: 'actor-agent',
       agent_npub: 'npub-agent',
       can_read: true,
       can_write: true,
@@ -158,6 +160,34 @@ describe('app Daily Scope behavior', () => {
       baseUrl: 'https://tower.example',
       appNpub: 'flightdeck_pg',
     });
+    expect(store.harnessAgentDailyScopeAccessEnabled).toBe(true);
+  });
+
+  it('refreshes workspace members before granting Daily Scope access when the agent actor id is not cached', async () => {
+    const store = await createStore();
+    Object.assign(store, {
+      workspaceHarnessAgentNpub: 'npub-agent',
+      pgWorkspaceMembers: [],
+      dailyScopeAgentAccess: [],
+      refreshTowerPgWorkspaceMembers: vi.fn(async () => {
+        store.pgWorkspaceMembers = [{ actor_id: 'actor-agent', npub: 'npub-agent' }];
+        return store.pgWorkspaceMembers;
+      }),
+    });
+    upsertTowerPgDailyScopeAgentAccessMock.mockResolvedValueOnce({ access: { agent_actor_id: 'actor-agent' } });
+    getTowerPgDailyScopeAgentAccessMock.mockResolvedValueOnce({
+      access: [{ agent_actor_id: 'actor-agent', agent_actor_npub: 'npub-agent', can_read: true, can_write: true, revoked_at: null }],
+    });
+
+    await store.toggleHarnessAgentDailyScopeAccess();
+
+    expect(store.refreshTowerPgWorkspaceMembers).toHaveBeenCalledWith({ force: true, limit: 200 });
+    expect(upsertTowerPgDailyScopeAgentAccessMock).toHaveBeenCalledWith('workspace-1', {
+      agent_actor_id: 'actor-agent',
+      agent_npub: 'npub-agent',
+      can_read: true,
+      can_write: true,
+    }, { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
     expect(store.harnessAgentDailyScopeAccessEnabled).toBe(true);
   });
 

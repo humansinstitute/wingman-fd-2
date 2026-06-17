@@ -654,8 +654,9 @@ export const workspaceManagerMixin = {
     }
 
     const bytes = new Uint8Array(await file.arrayBuffer());
+    const usesPgStorage = Boolean(isTowerPgBackendMode() && this.currentWorkspace?.pgBackendMode);
     const settingsGroupId = this.getWorkspaceAdminGroupRef();
-    if (!settingsGroupId) {
+    if (!settingsGroupId && !usesPgStorage) {
       throw new Error('Workspace admin group is not configured yet.');
     }
     try {
@@ -669,8 +670,8 @@ export const workspaceManagerMixin = {
       const storageRequestOptions = storageBackendUrl ? { baseUrl: storageBackendUrl } : {};
       const prepared = await prepareStorage(buildStoragePrepareBody({
         ownerNpub: workspaceOwnerNpub,
-        ownerGroupId: settingsGroupId,
-        accessGroupIds: settingsGroupId ? [settingsGroupId] : [],
+        ownerGroupId: usesPgStorage ? null : settingsGroupId,
+        accessGroupIds: usesPgStorage ? [] : [settingsGroupId],
         contentType: file.type || 'image/png',
         sizeBytes: file.size || bytes.byteLength,
         fileName: this.defaultPastedImageName(file, 'workspace-avatar'),
