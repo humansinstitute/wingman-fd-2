@@ -520,27 +520,33 @@ export const autopilotOverviewManagerMixin = {
 
   get autopilotOverviewDailyNote() {
     const today = this.getTodayDateKey?.() || new Date().toISOString().slice(0, 10);
-    const context = this.autopilotOverviewContext;
     const notes = (this.dailyNotes || [])
       .filter((note) => note?.record_state !== 'deleted' && String(note.note_date || '') === today)
-      .filter((note) => {
-        if (context.mode === 'all') return !note.pg_scope_id && !note.pg_channel_id && !note.metadata?.scope_id && !note.metadata?.channel_id;
-        const scopeId = note.metadata?.scope_id || note.pg_scope_id || '';
-        const channelId = note.metadata?.channel_id || note.pg_channel_id || '';
-        return (!context.scopeId || scopeId === context.scopeId) && (!context.channelId || channelId === context.channelId);
-      })
       .sort((left, right) => {
         const ts = timestampMs(right.updated_at) - timestampMs(left.updated_at);
         if (ts !== 0) return ts;
         return String(left.record_id || '').localeCompare(String(right.record_id || ''));
       });
     const note = notes[0] || null;
+    const items = (Array.isArray(note?.items) ? note.items : [])
+      .slice(0, 5)
+      .map((item, index) => ({
+        id: String(item?.id || `item-${index + 1}`),
+        text: String(item?.text || item?.label || '').trim(),
+        completed: Boolean(item?.completed),
+      }))
+      .filter((item) => item.text);
+    const done = items.filter((item) => item?.completed === true).length;
+    const updatedBy = note?.updated_by_actor_npub || note?.updated_by_actor_id || '';
     return {
       note,
       duplicateCount: Math.max(0, notes.length - 1),
       title: note?.title || 'No Daily Scope yet',
-      body: note?.focus || note?.body || 'Create or record a daily note for this context.',
+      progress: items.length > 0 ? `${done}/${items.length} done` : 'No tasks yet',
+      items,
+      body: items.length > 0 ? '' : (note?.focus || 'Create your Daily Scope for today.'),
       source: note?.metadata?.source || note?.source || 'manual note',
+      updatedBy,
       updatedAt: note?.updated_at || '',
     };
   },

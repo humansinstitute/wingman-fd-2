@@ -167,6 +167,8 @@ import {
   setBaseUrl,
   prepareStorageObject,
   prepareTowerPgStorageObject,
+  getTowerPgDailyScopeAgentAccess,
+  upsertTowerPgDailyScopeAgentAccess,
   upsertTowerPgDailyNote,
   uploadStorageObject,
   completeStorageObject,
@@ -505,7 +507,11 @@ export function initApp() {
     dailyNoteEditorTitle: '',
     dailyNoteEditorBody: '',
     dailyNoteEditorFocus: '',
+    dailyNoteEditorItems: [],
     dailyNoteEditorRecordId: '',
+    dailyNoteEditorMode: 'preview',
+    dailyScopeAgentAccess: [],
+    dailyScopeAgentAccessSaving: false,
     directories: [],
     fileMessages: [],
     fileComments: [],
@@ -518,6 +524,13 @@ export function initApp() {
     fileUploadOpen: false,
     fileUploadItems: [],
     fileUploadError: '',
+    showFileEditModal: false,
+    fileEditRow: null,
+    fileEditName: '',
+    fileEditScopeId: '',
+    fileEditChannelId: '',
+    fileEditSubmitting: false,
+    fileEditError: '',
     reports: [],
     addressBookPeople: [],
     activeThreadId: null,
@@ -2399,13 +2412,16 @@ export function initApp() {
         if (surfaceId) blockDisabledFlightDeckSurface(this, surfaceId);
         section = enabledSection;
       }
+      const previousSection = this.navSection;
       const pgTaskBoardFromChat = section === 'tasks'
         && this.navSection === 'chat'
         && isTowerPgBackendMode()
         && this.selectedChannelId
         ? buildPgChannelTaskBoardId(this.selectedChannelId)
         : '';
-      this.clearInactiveSectionData(section);
+      if (previousSection !== section) {
+        this.clearInactiveSectionData(section);
+      }
       this.navSection = section;
       this.mobileNavOpen = false;
       this.showWorkspaceSwitcherMenu = false;
@@ -2527,17 +2543,20 @@ export function initApp() {
 
     getCurrentDailyNote() {
       const today = this.getTodayDateKey();
-      const metadata = this.getDailyNoteScopeMetadata();
+      const context = resolveTowerPgWorkspaceContext(this);
+      const ownerNpub = context.workspaceOwnerNpub || '';
       const notes = (this.dailyNotes || [])
-        .filter((note) => note?.record_state !== 'deleted' && String(note.note_date || '') === today);
-      const scoped = notes.find((note) => {
-        const noteMetadata = note.metadata || {};
-        const noteScopeId = noteMetadata.scope_id || note.pg_scope_id || null;
-        const noteChannelId = noteMetadata.channel_id || note.pg_channel_id || null;
-        return (!metadata.scope_id || noteScopeId === metadata.scope_id)
-          && (!metadata.channel_id || noteChannelId === metadata.channel_id);
-      });
-      return scoped || notes[0] || null;
+        .filter((note) =>
+          note?.record_state !== 'deleted'
+          && String(note.note_date || '') === today
+          && (!ownerNpub || !note.owner_actor_npub || note.owner_actor_npub === ownerNpub || note.owner_npub === ownerNpub)
+        )
+        .sort((left, right) => {
+          const ts = Date.parse(right.updated_at || '') - Date.parse(left.updated_at || '');
+          if (Number.isFinite(ts) && ts !== 0) return ts;
+          return String(left.record_id || '').localeCompare(String(right.record_id || ''));
+        });
+      return notes[0] || null;
     },
 
     get dailyNoteComponentTitle() {
@@ -2546,8 +2565,17 @@ export function initApp() {
 
     get dailyNoteComponentPreview() {
       const note = this.getCurrentDailyNote();
-      if (!note) return 'Create today’s note for this space';
-      return note.focus || note.body || 'Open today’s note';
+      if (!note) return 'Create your Daily Scope for today';
+      const items = Array.isArray(note.items) ? note.items : [];
+      const labels = items.map((item) => String(item?.text || item?.label || '').trim()).filter(Boolean).slice(0, 5);
+      return labels.length > 0 ? labels.join(' • ') : (note.body || note.focus || 'Open today’s note');
+    },
+
+    get dailyNoteChecklistProgress() {
+      const note = this.getCurrentDailyNote();
+      const items = Array.isArray(note?.items) ? note.items.slice(0, 5) : [];
+      const done = items.filter((item) => item?.completed === true).length;
+      return items.length > 0 ? `${done}/${items.length} done` : 'No tasks yet';
     },
 
     get dailyNoteEditorVersionLabel() {
@@ -2556,13 +2584,58 @@ export function initApp() {
       return version > 0 ? `Version ${version}` : '';
     },
 
+    get dailyNoteEditorPreviewHtml() {
+      return this.renderMarkdown(this.dailyNoteEditorBody || '');
+    },
+
     applyDailyNotes(dailyNotes = []) {
       this.dailyNotes = Array.isArray(dailyNotes) ? dailyNotes : [];
     },
 
     async refreshDailyNotes() {
       if (!isTowerPgBackendMode()) return [];
-      return hydrateTowerPgDailyNotes(this, { limit: 60 });
+      const result = await hydrateTowerPgDailyNotes(this, { limit: 60 });
+      await this.refreshDailyScopeAgentAccess();
+      return result;
+    },
+
+    async refreshDailyScopeAgentAccess() {
+      if (!isTowerPgBackendMode()) return [];
+      const context = resolveTowerPgWorkspaceContext(this);
+      if (!context.workspaceId || !context.baseUrl) return [];
+      const response = await getTowerPgDailyScopeAgentAccess(context.workspaceId, {
+        baseUrl: context.baseUrl,
+        appNpub: context.appNpub,
+      });
+      this.dailyScopeAgentAccess = Array.isArray(response.access) ? response.access : [];
+      return this.dailyScopeAgentAccess;
+    },
+
+    get harnessAgentDailyScopeAccessEnabled() {
+      const agentNpub = this.workspaceHarnessAgentNpub || '';
+      return Boolean(agentNpub && (this.dailyScopeAgentAccess || []).some((row) =>
+        (row.agent_actor_npub === agentNpub || row.agent_npub === agentNpub) && row.revoked_at == null && row.can_read !== false && row.can_write !== false
+      ));
+    },
+
+    async toggleHarnessAgentDailyScopeAccess() {
+      const agentNpub = this.workspaceHarnessAgentNpub || '';
+      if (!agentNpub || !isTowerPgBackendMode()) return;
+      this.dailyScopeAgentAccessSaving = true;
+      try {
+        const context = resolveTowerPgWorkspaceContext(this);
+        if (!context.workspaceId || !context.baseUrl) throw new Error('Flight Deck PG workspace is not connected.');
+        await upsertTowerPgDailyScopeAgentAccess(context.workspaceId, {
+          agent_npub: agentNpub,
+          can_read: !this.harnessAgentDailyScopeAccessEnabled,
+          can_write: !this.harnessAgentDailyScopeAccessEnabled,
+        }, { baseUrl: context.baseUrl, appNpub: context.appNpub });
+        await this.refreshDailyScopeAgentAccess();
+      } catch (error) {
+        this.error = error?.message || 'Failed to update Daily Scope agent access';
+      } finally {
+        this.dailyScopeAgentAccessSaving = false;
+      }
     },
 
     async openDailyNoteEditor() {
@@ -2578,6 +2651,8 @@ export function initApp() {
       this.dailyNoteEditorTitle = note.title || 'Daily note';
       this.dailyNoteEditorBody = note.body || '';
       this.dailyNoteEditorFocus = note.focus || '';
+      this.dailyNoteEditorItems = this.normalizeDailyNoteEditorItems(note.items);
+      this.dailyNoteEditorMode = 'preview';
       this.dailyNoteEditorOpen = true;
     },
 
@@ -2587,6 +2662,85 @@ export function initApp() {
       this.dailyNoteEditorError = '';
     },
 
+    async setDailyNoteEditorMode(mode) {
+      const nextMode = mode === 'edit' ? 'edit' : 'preview';
+      if (nextMode === 'preview' && this.dailyNoteEditorMode === 'edit') {
+        const saved = await this.saveDailyNoteEditor({ close: false });
+        if (!saved) return;
+      }
+      this.dailyNoteEditorMode = nextMode;
+    },
+
+    normalizeDailyNoteEditorItems(items = []) {
+      return (Array.isArray(items) ? items : [])
+        .slice(0, 5)
+        .map((item, index) => ({
+          id: String(item?.id || `item-${Date.now()}-${index}`),
+          text: String(item?.text || item?.label || '').trim(),
+          completed: Boolean(item?.completed),
+          source: item?.source || 'manual',
+          created_at: item?.created_at || new Date().toISOString(),
+          updated_at: item?.updated_at || new Date().toISOString(),
+        }))
+        .filter((item) => item.text);
+    },
+
+    addDailyNoteEditorItem() {
+      if (this.dailyNoteEditorItems.length >= 5) return;
+      this.dailyNoteEditorItems = [
+        ...this.dailyNoteEditorItems,
+        {
+          id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          text: '',
+          completed: false,
+          source: 'manual',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+      ];
+    },
+
+    removeDailyNoteEditorItem(itemId) {
+      this.dailyNoteEditorItems = this.dailyNoteEditorItems.filter((item) => item.id !== itemId);
+    },
+
+    toggleDailyNoteEditorItem(itemId) {
+      const now = new Date().toISOString();
+      this.dailyNoteEditorItems = this.dailyNoteEditorItems.map((item) => (
+        item.id === itemId ? { ...item, completed: !item.completed, updated_at: now } : item
+      ));
+    },
+
+    dailyNoteEditorItemsForSave() {
+      const now = new Date().toISOString();
+      return this.dailyNoteEditorItems
+        .slice(0, 5)
+        .map((item, index) => ({
+          ...item,
+          id: item.id || `item-${index + 1}`,
+          text: String(item.text || '').trim(),
+          completed: Boolean(item.completed),
+          source: item.source || 'manual',
+          created_at: item.created_at || now,
+          updated_at: now,
+        }))
+        .filter((item) => item.text);
+    },
+
+    normalizeDailyNoteItemsForDisplay(items = []) {
+      return (Array.isArray(items) ? items : [])
+        .slice(0, 5)
+        .map((item, index) => ({
+          id: String(item?.id || `item-${index + 1}`),
+          text: String(item?.text || item?.label || '').trim(),
+          completed: Boolean(item?.completed),
+          source: item?.source || 'manual',
+          created_at: item?.created_at || new Date().toISOString(),
+          updated_at: item?.updated_at || new Date().toISOString(),
+        }))
+        .filter((item) => item.text);
+    },
+
     async createDailyNoteForCurrentScope() {
       try {
         const context = resolveTowerPgWorkspaceContext(this);
@@ -2594,8 +2748,6 @@ export function initApp() {
         const scopeMetadata = this.getDailyNoteScopeMetadata();
         const response = await upsertTowerPgDailyNote(context.workspaceId, {
           note_date: this.getTodayDateKey(),
-          scope_id: scopeMetadata.scope_id,
-          channel_id: scopeMetadata.channel_id,
           title: 'Daily note',
           body: '',
           focus: '',
@@ -2617,9 +2769,10 @@ export function initApp() {
       }
     },
 
-    async saveDailyNoteEditor() {
+    async saveDailyNoteEditor(options = {}) {
+      const { close = true } = options || {};
       const note = (this.dailyNotes || []).find((item) => item.record_id === this.dailyNoteEditorRecordId) || this.getCurrentDailyNote();
-      if (!note || !isTowerPgBackendMode()) return;
+      if (!note || !isTowerPgBackendMode()) return null;
       this.dailyNoteEditorSaving = true;
       this.dailyNoteEditorError = '';
       try {
@@ -2627,12 +2780,11 @@ export function initApp() {
         if (!context.workspaceId || !context.baseUrl) throw new Error('Flight Deck PG workspace is not connected.');
         const response = await upsertTowerPgDailyNote(context.workspaceId, {
           note_date: note.note_date || this.getTodayDateKey(),
-          scope_id: this.getDailyNoteScopeMetadata().scope_id,
-          channel_id: this.getDailyNoteScopeMetadata().channel_id,
+          owner_actor_id: note.owner_actor_id || note.pg_owner_actor_id || undefined,
           title: this.dailyNoteEditorTitle.trim() || 'Daily note',
           body: this.dailyNoteEditorBody,
-          focus: this.dailyNoteEditorFocus,
-          items: Array.isArray(note.items) ? note.items : [],
+          focus: this.dailyNoteEditorFocus || this.dailyNoteEditorItemsForSave().map((item) => item.text).slice(0, 3).join(', '),
+          items: this.dailyNoteEditorItemsForSave(),
           status: note.status || 'active',
           metadata: {
             ...(note.metadata || {}),
@@ -2644,11 +2796,49 @@ export function initApp() {
         await upsertDailyNote(saved);
         this.dailyNotes = [...(this.dailyNotes || []).filter((item) => item.record_id !== saved.record_id), saved];
         this.dailyNoteEditorRecordId = saved.record_id;
-        this.dailyNoteEditorOpen = false;
+        if (close) this.dailyNoteEditorOpen = false;
+        return saved;
       } catch (error) {
         this.dailyNoteEditorError = error?.message || 'Failed to save daily note';
+        return null;
       } finally {
         this.dailyNoteEditorSaving = false;
+      }
+    },
+
+    async toggleDailyNoteOverviewItem(itemId) {
+      const note = this.getCurrentDailyNote();
+      if (!note || !itemId || !isTowerPgBackendMode()) return;
+      const items = this.normalizeDailyNoteItemsForDisplay(note.items);
+      if (!items.some((item) => item.id === itemId)) return;
+      const now = new Date().toISOString();
+      const nextItems = items.map((item) => (
+        item.id === itemId ? { ...item, completed: !item.completed, updated_at: now } : item
+      ));
+      const previousNotes = this.dailyNotes || [];
+      const optimisticNote = { ...note, items: nextItems, updated_at: now };
+      this.dailyNotes = previousNotes.map((item) => (
+        item.record_id === note.record_id ? optimisticNote : item
+      ));
+      try {
+        const context = resolveTowerPgWorkspaceContext(this);
+        if (!context.workspaceId || !context.baseUrl) throw new Error('Flight Deck PG workspace is not connected.');
+        const response = await upsertTowerPgDailyNote(context.workspaceId, {
+          note_date: note.note_date || this.getTodayDateKey(),
+          owner_actor_id: note.owner_actor_id || note.pg_owner_actor_id || undefined,
+          title: note.title || 'Daily note',
+          body: note.body || '',
+          focus: note.focus || nextItems.map((item) => item.text).slice(0, 3).join(', '),
+          items: nextItems,
+          status: note.status || 'active',
+          metadata: note.metadata || {},
+        }, { baseUrl: context.baseUrl, appNpub: context.appNpub });
+        const saved = mapPgDailyNoteToLocal(response.daily_note, { workspaceOwnerNpub: context.workspaceOwnerNpub });
+        await upsertDailyNote(saved);
+        this.dailyNotes = [...(this.dailyNotes || []).filter((item) => item.record_id !== saved.record_id), saved];
+      } catch (error) {
+        this.dailyNotes = previousNotes;
+        this.error = error?.message || 'Failed to update Daily Scope task';
       }
     },
 

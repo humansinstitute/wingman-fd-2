@@ -207,9 +207,20 @@ op is **not** blanket approval for others.
 
 ### Commit discipline — no orphan scaffolding, no uncommitted piles
 
-- **Commit frequently and topically.** Each commit is one coherent slice. Never
-  accumulate more than a handful of modified files across a session. If you
-  find yourself about to commit >10 files across >2 topics, stop and split.
+- **Commit frequently and topically.** Each commit is one coherent slice when
+  that is practical, but this repo is also a shared live integration surface.
+  Pete may have multiple agents working in parallel and may intentionally test
+  and ship the whole working tree as one state.
+- **Do not get stuck on dirty trees.** Modified and untracked files are presumed
+  intentional. If Pete has not said another agent is actively editing a file,
+  and you have finished a coherent checkpoint, commit the complete non-ignored
+  working-tree state rather than leaving piles of uncommitted work. Do not hide
+  work in stash, do not clean it, and do not revert it just because it is not
+  yours.
+- **When committing shared-state checkpoints, include every non-ignored file
+  that belongs to the current tested state.** It is acceptable for the commit to
+  include multiple agents' compatible work when Pete is testing the whole repo
+  together. Use the commit message to describe the checkpoint clearly.
 - **Never leave orphan scaffolding.** A feature slice is "Dexie table +
   translator + mixin + UI + sync-family registration + test". If you add the
   sync-family entry, the Dexie table MUST exist in the same commit. If you add
@@ -218,10 +229,11 @@ op is **not** blanket approval for others.
   commit. A commit that "scaffolds" one piece while leaving its consumers or
   backing store absent is forbidden — this is the pattern that silently
   discarded CRM data earlier in this repo's history.
-- **Never leave a session with a dirty working tree and silence.** Before
-  wrapping up, `git status` must be clean, OR you must explicitly tell the user
-  "I am leaving the following files uncommitted because X" and get
-  acknowledgement. Silent hand-off of a dirty tree is banned.
+- **Never leave a session with a dirty working tree and silence.** Prefer a
+  clean `git status` by committing the complete non-ignored current state. If
+  you cannot commit because a file is actively being edited elsewhere, a hook is
+  failing, or Pete explicitly asks you not to commit, say exactly what remains
+  dirty and why. Silent hand-off of a dirty tree is banned.
 - **`dist/` must match `src/` at every commit that ships UI changes.** Run
   `bun run build` before committing UI work; include the rebuilt `dist/` in
   the same commit or a clearly-labeled follow-up.

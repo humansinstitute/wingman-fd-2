@@ -27,7 +27,7 @@ import {
   replaceDocumentsForOwner,
   replacePgAudioNotesForChannel,
   replacePgCommentsForTarget,
-  replacePgDailyNotesForChannelAndDate,
+  replacePgDailyNotesForOwnerAndDate,
   replacePgDocumentsForChannel,
   replacePgMessagesForChannel,
   replacePgReactionsForTarget,
@@ -715,9 +715,12 @@ export function mapPgAudioNoteToLocal(audioNote, {
 }
 
 export function mapPgDailyNoteToLocal(note, { workspaceOwnerNpub } = {}) {
+  const ownerActorNpub = trimText(note?.owner_actor_npub || note?.owner_npub);
   return {
     record_id: trimText(note?.id),
-    owner_npub: trimText(workspaceOwnerNpub),
+    owner_npub: ownerActorNpub || trimText(workspaceOwnerNpub),
+    owner_actor_id: trimText(note?.owner_actor_id),
+    owner_actor_npub: ownerActorNpub,
     note_date: trimText(note?.note_date),
     title: trimText(note?.title) || 'Daily note',
     body: trimText(note?.body),
@@ -738,6 +741,8 @@ export function mapPgDailyNoteToLocal(note, { workspaceOwnerNpub } = {}) {
     pg_channel_id: trimText(note?.channel_id),
     pg_created_by_actor_id: trimText(note?.created_by_actor_id),
     pg_updated_by_actor_id: trimText(note?.updated_by_actor_id),
+    updated_by_actor_id: trimText(note?.updated_by_actor_id),
+    updated_by_actor_npub: trimText(note?.updated_by_actor_npub),
   };
 }
 
@@ -930,12 +935,12 @@ function mergeStoreChannelRows(store, collectionName, applyName, channelId, rows
   return null;
 }
 
-function mergeStoreDailyRows(store, channelId, noteDate, rows = []) {
+function mergeStoreDailyRows(store, ownerActorId, noteDate, rows = []) {
   const existing = Array.isArray(store?.dailyNotes) ? store.dailyNotes : [];
   const nextRows = [
     ...existing.filter((row) => !(
       row?.pg_backend === true
-      && row?.pg_channel_id === channelId
+      && String(row?.owner_actor_id || row?.pg_owner_actor_id || '') === ownerActorId
       && row?.note_date === noteDate
     )),
     ...rows,
@@ -1111,26 +1116,27 @@ export async function hydrateTowerPgChannelAudioNotes(store, channelId, deps = {
   return audioNotes;
 }
 
-export async function hydrateTowerPgDailyNoteTarget(store, channelId, noteDate, deps = {}) {
+export async function hydrateTowerPgDailyNoteTarget(store, ownerActorId, noteDate, deps = {}) {
   const context = resolveTowerPgWorkspaceContext(store);
-  const targetChannelId = trimText(channelId);
+  const targetOwnerActorId = trimText(ownerActorId);
   const targetNoteDate = trimText(noteDate);
-  if (!context.workspaceId || !context.workspaceOwnerNpub || !context.baseUrl || !targetChannelId || !targetNoteDate) return [];
+  if (!context.workspaceId || !context.workspaceOwnerNpub || !context.baseUrl || !targetOwnerActorId || !targetNoteDate) return [];
 
   const readDailyNotes = deps.getTowerPgDailyNotes || getTowerPgDailyNotes;
-  const replaceDailyNotes = deps.replacePgDailyNotesForChannelAndDate || replacePgDailyNotesForChannelAndDate;
+  const replaceDailyNotes = deps.replacePgDailyNotesForOwnerAndDate || deps.replacePgDailyNotesForChannelAndDate || replacePgDailyNotesForOwnerAndDate;
   const result = await readDailyNotes(context.workspaceId, {
     baseUrl: context.baseUrl,
     appNpub: context.appNpub,
-    channelId: targetChannelId,
+    ownerActorId: targetOwnerActorId,
+    channelId: deps.legacyChannelId || null,
     noteDate: targetNoteDate,
     limit: deps.limit || 10,
   });
   const dailyNotes = (Array.isArray(result?.daily_notes) ? result.daily_notes : [])
     .map((note) => mapPgDailyNoteToLocal(note, { workspaceOwnerNpub: context.workspaceOwnerNpub }))
     .filter((note) => note.record_id);
-  await replaceDailyNotes(targetChannelId, targetNoteDate, dailyNotes);
-  await mergeStoreDailyRows(store, targetChannelId, targetNoteDate, dailyNotes);
+  await replaceDailyNotes(targetOwnerActorId, targetNoteDate, dailyNotes);
+  await mergeStoreDailyRows(store, targetOwnerActorId, targetNoteDate, dailyNotes);
   return dailyNotes;
 }
 
@@ -1191,9 +1197,10 @@ export async function hydrateTowerPgEventUpdates(store, events = [], deps = {}) 
       audioChannels.add(channelId);
     } else if (entityType === 'task_comment' && trimText(payload.task_id)) {
       taskCommentTargets.add(trimText(payload.task_id));
-    } else if (entityType === 'daily_note' && channelId && trimText(payload.note_date)) {
+    } else if (entityType === 'daily_note' && (trimText(payload.owner_actor_id) || channelId) && trimText(payload.note_date)) {
       const noteDate = trimText(payload.note_date);
-      dailyTargets.set(`${channelId}:${noteDate}`, { channelId, noteDate });
+      const ownerActorId = trimText(payload.owner_actor_id) || channelId;
+      dailyTargets.set(`${ownerActorId}:${noteDate}`, { ownerActorId, noteDate, legacyChannelId: trimText(payload.owner_actor_id) ? null : channelId });
     } else if (entityType === 'reaction' && trimText(payload.target_type) && trimText(payload.target_id)) {
       const targetType = trimText(payload.target_type);
       const targetId = trimText(payload.target_id);
@@ -1210,7 +1217,7 @@ export async function hydrateTowerPgEventUpdates(store, events = [], deps = {}) 
     ...[...documentChannels].map((channelId) => hydrateTowerPgChannelDocumentsAndFiles(store, channelId, deps)),
     ...[...audioChannels].map((channelId) => hydrateTowerPgChannelAudioNotes(store, channelId, deps)),
     ...[...taskCommentTargets].map((taskId) => hydrateTowerPgTaskComments(store, taskId, deps)),
-    ...[...dailyTargets.values()].map(({ channelId, noteDate }) => hydrateTowerPgDailyNoteTarget(store, channelId, noteDate, deps)),
+    ...[...dailyTargets.values()].map(({ ownerActorId, noteDate, legacyChannelId }) => hydrateTowerPgDailyNoteTarget(store, ownerActorId, noteDate, { ...deps, legacyChannelId })),
     ...[...reactionTargets.values()].map(({ targetType, targetId }) => hydrateTowerPgReactionTarget(store, targetType, targetId, deps)),
   ];
 
@@ -1320,15 +1327,10 @@ export async function hydrateTowerPgDailyNotes(store, deps = {}) {
   if (!context.workspaceId || !context.workspaceOwnerNpub || !context.baseUrl) return [];
   const readDailyNotes = deps.getTowerPgDailyNotes || getTowerPgDailyNotes;
   const replaceDailyNotes = deps.replaceDailyNotesForOwner || replaceDailyNotesForOwner;
-  const scopeMetadata = typeof store.getDailyNoteScopeMetadata === 'function'
-    ? store.getDailyNoteScopeMetadata()
-    : {};
   const result = await readDailyNotes(context.workspaceId, {
     baseUrl: context.baseUrl,
     appNpub: context.appNpub,
     noteDate: deps.noteDate || null,
-    scopeId: deps.scopeId || scopeMetadata.scope_id || null,
-    channelId: deps.channelId || scopeMetadata.channel_id || null,
     limit: deps.limit || 30,
   });
   const dailyNotes = (Array.isArray(result?.daily_notes) ? result.daily_notes : [])

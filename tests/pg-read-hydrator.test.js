@@ -739,7 +739,7 @@ describe('PG read hydrator', () => {
       comments: [{ id: `comment-${taskId}`, task_id: taskId, body: 'Comment' }],
     }));
     const getTowerPgDailyNotes = vi.fn(async (_workspaceId, options) => ({
-      daily_notes: [{ id: `daily-${options.channelId}`, channel_id: options.channelId, note_date: options.noteDate, title: 'Daily' }],
+      daily_notes: [{ id: `daily-${options.ownerActorId}`, owner_actor_id: options.ownerActorId, owner_actor_npub: 'npub1owner', note_date: options.noteDate, title: 'Daily' }],
     }));
     const getTowerPgReactions = vi.fn(async () => ({
       reactions: [{ id: 'reaction-1', target_type: 'message', target_id: 'message-1', emoji: 'thumbs_up', reactor_npub: 'npub1alice' }],
@@ -747,7 +747,7 @@ describe('PG read hydrator', () => {
     const replacePgDocumentsForChannel = vi.fn(async () => 2);
     const replacePgAudioNotesForChannel = vi.fn(async () => 1);
     const replacePgCommentsForTarget = vi.fn(async () => 1);
-    const replacePgDailyNotesForChannelAndDate = vi.fn(async () => 1);
+    const replacePgDailyNotesForOwnerAndDate = vi.fn(async () => 1);
     const replacePgReactionsForTarget = vi.fn(async () => 1);
 
     const result = await hydrateTowerPgEventUpdates(target, [
@@ -755,7 +755,7 @@ describe('PG read hydrator', () => {
       { entity_type: 'file', channel_id: 'channel-doc' },
       { entity_type: 'audio_note', channel_id: 'channel-audio' },
       { entity_type: 'task_comment', payload: { task_id: 'task-1' } },
-      { entity_type: 'daily_note', channel_id: 'channel-daily', payload: { note_date: '2026-06-13' } },
+      { entity_type: 'daily_note', payload: { owner_actor_id: 'owner-actor-1', note_date: '2026-06-13' } },
       { entity_type: 'reaction', payload: { target_type: 'message', target_id: 'message-1' } },
       { entity_type: 'scope' },
     ], {
@@ -768,7 +768,7 @@ describe('PG read hydrator', () => {
       replacePgDocumentsForChannel,
       replacePgAudioNotesForChannel,
       replacePgCommentsForTarget,
-      replacePgDailyNotesForChannelAndDate,
+      replacePgDailyNotesForOwnerAndDate,
       replacePgReactionsForTarget,
     });
 
@@ -779,8 +779,55 @@ describe('PG read hydrator', () => {
     ]);
     expect(replacePgAudioNotesForChannel).toHaveBeenCalledWith('channel-audio', [expect.objectContaining({ record_id: 'audio-channel-audio' })]);
     expect(replacePgCommentsForTarget).toHaveBeenCalledWith('task-1', [expect.objectContaining({ record_id: 'comment-task-1' })]);
-    expect(replacePgDailyNotesForChannelAndDate).toHaveBeenCalledWith('channel-daily', '2026-06-13', [expect.objectContaining({ record_id: 'daily-channel-daily' })]);
+    expect(replacePgDailyNotesForOwnerAndDate).toHaveBeenCalledWith('owner-actor-1', '2026-06-13', [expect.objectContaining({ record_id: 'daily-owner-actor-1' })]);
     expect(replacePgReactionsForTarget).toHaveBeenCalledWith(expect.any(String), 'message-1', [expect.objectContaining({ record_id: 'reaction-1' })]);
+  });
+
+  it('hydrates Daily Scope events by owner/date without removing another owner same date', async () => {
+    const target = store({
+      dailyNotes: [
+        {
+          record_id: 'daily-owner-old',
+          pg_backend: true,
+          owner_actor_id: 'owner-actor-1',
+          note_date: '2026-06-17',
+          title: 'Old owner note',
+        },
+        {
+          record_id: 'daily-other-owner',
+          pg_backend: true,
+          owner_actor_id: 'owner-actor-2',
+          note_date: '2026-06-17',
+          title: 'Other owner note',
+        },
+      ],
+      applyDailyNotes: vi.fn(async (dailyNotes) => {
+        target.dailyNotes = dailyNotes;
+      }),
+    });
+    const getTowerPgDailyNotes = vi.fn(async (_workspaceId, options) => ({
+      daily_notes: [{
+        id: 'daily-owner-new',
+        owner_actor_id: options.ownerActorId,
+        owner_actor_npub: 'npub1owner',
+        note_date: options.noteDate,
+        title: 'Updated owner note',
+      }],
+    }));
+    const replacePgDailyNotesForOwnerAndDate = vi.fn(async () => 1);
+
+    await hydrateTowerPgEventUpdates(target, [
+      { entity_type: 'daily_note', payload: { owner_actor_id: 'owner-actor-1', note_date: '2026-06-17' } },
+    ], {
+      getTowerPgDailyNotes,
+      replacePgDailyNotesForOwnerAndDate,
+    });
+
+    expect(getTowerPgDailyNotes).toHaveBeenCalledWith('workspace-1', expect.objectContaining({
+      ownerActorId: 'owner-actor-1',
+      noteDate: '2026-06-17',
+    }));
+    expect(target.dailyNotes.map((note) => note.record_id).sort()).toEqual(['daily-other-owner', 'daily-owner-new']);
   });
 
   it('hydrates PG channels using workspace member sync when local actor mapping is missing', async () => {

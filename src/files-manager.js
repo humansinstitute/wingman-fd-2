@@ -788,6 +788,10 @@ export const filesManagerMixin = {
   },
 
   canMoveFileBrowserRow(row = {}) {
+    return this.canEditFileBrowserRow(row);
+  },
+
+  canEditFileBrowserRow(row = {}) {
     if (!this.isTowerPgMode) return false;
     if (row.source_type !== 'document' || !row.source_record_id) return false;
     const document = (this.documents || []).find((item) => item?.record_id === row.source_record_id) || null;
@@ -795,32 +799,122 @@ export const filesManagerMixin = {
   },
 
   openFileMoveModal(row = {}) {
-    if (!this.canMoveFileBrowserRow(row)) return null;
-    return this.openWriteContextModal?.('file-move', {
-      row,
-      options: {
-        scopeId: row.scope_id,
-        channelId: row.channel_id,
-      },
-    });
+    return this.openFileEditModal(row);
+  },
+
+  openFileEditModal(row = {}) {
+    if (!this.canEditFileBrowserRow(row)) return null;
+    const document = (this.documents || []).find((item) => item?.record_id === row.source_record_id) || null;
+    const scopeId = getRecordScopeId(document) || normalizeString(row.scope_id);
+    const channelId = normalizeString(document?.pg_channel_id || row.channel_id);
+    this.fileEditRow = row;
+    this.fileEditName = normalizeString(document?.title || document?.display_name || row.name) || 'Untitled file';
+    this.fileEditScopeId = scopeId;
+    this.fileEditChannelId = channelId;
+    this.fileEditError = '';
+    this.fileEditSubmitting = false;
+    this.showFileEditModal = true;
+    return row;
+  },
+
+  closeFileEditModal() {
+    if (this.fileEditSubmitting) return;
+    this.showFileEditModal = false;
+    this.fileEditRow = null;
+    this.fileEditName = '';
+    this.fileEditScopeId = '';
+    this.fileEditChannelId = '';
+    this.fileEditError = '';
+  },
+
+  selectFileEditScope(scopeId) {
+    const nextScopeId = normalizeString(scopeId);
+    this.fileEditScopeId = nextScopeId;
+    const selectedStillValid = this.fileEditChannelId
+      && this.fileUploadChannelOptions(nextScopeId).some((channel) => channel.id === this.fileEditChannelId);
+    if (!selectedStillValid) this.fileEditChannelId = this.fileUploadChannelOptions(nextScopeId)[0]?.id || '';
+  },
+
+  get fileEditContextChanged() {
+    const row = this.fileEditRow || {};
+    const document = (this.documents || []).find((item) => item?.record_id === row.source_record_id) || null;
+    const currentScopeId = getRecordScopeId(document) || normalizeString(row.scope_id);
+    const currentChannelId = normalizeString(document?.pg_channel_id || row.channel_id);
+    return Boolean(
+      normalizeString(this.fileEditScopeId) !== currentScopeId
+      || normalizeString(this.fileEditChannelId) !== currentChannelId
+    );
+  },
+
+  async saveFileEditModal() {
+    if (this.fileEditSubmitting) return null;
+    const row = this.fileEditRow || {};
+    const name = normalizeString(this.fileEditName);
+    const scopeId = normalizeString(this.fileEditScopeId);
+    const channelId = normalizeString(this.fileEditChannelId);
+    if (!name) {
+      this.fileEditError = 'Enter a file name.';
+      return null;
+    }
+    if (!scopeId || !channelId) {
+      this.fileEditError = 'Select a scope and channel.';
+      return null;
+    }
+    this.fileEditSubmitting = true;
+    this.fileEditError = '';
+    try {
+      const accepted = await this.updateFileBrowserRow(row, {
+        name,
+        scopeId,
+        channelId,
+      });
+      this.showFileEditModal = false;
+      this.fileEditRow = null;
+      this.fileEditName = '';
+      this.fileEditScopeId = '';
+      this.fileEditChannelId = '';
+      return accepted;
+    } catch (error) {
+      this.fileEditError = error?.message || 'Failed to save file.';
+      return null;
+    } finally {
+      this.fileEditSubmitting = false;
+    }
   },
 
   async moveFileBrowserRowToContext(row = {}, options = {}) {
-    if (!this.canMoveFileBrowserRow(row)) return null;
+    return this.updateFileBrowserRow(row, {
+      name: row.name,
+      scopeId: options.scopeId,
+      channelId: options.channelId,
+    });
+  },
+
+  async updateFileBrowserRow(row = {}, options = {}) {
+    if (!this.canEditFileBrowserRow(row)) return null;
     const document = (this.documents || []).find((item) => item?.record_id === row.source_record_id) || null;
     const channel = this.resolveFileUploadChannel(options.scopeId, options.channelId);
     if (!document || !channel?.record_id) {
-      this.error = 'Select a scope with a channel before moving this file.';
+      this.error = 'Select a scope with a channel before saving this file.';
       return null;
     }
     const scopeId = getRecordScopeId(channel);
+    const displayName = normalizeString(options.name) || document.title || row.name || 'Untitled file';
+    const currentChannelId = normalizeString(document.pg_channel_id || row.channel_id);
+    const nextThreadId = currentChannelId && currentChannelId === channel.record_id
+      ? normalizeString(document.pg_thread_id || row.thread_id)
+      : null;
+    const storageObjectId = normalizeString(document.pg_storage_object_id || document.content_storage_object_id || row.object_id);
     const previous = { ...document };
     const updated = {
       ...document,
       ...this.buildScopeAssignment(scopeId),
+      title: displayName,
+      display_name: displayName,
+      content: storageObjectId ? `[${displayName}](storage://${storageObjectId})` : document.content,
       pg_channel_id: channel.record_id,
-      pg_thread_id: null,
-      thread_id: null,
+      pg_thread_id: nextThreadId || null,
+      thread_id: nextThreadId || null,
       sync_status: 'pending',
       updated_at: new Date().toISOString(),
     };
@@ -830,14 +924,13 @@ export const filesManagerMixin = {
       const accepted = await updateTowerPgFileFromLocal(this, updated, previous);
       await upsertDocument(accepted);
       this.patchDocumentLocal?.(accepted);
-      this.selectPgChannelContext?.(accepted.pg_channel_id || channel.record_id);
-      this.scheduleDocumentsRefresh?.('PG file move');
+      this.scheduleDocumentsRefresh?.('PG file edit');
       return accepted;
     } catch (error) {
       const failed = { ...updated, sync_status: 'failed', updated_at: new Date().toISOString() };
       await upsertDocument(failed);
       this.patchDocumentLocal?.(failed);
-      this.error = error?.message || 'Failed to move file.';
+      this.error = error?.message || 'Failed to save file.';
       throw error;
     }
   },

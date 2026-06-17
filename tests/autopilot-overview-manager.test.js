@@ -172,6 +172,55 @@ describe('autopilot overview manager', () => {
     expect(store.autopilotOverviewThreads.map((thread) => thread.channelId).sort()).toEqual(['chan-a', 'chan-b']);
   });
 
+  it('shows today daily scope note even when it still has scope metadata', () => {
+    const store = Object.assign(Object.create(autopilotOverviewManagerMixin), {
+      selectedBoardId: '__all__',
+      pgContextSelectedChannelId: null,
+      selectedChannelId: 'chan-a',
+      getTodayDateKey: () => '2026-06-17',
+      dailyNotes: [
+        {
+          record_id: 'daily-older',
+          note_date: '2026-06-17',
+          title: 'Older Daily Scope',
+          focus: 'Old focus',
+          pg_scope_id: 'scope-a',
+          pg_channel_id: 'chan-a',
+          updated_at: '2026-06-17T08:00:00.000Z',
+        },
+        {
+          record_id: 'daily-newer',
+          note_date: '2026-06-17',
+          title: 'Daily note',
+          body: 'Narrative should not render in the preview card',
+          focus: 'Deploy Kindling Pipelines, Kick Off Plantrite, Scout Cash',
+          items: [
+            { id: 'one', text: 'Deploy Kindling Pipelines', completed: true },
+            { id: 'two', text: 'Kick Off Plantrite', completed: false },
+            { id: 'three', text: 'Scout Cash', completed: false },
+            { id: 'four', text: 'Review Daily Scope', completed: false },
+          ],
+          metadata: { scope_id: 'scope-b', channel_id: 'chan-b', source: 'manual' },
+          updated_at: '2026-06-17T09:00:00.000Z',
+        },
+      ],
+    });
+
+    expect(store.autopilotOverviewDailyNote).toEqual(expect.objectContaining({
+      note: expect.objectContaining({ record_id: 'daily-newer' }),
+      duplicateCount: 1,
+      title: 'Daily note',
+      progress: '1/4 done',
+      body: '',
+      items: [
+        { id: 'one', text: 'Deploy Kindling Pipelines', completed: true },
+        { id: 'two', text: 'Kick Off Plantrite', completed: false },
+        { id: 'three', text: 'Scout Cash', completed: false },
+        { id: 'four', text: 'Review Daily Scope', completed: false },
+      ],
+    }));
+  });
+
   it('counts only unresolved document comments', () => {
     const documents = [
       { record_id: 'doc-open', title: 'Open', record_state: 'active' },

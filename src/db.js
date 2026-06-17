@@ -78,6 +78,10 @@ const WORKSPACE_STORES_V12 = {
   ...WORKSPACE_STORES_V11,
   daily_notes: 'record_id, owner_npub, note_date, status, updated_at, sync_status, *group_ids',
 };
+const WORKSPACE_STORES_V13 = {
+  ...WORKSPACE_STORES_V12,
+  daily_notes: 'record_id, owner_npub, owner_actor_id, owner_actor_npub, note_date, status, updated_at, sync_status, *group_ids, &[owner_actor_id+note_date]',
+};
 
 function createWorkspaceDb(workspaceDbKey) {
   const db = new Dexie(`wingman-fd-ws-${workspaceDbKey}`);
@@ -149,6 +153,7 @@ function createWorkspaceDb(workspaceDbKey) {
   db.version(10).stores(WORKSPACE_STORES_V10);
   db.version(11).stores(WORKSPACE_STORES_V11);
   db.version(12).stores(WORKSPACE_STORES_V12);
+  db.version(13).stores(WORKSPACE_STORES_V13);
   return db;
 }
 
@@ -671,8 +676,8 @@ export async function replaceDailyNotesForOwner(ownerNpub, dailyNotes = []) {
   });
 }
 
-export async function replacePgDailyNotesForChannelAndDate(channelId, noteDate, dailyNotes = []) {
-  if (!channelId || !noteDate) return 0;
+export async function replacePgDailyNotesForOwnerAndDate(ownerActorId, noteDate, dailyNotes = []) {
+  if (!ownerActorId || !noteDate) return 0;
   const rows = (Array.isArray(dailyNotes) ? dailyNotes : [])
     .map((dailyNote) => sanitizeForStorage(dailyNote))
     .filter((dailyNote) => dailyNote?.record_id);
@@ -682,7 +687,7 @@ export async function replacePgDailyNotesForChannelAndDate(channelId, noteDate, 
     const pgDailyNoteIds = existing
       .filter((dailyNote) =>
         dailyNote?.pg_backend === true
-        && dailyNote?.pg_channel_id === channelId
+        && String(dailyNote?.owner_actor_id || dailyNote?.pg_owner_actor_id || '') === ownerActorId
         && dailyNote?.note_date === noteDate
       )
       .map((dailyNote) => dailyNote.record_id)
@@ -692,6 +697,8 @@ export async function replacePgDailyNotesForChannelAndDate(channelId, noteDate, 
     return rows.length;
   });
 }
+
+export const replacePgDailyNotesForChannelAndDate = replacePgDailyNotesForOwnerAndDate;
 
 export async function getDailyNoteById(recordId) {
   return wsDb().daily_notes.get(recordId);

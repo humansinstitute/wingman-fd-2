@@ -450,6 +450,13 @@ function getDerivedSelectedBoardScope(store, scopesMap) {
   return scopesMap.get(selectedBoardId) || null;
 }
 
+function isSystemScopeBoard(board = {}) {
+  return board.type === 'scope'
+    && (board.scopeId === ALL_TASK_BOARD_ID
+      || board.scopeId === RECENT_TASK_BOARD_ID
+      || board.scopeId === UNSCOPED_TASK_BOARD_ID);
+}
+
 function getTaskBoardDerived(store) {
   const tasks = Array.isArray(store?.tasks) ? store.tasks : EMPTY_ARRAY;
   const scopes = Array.isArray(store?.scopes) ? store.scopes : EMPTY_ARRAY;
@@ -1301,7 +1308,7 @@ export const taskBoardStateMixin = {
     if (this.pgContextScope) {
       return String(this.pgContextScope.title || '').trim() || 'Untitled scope';
     }
-    if (this.selectedBoardId === ALL_TASK_BOARD_ID) return 'All work';
+    if (this.selectedBoardId === ALL_TASK_BOARD_ID) return 'All';
     if (this.selectedBoardId === RECENT_TASK_BOARD_ID) return 'Recent work';
     if (this.selectedBoardIsUnscoped) return 'Unscoped work';
     return 'No scope selected';
@@ -1759,6 +1766,9 @@ export const taskBoardStateMixin = {
       || board.scopeId === ALL_TASK_BOARD_ID
       || board.scopeId === RECENT_TASK_BOARD_ID
       || board.scopeId === UNSCOPED_TASK_BOARD_ID) {
+      this.selectedChannelId = null;
+      this.activeThreadId = null;
+      this.focusMessageId = null;
       return;
     }
     const selected = activeChannel(this.selectedChannelId);
@@ -1800,7 +1810,8 @@ export const taskBoardStateMixin = {
     this.normalizeTaskFilterTags();
     this.closeBoardPicker();
     this.syncSelectedChannelForPgBoard(nextBoardId);
-    if (this.navSection === 'chat') {
+    const nextBoard = parsePgTaskBoardId(nextBoardId);
+    if (this.navSection === 'chat' && !(isPgWorkspaceStore(this) && isSystemScopeBoard(nextBoard))) {
       this.ensureSelectedChatChannelInScope?.({ syncRoute: false });
       if (this.selectedChannelId && this.selectedChannelId !== previousChannelId) {
         this.selectChannel?.(this.selectedChannelId, { syncRoute: false });

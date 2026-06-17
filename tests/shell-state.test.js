@@ -66,6 +66,59 @@ describe('shell state object shape', () => {
   });
 });
 
+describe('shell navigation data retention', () => {
+  function buildNavigableShell() {
+    const shell = createShellState();
+    shell.syncRoute = vi.fn();
+    shell.startWorkspaceLiveQueries = vi.fn();
+    shell.ensureBackgroundSync = vi.fn();
+    shell.refreshStatusRecentChanges = vi.fn();
+    shell.markSectionRead = vi.fn();
+    shell.validateSelectedBoardId = vi.fn();
+    shell.normalizeTaskFilterTags = vi.fn();
+    shell.cancelEditSchedule = vi.fn();
+    shell.scheduleChatFeedScrollToBottom = vi.fn();
+    return shell;
+  }
+
+  it('preserves current status data when navigating to status again', () => {
+    const shell = buildNavigableShell();
+    const tasks = [{ record_id: 'task-1' }];
+    const documents = [{ record_id: 'doc-1' }];
+    const fileMessages = [{ record_id: 'message-1' }];
+    shell.navSection = 'status';
+    shell.tasks = tasks;
+    shell.documents = documents;
+    shell.fileMessages = fileMessages;
+    shell.statusRecentChanges = [{ id: 'change-1' }];
+
+    shell.navigateTo('status');
+
+    expect(shell.tasks).toBe(tasks);
+    expect(shell.documents).toBe(documents);
+    expect(shell.fileMessages).toBe(fileMessages);
+    expect(shell.statusRecentChanges).toEqual([{ id: 'change-1' }]);
+    expect(shell.refreshStatusRecentChanges).toHaveBeenCalledWith({ force: true });
+    expect(shell.startWorkspaceLiveQueries).toHaveBeenCalled();
+  });
+
+  it('still clears inactive data when changing sections', () => {
+    const shell = buildNavigableShell();
+    shell.navSection = 'tasks';
+    shell.tasks = [{ record_id: 'task-1' }];
+    shell.documents = [{ record_id: 'doc-1' }];
+    shell.fileMessages = [{ record_id: 'message-1' }];
+    shell.statusRecentChanges = [{ id: 'change-1' }];
+
+    shell.navigateTo('status');
+
+    expect(shell.tasks).toEqual([]);
+    expect(shell.documents).toEqual([]);
+    expect(shell.fileMessages).toEqual([]);
+    expect(shell.statusRecentChanges).toEqual([{ id: 'change-1' }]);
+  });
+});
+
 describe('shell state key inventory', () => {
   // App/session state
   it('includes identity and session keys', () => {

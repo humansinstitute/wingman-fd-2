@@ -809,6 +809,8 @@ describe('computeBoardScopedTasks', () => {
       navSection: 'docs',
       selectedBoardId: buildPgChannelTaskBoardId('channel-home'),
       selectedChannelId: 'channel-home',
+      activeThreadId: 'thread-home',
+      focusMessageId: 'message-home',
       channels: [
         { record_id: 'channel-home', title: 'Home', scope_id: 'scope-product', record_state: 'active' },
       ],
@@ -825,6 +827,78 @@ describe('computeBoardScopedTasks', () => {
     store.openAllScopesOverview();
 
     expect(store.selectedBoardId).toBe(ALL_TASK_BOARD_ID);
+    expect(store.selectedChannelId).toBeNull();
+    expect(store.activeThreadId).toBeNull();
+    expect(store.focusMessageId).toBeNull();
+    expect(store.focusScopeTitle).toBe('All');
+    expect(navigateTo).toHaveBeenCalledWith('status');
+  });
+
+  it('clears stale PG channel context when selecting All manually', () => {
+    const store = Object.create(taskBoardStateMixin);
+    Object.assign(store, {
+      currentWorkspace: { pgBackendMode: true },
+      navSection: 'status',
+      selectedBoardId: buildPgChannelTaskBoardId('channel-home'),
+      selectedChannelId: 'channel-home',
+      activeThreadId: 'thread-home',
+      focusMessageId: 'message-home',
+      channels: [
+        { record_id: 'channel-home', title: 'Home', scope_id: 'scope-product', record_state: 'active' },
+      ],
+      tasks: [],
+      showTaskDetail: false,
+      persistSelectedBoardId() {},
+      clearSelectedTasks() {},
+      normalizeTaskFilterTags() {},
+      closeBoardPicker() {},
+      syncRoute() {},
+    });
+
+    store.selectBoard(ALL_TASK_BOARD_ID);
+
+    expect(store.selectedBoardId).toBe(ALL_TASK_BOARD_ID);
+    expect(store.pgContextAllScopesSelected).toBe(true);
+    expect(store.pgContextSelectedChannelId).toBeNull();
+    expect(store.selectedChannelId).toBeNull();
+    expect(store.activeThreadId).toBeNull();
+    expect(store.focusMessageId).toBeNull();
+  });
+
+  it('does not promote the chat Home selection back to the first channel', () => {
+    const navigateTo = vi.fn(function navigate(section) {
+      store.navSection = section;
+    });
+    const selectChannel = vi.fn();
+    const store = Object.create(taskBoardStateMixin);
+    Object.assign(store, {
+      currentWorkspace: { pgBackendMode: true },
+      navSection: 'chat',
+      selectedBoardId: buildPgChannelTaskBoardId('channel-home'),
+      selectedChannelId: 'channel-home',
+      channels: [
+        { record_id: 'channel-home', title: 'Home', scope_id: 'scope-product', record_state: 'active' },
+      ],
+      tasks: [],
+      showTaskDetail: false,
+      persistSelectedBoardId() {},
+      clearSelectedTasks() {},
+      normalizeTaskFilterTags() {},
+      closeBoardPicker() {},
+      syncRoute() {},
+      ensureSelectedChatChannelInScope() {
+        this.selectedChannelId = 'channel-home';
+        return 'channel-home';
+      },
+      selectChannel,
+      navigateTo,
+    });
+
+    store.openAllScopesOverview();
+
+    expect(store.selectedBoardId).toBe(ALL_TASK_BOARD_ID);
+    expect(store.selectedChannelId).toBeNull();
+    expect(selectChannel).not.toHaveBeenCalled();
     expect(navigateTo).toHaveBeenCalledWith('status');
   });
 });

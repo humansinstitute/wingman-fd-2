@@ -734,7 +734,10 @@ export function createShellState(options = {}) {
 
     navigateTo(section, options = {}) {
       section = normalizeEnabledFlightDeckSection(section);
-      this.clearInactiveSectionData(section);
+      const previousSection = this.navSection;
+      if (previousSection !== section) {
+        this.clearInactiveSectionData(section);
+      }
       this.navSection = section;
       this.mobileNavOpen = false;
       this.showWorkspaceSwitcherMenu = false;
