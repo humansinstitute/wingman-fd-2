@@ -80,7 +80,7 @@ describe('app Daily Scope behavior', () => {
         body: 'Old body',
         focus: '',
         items: [],
-        metadata: {},
+        metadata: { scope_id: 'scope-old', channel_id: null, source: 'manual' },
         status: 'active',
       }],
       dailyNoteEditorRecordId: 'daily-1',
@@ -125,6 +125,9 @@ describe('app Daily Scope behavior', () => {
       items: expect.arrayContaining([expect.objectContaining({ text: 'Focus 1' })]),
     }), { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
     expect(upsertTowerPgDailyNoteMock.mock.calls[0][1].items).toHaveLength(5);
+    expect(upsertTowerPgDailyNoteMock.mock.calls[0][1].metadata).toEqual({ source: 'manual' });
+    expect(upsertTowerPgDailyNoteMock.mock.calls[0][1]).not.toHaveProperty('scope_id');
+    expect(upsertTowerPgDailyNoteMock.mock.calls[0][1]).not.toHaveProperty('channel_id');
     expect(upsertDailyNoteMock).toHaveBeenCalledWith(expect.objectContaining({
       record_id: 'daily-1',
       body: 'Morning narrative',
@@ -173,7 +176,7 @@ describe('app Daily Scope behavior', () => {
           { id: 'task-1', text: 'Focus 1', completed: false, created_at: '2026-06-17T08:00:00.000Z' },
           { id: 'task-2', text: 'Focus 2', completed: true, created_at: '2026-06-17T08:05:00.000Z' },
         ],
-        metadata: { source: 'manual' },
+        metadata: { source: 'manual', scope_id: 'scope-stale' },
         status: 'active',
         updated_at: '2026-06-17T08:10:00.000Z',
       }],
@@ -204,6 +207,7 @@ describe('app Daily Scope behavior', () => {
       note_date: '2026-06-17',
       owner_actor_id: 'owner-actor-1',
       body: 'Private narrative',
+      metadata: { source: 'manual' },
       items: expect.arrayContaining([
         expect.objectContaining({ id: 'task-1', text: 'Focus 1', completed: true }),
       ]),
@@ -222,7 +226,7 @@ describe('app Daily Scope behavior', () => {
       dailyNotes: [],
       dailyScopeSelectedDate: '2026-06-16',
       getTodayDateKey: () => '2026-06-17',
-      getDailyNoteScopeMetadata: () => ({}),
+      getDailyNoteScopeMetadata: () => ({ scope_id: 'scope-current', channel_id: null }),
     });
     upsertTowerPgDailyNoteMock.mockResolvedValueOnce({
       daily_note: {
@@ -245,7 +249,10 @@ describe('app Daily Scope behavior', () => {
     expect(upsertTowerPgDailyNoteMock).toHaveBeenCalledWith('workspace-1', expect.objectContaining({
       note_date: '2026-06-16',
       title: 'Daily note',
+      metadata: { source: 'manual' },
     }), { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
+    expect(upsertTowerPgDailyNoteMock.mock.calls[0][1]).not.toHaveProperty('scope_id');
+    expect(upsertTowerPgDailyNoteMock.mock.calls[0][1]).not.toHaveProperty('channel_id');
     expect(store.dailyNoteEditorOpen).toBe(true);
     expect(store.dailyNoteEditorRecordId).toBe('daily-yesterday');
   });

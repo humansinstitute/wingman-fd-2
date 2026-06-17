@@ -662,6 +662,11 @@ export const workspaceManagerMixin = {
       const prepareStorage = typeof this.prepareStorageObjectForCurrentWorkspace === 'function'
         ? this.prepareStorageObjectForCurrentWorkspace.bind(this)
         : prepareStorageObject;
+      const storageBackendUrl = this.getWorkspaceStorageBackendUrl(this.currentWorkspace)
+        || this.currentWorkspaceBackendUrl
+        || this.backendUrl
+        || '';
+      const storageRequestOptions = storageBackendUrl ? { baseUrl: storageBackendUrl } : {};
       const prepared = await prepareStorage(buildStoragePrepareBody({
         ownerNpub: workspaceOwnerNpub,
         ownerGroupId: settingsGroupId,
@@ -670,12 +675,12 @@ export const workspaceManagerMixin = {
         sizeBytes: file.size || bytes.byteLength,
         fileName: this.defaultPastedImageName(file, 'workspace-avatar'),
       }));
-      await uploadStorageObject(prepared, bytes, file.type || 'image/png');
+      await uploadStorageObject(prepared, bytes, file.type || 'image/png', storageRequestOptions);
       await completeStorageObject(prepared.object_id, {
         size_bytes: bytes.byteLength,
         sha256_hex: await this.sha256HexForBytes(bytes),
-      });
-      const backendUrl = this.getWorkspaceStorageBackendUrl(this.currentWorkspace);
+      }, storageRequestOptions);
+      const backendUrl = storageBackendUrl || this.getWorkspaceStorageBackendUrl(this.currentWorkspace);
       const cacheKey = storageImageCacheKey(prepared.object_id, backendUrl);
       const blob = new Blob([bytes], { type: file.type || 'image/png' });
       await cacheStorageImage({

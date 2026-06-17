@@ -326,6 +326,66 @@ describe('workspace API host binding', () => {
     expect(result.requestUrl).toBe('https://sb.example/api/v4/storage/obj-1');
   });
 
+  it('uses an explicit workspace backend for storage upload requests', async () => {
+    const fetchMock = vi.fn(async (requestUrl) => {
+      if (requestUrl === 'https://workspace.example/api/v4/storage/obj-1') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ object_id: 'obj-1', requestUrl }),
+          text: async () => JSON.stringify({ object_id: 'obj-1', requestUrl }),
+        };
+      }
+      throw new Error(`unexpected fetch ${requestUrl}`);
+    });
+    globalThis.fetch = fetchMock;
+
+    const api = await import('../src/api.js');
+    api.setBaseUrl('https://sb.example');
+
+    const result = await api.uploadStorageObject(
+      {
+        object_id: 'obj-1',
+        upload_url: 'https://upload.example/object',
+      },
+      new Uint8Array([1, 2, 3]),
+      'image/png',
+      { baseUrl: 'https://workspace.example/' },
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe('https://workspace.example/api/v4/storage/obj-1');
+    expect(result.requestUrl).toBe('https://workspace.example/api/v4/storage/obj-1');
+  });
+
+  it('uses an explicit workspace backend for storage completion requests', async () => {
+    const fetchMock = vi.fn(async (requestUrl) => {
+      if (requestUrl === 'https://workspace.example/api/v4/storage/obj-1/complete') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ object_id: 'obj-1', requestUrl }),
+          text: async () => JSON.stringify({ object_id: 'obj-1', requestUrl }),
+        };
+      }
+      throw new Error(`unexpected fetch ${requestUrl}`);
+    });
+    globalThis.fetch = fetchMock;
+
+    const api = await import('../src/api.js');
+    api.setBaseUrl('https://sb.example');
+
+    const result = await api.completeStorageObject(
+      'obj-1',
+      { size_bytes: 3, sha256_hex: 'abc' },
+      { baseUrl: 'https://workspace.example/' },
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe('https://workspace.example/api/v4/storage/obj-1/complete');
+    expect(result.requestUrl).toBe('https://workspace.example/api/v4/storage/obj-1/complete');
+  });
+
   it('includes direct upload failure when backend upload path is unavailable too', async () => {
     globalThis.fetch = vi.fn(async (requestUrl) => {
       if (requestUrl === 'https://sb.example/api/v4/storage/obj-1') {

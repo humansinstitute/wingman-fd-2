@@ -2546,6 +2546,14 @@ export function initApp() {
       };
     },
 
+    getDailyScopePersonalMetadata(metadata = {}) {
+      const { scope_id: _scopeId, channel_id: _channelId, scopeId: _camelScopeId, channelId: _camelChannelId, ...rest } = metadata || {};
+      return {
+        ...rest,
+        source: rest.source || 'manual',
+      };
+    },
+
     getCurrentDailyNote(noteDate = this.getDailyScopeDateKey()) {
       const context = resolveTowerPgWorkspaceContext(this);
       const ownerNpub = context.workspaceOwnerNpub || '';
@@ -2749,7 +2757,6 @@ export function initApp() {
       try {
         const context = resolveTowerPgWorkspaceContext(this);
         if (!context.workspaceId || !context.baseUrl) throw new Error('Flight Deck PG workspace is not connected.');
-        const scopeMetadata = this.getDailyNoteScopeMetadata();
         const response = await upsertTowerPgDailyNote(context.workspaceId, {
           note_date: this.getDailyScopeDateKey(),
           title: 'Daily note',
@@ -2757,10 +2764,7 @@ export function initApp() {
           focus: '',
           items: [],
           status: 'active',
-          metadata: {
-            ...scopeMetadata,
-            source: 'manual',
-          },
+          metadata: this.getDailyScopePersonalMetadata(),
         }, { baseUrl: context.baseUrl, appNpub: context.appNpub });
         const note = mapPgDailyNoteToLocal(response.daily_note, { workspaceOwnerNpub: context.workspaceOwnerNpub });
         await upsertDailyNote(note);
@@ -2790,11 +2794,7 @@ export function initApp() {
           focus: this.dailyNoteEditorFocus || this.dailyNoteEditorItemsForSave().map((item) => item.text).slice(0, 3).join(', '),
           items: this.dailyNoteEditorItemsForSave(),
           status: note.status || 'active',
-          metadata: {
-            ...(note.metadata || {}),
-            ...this.getDailyNoteScopeMetadata(),
-            source: note.metadata?.source || 'manual',
-          },
+          metadata: this.getDailyScopePersonalMetadata(note.metadata || {}),
         }, { baseUrl: context.baseUrl, appNpub: context.appNpub });
         const saved = mapPgDailyNoteToLocal(response.daily_note, { workspaceOwnerNpub: context.workspaceOwnerNpub });
         await upsertDailyNote(saved);
@@ -2835,7 +2835,7 @@ export function initApp() {
           focus: note.focus || nextItems.map((item) => item.text).slice(0, 3).join(', '),
           items: nextItems,
           status: note.status || 'active',
-          metadata: note.metadata || {},
+          metadata: this.getDailyScopePersonalMetadata(note.metadata || {}),
         }, { baseUrl: context.baseUrl, appNpub: context.appNpub });
         const saved = mapPgDailyNoteToLocal(response.daily_note, { workspaceOwnerNpub: context.workspaceOwnerNpub });
         await upsertDailyNote(saved);
@@ -6853,7 +6853,7 @@ export function initApp() {
         const workspaceId = String(this.currentWorkspace?.workspaceId || '').trim();
         if (!workspaceId) throw new Error('Tower PG workspace id is required for file upload.');
         return prepareTowerPgStorageObject(workspaceId, body, {
-          baseUrl: this.backendUrl,
+          baseUrl: this.currentWorkspace?.directHttpsUrl || this.currentWorkspaceBackendUrl || this.backendUrl,
           appNpub: this.currentWorkspace?.appNpub || undefined,
         });
       }

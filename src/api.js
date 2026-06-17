@@ -194,11 +194,13 @@ async function signedFetchWithFallbacks(path, { method = 'GET', body } = {}, opt
 }
 
 async function signedFetchWithFallbackMeta(path, { method = 'GET', body } = {}, options = {}) {
-  if (!_baseUrl) {
+  const { baseUrl: baseUrlOverride, ...authOptions } = options || {};
+  const baseUrl = String(baseUrlOverride || _baseUrl || '').trim().replace(/\/+$/, '');
+  if (!baseUrl) {
     throw new Error('Backend URL not configured');
   }
-  const requestUrl = `${_baseUrl}${path}`;
-  const response = await signedFetchAbsolute(requestUrl, { method, body }, options);
+  const requestUrl = `${baseUrl}${path}`;
+  const response = await signedFetchAbsolute(requestUrl, { method, body }, authOptions);
   return { response, requestUrl };
 }
 
@@ -1162,7 +1164,7 @@ export async function prepareStorageObject(body) {
   return json(resp, { requestUrl, method: 'POST' });
 }
 
-export async function uploadStorageObject(prepared, bytes, contentType = 'application/octet-stream') {
+export async function uploadStorageObject(prepared, bytes, contentType = 'application/octet-stream', options = {}) {
   const uploadUrl = String(prepared?.upload_url || '').trim();
   const payload = {
     base64_data: bytesToBase64(bytes),
@@ -1171,7 +1173,7 @@ export async function uploadStorageObject(prepared, bytes, contentType = 'applic
   const { response: fallbackResp, requestUrl: fallbackUrl } = await signedFetchWithFallbackMeta(fallbackPath, {
     method: 'PUT',
     body: payload,
-  });
+  }, options);
   if (fallbackResp.ok) {
     return json(fallbackResp, { requestUrl: fallbackUrl, method: 'PUT' });
   }
@@ -1226,12 +1228,12 @@ export async function uploadStorageObject(prepared, bytes, contentType = 'applic
   throw fallbackError;
 }
 
-export async function completeStorageObject(objectId, body = {}) {
+export async function completeStorageObject(objectId, body = {}, options = {}) {
   const requestPath = `/api/v4/storage/${objectId}/complete`;
   const { response: resp, requestUrl } = await signedFetchWithFallbackMeta(requestPath, {
     method: 'POST',
     body,
-  });
+  }, options);
   return json(resp, { requestUrl, method: 'POST' });
 }
 
