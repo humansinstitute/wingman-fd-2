@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-Covv54FV.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-rohnGCdY.css">
+  <script type="module" crossorigin src="/assets/index-CAhAB0ud.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-CAQG38qX.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -139,7 +139,17 @@
       </div>
     </template>
     <template x-if="$store.chat.error">
-      <div class="error-bar" x-text="$store.chat.error"></div>
+      <div class="error-bar" role="alert">
+        <span class="error-bar-message" x-text="$store.chat.error"></span>
+        <button
+          type="button"
+          class="error-bar-dismiss"
+          aria-label="Dismiss error"
+          @click="$store.chat.error = null"
+        >
+          &times;
+        </button>
+      </div>
     </template>
 
     <header class="page-header" x-show="!$store.chat.appHeaderHidden" x-cloak>

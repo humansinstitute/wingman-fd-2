@@ -137,7 +137,17 @@
       </div>
     </template>
     <template x-if="$store.chat.error">
-      <div class="error-bar" x-text="$store.chat.error"></div>
+      <div class="error-bar" role="alert">
+        <span class="error-bar-message" x-text="$store.chat.error"></span>
+        <button
+          type="button"
+          class="error-bar-dismiss"
+          aria-label="Dismiss error"
+          @click="$store.chat.error = null"
+        >
+          &times;
+        </button>
+      </div>
     </template>
 
     <header class="page-header" x-show="!$store.chat.appHeaderHidden" x-cloak>

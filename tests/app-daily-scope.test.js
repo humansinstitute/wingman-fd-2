@@ -126,8 +126,8 @@ describe('app Daily Scope behavior', () => {
     }), { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
     expect(upsertTowerPgDailyNoteMock.mock.calls[0][1].items).toHaveLength(5);
     expect(upsertTowerPgDailyNoteMock.mock.calls[0][1].metadata).toEqual({ source: 'manual' });
-    expect(upsertTowerPgDailyNoteMock.mock.calls[0][1]).not.toHaveProperty('scope_id');
-    expect(upsertTowerPgDailyNoteMock.mock.calls[0][1]).not.toHaveProperty('channel_id');
+    expect(upsertTowerPgDailyNoteMock.mock.calls[0][1].scope_id).toBeNull();
+    expect(upsertTowerPgDailyNoteMock.mock.calls[0][1].channel_id).toBeNull();
     expect(upsertDailyNoteMock).toHaveBeenCalledWith(expect.objectContaining({
       record_id: 'daily-1',
       body: 'Morning narrative',
@@ -236,6 +236,8 @@ describe('app Daily Scope behavior', () => {
     expect(upsertTowerPgDailyNoteMock).toHaveBeenCalledWith('workspace-1', expect.objectContaining({
       note_date: '2026-06-17',
       owner_actor_id: 'owner-actor-1',
+      scope_id: null,
+      channel_id: null,
       body: 'Private narrative',
       metadata: { source: 'manual' },
       items: expect.arrayContaining([
@@ -281,8 +283,8 @@ describe('app Daily Scope behavior', () => {
       title: 'Daily note',
       metadata: { source: 'manual' },
     }), { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
-    expect(upsertTowerPgDailyNoteMock.mock.calls[0][1]).not.toHaveProperty('scope_id');
-    expect(upsertTowerPgDailyNoteMock.mock.calls[0][1]).not.toHaveProperty('channel_id');
+    expect(upsertTowerPgDailyNoteMock.mock.calls[0][1].scope_id).toBeNull();
+    expect(upsertTowerPgDailyNoteMock.mock.calls[0][1].channel_id).toBeNull();
     expect(store.dailyNoteEditorOpen).toBe(true);
     expect(store.dailyNoteEditorRecordId).toBe('daily-yesterday');
   });
