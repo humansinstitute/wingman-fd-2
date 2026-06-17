@@ -118,6 +118,15 @@ function preservePgSelfIndexState(candidate = {}, existing = null) {
   return next;
 }
 
+function preserveSparsePgWorkspaceProfile(candidate = {}, existing = null) {
+  if (!existing) return candidate;
+  const next = { ...candidate };
+  if (!String(next.avatarUrl || '').trim() && String(existing.avatarUrl || '').trim()) {
+    next.avatarUrl = existing.avatarUrl;
+  }
+  return next;
+}
+
 async function fetchTowerDiscovery(url, fallbackLabel = '') {
   const cleanUrl = trimUrl(url);
   if (!cleanUrl) throw new Error('URL is required');
@@ -555,7 +564,9 @@ export const connectSettingsManagerMixin = {
       verifiedAt: new Date().toISOString(),
     }));
     if (!workspace) throw new Error('Verified workspace descriptor could not be stored');
-    workspace = preservePgSelfIndexState(workspace, findExistingPgWorkspace(this.knownWorkspaces, workspace));
+    const existingWorkspace = findExistingPgWorkspace(this.knownWorkspaces, workspace);
+    workspace = preservePgSelfIndexState(workspace, existingWorkspace);
+    workspace = preserveSparsePgWorkspaceProfile(workspace, existingWorkspace);
     const workspaceBackendUrl = normalizeBackendUrl(workspace.directHttpsUrl || this.backendUrl);
     if (options.select !== false || !this.backendUrl) {
       this.backendUrl = workspaceBackendUrl;

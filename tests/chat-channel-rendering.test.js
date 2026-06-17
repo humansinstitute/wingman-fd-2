@@ -90,9 +90,10 @@ describe('Chat channel rendering hooks', () => {
     expect(homeIndex).toBeLessThan(channelLoopIndex);
     expect(globalBar).toContain("pg-all-scopes-context");
     expect(globalBar).toContain('@click="$store.chat.openAllScopesOverview()"');
+    expect(globalBar).toContain('@click="$store.chat.openPgScopeHome()"');
     expect(globalBar).toContain('currentWorkspaceAvatarUrl');
     expect(globalBar).toContain('currentWorkspaceInitials');
-    expect(globalBar).toContain(':class="{ active: $store.chat.pgContextAllScopesSelected }"');
+    expect(globalBar).toContain(':class="{ active: $store.chat.pgContextHomeSelected }"');
   });
 
   it('keeps the channel row workspace avatar from inheriting global button padding', () => {
@@ -117,7 +118,7 @@ describe('Chat channel rendering hooks', () => {
     expect(avatarIndex).toBeLessThan(scopeSwitcherIndex);
     expect(homeIndex).toBeGreaterThan(-1);
     expect(homeIndex).toBeLessThan(channelLoopIndex);
-    expect(chatBar).toContain('@click="$store.chat.openAllScopesOverview()"');
+    expect(chatBar).toContain('@click="$store.chat.openPgScopeHome()"');
     expect(chatBar).toContain('currentWorkspaceAvatarUrl');
     expect(chatBar).toContain('active: $store.chat.pgContextSelectedChannelId === ch.record_id');
     expect(chatBar).toContain(':aria-selected="$store.chat.pgContextSelectedChannelId === ch.record_id"');

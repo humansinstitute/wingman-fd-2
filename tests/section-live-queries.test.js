@@ -17,6 +17,24 @@ describe('section live query plan', () => {
     expect(plan.detail).toEqual(['chat:messages:channel-1', 'chat:reactions:channel-1']);
   });
 
+  it('subscribes to all current scope channels on chat scope home', () => {
+    const plan = getSectionLiveQueryPlan({
+      workspaceOwnerNpub: 'npub-owner',
+      navSection: 'chat',
+      selectedChannelId: null,
+      pgContextChannels: [
+        { record_id: 'channel-a' },
+        { record_id: 'channel-b' },
+      ],
+      applyAddressBookPeople() {},
+    });
+
+    expect(plan.detail).toEqual([
+      'chat:messages:scope-home:channel-a,channel-b',
+      'chat:reactions:scope-home:channel-a,channel-b',
+    ]);
+  });
+
   it('switches task route to its own workspace slices and keeps disabled reports cold', () => {
     const taskPlan = getSectionLiveQueryPlan({
       workspaceOwnerNpub: 'npub-owner',

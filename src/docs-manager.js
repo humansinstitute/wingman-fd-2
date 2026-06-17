@@ -759,6 +759,9 @@ export const docsManagerMixin = {
     if (options.navigate !== false) this.navSection = 'docs';
     this.mobileNavOpen = false;
     const document = this.documents.find((item) => item.record_id === recordId);
+    if (isTowerPgBackendMode() && document?.pg_channel_id && document.pg_channel_id !== this.selectedChannelId) {
+      this.selectPgChannelContext?.(document.pg_channel_id);
+    }
     this.currentFolderId = document?.parent_directory_id || null;
     this.docCommentBackfillAttemptsByDocId = {
       ...this.docCommentBackfillAttemptsByDocId,

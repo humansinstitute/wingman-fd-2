@@ -7,6 +7,7 @@
 
 import {
   getMessagesByChannel,
+  getMessagesByChannels,
   getMessageById,
   upsertMessage,
   replaceMessageRecord,
@@ -599,6 +600,17 @@ export const chatMessageManagerMixin = {
   async refreshMessages(options = {}) {
     const channelId = this.selectedChannelId;
     if (!channelId) {
+      if (this.currentWorkspace?.pgBackendMode || this.pgBackendMode) {
+        const channelIds = (Array.isArray(this.pgContextChannels) ? this.pgContextChannels : [])
+          .map((channel) => channel?.record_id)
+          .filter(Boolean);
+        const messages = await getMessagesByChannels(channelIds, {
+          limit: this.mainFeedVisibleCount || this.MAIN_FEED_PAGE_SIZE,
+        });
+        if (this.selectedChannelId) return;
+        await this.applyMessages(messages, options);
+        return;
+      }
       await this.applyMessages([], { scrollToLatest: false });
       return;
     }
@@ -637,6 +649,10 @@ export const chatMessageManagerMixin = {
   // --- thread lifecycle ---
 
   openThread(recordId, options = {}) {
+    const message = this.messages.find((item) => item.record_id === recordId) || null;
+    if (isTowerPgBackendMode() && message?.channel_id && message.channel_id !== this.selectedChannelId) {
+      this.selectPgChannelContext?.(message.channel_id);
+    }
     this.activeThreadId = recordId;
     this.threadInput = '';
     this.threadVisibleReplyCount = this.THREAD_REPLY_PAGE_SIZE;
@@ -972,6 +988,7 @@ export const chatMessageManagerMixin = {
 
   async sendMessage() {
     this.error = null;
+    const pgMode = isTowerPgBackendMode();
     const drafts = [...this.messageAudioDrafts];
     if (this.messageImageUploadCount > 0 || this.containsInlineImageUploadToken(this.messageInput)) {
       this.error = 'Wait for image upload to finish.';
@@ -979,6 +996,9 @@ export const chatMessageManagerMixin = {
     }
     if (!this.messageInput.trim() && drafts.length === 0) return;
     if (!this.selectedChannelId) {
+      if (pgMode) {
+        return this.openWriteContextModal?.('message', { options: {} }) || null;
+      }
       this.error = 'Select a channel first';
       return;
     }
@@ -991,7 +1011,6 @@ export const chatMessageManagerMixin = {
     const msgId = crypto.randomUUID();
     const now = new Date().toISOString();
     const body = this.messageInput.trim();
-    const pgMode = isTowerPgBackendMode();
     if (pgMode && !(await ensureTowerPgAgentDmAccess(this, channel))) return;
 
     let channelWriteFields = null;

@@ -1409,6 +1409,25 @@ describe('channels-manager pure utilities', () => {
       expect(store.selectedChannelId).toBe('ch-general');
     });
 
+    it('does not auto-select the first channel while a PG scope home is selected', async () => {
+      const store = createStore({
+        currentWorkspace: { pgBackendMode: true },
+        selectedBoardId: 'scope-a',
+        selectedChannelId: null,
+        navSection: 'chat',
+        ensureSelectedChatChannelInScope: vi.fn(),
+      });
+
+      await channelsManagerMixin.applyChannels.call(store, [
+        { record_id: 'ch-a', title: 'A', scope_id: 'scope-a', participant_npubs: [] },
+        { record_id: 'ch-b', title: 'B', scope_id: 'scope-a', participant_npubs: [] },
+      ], { syncRoute: false });
+
+      expect(store.selectedChannelId).toBeNull();
+      expect(store.ensureSelectedChatChannelInScope).not.toHaveBeenCalled();
+      expect(store.applyMessages).toHaveBeenCalledWith([], { scrollToLatest: false });
+    });
+
     it('does not hide cached Tower PG channels while PG groups are still hydrating', async () => {
       const store = createStore({
         currentWorkspace: { pgBackendMode: true },

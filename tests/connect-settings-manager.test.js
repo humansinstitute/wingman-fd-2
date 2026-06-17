@@ -299,6 +299,51 @@ describe('connect modal', () => {
     expect(store.persistWorkspaceSettings).toHaveBeenCalled();
     expect(mergeKnownWorkspaces).toHaveBeenCalledWith([workspace]);
   });
+
+  it('does not let PG descriptor verification clear an existing workspace avatar', async () => {
+    const existingWorkspace = {
+      workspaceKey: 'pg:npub1user::tower:npub1tower::workspace:npub1workspace_service::app:flightdeck_pg',
+      workspaceOwnerNpub: 'npub1owner',
+      name: 'Wingmen',
+      avatarUrl: 'storage://workspace-avatar-1',
+      directHttpsUrl: 'https://tower.example.com',
+      towerServiceNpub: 'npub1tower',
+      workspaceServiceNpub: 'npub1workspace_service',
+      workspaceId: 'workspace-1',
+      appNpub: 'flightdeck_pg',
+      pgSessionNpub: 'npub1user',
+      pgBackendMode: true,
+    };
+    const mergeKnownWorkspaces = vi.fn(function merge(workspaces) {
+      this.knownWorkspaces = workspaces;
+    });
+    const { fn } = bindMethod('rememberVerifiedPgWorkspace', {
+      session: { npub: 'npub1user' },
+      backendUrl: 'https://tower.example.com',
+      knownWorkspaces: [existingWorkspace],
+      mergeKnownWorkspaces,
+    });
+    const descriptor = {
+      type: 'wingman_workspace_locator',
+      version: 1,
+      identity: {
+        tower_service_npub: 'npub1tower',
+        workspace_service_npub: 'npub1workspace_service',
+        workspace_owner_npub: 'npub1owner',
+        workspace_id: 'workspace-1',
+        app_npub: 'flightdeck_pg',
+      },
+      tower_base_url: 'https://tower.example.com/',
+      label: 'Wingmen',
+    };
+
+    const workspace = await fn(descriptor, { actor: { npub: 'npub1user' }, membership: { role: 'owner' } });
+
+    expect(workspace.avatarUrl).toBe('storage://workspace-avatar-1');
+    expect(mergeKnownWorkspaces).toHaveBeenCalledWith([
+      expect.objectContaining({ avatarUrl: 'storage://workspace-avatar-1' }),
+    ]);
+  });
 });
 
 // --- known hosts ---

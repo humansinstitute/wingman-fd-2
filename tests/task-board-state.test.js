@@ -653,7 +653,7 @@ describe('computeBoardScopedTasks', () => {
     ]);
   });
 
-  it('reconciles selected channel when selecting a PG scope board outside chat', () => {
+  it('keeps scope home when selecting a PG scope board outside chat', () => {
     const store = Object.create(taskBoardStateMixin);
     Object.defineProperty(store, 'scopesMap', {
       configurable: true,
@@ -680,8 +680,8 @@ describe('computeBoardScopedTasks', () => {
 
     store.selectBoard('scope-ops');
 
-    expect(store.selectedBoardId).toBe(buildPgChannelTaskBoardId('channel-standup'));
-    expect(store.selectedChannelId).toBe('channel-standup');
+    expect(store.selectedBoardId).toBe('scope-ops');
+    expect(store.selectedChannelId).toBeNull();
     expect(store.focusScopeTitle).toBe('Ops');
   });
 
@@ -801,9 +801,50 @@ describe('computeBoardScopedTasks', () => {
     ]);
   });
 
-  it('opens the all-scopes overview from the PG context home tab', () => {
+  it('opens the current scope home from the PG context home tab', () => {
     const navigateTo = vi.fn();
     const store = Object.create(taskBoardStateMixin);
+    Object.defineProperty(store, 'scopesMap', {
+      configurable: true,
+      value: new Map([['scope-product', product]]),
+    });
+    Object.assign(store, {
+      currentWorkspace: { pgBackendMode: true },
+      navSection: 'docs',
+      selectedBoardId: buildPgChannelTaskBoardId('channel-home'),
+      selectedChannelId: 'channel-home',
+      activeThreadId: 'thread-home',
+      focusMessageId: 'message-home',
+      channels: [
+        { record_id: 'channel-home', title: 'Home', scope_id: 'scope-product', record_state: 'active' },
+      ],
+      tasks: [],
+      showTaskDetail: false,
+      persistSelectedBoardId() {},
+      clearSelectedTasks() {},
+      normalizeTaskFilterTags() {},
+      closeBoardPicker() {},
+      syncRoute() {},
+      navigateTo,
+    });
+
+    store.openPgScopeHome();
+
+    expect(store.selectedBoardId).toBe('scope-product');
+    expect(store.selectedChannelId).toBeNull();
+    expect(store.activeThreadId).toBeNull();
+    expect(store.focusMessageId).toBeNull();
+    expect(store.focusScopeTitle).toBe('Product X');
+    expect(navigateTo).not.toHaveBeenCalled();
+  });
+
+  it('opens all scopes from the workspace avatar reset action', () => {
+    const navigateTo = vi.fn();
+    const store = Object.create(taskBoardStateMixin);
+    Object.defineProperty(store, 'scopesMap', {
+      configurable: true,
+      value: new Map([['scope-product', product]]),
+    });
     Object.assign(store, {
       currentWorkspace: { pgBackendMode: true },
       navSection: 'docs',
@@ -830,7 +871,6 @@ describe('computeBoardScopedTasks', () => {
     expect(store.selectedChannelId).toBeNull();
     expect(store.activeThreadId).toBeNull();
     expect(store.focusMessageId).toBeNull();
-    expect(store.focusScopeTitle).toBe('All');
     expect(navigateTo).toHaveBeenCalledWith('status');
   });
 
@@ -865,6 +905,44 @@ describe('computeBoardScopedTasks', () => {
     expect(store.focusMessageId).toBeNull();
   });
 
+  it('keeps PG scope selection at scope home instead of promoting to first channel', () => {
+    const store = Object.create(taskBoardStateMixin);
+    Object.defineProperty(store, 'scopesMap', {
+      configurable: true,
+      value: new Map([['scope-product', product]]),
+    });
+    Object.assign(store, {
+      currentWorkspace: { pgBackendMode: true },
+      navSection: 'chat',
+      selectedBoardId: ALL_TASK_BOARD_ID,
+      selectedChannelId: 'channel-other',
+      channels: [
+        { record_id: 'channel-home', title: 'Home', scope_id: 'scope-product', record_state: 'active' },
+        { record_id: 'channel-other', title: 'Other', scope_id: 'scope-other', record_state: 'active' },
+      ],
+      tasks: [],
+      showTaskDetail: false,
+      persistSelectedBoardId: vi.fn(),
+      clearSelectedTasks() {},
+      normalizeTaskFilterTags() {},
+      closeBoardPicker() {},
+      syncRoute() {},
+      ensureSelectedChatChannelInScope: vi.fn(),
+      selectChannel: vi.fn(),
+      stopSelectedChannelLiveQuery: vi.fn(),
+      applyMessages: vi.fn(),
+    });
+
+    store.selectBoard('scope-product');
+
+    expect(store.selectedBoardId).toBe('scope-product');
+    expect(store.pgContextHomeSelected).toBe(true);
+    expect(store.pgContextSelectedChannelId).toBeNull();
+    expect(store.selectedChannelId).toBeNull();
+    expect(store.ensureSelectedChatChannelInScope).not.toHaveBeenCalled();
+    expect(store.selectChannel).not.toHaveBeenCalled();
+  });
+
   it('does not promote the chat Home selection back to the first channel', () => {
     const navigateTo = vi.fn(function navigate(section) {
       store.navSection = section;
@@ -894,12 +972,12 @@ describe('computeBoardScopedTasks', () => {
       navigateTo,
     });
 
-    store.openAllScopesOverview();
+    store.openPgScopeHome();
 
-    expect(store.selectedBoardId).toBe(ALL_TASK_BOARD_ID);
+    expect(store.selectedBoardId).toBe('scope-product');
     expect(store.selectedChannelId).toBeNull();
     expect(selectChannel).not.toHaveBeenCalled();
-    expect(navigateTo).toHaveBeenCalledWith('status');
+    expect(navigateTo).not.toHaveBeenCalled();
   });
 });
 

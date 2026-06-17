@@ -518,6 +518,21 @@ export async function getMessagesByChannel(channelId, options = {}) {
   return takeWindow(activeRows, resolveWindowLimit('chatMessages', options), { fromStart: false });
 }
 
+export async function getMessagesByChannels(channelIds = [], options = {}) {
+  const ids = [...new Set(
+    (Array.isArray(channelIds) ? channelIds : [])
+      .map((channelId) => String(channelId || '').trim())
+      .filter(Boolean),
+  )];
+  if (ids.length === 0) return [];
+  const rows = await wsDb().chat_messages.where('channel_id').anyOf(ids).toArray();
+  const activeRows = rows
+    .filter((row) => row.record_state !== 'deleted')
+    .sort((a, b) => String(a.updated_at || '').localeCompare(String(b.updated_at || '')));
+  if (!options.limit) return activeRows;
+  return takeWindow(activeRows, resolveWindowLimit('chatMessages', options), { fromStart: false });
+}
+
 export async function getMessagesByOwner(ownerNpub) {
   const channels = await getChannelsByOwner(ownerNpub);
   const channelIds = channels.map((channel) => channel.record_id).filter(Boolean);

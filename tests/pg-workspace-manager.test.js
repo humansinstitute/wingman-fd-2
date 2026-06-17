@@ -139,6 +139,51 @@ describe('PG workspace manager mode', () => {
     });
   });
 
+  it('does not let sparse Tower PG discovery clear an existing workspace avatar', async () => {
+    const api = await import('../src/api.js');
+    const { mergeWorkspaceEntries } = await import('../src/workspaces.js');
+    const workspace = {
+      workspaceKey: 'pg:npub1user::tower:npub1tower::workspace:npub1workspace::app:flightdeck_pg',
+      workspaceOwnerNpub: 'npub1owner',
+      workspaceServiceNpub: 'npub1workspace',
+      workspaceId: 'workspace-1',
+      towerServiceNpub: 'npub1tower',
+      serviceNpub: 'npub1tower',
+      appNpub: 'flightdeck_pg',
+      directHttpsUrl: 'https://tower.example',
+      pgSessionNpub: 'npub1user',
+      pgBackendMode: true,
+      avatarUrl: 'storage://workspace-avatar-1',
+    };
+    api.listTowerPgWorkspaces.mockResolvedValue({
+      workspaces: [{
+        identity: {
+          tower_service_npub: 'npub1tower',
+          workspace_service_npub: 'npub1workspace',
+          workspace_owner_npub: 'npub1owner',
+          workspace_id: 'workspace-1',
+          app_npub: 'flightdeck_pg',
+        },
+        label: 'Wingmen',
+        description: 'PG workspace',
+        avatar_url: null,
+      }],
+    });
+    const store = await buildStore({
+      knownWorkspaces: [workspace],
+      selectedWorkspaceKey: workspace.workspaceKey,
+      currentWorkspaceOwnerNpub: 'npub1owner',
+      mergeKnownWorkspaces(entries) {
+        this.knownWorkspaces = mergeWorkspaceEntries(this.knownWorkspaces, entries);
+      },
+    });
+
+    await store.loadRemoteWorkspaces();
+
+    expect(store.knownWorkspaces).toHaveLength(1);
+    expect(store.knownWorkspaces[0].avatarUrl).toBe('storage://workspace-avatar-1');
+  });
+
   it('selects PG workspaces without encrypted workspace key or app schema setup', async () => {
     const api = await import('../src/api.js');
     const refreshGroups = vi.fn().mockResolvedValue([]);

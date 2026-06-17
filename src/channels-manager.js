@@ -79,7 +79,7 @@ import {
   mapPgChannelToLocal,
   resolveTowerPgWorkspaceContext,
 } from './pg-read-hydrator.js';
-import { buildPgChannelTaskBoardId } from './pg-record-context.js';
+import { buildPgChannelTaskBoardId, parsePgTaskBoardId } from './pg-record-context.js';
 
 // ---------------------------------------------------------------------------
 
@@ -1730,11 +1730,13 @@ export const channelsManagerMixin = {
       await this.rememberPeople([...participantNpubs], 'chat');
     }
 
-    let nextSelectedChannelId = this.selectedChannelId;
+    const selectedPgBoard = parsePgTaskBoardId(this.selectedBoardId);
+    const pgScopeHome = Boolean((this.currentWorkspace?.pgBackendMode || this.pgBackendMode) && selectedPgBoard.type === 'scope' && selectedPgBoard.scopeId);
+    let nextSelectedChannelId = pgScopeHome ? null : this.selectedChannelId;
     if (nextSelectedChannelId && !nextChannels.some((channel) => channel.record_id === nextSelectedChannelId)) {
       nextSelectedChannelId = nextChannels[0]?.record_id || null;
     }
-    if (!nextSelectedChannelId && nextChannels.length > 0) {
+    if (!nextSelectedChannelId && !pgScopeHome && nextChannels.length > 0) {
       nextSelectedChannelId = nextChannels[0].record_id;
     }
 
@@ -1754,7 +1756,7 @@ export const channelsManagerMixin = {
       await this.applyMessages([], { scrollToLatest: false });
     }
 
-    if (this.navSection === 'chat') {
+    if (this.navSection === 'chat' && !pgScopeHome) {
       this.ensureSelectedChatChannelInScope({ syncRoute: options.syncRoute !== false });
     }
 

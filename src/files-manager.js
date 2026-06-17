@@ -948,7 +948,10 @@ export const filesManagerMixin = {
     }
     if (row.source_type === 'chat') {
       this.navigateTo('chat');
-      if (row.channel_id) this.selectChannel(row.channel_id);
+      if (row.channel_id) {
+        if (this.isTowerPgMode) this.selectPgChannelContext?.(row.channel_id);
+        else this.selectChannel(row.channel_id);
+      }
       return;
     }
     if (row.source_type === 'comment') {
@@ -958,7 +961,8 @@ export const filesManagerMixin = {
     if (row.source_type === 'audio') {
       if (row.channel_id) {
         this.navigateTo('chat');
-        this.selectChannel(row.channel_id);
+        if (this.isTowerPgMode) this.selectPgChannelContext?.(row.channel_id);
+        else this.selectChannel(row.channel_id);
       }
     }
   },

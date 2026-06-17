@@ -52,6 +52,7 @@ export const writeContextManagerMixin = {
   },
 
   get writeContextTitle() {
+    if (this.writeContextPendingAction?.type === 'message') return 'Choose where to send this message';
     if (this.writeContextPendingAction?.type === 'task') return 'Choose where to create this task';
     if (this.writeContextPendingAction?.type === 'document') return 'Choose where to create this document';
     if (this.writeContextPendingAction?.type === 'files') return 'Choose where to upload these files';
@@ -68,6 +69,11 @@ export const writeContextManagerMixin = {
     const requestedScopeId = cleanId(options.scopeId) || getConcreteBoardScopeId(options.boardId || this.selectedBoardId);
     const needsExplicitChoice = isSystemScopeBoard(board) && !cleanId(options.scopeId) && !explicitChannelId;
     if (needsExplicitChoice) return null;
+    const visibleScopeHome = board.type === 'scope'
+      && !SYSTEM_SCOPE_IDS.has(board.scopeId)
+      && !cleanId(options.channelId || options.pg_channel_id)
+      && !cleanId(options.threadId || options.pg_thread_id);
+    if (visibleScopeHome) return null;
     const findChannel = (channelId) => channels.find((channel) => channel.record_id === channelId) || null;
     const channelMatchesScope = (channel) => {
       if (!channel) return false;
@@ -134,14 +140,22 @@ export const writeContextManagerMixin = {
     if (!selectedStillValid) this.writeContextChannelId = this.writeContextChannelOptions[0]?.record_id || '';
   },
 
+  selectWriteContextChannel(channelId) {
+    const nextChannelId = cleanId(channelId);
+    this.writeContextChannelId = nextChannelId;
+    const channel = (this.channels || []).find((entry) => entry?.record_id === nextChannelId && entry.record_state !== 'deleted') || null;
+    const scopeId = getPgChannelScopeId(channel);
+    if (scopeId) this.writeContextScopeId = scopeId;
+  },
+
   async confirmWriteContextModal() {
     if (this.writeContextSubmitting) return null;
     const action = this.writeContextPendingAction;
-    const scopeId = cleanId(this.writeContextScopeId);
     const channelId = cleanId(this.writeContextChannelId);
     const channel = (this.channels || []).find((entry) => entry?.record_id === channelId && entry.record_state !== 'deleted') || null;
+    const scopeId = cleanId(this.writeContextScopeId) || getPgChannelScopeId(channel);
     if (!action || !scopeId || !channelId || getPgChannelScopeId(channel) !== scopeId) {
-      this.writeContextError = 'Select a scope and channel before continuing.';
+      this.writeContextError = 'Select a channel before continuing.';
       return null;
     }
 
@@ -154,6 +168,9 @@ export const writeContextManagerMixin = {
         scopeId,
         channelId,
       };
+      if (action.type === 'message') {
+        return this.sendMessage?.(options) || null;
+      }
       if (action.type === 'task') {
         return this.addTask?.(options) || null;
       }

@@ -55,6 +55,7 @@ import { parseSuperBasedToken } from './superbased-token.js';
 import { extractInviteToken } from './invite-link.js';
 import { flightDeckLog } from './logging.js';
 import { isTowerPgBackendMode } from './backend-mode.js';
+import { parsePgTaskBoardId } from './pg-record-context.js';
 
 /**
  * Canonical list of shell state keys (data properties and getters).
@@ -681,9 +682,11 @@ export function createShellState(options = {}) {
           const selectedVisibleChannelId = this.selectedChannelId && isVisibleChannel(this.selectedChannelId)
             ? this.selectedChannelId
             : null;
+          const selectedPgBoard = parsePgTaskBoardId(this.selectedBoardId);
+          const pgScopeHome = Boolean((this.currentWorkspace?.pgBackendMode || this.pgBackendMode) && selectedPgBoard.type === 'scope' && selectedPgBoard.scopeId);
           const channelId = routeChannelId && isVisibleChannel(routeChannelId)
             ? routeChannelId
-            : selectedVisibleChannelId || visibleChannels[0]?.record_id || null;
+            : (pgScopeHome ? null : selectedVisibleChannelId || visibleChannels[0]?.record_id || null);
           if (channelId) {
             await this.selectChannel(channelId, { syncRoute: false });
             if (route.params.threadid) this.openThread(route.params.threadid, { syncRoute: false });
@@ -759,7 +762,9 @@ export function createShellState(options = {}) {
         const visibleChannels = Array.isArray(this.scopeFilteredChannels) ? this.scopeFilteredChannels : [];
         const selectedVisible = this.selectedChannelId
           && visibleChannels.some((channel) => channel.record_id === this.selectedChannelId);
-        if (!selectedVisible) {
+        const selectedPgBoard = parsePgTaskBoardId(this.selectedBoardId);
+        const pgScopeHome = Boolean((this.currentWorkspace?.pgBackendMode || this.pgBackendMode) && selectedPgBoard.type === 'scope' && selectedPgBoard.scopeId);
+        if (!selectedVisible && !pgScopeHome) {
           this.ensureSelectedChatChannelInScope();
         } else if (this.selectedChannelId) {
           this.scheduleChatFeedScrollToBottom();

@@ -2064,9 +2064,11 @@ export function initApp() {
           const selectedVisibleChannelId = this.selectedChannelId && isVisibleChannel(this.selectedChannelId)
             ? this.selectedChannelId
             : null;
+          const selectedPgBoard = parsePgTaskBoardId(this.selectedBoardId);
+          const pgScopeHome = Boolean((this.currentWorkspace?.pgBackendMode || this.pgBackendMode) && selectedPgBoard.type === 'scope' && selectedPgBoard.scopeId);
           const channelId = routeChannelId && isVisibleChannel(routeChannelId)
             ? routeChannelId
-            : selectedVisibleChannelId || visibleChannels[0]?.record_id || null;
+            : (pgScopeHome ? null : selectedVisibleChannelId || visibleChannels[0]?.record_id || null);
           if (channelId) {
             await this.selectChannel(channelId, { syncRoute: false });
             if (route.params.threadid) this.openThread(route.params.threadid, { syncRoute: false });
@@ -2453,7 +2455,9 @@ export function initApp() {
         const visibleChannels = Array.isArray(this.scopeFilteredChannels) ? this.scopeFilteredChannels : [];
         const selectedVisible = this.selectedChannelId
           && visibleChannels.some((channel) => channel.record_id === this.selectedChannelId);
-        if (!selectedVisible) {
+        const selectedPgBoard = parsePgTaskBoardId(this.selectedBoardId);
+        const pgScopeHome = Boolean((this.currentWorkspace?.pgBackendMode || this.pgBackendMode) && selectedPgBoard.type === 'scope' && selectedPgBoard.scopeId);
+        if (!selectedVisible && !pgScopeHome) {
           this.ensureSelectedChatChannelInScope();
         } else if (this.selectedChannelId) {
           this.pendingChatScrollToLatest = true;
@@ -4995,6 +4999,9 @@ export function initApp() {
       this.releaseCurrentPgTaskDetailLeaseBeforeSwitch(taskId);
       this.activeTaskId = taskId;
       const task = this.tasks.find(t => t.record_id === taskId);
+      if (isTowerPgBackendMode() && task?.pg_channel_id && task.pg_channel_id !== this.selectedChannelId) {
+        this.selectPgChannelContext?.(task.pg_channel_id);
+      }
       this.editingTask = task ? toRaw(task) : null;
       this.taskEditOriginal = this.editingTask ? toRaw(this.editingTask) : null;
       this.taskDetailMode = 'view';

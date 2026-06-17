@@ -1373,6 +1373,11 @@ export const taskBoardStateMixin = {
     return board.type === 'scope' && board.scopeId === ALL_TASK_BOARD_ID;
   },
 
+  get pgContextHomeSelected() {
+    if (!isPgWorkspaceStore(this)) return false;
+    return !this.pgContextSelectedChannelId && !this.pgContextSelectedThreadId;
+  },
+
   get pgContextChannels() {
     if (!this.showPgTaskBoardZoomControls) return [];
     const scopeId = this.pgContextScopeId;
@@ -1387,8 +1392,6 @@ export const taskBoardStateMixin = {
   get pgContextSelectedChannelId() {
     const board = parsePgTaskBoardId(this.selectedBoardId);
     if (board.channelId) return board.channelId;
-    if (board.type === 'scope' && board.scopeId === ALL_TASK_BOARD_ID) return null;
-    if (this.selectedChannelId && this.pgContextChannels.some((channel) => channel.record_id === this.selectedChannelId)) return this.selectedChannelId;
     return null;
   },
 
@@ -1474,6 +1477,18 @@ export const taskBoardStateMixin = {
     if (!normalizedChannelId) return;
     this.selectedChannelId = normalizedChannelId;
     this.selectBoard(buildPgChannelTaskBoardId(normalizedChannelId));
+  },
+
+  openPgScopeHome() {
+    if (!isPgWorkspaceStore(this)) {
+      this.openAllScopesOverview();
+      return;
+    }
+    const scopeId = this.pgContextScopeId || ALL_TASK_BOARD_ID;
+    this.selectedChannelId = null;
+    this.activeThreadId = null;
+    this.focusMessageId = null;
+    this.selectBoard(scopeId);
   },
 
   openAllScopesOverview() {
@@ -1761,6 +1776,12 @@ export const taskBoardStateMixin = {
       if (activeChannel(board.channelId)) this.selectedChannelId = board.channelId;
       return;
     }
+    if (board.type === 'scope' && board.scopeId) {
+      this.selectedChannelId = null;
+      this.activeThreadId = null;
+      this.focusMessageId = null;
+      return;
+    }
     if (board.type !== 'scope'
       || !board.scopeId
       || board.scopeId === ALL_TASK_BOARD_ID
@@ -1782,21 +1803,6 @@ export const taskBoardStateMixin = {
   selectBoard(boardId) {
     const requestedBoard = parsePgTaskBoardId(boardId);
     let nextBoardId = boardId;
-    if (isPgWorkspaceStore(this)
-      && requestedBoard.type === 'scope'
-      && requestedBoard.scopeId
-      && requestedBoard.scopeId !== ALL_TASK_BOARD_ID
-      && requestedBoard.scopeId !== RECENT_TASK_BOARD_ID
-      && requestedBoard.scopeId !== UNSCOPED_TASK_BOARD_ID) {
-      const channels = Array.isArray(this.channels) ? this.channels : [];
-      const selected = channels.find((channel) => channel?.record_id === this.selectedChannelId
-        && channel.record_state !== 'deleted'
-        && getPgChannelScopeId(channel) === requestedBoard.scopeId) || null;
-      const scopedChannel = selected || channels.find((channel) => channel?.record_id
-        && channel.record_state !== 'deleted'
-        && getPgChannelScopeId(channel) === requestedBoard.scopeId) || null;
-      if (scopedChannel?.record_id) nextBoardId = buildPgChannelTaskBoardId(scopedChannel.record_id);
-    }
     const previousChannelId = this.selectedChannelId;
     const openDocument = this.navSection === 'docs'
       && this.docsEditorOpen
@@ -1811,7 +1817,7 @@ export const taskBoardStateMixin = {
     this.closeBoardPicker();
     this.syncSelectedChannelForPgBoard(nextBoardId);
     const nextBoard = parsePgTaskBoardId(nextBoardId);
-    if (this.navSection === 'chat' && !(isPgWorkspaceStore(this) && isSystemScopeBoard(nextBoard))) {
+    if (this.navSection === 'chat' && !(isPgWorkspaceStore(this) && nextBoard.type === 'scope')) {
       this.ensureSelectedChatChannelInScope?.({ syncRoute: false });
       if (this.selectedChannelId && this.selectedChannelId !== previousChannelId) {
         this.selectChannel?.(this.selectedChannelId, { syncRoute: false });

@@ -3,6 +3,7 @@ import {
   getChannelsByOwner,
   getCommentsByOwner,
   getMessagesByChannel,
+  getMessagesByChannels,
   getMessagesByOwner,
   getAudioNotesByOwner,
   getDirectoriesByOwner,
@@ -362,7 +363,41 @@ function buildDetailSpecs(store) {
   switch (store?.navSection) {
     case 'chat': {
       const channelId = String(store?.selectedChannelId || '').trim();
-      if (!channelId) return [];
+      if (!channelId) {
+        const channelIds = (Array.isArray(store?.pgContextChannels) ? store.pgContextChannels : [])
+          .map((channel) => String(channel?.record_id || '').trim())
+          .filter(Boolean);
+        if (channelIds.length === 0) return [];
+        const signature = channelIds.join(',');
+        return [
+          {
+            key: `chat:messages:scope-home:${signature}`,
+            query: () => getMessagesByChannels(channelIds, {
+              limit: store?.mainFeedVisibleCount || store?.MAIN_FEED_PAGE_SIZE,
+            }),
+            onNext: (messages) => {
+              if (store.workspaceOwnerNpub !== ownerNpub || store.selectedChannelId) return;
+              return store.applyMessages(messages);
+            },
+          },
+          {
+            key: `chat:reactions:scope-home:${signature}`,
+            query: async () => {
+              const messages = await getMessagesByChannels(channelIds, {
+                limit: store?.mainFeedVisibleCount || store?.MAIN_FEED_PAGE_SIZE,
+              });
+              return getReactionsByTargets(
+                messages.map((message) => message.record_id).filter(Boolean),
+                recordFamilyHash('chat_message'),
+              );
+            },
+            onNext: (reactions) => {
+              if (store.workspaceOwnerNpub !== ownerNpub || store.selectedChannelId) return;
+              return store.applyReactions(reactions);
+            },
+          },
+        ];
+      }
       return [
         {
           key: `chat:messages:${channelId}`,

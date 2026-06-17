@@ -1341,23 +1341,31 @@ export const workspaceManagerMixin = {
         const activeBackendUrl = normalizeBackendUrl(this.backendUrl);
         const result = await listTowerPgWorkspaces({ baseUrl: activeBackendUrl, appNpub: FLIGHT_DECK_PG_APP_NPUB });
         const workspaces = (result.workspaces || [])
-          .map((entry) => normalizeWorkspaceEntry({
-            ...entry,
-            directHttpsUrl: normalizeBackendUrl(entry.tower_base_url || activeBackendUrl),
-            serviceNpub: entry.identity?.tower_service_npub || null,
-            towerServiceNpub: entry.identity?.tower_service_npub || null,
-            workspaceServiceNpub: entry.identity?.workspace_service_npub || null,
-            workspaceId: entry.identity?.workspace_id || null,
-            workspaceOwnerNpub: entry.identity?.workspace_owner_npub || null,
-            appNpub: entry.identity?.app_npub || FLIGHT_DECK_PG_APP_NPUB,
-            pgSessionNpub: this.session.npub,
-            name: entry.label,
-            slug: entry.slug,
-            description: entry.description,
-            avatarUrl: entry.avatar_url,
-            capabilities: entry.capabilities || [],
-            pgBackendMode: true,
-          }))
+          .map((entry) => {
+            const workspaceInput = {
+              ...entry,
+              directHttpsUrl: normalizeBackendUrl(entry.tower_base_url || activeBackendUrl),
+              serviceNpub: entry.identity?.tower_service_npub || null,
+              towerServiceNpub: entry.identity?.tower_service_npub || null,
+              workspaceServiceNpub: entry.identity?.workspace_service_npub || null,
+              workspaceId: entry.identity?.workspace_id || null,
+              workspaceOwnerNpub: entry.identity?.workspace_owner_npub || null,
+              appNpub: entry.identity?.app_npub || FLIGHT_DECK_PG_APP_NPUB,
+              pgSessionNpub: this.session.npub,
+              name: entry.label,
+              slug: entry.slug,
+              description: entry.description,
+              capabilities: entry.capabilities || [],
+              pgBackendMode: true,
+            };
+            const avatarUrl = String(entry.avatar_url || entry.avatarUrl || '').trim();
+            delete workspaceInput.avatar_url;
+            delete workspaceInput.avatarUrl;
+            if (avatarUrl) workspaceInput.avatarUrl = avatarUrl;
+            const workspace = normalizeWorkspaceEntry(workspaceInput);
+            if (workspace && !avatarUrl) delete workspace.avatarUrl;
+            return workspace;
+          })
           .filter(Boolean);
         this.mergeKnownWorkspaces(workspaces);
         return;

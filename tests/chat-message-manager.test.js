@@ -388,6 +388,23 @@ describe('thread lifecycle', () => {
     expect(store.syncRoute).toHaveBeenCalled();
   });
 
+  it('openThread selects the owning PG channel when opened from an aggregate feed', () => {
+    isTowerPgBackendMode.mockReturnValue(true);
+    const selectPgChannelContext = vi.fn();
+    const { fn, store } = bindMethod('openThread', {
+      selectedChannelId: null,
+      selectPgChannelContext,
+      messages: [
+        { record_id: 'm1', channel_id: 'channel-1', parent_message_id: null },
+      ],
+    });
+
+    fn('m1');
+
+    expect(selectPgChannelContext).toHaveBeenCalledWith('channel-1');
+    expect(store.activeThreadId).toBe('m1');
+  });
+
   it('openThread respects syncRoute: false', () => {
     const { fn, store } = bindMethod('openThread');
     fn('m1', { syncRoute: false });
@@ -906,6 +923,23 @@ describe('sendMessage', () => {
     });
     await fn();
     expect(store.error).toBe('Select a channel first');
+  });
+
+  it('opens the write-context chooser when sending a PG message from scope Home', async () => {
+    isTowerPgBackendMode.mockReturnValue(true);
+    const openWriteContextModal = vi.fn().mockReturnValue(null);
+    const { fn, store } = bindMethod('sendMessage', {
+      messageInput: 'hello',
+      messageAudioDrafts: [],
+      selectedChannelId: null,
+      openWriteContextModal,
+    });
+
+    await fn();
+
+    expect(store.error).toBeNull();
+    expect(openWriteContextModal).toHaveBeenCalledWith('message', { options: {} });
+    expect(store.messageInput).toBe('hello');
   });
 
   it('sets error when image upload in progress', async () => {

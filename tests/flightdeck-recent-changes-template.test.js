@@ -139,6 +139,7 @@ describe('flight deck summary template', () => {
     expect(html).toContain('class="chat-channel-header-icon-btn"');
     expect(html).toContain('@click="$store.chat.toggleAppHeaderHidden()"');
     expect(html).toContain('@click="$store.chat.openAllScopesOverview()"');
+    expect(html).toContain('@click="$store.chat.openPgScopeHome()"');
     expect(html).toContain('x-for="ch in $store.chat.pgContextChannels"');
     expect(html).toContain('active: $store.chat.pgContextSelectedChannelId === ch.record_id');
     expect(html).not.toContain('class="app-header-icon-btn"');
