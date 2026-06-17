@@ -4,6 +4,7 @@ import {
   buildFileUploadQueueItem,
   buildFileBrowserRows,
   filterFileBrowserRows,
+  filesManagerMixin,
 } from '../src/files-manager.js';
 import { recordFamilyHash } from '../src/translators/chat.js';
 
@@ -140,5 +141,52 @@ describe('files manager', () => {
       content_type: 'application/pdf',
     });
     expect(item.id).toBeTruthy();
+  });
+
+  it('opens editable metadata for PG-backed file rows', () => {
+    const fileRow = {
+      source_type: 'document',
+      source_record_id: 'file-1',
+      name: 'Original.pdf',
+      scope_id: 'scope-1',
+      channel_id: 'chan-1',
+      object_id: 'storage-1',
+    };
+    const editStore = Object.assign(Object.create(filesManagerMixin), {
+      isTowerPgMode: true,
+      documents: [{
+        record_id: 'file-1',
+        title: 'Original.pdf',
+        pg_backend: true,
+        pg_record_type: 'file',
+        pg_storage_object_id: 'storage-1',
+        scope_id: 'scope-1',
+        pg_channel_id: 'chan-1',
+      }],
+      channels: [
+        { record_id: 'chan-1', title: 'General', scope_id: 'scope-1', record_state: 'active' },
+        { record_id: 'chan-2', title: 'Finance', scope_id: 'scope-2', record_state: 'active' },
+      ],
+      taskBoards: [
+        { id: 'scope-1', label: 'Home', zoom: 'scope' },
+        { id: 'scope-2', label: 'Finance', zoom: 'scope' },
+      ],
+      getChannelLabel(channel) {
+        return channel.title;
+      },
+    });
+
+    editStore.openFileEditModal(fileRow);
+
+    expect(editStore.showFileEditModal).toBe(true);
+    expect(editStore.fileEditName).toBe('Original.pdf');
+    expect(editStore.fileEditScopeId).toBe('scope-1');
+    expect(editStore.fileEditChannelId).toBe('chan-1');
+    expect(editStore.fileEditContextChanged).toBe(false);
+
+    editStore.selectFileEditScope('scope-2');
+
+    expect(editStore.fileEditChannelId).toBe('chan-2');
+    expect(editStore.fileEditContextChanged).toBe(true);
   });
 });

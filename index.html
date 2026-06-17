@@ -1148,27 +1148,26 @@
               </section>
             </div>
 
-            <section class="autopilot-daily-scope flightdeck-summary-daily" data-testid="flightdeck-summary-daily-scope">
-              <div>
-                <span class="daily-note-eyebrow">Daily Scope</span>
+            <section class="autopilot-daily-scope flightdeck-summary-daily" data-testid="flightdeck-summary-daily-scope" role="button" tabindex="0" @click="$store.chat.openAutopilotOverviewDailyNote()" @keydown.enter.prevent="$store.chat.openAutopilotOverviewDailyNote()" @keydown.space.prevent="$store.chat.openAutopilotOverviewDailyNote()" :aria-label="$store.chat.autopilotOverviewDailyNote.note ? 'Open Daily Scope note' : 'Create Daily Scope note'">
+              <div class="daily-note-preview-content">
                 <h3 x-text="$store.chat.autopilotOverviewDailyNote.title"></h3>
-                <p class="daily-note-progress" x-text="$store.chat.autopilotOverviewDailyNote.progress"></p>
                 <div class="daily-note-preview-list" x-show="$store.chat.autopilotOverviewDailyNote.items.length > 0">
                   <template x-for="item in $store.chat.autopilotOverviewDailyNote.items" :key="item.id">
-                    <button type="button" class="daily-note-preview-item" :class="{ 'daily-note-preview-item-complete': item.completed }" @click="$store.chat.toggleDailyNoteOverviewItem(item.id)" :aria-pressed="item.completed" :aria-label="item.completed ? `Mark ${item.text} incomplete` : `Mark ${item.text} complete`">
+                    <button type="button" class="daily-note-preview-item" :class="{ 'daily-note-preview-item-complete': item.completed }" @click.stop="$store.chat.toggleDailyNoteOverviewItem(item.id)" :aria-pressed="item.completed" :aria-label="item.completed ? `Mark ${item.text} incomplete` : `Mark ${item.text} complete`">
                       <span class="daily-note-checkbox" aria-hidden="true"></span>
                       <span x-text="item.text"></span>
                     </button>
                   </template>
                 </div>
-                <p class="daily-note-empty-preview" x-show="$store.chat.autopilotOverviewDailyNote.items.length === 0" x-text="$store.chat.autopilotOverviewDailyNote.body"></p>
+                <p class="daily-note-narrative-snippet">
+                  <span x-text="$store.chat.autopilotOverviewDailyNote.body"></span>
+                  <span class="daily-note-more" x-show="$store.chat.autopilotOverviewDailyNote.hasMoreBody">... more</span>
+                </p>
                 <div class="autopilot-row-meta">
-                  <span x-text="$store.chat.autopilotOverviewDailyNote.source"></span>
-                  <span x-show="$store.chat.autopilotOverviewDailyNote.updatedAt" x-text="$store.chat.formatRelativeTime($store.chat.autopilotOverviewDailyNote.updatedAt)"></span>
+                  <span x-text="`Updated ${$store.chat.autopilotOverviewDailyNote.updatedBy || $store.chat.autopilotOverviewDailyNote.source}${$store.chat.autopilotOverviewDailyNote.updatedAt ? ' ' + $store.chat.formatRelativeTime($store.chat.autopilotOverviewDailyNote.updatedAt) : ''}`"></span>
                   <span x-show="$store.chat.autopilotOverviewDailyNote.duplicateCount > 0" x-text="`${$store.chat.autopilotOverviewDailyNote.duplicateCount} duplicate note${$store.chat.autopilotOverviewDailyNote.duplicateCount === 1 ? '' : 's'}`"></span>
                 </div>
               </div>
-              <button type="button" class="btn-secondary" @click="$store.chat.openAutopilotOverviewDailyNote()" :aria-label="$store.chat.autopilotOverviewDailyNote.note ? 'Open Daily Scope note' : 'Create Daily Scope note'" x-text="$store.chat.autopilotOverviewDailyNote.note ? 'Open note' : 'Create note'"></button>
             </section>
 
             <div class="flightdeck-summary-grid">
@@ -4677,27 +4676,26 @@
               </section>
             </div>
 
-            <section class="autopilot-daily-scope" data-testid="autopilot-overview-daily-scope">
-              <div>
-                <span class="daily-note-eyebrow">Daily Scope</span>
+            <section class="autopilot-daily-scope" data-testid="autopilot-overview-daily-scope" role="button" tabindex="0" @click="$store.chat.openAutopilotOverviewDailyNote()" @keydown.enter.prevent="$store.chat.openAutopilotOverviewDailyNote()" @keydown.space.prevent="$store.chat.openAutopilotOverviewDailyNote()" :aria-label="$store.chat.autopilotOverviewDailyNote.note ? 'Open Daily Scope note' : 'Create Daily Scope note'">
+              <div class="daily-note-preview-content">
                 <h3 x-text="$store.chat.autopilotOverviewDailyNote.title"></h3>
-                <p class="daily-note-progress" x-text="$store.chat.autopilotOverviewDailyNote.progress"></p>
                 <div class="daily-note-preview-list" x-show="$store.chat.autopilotOverviewDailyNote.items.length > 0">
                   <template x-for="item in $store.chat.autopilotOverviewDailyNote.items" :key="item.id">
-                    <button type="button" class="daily-note-preview-item" :class="{ 'daily-note-preview-item-complete': item.completed }" @click="$store.chat.toggleDailyNoteOverviewItem(item.id)" :aria-pressed="item.completed" :aria-label="item.completed ? `Mark ${item.text} incomplete` : `Mark ${item.text} complete`">
+                    <button type="button" class="daily-note-preview-item" :class="{ 'daily-note-preview-item-complete': item.completed }" @click.stop="$store.chat.toggleDailyNoteOverviewItem(item.id)" :aria-pressed="item.completed" :aria-label="item.completed ? `Mark ${item.text} incomplete` : `Mark ${item.text} complete`">
                       <span class="daily-note-checkbox" aria-hidden="true"></span>
                       <span x-text="item.text"></span>
                     </button>
                   </template>
                 </div>
-                <p class="daily-note-empty-preview" x-show="$store.chat.autopilotOverviewDailyNote.items.length === 0" x-text="$store.chat.autopilotOverviewDailyNote.body"></p>
+                <p class="daily-note-narrative-snippet">
+                  <span x-text="$store.chat.autopilotOverviewDailyNote.body"></span>
+                  <span class="daily-note-more" x-show="$store.chat.autopilotOverviewDailyNote.hasMoreBody">... more</span>
+                </p>
                 <div class="autopilot-row-meta">
-                  <span x-text="$store.chat.autopilotOverviewDailyNote.source"></span>
-                  <span x-show="$store.chat.autopilotOverviewDailyNote.updatedAt" x-text="$store.chat.formatRelativeTime($store.chat.autopilotOverviewDailyNote.updatedAt)"></span>
+                  <span x-text="`Updated ${$store.chat.autopilotOverviewDailyNote.updatedBy || $store.chat.autopilotOverviewDailyNote.source}${$store.chat.autopilotOverviewDailyNote.updatedAt ? ' ' + $store.chat.formatRelativeTime($store.chat.autopilotOverviewDailyNote.updatedAt) : ''}`"></span>
                   <span x-show="$store.chat.autopilotOverviewDailyNote.duplicateCount > 0" x-text="`${$store.chat.autopilotOverviewDailyNote.duplicateCount} duplicate note${$store.chat.autopilotOverviewDailyNote.duplicateCount === 1 ? '' : 's'}`"></span>
                 </div>
               </div>
-              <button type="button" class="btn-secondary" @click="$store.chat.openAutopilotOverviewDailyNote()" :aria-label="$store.chat.autopilotOverviewDailyNote.note ? 'Open Daily Scope note' : 'Create Daily Scope note'" x-text="$store.chat.autopilotOverviewDailyNote.note ? 'Open note' : 'Create note'"></button>
             </section>
 
             <div class="autopilot-overview-grid">

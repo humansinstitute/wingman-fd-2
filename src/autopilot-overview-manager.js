@@ -538,14 +538,19 @@ export const autopilotOverviewManagerMixin = {
       .filter((item) => item.text);
     const done = items.filter((item) => item?.completed === true).length;
     const updatedBy = note?.updated_by_actor_npub || note?.updated_by_actor_id || '';
+    const narrative = String(note?.body || note?.focus || '').replace(/\s+/g, ' ').trim();
+    const source = String(note?.metadata?.source || note?.source || 'manual').trim();
+    const title = String(note?.title || '').trim();
+    const displayTitle = !title || title.toLowerCase() === 'daily note' ? 'Daily Note' : title;
     return {
       note,
       duplicateCount: Math.max(0, notes.length - 1),
-      title: note?.title || 'No Daily Scope yet',
+      title: displayTitle,
       progress: items.length > 0 ? `${done}/${items.length} done` : 'No tasks yet',
       items,
-      body: items.length > 0 ? '' : (note?.focus || 'Create your Daily Scope for today.'),
-      source: note?.metadata?.source || note?.source || 'manual note',
+      body: narrative || 'Create your Daily Scope for today.',
+      hasMoreBody: narrative.length > 120,
+      source: source.toLowerCase() === 'manual note' ? 'manual' : source,
       updatedBy,
       updatedAt: note?.updated_at || '',
     };

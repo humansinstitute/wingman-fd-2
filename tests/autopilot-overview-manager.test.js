@@ -209,9 +209,10 @@ describe('autopilot overview manager', () => {
     expect(store.autopilotOverviewDailyNote).toEqual(expect.objectContaining({
       note: expect.objectContaining({ record_id: 'daily-newer' }),
       duplicateCount: 1,
-      title: 'Daily note',
+      title: 'Daily Note',
       progress: '1/4 done',
-      body: '',
+      body: 'Narrative should not render in the preview card',
+      hasMoreBody: false,
       items: [
         { id: 'one', text: 'Deploy Kindling Pipelines', completed: true },
         { id: 'two', text: 'Kick Off Plantrite', completed: false },
