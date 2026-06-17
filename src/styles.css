@@ -1739,6 +1739,101 @@ button:disabled {
   background: #f8fafc;
 }
 
+.file-edit-modal {
+  width: min(620px, calc(100vw - 32px));
+  padding: 1.25rem;
+}
+
+.file-edit-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-right: 2rem;
+}
+
+.file-edit-eyebrow {
+  margin: 0 0 0.25rem;
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.file-edit-modal h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 1.15rem;
+}
+
+.file-edit-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.8rem;
+  margin-top: 1rem;
+}
+
+.file-edit-field-wide {
+  grid-column: 1 / -1;
+}
+
+.file-edit-field span {
+  display: block;
+  margin-bottom: 0.3rem;
+  color: #475569;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.file-edit-field input,
+.file-edit-field select {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #ffffff;
+  color: var(--text);
+  font-size: 0.9rem;
+  padding: 0.5rem 0.65rem;
+}
+
+.file-edit-field input:focus,
+.file-edit-field select:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
+}
+
+.file-edit-current {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.75rem;
+  margin-top: 0.8rem;
+  color: #64748b;
+  font-size: 0.76rem;
+}
+
+.file-edit-current span:first-child {
+  max-width: 100%;
+  overflow: hidden;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-edit-warning {
+  margin: 0.9rem 0 0;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid #fed7aa;
+  border-radius: var(--radius-sm);
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
 .files-empty {
   margin: 1.5rem;
   padding: 2rem;
@@ -1783,6 +1878,10 @@ button:disabled {
   }
 
   .files-upload-item-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .file-edit-form {
     grid-template-columns: 1fr;
   }
 

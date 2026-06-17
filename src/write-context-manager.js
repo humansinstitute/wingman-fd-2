@@ -56,7 +56,7 @@ export const writeContextManagerMixin = {
     if (this.writeContextPendingAction?.type === 'document') return 'Choose where to create this document';
     if (this.writeContextPendingAction?.type === 'files') return 'Choose where to upload these files';
     if (this.writeContextPendingAction?.type === 'inline-file') return 'Choose where to attach this file';
-    if (this.writeContextPendingAction?.type === 'file-move') return 'Move this file';
+    if (this.writeContextPendingAction?.type === 'file-move') return 'Edit this file';
     return 'Choose scope and channel';
   },
 

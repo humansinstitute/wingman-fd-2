@@ -20,7 +20,12 @@ describe('files upload UI', () => {
     expect(html).toContain('@change="$store.chat.handleFileUploadInput($event)"');
     expect(html).toContain('x-model="item.name"');
     expect(html).toContain('x-model="item.scope_id"');
-    expect(html).toContain('x-show="$store.chat.canMoveFileBrowserRow(row)"');
-    expect(html).toContain('@click="$store.chat.openFileMoveModal(row)"');
+    expect(html).toContain('x-show="$store.chat.canEditFileBrowserRow(row)"');
+    expect(html).toContain('@click="$store.chat.openFileEditModal(row)"');
+    expect(html).toContain('id="file-edit-title"');
+    expect(html).toContain('x-model="$store.chat.fileEditName"');
+    expect(html).toContain('x-model="$store.chat.fileEditScopeId"');
+    expect(html).toContain('x-model="$store.chat.fileEditChannelId"');
+    expect(html).toContain('Changing scope or channel can make this file inaccessible in previous chat threads');
   });
 });
