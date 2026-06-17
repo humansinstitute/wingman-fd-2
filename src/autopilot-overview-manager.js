@@ -598,9 +598,7 @@ export const autopilotOverviewManagerMixin = {
     const updatedBy = updatedByNpub || normalizeString(note?.updated_by_actor_id);
     const narrative = String(note?.body || note?.focus || '').replace(/\s+/g, ' ').trim();
     const source = String(note?.metadata?.source || note?.source || 'manual').trim();
-    const title = String(note?.title || '').trim();
-    const displayTitle = !title || title.toLowerCase() === 'daily note' ? 'Daily Note' : title;
-    const titleWithDate = `${displayTitle} ${formatDailyScopeDate(selectedDate)}`.trim();
+    const titleWithDate = `My Focus ${formatDailyScopeDate(selectedDate)}`.trim();
     const resolvedUpdatedBy = updatedByNpub ? normalizeString(this.getSenderName?.(updatedByNpub)) : '';
     const selfNpubs = [
       this.session?.npub,

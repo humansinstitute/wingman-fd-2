@@ -212,7 +212,7 @@ describe('autopilot overview manager', () => {
       note: expect.objectContaining({ record_id: 'daily-newer' }),
       duplicateCount: 1,
       dateKey: '2026-06-17',
-      title: 'Daily Note 17th June 2026',
+      title: 'My Focus 17th June 2026',
       progress: '1/4 done',
       body: 'Narrative should not render in the preview card',
       hasMoreBody: false,
@@ -258,7 +258,7 @@ describe('autopilot overview manager', () => {
 
     expect(store.autopilotOverviewDailyNote).toEqual(expect.objectContaining({
       dateKey: '2026-06-17',
-      title: 'Daily Note 17th June 2026',
+      title: 'My Focus 17th June 2026',
       body: 'Create Daily Note for 17th June 2026.',
       metaLabel: 'Not created yet',
     }));
@@ -270,7 +270,7 @@ describe('autopilot overview manager', () => {
     expect(store.autopilotOverviewDailyScopeCanGoNext).toBe(true);
     expect(store.autopilotOverviewDailyNote).toEqual(expect.objectContaining({
       dateKey: '2026-06-16',
-      title: 'Daily Note 16th June 2026',
+      title: 'My Focus 16th June 2026',
       body: 'Create Daily Note for 16th June 2026.',
     }));
 
