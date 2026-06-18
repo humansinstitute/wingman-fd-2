@@ -84,6 +84,7 @@ import { buildPgChannelTaskBoardId, parsePgTaskBoardId } from './pg-record-conte
 // ---------------------------------------------------------------------------
 
 const FULL_NPUB_PATTERN = /^npub1[023456789acdefghjklmnpqrstuvwxyz]{50,}$/i;
+const SYSTEM_SCOPE_IDS = new Set(['__all__', '__recent__', '__unscoped__']);
 // Pure utility functions (no `this` dependency)
 // ---------------------------------------------------------------------------
 
@@ -721,6 +722,49 @@ export function buildChannelAccessGrantPayloads(rows = []) {
 // ---------------------------------------------------------------------------
 
 export const channelsManagerMixin = {
+  get newChannelScopeOptions() {
+    return (this.scopes || [])
+      .filter((scope) => scope?.record_id && scope.record_state !== 'deleted' && !isDmScope(scope))
+      .map((scope) => ({
+        id: scope.record_id,
+        label: this.getScopeBreadcrumb?.(scope.record_id) || scope.title || scope.record_id,
+      }));
+  },
+
+  get currentConcretePgScopeId() {
+    if (!isTowerPgBackendMode()) return '';
+    const selectedScopeId = String(this.selectedBoardScope?.record_id || '').trim();
+    if (selectedScopeId && !SYSTEM_SCOPE_IDS.has(selectedScopeId) && !isDmScope(selectedScopeId)) return selectedScopeId;
+    const board = parsePgTaskBoardId(this.selectedBoardId);
+    if (board.type === 'scope' && board.scopeId && !SYSTEM_SCOPE_IDS.has(board.scopeId) && !isDmScope(board.scopeId)) {
+      return board.scopeId;
+    }
+    if (board.type === 'scope') return '';
+    const channelScopeId = String(this.selectedChannel?.scope_id || '').trim();
+    if (channelScopeId && !SYSTEM_SCOPE_IDS.has(channelScopeId) && !isDmScope(channelScopeId)) return channelScopeId;
+    return '';
+  },
+
+  openNewChannelScopePicker() {
+    this.newChannelScopeId = '';
+    this.showNewChannelScopePicker = true;
+  },
+
+  closeNewChannelScopePicker() {
+    this.showNewChannelScopePicker = false;
+    this.newChannelScopeId = '';
+  },
+
+  async continueNewChannelWithScope() {
+    const scopeId = String(this.newChannelScopeId || '').trim();
+    if (!scopeId) {
+      this.error = 'Select a scope before creating a channel.';
+      return;
+    }
+    this.showNewChannelScopePicker = false;
+    await this.openNewChannelModal({ scopeId });
+  },
+
   // --- channels ---
 
   async ensureTowerPgDmChannel(targetNpub) {
@@ -1912,7 +1956,14 @@ export const channelsManagerMixin = {
     return memberNpub !== this.session?.npub && memberNpub !== activeGroup?.owner_npub;
   },
 
-  async openNewChannelModal() {
+  async openNewChannelModal(options = {}) {
+    const requestedScopeId = String(options.scopeId || '').trim();
+    if (isTowerPgBackendMode() && !requestedScopeId && !this.currentConcretePgScopeId && !this.canCreateDmInCurrentScope) {
+      this.openNewChannelScopePicker();
+      return;
+    }
+    this.showNewChannelScopePicker = false;
+    this.newChannelScopeId = requestedScopeId || this.currentConcretePgScopeId || '';
     this.newChannelMode = this.canCreateDmInCurrentScope ? 'dm' : 'channel';
     this.newChannelDmNpub = '';
     this.newChannelName = '';
@@ -1945,6 +1996,7 @@ export const channelsManagerMixin = {
 
   closeNewChannelModal() {
     this.showNewChannelModal = false;
+    this.newChannelScopeId = '';
   },
 
   get newChannelDmSuggestions() {
@@ -2143,7 +2195,11 @@ export const channelsManagerMixin = {
       if (isTowerPgBackendMode()) {
         const { workspaceId, workspaceOwnerNpub, baseUrl, appNpub } = resolveTowerPgWorkspaceContext(this);
         const boardScopeId = this.scopesMap?.has?.(this.selectedBoardId) ? this.selectedBoardId : '';
-        const scopeId = this.selectedBoardScope?.record_id || boardScopeId || this.selectedChannel?.scope_id || this.scopes?.[0]?.record_id;
+        const scopeId = String(this.newChannelScopeId || '').trim()
+          || this.selectedBoardScope?.record_id
+          || boardScopeId
+          || this.selectedChannel?.scope_id
+          || '';
         if (!workspaceId || !baseUrl || !scopeId) throw new Error('Select a PG scope before creating a channel.');
         const existing = findExistingNamedChannel(this.channels, title, scopeId);
         if (existing?.record_id) {
@@ -2218,7 +2274,11 @@ export const channelsManagerMixin = {
           await hydrateTowerPgChannels(this);
           if (typeof this.refreshChannels === 'function') await this.refreshChannels();
           const boardScopeId = this.scopesMap?.has?.(this.selectedBoardId) ? this.selectedBoardId : '';
-          const scopeId = this.selectedBoardScope?.record_id || boardScopeId || this.selectedChannel?.scope_id || this.scopes?.[0]?.record_id;
+          const scopeId = String(this.newChannelScopeId || '').trim()
+            || this.selectedBoardScope?.record_id
+            || boardScopeId
+            || this.selectedChannel?.scope_id
+            || '';
           const existing = findExistingNamedChannel(this.channels, title, scopeId);
           if (existing?.record_id) {
             await this.selectChannel(existing.record_id, { syncRoute: false });

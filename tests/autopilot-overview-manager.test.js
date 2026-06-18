@@ -262,7 +262,7 @@ describe('autopilot overview manager', () => {
       body: 'Create Daily Note for 17th June 2026.',
       metaLabel: 'Not created yet',
     }));
-    expect(store.autopilotOverviewDailyScopeCanGoNext).toBe(false);
+    expect(store.autopilotOverviewDailyScopeCanGoNext).toBe(true);
 
     store.showPreviousDailyScopeNote();
 
@@ -276,6 +276,47 @@ describe('autopilot overview manager', () => {
 
     store.showNextDailyScopeNote();
     expect(store.dailyScopeSelectedDate).toBe('2026-06-17');
+
+    store.showNextDailyScopeNote();
+    expect(store.dailyScopeSelectedDate).toBe('2026-06-18');
+    expect(store.autopilotOverviewDailyNote).toEqual(expect.objectContaining({
+      dateKey: '2026-06-18',
+      title: 'My Focus 18th June 2026',
+      body: 'Create Daily Note for 18th June 2026.',
+    }));
+  });
+
+  it('opens a Daily Scope date picker and jumps to selected dates or today', () => {
+    const store = Object.assign(Object.create(autopilotOverviewManagerMixin), {
+      getTodayDateKey: () => '2026-06-17',
+      dailyScopeSelectedDate: '2026-06-18',
+      dailyScopeDatePickerOpen: false,
+      dailyScopeDatePickerValue: '',
+      dailyNotes: [],
+    });
+
+    store.openDailyScopeDatePicker();
+    expect(store.dailyScopeDatePickerOpen).toBe(true);
+    expect(store.dailyScopeDatePickerValue).toBe('2026-06-18');
+
+    store.selectDailyScopeDate('2026-06-20');
+    expect(store.dailyScopeSelectedDate).toBe('2026-06-20');
+    expect(store.dailyScopeDatePickerOpen).toBe(false);
+
+    store.showTodayDailyScopeNote();
+    expect(store.dailyScopeSelectedDate).toBe('2026-06-17');
+  });
+
+  it('toggles overview summary panels by id', () => {
+    const store = Object.assign(Object.create(autopilotOverviewManagerMixin), {
+      summaryCollapsedPanels: {},
+    });
+
+    expect(store.isSummaryPanelCollapsed('chats')).toBe(false);
+    store.toggleSummaryPanel('chats');
+    expect(store.isSummaryPanelCollapsed('chats')).toBe(true);
+    store.toggleSummaryPanel('chats');
+    expect(store.isSummaryPanelCollapsed('chats')).toBe(false);
   });
 
   it('counts only unresolved document comments', () => {
@@ -472,8 +513,8 @@ describe('autopilot overview manager', () => {
       'data-testid="autopilot-overview-tasks-list"',
       'data-testid="autopilot-overview-documents-list"',
       'data-testid="autopilot-overview-files-list"',
-      'aria-label="View all recent threads"',
-      'aria-label="Open selected thread"',
+      'aria-label="View all recent chats"',
+      'aria-label="Open selected chat"',
     ].forEach((expected) => {
       expect(html).toContain(expected);
     });

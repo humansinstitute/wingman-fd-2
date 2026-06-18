@@ -250,12 +250,27 @@
     >
       <button
         type="button"
+        class="mobile-scope-workspace-avatar-btn"
+        @click="$store.chat.openAllScopesOverview()"
+        title="All scopes overview"
+        aria-label="All scopes overview"
+      >
+        <template x-if="$store.chat.currentWorkspaceAvatarUrl">
+          <img class="mobile-scope-workspace-avatar" :src="$store.chat.currentWorkspaceAvatarUrl" alt="" />
+        </template>
+        <template x-if="!$store.chat.currentWorkspaceAvatarUrl">
+          <span class="mobile-scope-workspace-avatar mobile-scope-workspace-avatar-fallback avatar-fallback" x-text="$store.chat.currentWorkspaceInitials"></span>
+        </template>
+      </button>
+      <button
+        type="button"
         class="mobile-scope-trigger"
         @click="open = !open"
         aria-label="Current scope"
       >
         <span>Scope: </span><strong x-text="$store.chat.focusScopeTitle"></strong>
       </button>
+      <span class="mobile-scope-row-spacer" aria-hidden="true"></span>
       <ul class="board-picker-typeahead-results mobile-scope-results" x-show="open" x-cloak>
         <template x-for="board in $store.chat.filterFlightDeckScopeOptions('')" :key="board.id">
           <li
@@ -1185,7 +1200,21 @@
                     <button type="button" @click.stop="$store.chat.showPreviousDailyScopeNote()" aria-label="Show previous Daily Note">
                       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>
                     </button>
-                    <button type="button" @click.stop="$store.chat.showNextDailyScopeNote()" :disabled="!$store.chat.autopilotOverviewDailyScopeCanGoNext" aria-label="Show next Daily Note">
+                    <span class="daily-note-date-picker" @click.stop>
+                      <button type="button" @click.stop="$store.chat.openDailyScopeDatePicker()" aria-label="Choose Daily Note date">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M8 2v4"></path>
+                          <path d="M16 2v4"></path>
+                          <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+                          <path d="M3 10h18"></path>
+                        </svg>
+                      </button>
+                      <span class="daily-note-date-picker-popover" x-show="$store.chat.dailyScopeDatePickerOpen" x-cloak @click.outside="$store.chat.closeDailyScopeDatePicker()">
+                        <input type="date" x-model="$store.chat.dailyScopeDatePickerValue" @change="$store.chat.selectDailyScopeDate($event.target.value)" aria-label="Daily Note date" />
+                        <button type="button" class="daily-note-today-btn" @click="$store.chat.showTodayDailyScopeNote()">Today</button>
+                      </span>
+                    </span>
+                    <button type="button" @click.stop="$store.chat.showNextDailyScopeNote()" aria-label="Show next Daily Note">
                       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg>
                     </button>
                   </span>
@@ -1195,39 +1224,48 @@
 
             <div class="flightdeck-summary-grid">
               <div class="flightdeck-summary-column">
-                <section class="flightdeck-summary-panel flightdeck-summary-panel-chat" data-testid="flightdeck-summary-threads">
+                <section class="flightdeck-summary-panel flightdeck-summary-panel-chat" :class="{ 'summary-panel-collapsed': $store.chat.isSummaryPanelCollapsed('chats') }" data-testid="flightdeck-summary-threads">
                   <div class="autopilot-panel-heading">
-                    <h3>Threads</h3>
-                    <button type="button" class="btn-secondary btn-compact" @click="$store.chat.navigateTo('chat')" aria-label="View all recent threads">View all</button>
+                    <button type="button" class="summary-panel-heading-toggle" @click="$store.chat.toggleSummaryPanel('chats')" :aria-expanded="(!$store.chat.isSummaryPanelCollapsed('chats')).toString()" aria-controls="flightdeck-summary-chats-body">
+                      <h3>Chats</h3>
+                      <svg :class="{ 'summary-panel-chevron-collapsed': $store.chat.isSummaryPanelCollapsed('chats') }" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+                    </button>
+                    <button type="button" class="btn-secondary btn-compact" @click.stop="$store.chat.navigateTo('chat')" aria-label="View all recent chats">View all</button>
                   </div>
-                  <div class="attention-card-list flightdeck-summary-card-list" x-show="$store.chat.autopilotOverviewThreads.length > 0">
-                    <template x-for="thread in $store.chat.autopilotOverviewThreads.slice(0, 5)" :key="thread.id">
-                      <button type="button" class="attention-card flightdeck-summary-card flightdeck-summary-card-chat" :class="{ 'attention-card-unread': thread.isUnread }" @click="$store.chat.openAutopilotOverviewThread(thread)" aria-label="Open selected thread">
-                        <span class="attention-card-new-dot" x-show="thread.isUnread" aria-label="New activity"></span>
-                        <span class="attention-card-icon" aria-hidden="true" x-html="$store.chat.getAttentionIconSvg('chat')"></span>
-                        <span class="attention-card-content">
-                          <span class="attention-card-kicker" x-text="thread.channelLabel"></span>
-                          <span class="attention-card-title" x-text="thread.title"></span>
-                          <span class="attention-card-subtitle" x-text="thread.latestMessage"></span>
-                        </span>
-                        <span class="attention-card-meta">
-                          <span class="attention-card-time">
-                            <span x-text="$store.chat.formatRelativeTime(thread.latestMessageUpdatedAt)"></span>
-                            <span x-text="thread.messageCount + ' ' + (thread.messageCount === 1 ? 'message' : 'messages')"></span>
+                  <div id="flightdeck-summary-chats-body" x-show="!$store.chat.isSummaryPanelCollapsed('chats')" x-cloak>
+                    <div class="attention-card-list flightdeck-summary-card-list" x-show="$store.chat.autopilotOverviewThreads.length > 0">
+                      <template x-for="thread in $store.chat.autopilotOverviewThreads.slice(0, 5)" :key="thread.id">
+                        <button type="button" class="attention-card flightdeck-summary-card flightdeck-summary-card-chat" :class="{ 'attention-card-unread': thread.isUnread }" @click="$store.chat.openAutopilotOverviewThread(thread)" aria-label="Open selected chat">
+                          <span class="attention-card-new-dot" x-show="thread.isUnread" aria-label="New activity"></span>
+                          <span class="attention-card-icon" aria-hidden="true" x-html="$store.chat.getAttentionIconSvg('chat')"></span>
+                          <span class="attention-card-content">
+                            <span class="attention-card-kicker" x-text="thread.channelLabel"></span>
+                            <span class="attention-card-title" x-text="thread.title"></span>
+                            <span class="attention-card-subtitle" x-text="thread.latestMessage"></span>
                           </span>
-                          <span class="attention-card-action">Open thread</span>
-                        </span>
-                      </button>
-                    </template>
+                          <span class="attention-card-meta">
+                            <span class="attention-card-time">
+                              <span x-text="$store.chat.formatRelativeTime(thread.latestMessageUpdatedAt)"></span>
+                              <span x-text="thread.messageCount + ' ' + (thread.messageCount === 1 ? 'message' : 'messages')"></span>
+                            </span>
+                            <span class="attention-card-action">Open chat</span>
+                          </span>
+                        </button>
+                      </template>
+                    </div>
+                    <p class="settings-field-help" x-show="$store.chat.autopilotOverviewThreads.length === 0">No matching chats.</p>
                   </div>
-                  <p class="settings-field-help" x-show="$store.chat.autopilotOverviewThreads.length === 0">No matching threads.</p>
                 </section>
 
-                <section class="flightdeck-summary-panel flightdeck-summary-panel-task" data-testid="flightdeck-summary-tasks">
+                <section class="flightdeck-summary-panel flightdeck-summary-panel-task" :class="{ 'summary-panel-collapsed': $store.chat.isSummaryPanelCollapsed('tasks') }" data-testid="flightdeck-summary-tasks">
                   <div class="autopilot-panel-heading">
-                    <h3>Tasks</h3>
-                    <button type="button" class="btn-secondary btn-compact" @click="$store.chat.navigateTo('tasks')" aria-label="View all recent tasks and comments">View all</button>
+                    <button type="button" class="summary-panel-heading-toggle" @click="$store.chat.toggleSummaryPanel('tasks')" :aria-expanded="(!$store.chat.isSummaryPanelCollapsed('tasks')).toString()" aria-controls="flightdeck-summary-tasks-body">
+                      <h3>Tasks</h3>
+                      <svg :class="{ 'summary-panel-chevron-collapsed': $store.chat.isSummaryPanelCollapsed('tasks') }" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+                    </button>
+                    <button type="button" class="btn-secondary btn-compact" @click.stop="$store.chat.navigateTo('tasks')" aria-label="View all recent tasks and comments">View all</button>
                   </div>
+                  <div id="flightdeck-summary-tasks-body" x-show="!$store.chat.isSummaryPanelCollapsed('tasks')" x-cloak>
                   <div class="attention-card-list flightdeck-summary-card-list" x-show="$store.chat.autopilotOverviewTasks.length > 0">
                     <template x-for="task in $store.chat.autopilotOverviewTasks.slice(0, 5)" :key="task.id">
                       <button type="button" class="attention-card flightdeck-summary-card flightdeck-summary-card-task" :class="{ 'attention-card-unread': task.isUnread }" @click="$store.chat.openAutopilotOverviewTask(task)" aria-label="Open selected task">
@@ -1249,18 +1287,23 @@
                     </template>
                   </div>
                   <p class="settings-field-help" x-show="$store.chat.autopilotOverviewTasks.length === 0">No recent task activity for this context.</p>
+                  </div>
                 </section>
               </div>
 
               <div class="flightdeck-summary-column">
-                <section class="flightdeck-summary-panel flightdeck-summary-panel-doc" data-testid="flightdeck-summary-documents">
+                <section class="flightdeck-summary-panel flightdeck-summary-panel-doc" :class="{ 'summary-panel-collapsed': $store.chat.isSummaryPanelCollapsed('docs') }" data-testid="flightdeck-summary-documents">
                   <div class="autopilot-panel-heading">
-                    <h3>Docs and Comments</h3>
-                    <button type="button" class="btn-secondary btn-compact" @click="$store.chat.navigateTo('docs')" aria-label="View all documents and comments">View all</button>
+                    <button type="button" class="summary-panel-heading-toggle" @click="$store.chat.toggleSummaryPanel('docs')" :aria-expanded="(!$store.chat.isSummaryPanelCollapsed('docs')).toString()" aria-controls="flightdeck-summary-docs-body">
+                      <h3>Docs</h3>
+                      <svg :class="{ 'summary-panel-chevron-collapsed': $store.chat.isSummaryPanelCollapsed('docs') }" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+                    </button>
+                    <button type="button" class="btn-secondary btn-compact" @click.stop="$store.chat.navigateTo('docs')" aria-label="View all docs">View all</button>
                   </div>
+                  <div id="flightdeck-summary-docs-body" x-show="!$store.chat.isSummaryPanelCollapsed('docs')" x-cloak>
                   <div class="attention-card-list flightdeck-summary-card-list" x-show="$store.chat.autopilotOverviewDocuments.length > 0">
                     <template x-for="doc in $store.chat.autopilotOverviewDocuments.slice(0, 5)" :key="doc.id">
-                      <button type="button" class="attention-card flightdeck-summary-card flightdeck-summary-card-doc" :class="{ 'attention-card-unread': doc.isUnread }" @click="$store.chat.openAutopilotOverviewDocument(doc)" aria-label="Open selected document">
+                      <button type="button" class="attention-card flightdeck-summary-card flightdeck-summary-card-doc" :class="{ 'attention-card-unread': doc.isUnread }" @click="$store.chat.openAutopilotOverviewDocument(doc)" aria-label="Open selected doc">
                         <span class="attention-card-new-dot" x-show="doc.isUnread" aria-label="New activity"></span>
                         <span class="attention-card-icon" aria-hidden="true" x-html="$store.chat.getAttentionIconSvg('doc')"></span>
                         <span class="attention-card-content">
@@ -1278,14 +1321,19 @@
                       </button>
                     </template>
                   </div>
-                  <p class="settings-field-help" x-show="$store.chat.autopilotOverviewDocuments.length === 0">No recent document activity for this context.</p>
+                  <p class="settings-field-help" x-show="$store.chat.autopilotOverviewDocuments.length === 0">No recent doc activity for this context.</p>
+                  </div>
                 </section>
 
-                <section class="flightdeck-summary-panel flightdeck-summary-panel-file" data-testid="flightdeck-summary-files">
+                <section class="flightdeck-summary-panel flightdeck-summary-panel-file" :class="{ 'summary-panel-collapsed': $store.chat.isSummaryPanelCollapsed('files') }" data-testid="flightdeck-summary-files">
                   <div class="autopilot-panel-heading">
-                    <h3>Files</h3>
-                    <button type="button" class="btn-secondary btn-compact" @click="$store.chat.navigateTo('files')" aria-label="View all files">View all</button>
+                    <button type="button" class="summary-panel-heading-toggle" @click="$store.chat.toggleSummaryPanel('files')" :aria-expanded="(!$store.chat.isSummaryPanelCollapsed('files')).toString()" aria-controls="flightdeck-summary-files-body">
+                      <h3>Files</h3>
+                      <svg :class="{ 'summary-panel-chevron-collapsed': $store.chat.isSummaryPanelCollapsed('files') }" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+                    </button>
+                    <button type="button" class="btn-secondary btn-compact" @click.stop="$store.chat.navigateTo('files')" aria-label="View all files">View all</button>
                   </div>
+                  <div id="flightdeck-summary-files-body" x-show="!$store.chat.isSummaryPanelCollapsed('files')" x-cloak>
                   <div class="attention-card-list flightdeck-summary-card-list" x-show="$store.chat.autopilotOverviewFiles.length > 0">
                     <template x-for="file in $store.chat.autopilotOverviewFiles.slice(0, 5)" :key="file.id">
                       <button type="button" class="attention-card flightdeck-summary-card flightdeck-summary-card-file" @click="$store.chat.openFileBrowserSource(file)" aria-label="Open selected file">
@@ -1306,6 +1354,7 @@
                     </template>
                   </div>
                   <p class="settings-field-help" x-show="$store.chat.autopilotOverviewFiles.length === 0">No matching files.</p>
+                  </div>
                 </section>
               </div>
             </div>
@@ -4735,7 +4784,21 @@
                     <button type="button" @click.stop="$store.chat.showPreviousDailyScopeNote()" aria-label="Show previous Daily Note">
                       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>
                     </button>
-                    <button type="button" @click.stop="$store.chat.showNextDailyScopeNote()" :disabled="!$store.chat.autopilotOverviewDailyScopeCanGoNext" aria-label="Show next Daily Note">
+                    <span class="daily-note-date-picker" @click.stop>
+                      <button type="button" @click.stop="$store.chat.openDailyScopeDatePicker()" aria-label="Choose Daily Note date">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M8 2v4"></path>
+                          <path d="M16 2v4"></path>
+                          <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+                          <path d="M3 10h18"></path>
+                        </svg>
+                      </button>
+                      <span class="daily-note-date-picker-popover" x-show="$store.chat.dailyScopeDatePickerOpen" x-cloak @click.outside="$store.chat.closeDailyScopeDatePicker()">
+                        <input type="date" x-model="$store.chat.dailyScopeDatePickerValue" @change="$store.chat.selectDailyScopeDate($event.target.value)" aria-label="Daily Note date" />
+                        <button type="button" class="daily-note-today-btn" @click="$store.chat.showTodayDailyScopeNote()">Today</button>
+                      </span>
+                    </span>
+                    <button type="button" @click.stop="$store.chat.showNextDailyScopeNote()" aria-label="Show next Daily Note">
                       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg>
                     </button>
                   </span>
@@ -4745,14 +4808,18 @@
 
             <div class="autopilot-overview-grid">
               <div class="autopilot-overview-column">
-                <section class="autopilot-overview-panel" data-testid="autopilot-overview-recent-threads">
+                <section class="autopilot-overview-panel" :class="{ 'summary-panel-collapsed': $store.chat.isSummaryPanelCollapsed('chats') }" data-testid="autopilot-overview-recent-threads">
                   <div class="autopilot-panel-heading">
-                    <h3>Threads</h3>
-                    <button type="button" class="btn-secondary btn-compact" @click="$store.chat.navigateTo('chat')" aria-label="View all recent threads" data-testid="autopilot-overview-threads-view-all">View all</button>
+                    <button type="button" class="summary-panel-heading-toggle" @click="$store.chat.toggleSummaryPanel('chats')" :aria-expanded="(!$store.chat.isSummaryPanelCollapsed('chats')).toString()" aria-controls="autopilot-overview-chats-body">
+                      <h3>Chats</h3>
+                      <svg :class="{ 'summary-panel-chevron-collapsed': $store.chat.isSummaryPanelCollapsed('chats') }" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+                    </button>
+                    <button type="button" class="btn-secondary btn-compact" @click.stop="$store.chat.navigateTo('chat')" aria-label="View all recent chats" data-testid="autopilot-overview-threads-view-all">View all</button>
                   </div>
+                  <div id="autopilot-overview-chats-body" x-show="!$store.chat.isSummaryPanelCollapsed('chats')" x-cloak>
                   <div class="autopilot-overview-list" x-show="$store.chat.autopilotOverviewThreads.length > 0" data-testid="autopilot-overview-threads-list">
                     <template x-for="thread in $store.chat.autopilotOverviewThreads.slice(0, 5)" :key="thread.id">
-                      <button type="button" class="pg-thread-summary autopilot-thread-card" :class="{ 'overview-row-unread': thread.isUnread }" @click="$store.chat.openAutopilotOverviewThread(thread)" aria-label="Open selected thread" data-testid="autopilot-overview-thread-row">
+                      <button type="button" class="pg-thread-summary autopilot-thread-card" :class="{ 'overview-row-unread': thread.isUnread }" @click="$store.chat.openAutopilotOverviewThread(thread)" aria-label="Open selected chat" data-testid="autopilot-overview-thread-row">
                         <span class="overview-row-new-dot" x-show="thread.isUnread" aria-label="New activity"></span>
                         <span class="chat-thread-preview">
                           <span class="chat-thread-preview-count" x-text="thread.channelLabel"></span>
@@ -4766,14 +4833,19 @@
                       </button>
                     </template>
                   </div>
-                  <p class="settings-field-help" x-show="$store.chat.autopilotOverviewThreads.length === 0">No matching threads.</p>
+                  <p class="settings-field-help" x-show="$store.chat.autopilotOverviewThreads.length === 0">No matching chats.</p>
+                  </div>
                 </section>
 
-                <section class="autopilot-overview-panel" data-testid="autopilot-overview-recent-tasks">
+                <section class="autopilot-overview-panel" :class="{ 'summary-panel-collapsed': $store.chat.isSummaryPanelCollapsed('tasks') }" data-testid="autopilot-overview-recent-tasks">
                   <div class="autopilot-panel-heading">
-                    <h3>Tasks</h3>
-                    <button type="button" class="btn-secondary btn-compact" @click="$store.chat.navigateTo('tasks')" aria-label="View all recent tasks and comments" data-testid="autopilot-overview-tasks-view-all">View all</button>
+                    <button type="button" class="summary-panel-heading-toggle" @click="$store.chat.toggleSummaryPanel('tasks')" :aria-expanded="(!$store.chat.isSummaryPanelCollapsed('tasks')).toString()" aria-controls="autopilot-overview-tasks-body">
+                      <h3>Tasks</h3>
+                      <svg :class="{ 'summary-panel-chevron-collapsed': $store.chat.isSummaryPanelCollapsed('tasks') }" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+                    </button>
+                    <button type="button" class="btn-secondary btn-compact" @click.stop="$store.chat.navigateTo('tasks')" aria-label="View all recent tasks and comments" data-testid="autopilot-overview-tasks-view-all">View all</button>
                   </div>
+                  <div id="autopilot-overview-tasks-body" x-show="!$store.chat.isSummaryPanelCollapsed('tasks')" x-cloak>
                   <div class="task-list-rows autopilot-overview-list" x-show="$store.chat.autopilotOverviewTasks.length > 0" data-testid="autopilot-overview-tasks-list">
                     <template x-for="task in $store.chat.autopilotOverviewTasks.slice(0, 5)" :key="task.id">
                       <button type="button" class="task-list-row task-list-row-parent autopilot-task-row" :class="{ 'overview-row-unread': task.isUnread }" @click="$store.chat.openAutopilotOverviewTask(task)" aria-label="Open selected task" data-testid="autopilot-overview-task-row">
@@ -4788,18 +4860,23 @@
                     </template>
                   </div>
                   <p class="settings-field-help" x-show="$store.chat.autopilotOverviewTasks.length === 0">No recent task activity for this context.</p>
+                  </div>
                 </section>
               </div>
 
               <div class="autopilot-overview-column">
-                <section class="autopilot-overview-panel" data-testid="autopilot-overview-documents">
+                <section class="autopilot-overview-panel" :class="{ 'summary-panel-collapsed': $store.chat.isSummaryPanelCollapsed('docs') }" data-testid="autopilot-overview-documents">
                   <div class="autopilot-panel-heading">
-                    <h3>Docs and Comments</h3>
-                    <button type="button" class="btn-secondary btn-compact" @click="$store.chat.navigateTo('docs')" aria-label="View all documents and comments" data-testid="autopilot-overview-documents-view-all">View all</button>
+                    <button type="button" class="summary-panel-heading-toggle" @click="$store.chat.toggleSummaryPanel('docs')" :aria-expanded="(!$store.chat.isSummaryPanelCollapsed('docs')).toString()" aria-controls="autopilot-overview-docs-body">
+                      <h3>Docs</h3>
+                      <svg :class="{ 'summary-panel-chevron-collapsed': $store.chat.isSummaryPanelCollapsed('docs') }" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+                    </button>
+                    <button type="button" class="btn-secondary btn-compact" @click.stop="$store.chat.navigateTo('docs')" aria-label="View all docs" data-testid="autopilot-overview-documents-view-all">View all</button>
                   </div>
+                  <div id="autopilot-overview-docs-body" x-show="!$store.chat.isSummaryPanelCollapsed('docs')" x-cloak>
                   <div class="doc-items autopilot-overview-list" x-show="$store.chat.autopilotOverviewDocuments.length > 0" data-testid="autopilot-overview-documents-list">
                     <template x-for="doc in $store.chat.autopilotOverviewDocuments.slice(0, 5)" :key="doc.id">
-                      <button type="button" class="doc-item autopilot-doc-row" :class="{ 'overview-row-unread': doc.isUnread }" @click="$store.chat.openAutopilotOverviewDocument(doc)" aria-label="Open selected document" data-testid="autopilot-overview-document-row">
+                      <button type="button" class="doc-item autopilot-doc-row" :class="{ 'overview-row-unread': doc.isUnread }" @click="$store.chat.openAutopilotOverviewDocument(doc)" aria-label="Open selected doc" data-testid="autopilot-overview-document-row">
                         <span class="overview-row-new-dot" x-show="doc.isUnread" aria-label="New activity"></span>
                         <span class="doc-item-icon">DOC</span>
                         <span class="doc-item-title" x-text="doc.title"></span>
@@ -4810,14 +4887,19 @@
                       </button>
                     </template>
                   </div>
-                  <p class="settings-field-help" x-show="$store.chat.autopilotOverviewDocuments.length === 0">No recent document activity for this context.</p>
+                  <p class="settings-field-help" x-show="$store.chat.autopilotOverviewDocuments.length === 0">No recent doc activity for this context.</p>
+                  </div>
                 </section>
 
-                <section class="autopilot-overview-panel" data-testid="autopilot-overview-files">
+                <section class="autopilot-overview-panel" :class="{ 'summary-panel-collapsed': $store.chat.isSummaryPanelCollapsed('files') }" data-testid="autopilot-overview-files">
                   <div class="autopilot-panel-heading">
-                    <h3>Files</h3>
-                    <button type="button" class="btn-secondary btn-compact" @click="$store.chat.navigateTo('files')" aria-label="View all files" data-testid="autopilot-overview-files-view-all">View all</button>
+                    <button type="button" class="summary-panel-heading-toggle" @click="$store.chat.toggleSummaryPanel('files')" :aria-expanded="(!$store.chat.isSummaryPanelCollapsed('files')).toString()" aria-controls="autopilot-overview-files-body">
+                      <h3>Files</h3>
+                      <svg :class="{ 'summary-panel-chevron-collapsed': $store.chat.isSummaryPanelCollapsed('files') }" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+                    </button>
+                    <button type="button" class="btn-secondary btn-compact" @click.stop="$store.chat.navigateTo('files')" aria-label="View all files" data-testid="autopilot-overview-files-view-all">View all</button>
                   </div>
+                  <div id="autopilot-overview-files-body" x-show="!$store.chat.isSummaryPanelCollapsed('files')" x-cloak>
                   <div class="autopilot-overview-list" x-show="$store.chat.autopilotOverviewFiles.length > 0" data-testid="autopilot-overview-files-list">
                     <template x-for="file in $store.chat.autopilotOverviewFiles.slice(0, 5)" :key="file.id">
                       <button type="button" class="file-row autopilot-file-row" @click="$store.chat.openFileBrowserSource(file)" aria-label="Open selected file" data-testid="autopilot-overview-file-row">
@@ -4839,6 +4921,7 @@
                     </template>
                   </div>
                   <p class="settings-field-help" x-show="$store.chat.autopilotOverviewFiles.length === 0">No matching files.</p>
+                  </div>
                 </section>
               </div>
             </div>
@@ -5336,6 +5419,18 @@
                 @click="$store.chat.resetWorkspaceProfileDraft()"
                 :disabled="$store.chat.workspaceProfileSaving || !$store.chat.workspaceProfileDirty"
               >Reset</button>
+            </div>
+            <div class="workspace-cache-tools">
+              <span class="avatar-menu-label">Nostr profiles</span>
+              <p class="settings-field-help">Clear cached Nostr names and avatars, then fetch the latest metadata for known workspace people.</p>
+              <button
+                type="button"
+                class="btn-cancel"
+                @click="$store.chat.refreshNostrProfileCache()"
+                :disabled="$store.chat.nostrProfilesRefreshing"
+                x-text="$store.chat.nostrProfilesRefreshing ? 'Refreshing...' : 'Refresh Nostr profiles'"
+              ></button>
+              <p class="settings-field-help" x-show="$store.chat.nostrProfilesRefreshMessage" x-text="$store.chat.nostrProfilesRefreshMessage"></p>
             </div>
             <div class="workspace-danger-zone">
               <span class="avatar-menu-label">Danger zone</span>
@@ -7167,6 +7262,44 @@
         </div>
       </div>
     </div>
+
+        <!-- New channel scope picker -->
+        <div class="new-channel-modal-overlay" x-show="$store.chat.showNewChannelScopePicker" x-transition.opacity @click.self="$store.chat.closeNewChannelScopePicker()" x-cloak>
+          <div class="new-channel-modal new-channel-scope-modal" role="dialog" aria-modal="true" aria-labelledby="new-channel-scope-title" data-testid="new-channel-scope-modal">
+            <div class="new-channel-modal-header">
+              <h3 id="new-channel-scope-title">Choose scope</h3>
+              <button type="button" class="new-channel-modal-close" aria-label="Close scope picker" @click="$store.chat.closeNewChannelScopePicker()">&times;</button>
+            </div>
+            <div class="new-channel-body">
+              <p class="new-channel-scope-copy">Channels belong to a scope. Choose where this channel should be created.</p>
+              <label class="new-channel-label" for="new-channel-scope-select">Scope</label>
+              <select
+                id="new-channel-scope-select"
+                class="new-channel-select"
+                x-model="$store.chat.newChannelScopeId"
+                data-testid="new-channel-scope-select"
+              >
+                <option value="">Select scope</option>
+                <template x-for="option in $store.chat.newChannelScopeOptions" :key="option.id">
+                  <option :value="option.id" x-text="option.label"></option>
+                </template>
+              </select>
+              <p class="new-channel-access-empty" x-show="$store.chat.newChannelScopeOptions.length === 0">Create a scope before adding channels.</p>
+            </div>
+            <div class="new-channel-footer">
+              <button type="button" class="new-channel-cancel-btn" @click="$store.chat.closeNewChannelScopePicker()">Cancel</button>
+              <button
+                type="button"
+                class="new-channel-create-btn"
+                data-testid="new-channel-scope-continue"
+                :disabled="!$store.chat.newChannelScopeId"
+                @click="$store.chat.continueNewChannelWithScope()"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
 
         <!-- New channel modal -->
         <div class="new-channel-modal-overlay" x-show="$store.chat.showNewChannelModal" x-transition.opacity @click.self="$store.chat.closeNewChannelModal()">

@@ -720,6 +720,60 @@ describe('channels-manager pure utilities', () => {
     expect(channelStore.newChannelMode).toBe('channel');
   });
 
+  it('asks for a scope before creating a channel from All/Home', async () => {
+    const store = applyChannelMixin({
+      selectedBoardId: '__all__',
+      selectedBoardScope: null,
+      selectedChannelId: 'stale-channel',
+      selectedChannel: { record_id: 'stale-channel', scope_id: 'scope-a' },
+      scopes: [{ record_id: 'scope-a', title: 'Scope A', level: 'l1', record_state: 'active' }],
+      workspaceOwnerNpub: 'npub1owner',
+      showNewChannelModal: false,
+      showNewChannelScopePicker: false,
+      newChannelScopeId: '',
+    });
+
+    await store.openNewChannelModal();
+
+    expect(store.showNewChannelScopePicker).toBe(true);
+    expect(store.showNewChannelModal).toBe(false);
+    expect(store.newChannelScopeOptions).toEqual([
+      expect.objectContaining({ id: 'scope-a', label: 'Scope A' }),
+    ]);
+  });
+
+  it('opens the channel form after choosing a scope from the All/Home picker', async () => {
+    const store = applyChannelMixin({
+      selectedBoardId: '__all__',
+      selectedBoardScope: null,
+      selectedChannelId: null,
+      selectedChannel: null,
+      scopes: [{ record_id: 'scope-a', title: 'Scope A', level: 'l1', record_state: 'active' }],
+      workspaceOwnerNpub: 'npub1owner',
+      currentWorkspace: {
+        workspaceId: 'workspace-1',
+        appNpub: 'flightdeck-app',
+        pgMe: { actor: { actor_id: 'actor-owner', npub: 'npub1owner' } },
+      },
+      pgWorkspaceMembers: [],
+      currentWorkspaceGroups: [],
+      groups: [],
+      refreshTowerPgWorkspaceMembers: vi.fn(async () => []),
+      refreshGroups: vi.fn(async () => []),
+      getSenderName: vi.fn((npub) => npub),
+      showNewChannelScopePicker: true,
+      showNewChannelModal: false,
+      newChannelScopeId: 'scope-a',
+    });
+
+    await store.continueNewChannelWithScope();
+
+    expect(store.showNewChannelScopePicker).toBe(false);
+    expect(store.showNewChannelModal).toBe(true);
+    expect(store.newChannelMode).toBe('channel');
+    expect(store.newChannelScopeId).toBe('scope-a');
+  });
+
   it('selects an existing direct message for the same participant pair instead of creating a duplicate', async () => {
     isTowerPgBackendMode.mockReturnValue(false);
     const store = applyChannelMixin({

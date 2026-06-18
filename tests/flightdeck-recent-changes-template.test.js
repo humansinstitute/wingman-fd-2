@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const INDEX_PATH = resolve(process.cwd(), 'index.html');
+const STYLES_PATH = resolve(process.cwd(), 'src/styles.css');
 
 describe('flight deck summary template', () => {
   it('renders the summary overview on the Flight Deck home page', () => {
@@ -46,6 +47,20 @@ describe('flight deck summary template', () => {
     expect(html).toContain('@click="$store.chat.openAutopilotOverviewTask(task)"');
     expect(html).toContain('@click="$store.chat.openAutopilotOverviewDocument(doc)"');
     expect(html).toContain('@click="$store.chat.openFileBrowserSource(file)"');
+  });
+
+  it('uses collapsible summary quadrant headings with updated labels', () => {
+    const html = readFileSync(INDEX_PATH, 'utf8');
+    const styles = readFileSync(STYLES_PATH, 'utf8');
+
+    expect(html).toContain('class="summary-panel-heading-toggle"');
+    expect(html).toContain("'summary-panel-collapsed': $store.chat.isSummaryPanelCollapsed('chats')");
+    expect(html).toContain("@click=\"$store.chat.toggleSummaryPanel('chats')\"");
+    expect(html).toContain('<h3>Chats</h3>');
+    expect(html).toContain('<h3>Docs</h3>');
+    expect(html).not.toContain('<h3>Threads</h3>');
+    expect(html).not.toContain('<h3>Docs and Comments</h3>');
+    expect(styles).toMatch(/summary-panel-collapsed[\s\S]*min-height:\s*0;/);
   });
 
   it('configures Autopilot as an agent plus URL instead of a bare launcher button', () => {

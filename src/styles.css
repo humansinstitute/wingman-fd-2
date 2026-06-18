@@ -2703,6 +2703,17 @@ button:disabled {
   box-shadow: inset 0 3px 0 var(--flightdeck-summary-accent);
 }
 
+.flightdeck-summary-panel.summary-panel-collapsed,
+.autopilot-overview-panel.summary-panel-collapsed {
+  min-height: 0;
+  align-self: stretch;
+}
+
+.flightdeck-summary-panel.summary-panel-collapsed {
+  padding-top: 1rem;
+  padding-bottom: 1rem;
+}
+
 .flightdeck-summary-panel-chat {
   --flightdeck-summary-accent: #2563eb;
 }
@@ -4323,6 +4334,7 @@ button:disabled {
 
   .flightdeck-summary-grid {
     grid-template-columns: 1fr;
+    gap: 1rem;
   }
 
   .reports-workspace {
@@ -4344,27 +4356,40 @@ button:disabled {
   }
 
   .flightdeck-summary-overview {
-    width: calc(100% - 24px);
-    padding: 1.5rem 0 1.5rem;
+    width: 100%;
+    gap: 1rem;
+    padding: 1.25rem 0.9rem 1.75rem;
   }
 
   .flightdeck-summary-header {
     flex-direction: column;
     align-items: stretch;
-    margin-bottom: 1.15rem;
+    gap: 0.85rem;
+    margin-bottom: 0.35rem;
   }
 
   .flightdeck-summary-header h2 {
-    font-size: 1.65rem;
+    font-size: 1.55rem;
+    line-height: 1.18;
+  }
+
+  .flightdeck-summary-header p {
+    margin-top: 0.3rem;
+    line-height: 1.35;
+  }
+
+  .my-agents-panel {
+    flex: 1 1 auto;
+    min-width: 0;
   }
 
   .flightdeck-summary-panel {
     min-height: 0;
-    padding: 1rem;
+    padding: 1rem 0.95rem;
   }
 
   .flightdeck-summary-daily {
-    padding: 0.9rem 1rem;
+    padding: 1rem 0.95rem;
   }
 
   .flightdeck-summary-daily .daily-note-preview-item {
@@ -8748,6 +8773,19 @@ button:disabled {
   gap: 0.4rem;
 }
 
+.workspace-cache-tools {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.workspace-cache-tools .btn-cancel {
+  align-self: flex-start;
+}
+
 .btn-danger {
   background: #dc2626;
   color: #fff;
@@ -8803,6 +8841,41 @@ button:disabled {
   margin: 0;
 }
 
+.summary-panel-heading-toggle {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.summary-panel-heading-toggle:hover,
+.summary-panel-heading-toggle:focus-visible {
+  background: transparent;
+  color: #0f172a;
+}
+
+.summary-panel-heading-toggle svg {
+  width: 0.95rem;
+  height: 0.95rem;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 120ms ease;
+}
+
+.summary-panel-heading-toggle .summary-panel-chevron-collapsed {
+  transform: rotate(-90deg);
+}
+
 .autopilot-overview-header {
   align-items: flex-start;
   margin-bottom: 56px;
@@ -8831,10 +8904,12 @@ button:disabled {
   display: block;
   width: 100%;
   max-width: 100%;
-  overflow: hidden;
+  overflow: visible;
   min-height: 0;
   padding: 16px 20px;
   cursor: pointer;
+  position: relative;
+  z-index: 1;
 }
 
 .autopilot-daily-scope h3,
@@ -8926,6 +9001,54 @@ button:disabled {
   cursor: not-allowed;
 }
 
+.daily-note-date-picker {
+  position: relative;
+  display: inline-flex;
+}
+
+.daily-note-date-picker-popover {
+  position: absolute;
+  right: 50%;
+  top: calc(100% + 0.35rem);
+  transform: translateX(50%);
+  z-index: 250;
+  display: grid;
+  gap: 0.45rem;
+  min-width: 12rem;
+  padding: 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: #fff;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.16);
+}
+
+.daily-note-date-picker-popover input {
+  width: 100%;
+  min-height: 2.25rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.35rem 0.45rem;
+  color: var(--text);
+  background: #fff;
+}
+
+.daily-note-date-picker-popover .daily-note-today-btn {
+  width: 100%;
+  height: auto;
+  min-height: 2rem;
+  border-radius: var(--radius-sm);
+  background: #f8fafc;
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.daily-note-date-picker-popover .daily-note-today-btn:hover,
+.daily-note-date-picker-popover .daily-note-today-btn:focus-visible {
+  background: #e2e8f0;
+  color: var(--text);
+}
+
 .autopilot-overview-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -8946,6 +9069,11 @@ button:disabled {
   min-height: 260px;
   min-width: 0;
   padding: 22px;
+}
+
+.autopilot-overview-panel.summary-panel-collapsed {
+  padding-top: 16px;
+  padding-bottom: 16px;
 }
 
 .autopilot-overview-list {
@@ -9543,6 +9671,17 @@ button:disabled {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+}
+
+.new-channel-scope-modal {
+  width: 380px;
+}
+
+.new-channel-scope-copy {
+  margin: 0 0 0.9rem;
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.4;
 }
 
 .new-channel-modal-header {
@@ -10163,13 +10302,55 @@ button:disabled {
 
   .mobile-scope-switcher {
     position: relative;
-    display: flex;
-    justify-content: center;
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr) 38px;
+    align-items: center;
+    justify-content: stretch;
+    gap: 0.35rem;
     flex: 0 0 auto;
-    margin: 0 0 0.55rem;
+    margin: 0 0 0.65rem;
+    padding: 0.35rem 0.8rem;
     border-bottom: 1px solid var(--border);
     background: #ffffff;
     z-index: 35;
+  }
+
+  .mobile-scope-workspace-avatar-btn,
+  .mobile-scope-row-spacer {
+    width: 34px;
+    height: 34px;
+  }
+
+  .mobile-scope-workspace-avatar-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    background: #ffffff;
+    color: var(--text);
+  }
+
+  .mobile-scope-workspace-avatar {
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    object-fit: cover;
+    font-size: 0.72rem;
+    font-weight: 750;
+  }
+
+  .mobile-scope-workspace-avatar-fallback {
+    background: #0f172a;
+    color: #ffffff;
+  }
+
+  .mobile-scope-row-spacer {
+    display: block;
   }
 
   .mobile-scope-trigger {
@@ -10177,7 +10358,7 @@ button:disabled {
     align-items: center;
     justify-content: center;
     width: auto;
-    max-width: calc(100% - 1rem);
+    max-width: 100%;
     min-width: 0;
     height: 34px;
     padding: 0 0.5rem;

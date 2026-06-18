@@ -40,6 +40,7 @@ import {
   buildPgChannelTaskBoardId,
   buildPgThreadTaskBoardId,
 } from '../src/pg-record-context.js';
+import { DM_SCOPE_ID } from '../src/dm-scope.js';
 
 afterEach(() => {
   clearGroupKeyCache();
@@ -1397,7 +1398,7 @@ describe('task board write groups', () => {
 });
 
 // --- flightDeckScopeOptions (mixin) ---
-describe('flightDeckScopeOptions includes virtual boards', () => {
+describe('flightDeckScopeOptions includes scope picker boards', () => {
   function buildMockStore(scopes = [product, project, deliverable], tasks = []) {
     const scopesMap = buildScopesMap(scopes);
     const store = {
@@ -1418,12 +1419,12 @@ describe('flightDeckScopeOptions includes virtual boards', () => {
     return store;
   }
 
-  it('includes All and Recent in flightDeckScopeOptions', () => {
+  it('includes All but not Recent in flightDeckScopeOptions', () => {
     const store = buildMockStore();
     const options = store.flightDeckScopeOptions;
     const ids = options.map((o) => o.id);
     expect(ids).toContain(ALL_TASK_BOARD_ID);
-    expect(ids).toContain(RECENT_TASK_BOARD_ID);
+    expect(ids).not.toContain(RECENT_TASK_BOARD_ID);
   });
 
   it('excludes Unscoped from flightDeckScopeOptions', () => {
@@ -1434,31 +1435,60 @@ describe('flightDeckScopeOptions includes virtual boards', () => {
     expect(ids).not.toContain(UNSCOPED_TASK_BOARD_ID);
   });
 
-  it('places All and Recent before scope boards', () => {
+  it('places All before scope boards', () => {
     const store = buildMockStore();
     const options = store.flightDeckScopeOptions;
     const allIdx = options.findIndex((o) => o.id === ALL_TASK_BOARD_ID);
-    const recentIdx = options.findIndex((o) => o.id === RECENT_TASK_BOARD_ID);
-    const firstScopeIdx = options.findIndex((o) => o.id !== ALL_TASK_BOARD_ID && o.id !== RECENT_TASK_BOARD_ID);
+    const firstScopeIdx = options.findIndex((o) => o.id !== ALL_TASK_BOARD_ID);
     expect(allIdx).toBeLessThan(firstScopeIdx);
-    expect(recentIdx).toBeLessThan(firstScopeIdx);
   });
 
-  it('includes All and Recent in filteredFlightDeckScopeOptions with no query', () => {
+  it('places DMs second after All', () => {
+    const store = buildMockStore();
+    const ids = store.flightDeckScopeOptions.map((o) => o.id);
+    expect(ids[0]).toBe(ALL_TASK_BOARD_ID);
+    expect(ids[1]).toBe(DM_SCOPE_ID);
+  });
+
+  it('sorts remaining scopes alphabetically after All and DMs', () => {
+    const alpha = {
+      record_id: 'scope-alpha',
+      title: 'Alpha',
+      level: 'product',
+      parent_id: null,
+      record_state: 'active',
+    };
+    const beta = {
+      record_id: 'scope-beta',
+      title: 'Beta',
+      level: 'deliverable',
+      parent_id: null,
+      record_state: 'active',
+    };
+    const store = buildMockStore([beta, alpha, product]);
+    expect(store.flightDeckScopeOptions.map((o) => o.id)).toEqual([
+      ALL_TASK_BOARD_ID,
+      DM_SCOPE_ID,
+      alpha.record_id,
+      beta.record_id,
+      product.record_id,
+    ]);
+  });
+
+  it('includes All but not Recent in filteredFlightDeckScopeOptions with no query', () => {
     const store = buildMockStore();
     const options = store.filteredFlightDeckScopeOptions;
     const ids = options.map((o) => o.id);
     expect(ids).toContain(ALL_TASK_BOARD_ID);
-    expect(ids).toContain(RECENT_TASK_BOARD_ID);
+    expect(ids).not.toContain(RECENT_TASK_BOARD_ID);
   });
 
-  it('filters All/Recent by search query', () => {
+  it('does not return Recent for scope picker search query', () => {
     const store = buildMockStore();
     store.boardPickerQuery = 'recent';
     const options = store.filteredFlightDeckScopeOptions;
     const ids = options.map((o) => o.id);
-    expect(ids).toContain(RECENT_TASK_BOARD_ID);
-    // All should not match 'recent'
+    expect(ids).not.toContain(RECENT_TASK_BOARD_ID);
     expect(ids).not.toContain(ALL_TASK_BOARD_ID);
   });
 
@@ -1472,7 +1502,7 @@ describe('flightDeckScopeOptions includes virtual boards', () => {
     );
     const ids = filtered.map((o) => o.id);
     expect(ids).toContain(ALL_TASK_BOARD_ID);
-    expect(ids).toContain(RECENT_TASK_BOARD_ID);
+    expect(ids).not.toContain(RECENT_TASK_BOARD_ID);
   });
 
   it('filterFlightDeckScopeOptions method filters by query', () => {
@@ -1508,15 +1538,14 @@ describe('sidebar scope picker covers all active scopes', () => {
     return store;
   }
 
-  it('includes every active scope from taskBoards (except Unscoped)', () => {
+  it('includes every real active scope from taskBoards plus All', () => {
     const unscopedTask = { record_id: 't1', record_state: 'active', scope_id: null };
     const store = buildMockStore([product, project, deliverable], [unscopedTask]);
     const sidebarIds = store.flightDeckScopeOptions.map((o) => o.id);
     const inlineIds = store.taskBoards.map((o) => o.id);
 
-    // Sidebar should contain every scope board that the inline selector had
     for (const id of inlineIds) {
-      if (id === UNSCOPED_TASK_BOARD_ID) continue; // Unscoped intentionally excluded
+      if (id === UNSCOPED_TASK_BOARD_ID || id === RECENT_TASK_BOARD_ID) continue;
       expect(sidebarIds).toContain(id);
     }
   });

@@ -18,11 +18,14 @@ export function npubToHex(npub) {
   return decoded.data;
 }
 
-export async function fetchProfileByNpub(npub) {
+export async function fetchProfileByNpub(npub, options = {}) {
   if (!npub) return null;
 
-  const cached = await getCachedProfile(npub);
-  if (cached) return cached;
+  const force = options?.force === true;
+  if (!force) {
+    const cached = await getCachedProfile(npub);
+    if (cached) return cached;
+  }
 
   let pubkeyHex;
   try {

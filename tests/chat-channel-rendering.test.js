@@ -101,6 +101,18 @@ describe('Chat channel rendering hooks', () => {
     expect(styles).toMatch(/\.channel-row-workspace-avatar\s*\{[\s\S]*width:\s*28px;[\s\S]*height:\s*28px;/);
   });
 
+  it('renders workspace avatar access in the mobile scope row', () => {
+    const switcherIndex = html.indexOf('class="mobile-scope-switcher"');
+    const switcherEndIndex = html.indexOf('<section class="auth-panel"', switcherIndex);
+    const switcher = html.slice(switcherIndex, switcherEndIndex);
+
+    expect(switcherIndex).toBeGreaterThan(-1);
+    expect(switcher).toContain('class="mobile-scope-workspace-avatar-btn"');
+    expect(switcher).toContain('@click="$store.chat.openAllScopesOverview()"');
+    expect(switcher).toContain('currentWorkspaceAvatarUrl');
+    expect(switcher).toContain('currentWorkspaceInitials');
+  });
+
   it('uses the same PG context controls in the chat channel bar', () => {
     const chatSectionIndex = html.indexOf('class="chat-section"');
     const chatBarIndex = html.indexOf('class="chat-channel-header"', chatSectionIndex);

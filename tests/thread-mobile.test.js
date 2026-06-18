@@ -162,14 +162,14 @@ describe('Thread mobile responsive behavior', () => {
       expect(backdropDecl).toMatch(/padding\s*:\s*0\.5rem/);
     });
 
-    it('centers the mobile scope selector row and trigger text', async () => {
+    it('centers the mobile scope selector row and keeps quick workspace access', async () => {
       css = css || await loadStylesheet();
       mobileBlock = mobileBlock || findMediaBlock(css, 768);
       const switcherDecl = extractDeclarations(mobileBlock, '.mobile-scope-switcher');
       const triggerDecl = extractDeclarations(mobileBlock, '.mobile-scope-trigger');
 
-      expect(switcherDecl).toMatch(/display\s*:\s*flex/);
-      expect(switcherDecl).toMatch(/justify-content\s*:\s*center/);
+      expect(switcherDecl).toMatch(/display\s*:\s*grid/);
+      expect(switcherDecl).toMatch(/grid-template-columns\s*:\s*38px minmax\(0,\s*1fr\) 38px/);
       expect(triggerDecl).toMatch(/justify-content\s*:\s*center/);
       expect(triggerDecl).toMatch(/text-align\s*:\s*center/);
     });

@@ -482,17 +482,55 @@ export const autopilotOverviewManagerMixin = {
   },
 
   get autopilotOverviewDailyScopeCanGoNext() {
-    const today = this.getTodayDateKey?.() || new Date().toISOString().slice(0, 10);
-    return this.autopilotOverviewDailyScopeDateKey < today;
+    return true;
   },
 
   showPreviousDailyScopeNote() {
     this.dailyScopeSelectedDate = shiftDateKey(this.autopilotOverviewDailyScopeDateKey, -1);
+    this.dailyScopeDatePickerValue = this.dailyScopeSelectedDate;
+    this.dailyScopeDatePickerOpen = false;
   },
 
   showNextDailyScopeNote() {
-    if (!this.autopilotOverviewDailyScopeCanGoNext) return;
     this.dailyScopeSelectedDate = shiftDateKey(this.autopilotOverviewDailyScopeDateKey, 1);
+    this.dailyScopeDatePickerValue = this.dailyScopeSelectedDate;
+    this.dailyScopeDatePickerOpen = false;
+  },
+
+  openDailyScopeDatePicker() {
+    this.dailyScopeDatePickerValue = this.autopilotOverviewDailyScopeDateKey;
+    this.dailyScopeDatePickerOpen = true;
+  },
+
+  closeDailyScopeDatePicker() {
+    this.dailyScopeDatePickerOpen = false;
+  },
+
+  selectDailyScopeDate(dateKey = '') {
+    const nextDate = normalizeString(dateKey);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(nextDate)) return;
+    this.dailyScopeSelectedDate = nextDate;
+    this.dailyScopeDatePickerValue = nextDate;
+    this.dailyScopeDatePickerOpen = false;
+  },
+
+  showTodayDailyScopeNote() {
+    const today = this.getTodayDateKey?.() || new Date().toISOString().slice(0, 10);
+    this.selectDailyScopeDate(today);
+  },
+
+  isSummaryPanelCollapsed(panelId = '') {
+    const key = normalizeString(panelId);
+    return Boolean(key && this.summaryCollapsedPanels?.[key]);
+  },
+
+  toggleSummaryPanel(panelId = '') {
+    const key = normalizeString(panelId);
+    if (!key) return;
+    this.summaryCollapsedPanels = {
+      ...(this.summaryCollapsedPanels || {}),
+      [key]: !this.summaryCollapsedPanels?.[key],
+    };
   },
 
   get autopilotOverviewContext() {

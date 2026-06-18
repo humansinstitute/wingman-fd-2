@@ -6,6 +6,7 @@
  */
 
 import {
+  clearCachedProfiles,
   getAddressBookPeople,
   upsertAddressBookPerson,
 } from './db.js';
@@ -46,6 +47,43 @@ function getAddressBookPeopleMap(store) {
 function isFullNpubCandidate(value = '') {
   const text = String(value || '').trim();
   return FULL_NPUB_PATTERN.test(text) && !text.includes('...');
+}
+
+function addFullNpub(target, value) {
+  const npub = String(value || '').trim();
+  if (isFullNpubCandidate(npub)) target.add(npub);
+}
+
+function addNpubFields(target, item, fields) {
+  if (!item || typeof item !== 'object') return;
+  for (const field of fields) addFullNpub(target, item[field]);
+}
+
+function addGroupMemberNpubs(target, group) {
+  if (!group || typeof group !== 'object') return;
+  for (const field of ['member_npubs', 'memberNpubs', 'members']) {
+    const values = group[field];
+    if (!Array.isArray(values)) continue;
+    for (const value of values) {
+      if (typeof value === 'string') addFullNpub(target, value);
+      else addNpubFields(target, value, ['npub', 'member_npub', 'user_npub']);
+    }
+  }
+}
+
+function collectKnownProfileNpubs(store) {
+  const npubs = new Set();
+  addFullNpub(npubs, store?.session?.npub);
+  addFullNpub(npubs, store?.defaultAgentNpub);
+  addFullNpub(npubs, store?.identityCard?.npub);
+  for (const npub of Object.keys(store?.chatProfiles || {})) addFullNpub(npubs, npub);
+  for (const person of store?.addressBookPeople || []) addNpubFields(npubs, person, ['npub']);
+  for (const member of store?.pgWorkspaceMembers || []) addNpubFields(npubs, member, ['npub', 'user_npub', 'member_npub']);
+  for (const group of [...(store?.groups || []), ...(store?.currentWorkspaceGroups || [])]) addGroupMemberNpubs(npubs, group);
+  for (const message of store?.messages || []) addNpubFields(npubs, message, ['author_npub', 'sender_npub', 'created_by_npub', 'owner_npub']);
+  for (const task of store?.tasks || []) addNpubFields(npubs, task, ['assignee_npub', 'created_by_npub', 'owner_npub']);
+  for (const comment of store?.docComments || []) addNpubFields(npubs, comment, ['author_npub', 'created_by_npub', 'owner_npub']);
+  return [...npubs];
 }
 
 // ---------------------------------------------------------------------------
@@ -96,14 +134,15 @@ export const peopleProfilesManagerMixin = {
 
   // --- profile resolution ---
 
-  resolveChatProfile(rawNpub) {
+  resolveChatProfile(rawNpub, options = {}) {
     // Resolve ws_key_npub → real user npub for profile lookup
     const npub = this.resolveDisplayNpub(rawNpub);
     const current = this.chatProfiles[npub] || null;
+    const force = options?.force === true;
     if (!npub || current?.loading) return;
-    if (current?.name || current?.picture) return;
+    if (!force && (current?.name || current?.picture)) return;
     const lastLookupAt = Number(current?.profileLookupAttemptedAt || 0);
-    if (lastLookupAt && Date.now() - lastLookupAt < PROFILE_LOOKUP_RETRY_MS) return;
+    if (!force && lastLookupAt && Date.now() - lastLookupAt < PROFILE_LOOKUP_RETRY_MS) return;
     const cached = this.getCachedPerson(npub);
 
     // Cap chatProfiles at 200 entries — evict oldest when full
@@ -129,7 +168,7 @@ export const peopleProfilesManagerMixin = {
       },
     };
 
-    fetchProfileByNpub(npub)
+    fetchProfileByNpub(npub, { force })
       .then((profile) => {
         const profileName = profile?.display_name || profile?.name || null;
         const profilePicture = profile?.picture || null;
@@ -171,6 +210,28 @@ export const peopleProfilesManagerMixin = {
           },
         };
       });
+  },
+
+  async refreshNostrProfileCache() {
+    if (this.nostrProfilesRefreshing) return;
+    this.nostrProfilesRefreshing = true;
+    this.nostrProfilesRefreshMessage = '';
+    try {
+      const npubs = collectKnownProfileNpubs(this);
+      await clearCachedProfiles();
+      this.chatProfiles = {};
+      for (const npub of npubs) {
+        this.resolveChatProfile(npub, { force: true });
+      }
+      await this.refreshAddressBook?.();
+      this.nostrProfilesRefreshMessage = npubs.length > 0
+        ? `Refreshing ${npubs.length} Nostr profiles. Visible names will update as relays respond.`
+        : 'Nostr profile cache cleared. Visible names will refresh as profiles are used.';
+    } catch (error) {
+      this.nostrProfilesRefreshMessage = error?.message || 'Failed to refresh Nostr profiles.';
+    } finally {
+      this.nostrProfilesRefreshing = false;
+    }
   },
 
   getCachedPerson(npub) {

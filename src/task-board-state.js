@@ -55,8 +55,10 @@ import {
   resolvePgThreadId,
 } from './pg-record-context.js';
 import {
+  DM_SCOPE_ID,
   createVirtualDmScope,
   findDmScope,
+  isDmScope,
 } from './dm-scope.js';
 
 // ---------------------------------------------------------------------------
@@ -1154,6 +1156,7 @@ export const taskBoardStateMixin = {
       label: this.formatTaskBoardScopeDisplay(scope),
       breadcrumb: this.getScopeAncestorPath(scope.record_id),
       description: scope.description || '',
+      isDmScope: isDmScope(scope),
     }));
     const boards = [...scopeBoards];
     if (isPgWorkspaceStore(this)) {
@@ -1270,10 +1273,20 @@ export const taskBoardStateMixin = {
   },
 
   get flightDeckScopeOptions() {
-    return this.taskBoards.filter((board) =>
+    const options = this.taskBoards.filter((board) =>
       (board.zoom === 'scope' || board.level === 'system')
-      && (board.level !== 'system' || board.id === ALL_TASK_BOARD_ID || board.id === RECENT_TASK_BOARD_ID)
+      && (board.level !== 'system' || board.id === ALL_TASK_BOARD_ID)
     );
+    const allOption = options.find((board) => board.id === ALL_TASK_BOARD_ID);
+    const dmOption = options.find((board) => board.isDmScope || board.id === DM_SCOPE_ID);
+    const remainingOptions = options
+      .filter((board) => board.id !== ALL_TASK_BOARD_ID && board !== dmOption)
+      .sort((left, right) => {
+        const labelDelta = String(left.label || '').localeCompare(String(right.label || ''));
+        if (labelDelta !== 0) return labelDelta;
+        return String(left.id || '').localeCompare(String(right.id || ''));
+      });
+    return [allOption, dmOption, ...remainingOptions].filter(Boolean);
   },
 
   get filteredFlightDeckScopeOptions() {

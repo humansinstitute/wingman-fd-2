@@ -835,6 +835,16 @@ export async function getCachedProfile(pubkey) {
   return row.profile;
 }
 
+export async function clearCachedProfiles(pubkeys = null) {
+  if (!Array.isArray(pubkeys)) {
+    await sharedDb.profiles.clear();
+    return;
+  }
+  const uniquePubkeys = [...new Set(pubkeys.map((pubkey) => String(pubkey || '').trim()).filter(Boolean))];
+  if (uniquePubkeys.length === 0) return;
+  await sharedDb.profiles.bulkDelete(uniquePubkeys);
+}
+
 // ---------------------------------------------------------------------------
 // pending_writes — workspace DB
 // ---------------------------------------------------------------------------
