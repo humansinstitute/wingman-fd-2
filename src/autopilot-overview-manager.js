@@ -8,6 +8,7 @@ import { recordFamilyHash } from './translators/chat.js';
 const UNSCOPED_SCOPE_ID = '__unscoped__';
 const ALL_SCOPE_ID = 'all';
 const ALL_CHANNEL_ID = 'all';
+const OVERVIEW_PANEL_PAGE_SIZE = 5;
 const OPEN_COMMENT_STATUSES = new Set(['', 'open', 'unresolved', 'active']);
 const TASK_FAMILY = recordFamilyHash('task');
 const DOCUMENT_FAMILY = recordFamilyHash('document');
@@ -531,6 +532,81 @@ export const autopilotOverviewManagerMixin = {
       ...(this.summaryCollapsedPanels || {}),
       [key]: !this.summaryCollapsedPanels?.[key],
     };
+  },
+
+  getSummaryPanelRows(panelId = '') {
+    switch (normalizeString(panelId)) {
+      case 'chats':
+        return this.autopilotOverviewThreads;
+      case 'tasks':
+        return this.autopilotOverviewTasks;
+      case 'docs':
+        return this.autopilotOverviewDocuments;
+      case 'files':
+        return this.autopilotOverviewFiles;
+      default:
+        return [];
+    }
+  },
+
+  getSummaryPanelPage(panelId = '') {
+    const key = normalizeString(panelId);
+    const page = Number(this.summaryPanelPages?.[key] || 0);
+    return Number.isFinite(page) && page > 0 ? Math.floor(page) : 0;
+  },
+
+  getSummaryPanelMaxPage(panelId = '') {
+    const total = this.getSummaryPanelRows(panelId).length;
+    return Math.max(0, Math.ceil(total / OVERVIEW_PANEL_PAGE_SIZE) - 1);
+  },
+
+  getSummaryPanelPageRows(panelId = '') {
+    const maxPage = this.getSummaryPanelMaxPage(panelId);
+    const page = Math.min(this.getSummaryPanelPage(panelId), maxPage);
+    const start = page * OVERVIEW_PANEL_PAGE_SIZE;
+    return this.getSummaryPanelRows(panelId).slice(start, start + OVERVIEW_PANEL_PAGE_SIZE);
+  },
+
+  canShowPreviousSummaryPanelPage(panelId = '') {
+    return this.getSummaryPanelPage(panelId) > 0;
+  },
+
+  canShowNextSummaryPanelPage(panelId = '') {
+    return this.getSummaryPanelPage(panelId) < this.getSummaryPanelMaxPage(panelId);
+  },
+
+  showPreviousSummaryPanelPage(panelId = '') {
+    const key = normalizeString(panelId);
+    if (!key || !this.canShowPreviousSummaryPanelPage(key)) return;
+    this.summaryPanelPages = {
+      ...(this.summaryPanelPages || {}),
+      [key]: this.getSummaryPanelPage(key) - 1,
+    };
+  },
+
+  showNextSummaryPanelPage(panelId = '') {
+    const key = normalizeString(panelId);
+    if (!key || !this.canShowNextSummaryPanelPage(key)) return;
+    this.summaryPanelPages = {
+      ...(this.summaryPanelPages || {}),
+      [key]: this.getSummaryPanelPage(key) + 1,
+    };
+  },
+
+  get pagedAutopilotOverviewThreads() {
+    return this.getSummaryPanelPageRows('chats');
+  },
+
+  get pagedAutopilotOverviewTasks() {
+    return this.getSummaryPanelPageRows('tasks');
+  },
+
+  get pagedAutopilotOverviewDocuments() {
+    return this.getSummaryPanelPageRows('docs');
+  },
+
+  get pagedAutopilotOverviewFiles() {
+    return this.getSummaryPanelPageRows('files');
   },
 
   get autopilotOverviewContext() {

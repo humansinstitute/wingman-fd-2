@@ -586,7 +586,6 @@ export function createShellState(options = {}) {
           case 'chat': return 'chat';
           case 'docs': return 'docs';
           case 'files': return 'files';
-          case 'autopilot': return 'autopilot';
           case 'reports': return 'reports';
           case 'opportunities': return 'opportunities';
           case 'people': return 'people';
@@ -747,7 +746,7 @@ export function createShellState(options = {}) {
       if (section === 'chat' || section === 'docs') {
         this.markSectionRead(section);
       }
-      if (section === 'tasks' || section === 'reports' || section === 'files' || section === 'autopilot') {
+      if (section === 'tasks' || section === 'reports' || section === 'files') {
         this.validateSelectedBoardId();
         this.normalizeTaskFilterTags();
       }
@@ -796,9 +795,9 @@ export function createShellState(options = {}) {
     },
 
     clearInactiveSectionData(activeSection) {
-      const keepsChatData = activeSection === 'chat' || activeSection === 'autopilot';
-      const keepsDocsData = activeSection === 'docs' || activeSection === 'autopilot';
-      const keepsFilesData = activeSection === 'files' || activeSection === 'autopilot';
+      const keepsChatData = activeSection === 'chat';
+      const keepsDocsData = activeSection === 'docs';
+      const keepsFilesData = activeSection === 'files';
       if (!keepsChatData) {
         this.messages = [];
         this.audioNotes = [];

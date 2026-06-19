@@ -24,12 +24,40 @@ export const storageImageManagerMixin = {
 
   scheduleStorageImageHydration() {
     if (this._storageImageHydrateScheduled || typeof window === 'undefined') return;
+    this.ensureStorageImageHydrationObserver();
     this._storageImageHydrateScheduled = true;
     window.requestAnimationFrame(() => {
       this._storageImageHydrateScheduled = false;
       this.hydrateStorageImages();
       this.scheduleChatPreviewMeasurement();
       this.scheduleTaskCommentPreviewMeasurement?.();
+    });
+  },
+
+  ensureStorageImageHydrationObserver() {
+    if (
+      this._storageImageHydrationObserver
+      || typeof window === 'undefined'
+      || typeof document === 'undefined'
+      || !document.body
+      || typeof MutationObserver === 'undefined'
+    ) {
+      return;
+    }
+
+    this._storageImageHydrationObserver = new MutationObserver((mutations = []) => {
+      const hasStorageImage = mutations.some((mutation) => (
+        [...(mutation.addedNodes || [])].some((node) => {
+          if (!node || node.nodeType !== 1) return false;
+          if (node.matches?.('img[data-storage-object-id]')) return true;
+          return Boolean(node.querySelector?.('img[data-storage-object-id]'));
+        })
+      ));
+      if (hasStorageImage) this.scheduleStorageImageHydration();
+    });
+    this._storageImageHydrationObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
     });
   },
 
@@ -148,14 +176,38 @@ export const storageImageManagerMixin = {
     }
   },
 
+  getStorageImageHydrationBackendUrl() {
+    return String(
+      this.currentWorkspace?.directHttpsUrl
+      || this.currentWorkspaceBackendUrl
+      || this.backendUrl
+      || '',
+    ).trim();
+  },
+
+  applyResolvedStorageImage(image, url) {
+    if (!image || !url) return;
+    image.src = url;
+    image.dataset.storageResolved = 'true';
+    image.classList.remove('md-storage-image-pending');
+    image.classList.remove('md-storage-image-error');
+  },
+
   hydrateStorageImages() {
     if (typeof document === 'undefined') return;
     const images = [...document.querySelectorAll('img[data-storage-object-id]')];
+    const backendUrl = this.getStorageImageHydrationBackendUrl();
     for (const image of images) {
       const objectId = String(image.dataset.storageObjectId || '').trim();
       if (!objectId || image.dataset.storageResolved === 'true') continue;
+      const cacheKey = storageImageCacheKey(objectId, backendUrl);
+      const cachedUrl = this.storageImageUrlCache?.[cacheKey] || this.storageImageUrlCache?.[objectId];
+      if (cachedUrl) {
+        this.applyResolvedStorageImage(image, cachedUrl);
+        continue;
+      }
       image.dataset.storageResolved = 'pending';
-      this.resolveStorageImageUrl(objectId)
+      this.resolveStorageImageUrl(objectId, { backendUrl })
         .then((url) => {
           const chatFeedAnchor = this.captureScrollAnchor({
             containerSelector: '[data-chat-feed]',
@@ -167,9 +219,7 @@ export const storageImageManagerMixin = {
             itemSelector: '[data-thread-message-id]',
             itemAttribute: 'data-thread-message-id',
           });
-          image.src = url;
-          image.dataset.storageResolved = 'true';
-          image.classList.remove('md-storage-image-pending');
+          this.applyResolvedStorageImage(image, url);
           this.scheduleChatPreviewMeasurement();
           this.scheduleTaskCommentPreviewMeasurement?.();
           this.restoreScrollAnchor(chatFeedAnchor);

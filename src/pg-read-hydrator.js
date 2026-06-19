@@ -5,6 +5,7 @@ import {
   getTowerPgChannelDocs,
   getTowerPgChannelFiles,
   getTowerPgDailyNotes,
+  getTowerPgPersonalWapps,
   getTowerPgDoc,
   getTowerPgDocBody,
   getTowerPgDocComments,
@@ -28,13 +29,16 @@ import {
   replacePgAudioNotesForChannel,
   replacePgCommentsForTarget,
   replacePgDailyNotesForOwnerAndDate,
+  replacePgPersonalWappsForOwner,
   replacePgDocumentsForChannel,
   replacePgMessagesForChannel,
   replacePgReactionsForTarget,
   replacePgTasksForChannel,
   replaceTasksForOwner,
   replaceScopesForOwner,
+  clearResponseActivity,
   upsertDocument,
+  upsertResponseActivity,
   upsertTask,
 } from './db.js';
 import { recordFamilyHash } from './translators/chat.js';
@@ -57,6 +61,52 @@ function isoTimestamp(value) {
 function rowVersion(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
+function currentPgActorId(store = {}) {
+  return trimText(
+    store?.currentWorkspaceActorId
+    || store?.pgActorId
+    || store?.currentActorId
+    || store?.currentWorkspace?.pgMe?.actor?.actor_id
+    || store?.currentWorkspace?.pgMe?.actor?.id
+    || store?.currentWorkspace?.pg_me?.actor?.actor_id
+    || store?.currentWorkspace?.pg_me?.actor?.id
+  );
+}
+
+function mapPgResponseActivity(activity = {}) {
+  const recordId = trimText(activity.id || activity.record_id);
+  if (!recordId) return null;
+  return {
+    record_id: recordId,
+    pg_backend: true,
+    workspace_id: trimText(activity.workspace_id),
+    scope_id: trimText(activity.scope_id),
+    channel_id: trimText(activity.channel_id),
+    target_type: trimText(activity.target_type),
+    target_id: trimText(activity.target_id),
+    thread_id: trimText(activity.thread_id),
+    task_id: trimText(activity.task_id),
+    doc_id: trimText(activity.doc_id),
+    parent_comment_id: trimText(activity.parent_comment_id),
+    actor_id: trimText(activity.actor_id),
+    actor_npub: trimText(activity.actor_npub),
+    activity_type: trimText(activity.activity_type) || 'agent_response',
+    status: trimText(activity.status) || 'thinking',
+    severity: trimText(activity.severity) || 'info',
+    label: trimText(activity.label),
+    message: trimText(activity.message),
+    pipeline_run_id: trimText(activity.pipeline_run_id),
+    source_message_id: trimText(activity.source_message_id),
+    metadata: activity.metadata && typeof activity.metadata === 'object' ? activity.metadata : {},
+    record_state: trimText(activity.record_state) || (activity.cleared_at ? 'cleared' : 'active'),
+    row_version: rowVersion(activity.row_version),
+    expires_at: isoTimestamp(activity.expires_at),
+    created_at: isoTimestamp(activity.created_at),
+    updated_at: isoTimestamp(activity.updated_at),
+    cleared_at: trimText(activity.cleared_at),
+  };
 }
 
 function base64ToBytes(base64) {
@@ -746,6 +796,47 @@ export function mapPgDailyNoteToLocal(note, { workspaceOwnerNpub } = {}) {
   };
 }
 
+export function mapPgPersonalWappToLocal(wapp, { workspaceOwnerNpub } = {}) {
+  const ownerActorNpub = trimText(wapp?.owner_actor_npub || wapp?.owner_npub);
+  const updatedAt = isoTimestamp(wapp?.updated_at);
+  const status = trimText(wapp?.status || wapp?.record_state) || 'active';
+  return {
+    record_id: trimText(wapp?.id || wapp?.record_id),
+    owner_npub: ownerActorNpub || trimText(workspaceOwnerNpub),
+    workspace_owner_npub: trimText(workspaceOwnerNpub),
+    owner_actor_id: trimText(wapp?.owner_actor_id),
+    owner_actor_npub: ownerActorNpub,
+    title: trimText(wapp?.title) || 'Untitled WApp',
+    description: trimText(wapp?.description),
+    launch_url: trimText(wapp?.launch_url),
+    icon_url: trimText(wapp?.icon_url),
+    app_id: trimText(wapp?.app_id),
+    wapp_id: trimText(wapp?.wapp_id || wapp?.id || wapp?.record_id),
+    source_wingman_url: trimText(wapp?.source_wingman_url),
+    scope_id: trimText(wapp?.scope_id),
+    channel_id: trimText(wapp?.channel_id),
+    sort_order: Number.isFinite(Number(wapp?.sort_order)) ? Number(wapp.sort_order) : 0,
+    status,
+    record_state: status,
+    metadata: wapp?.metadata && typeof wapp.metadata === 'object' && !Array.isArray(wapp.metadata) ? wapp.metadata : {},
+    group_ids: [],
+    sync_status: 'synced',
+    version: rowVersion(wapp?.row_version || wapp?.version),
+    created_at: isoTimestamp(wapp?.created_at || updatedAt),
+    updated_at: updatedAt,
+    pg_backend: true,
+    pg_record_type: 'personal_wapp',
+    pg_workspace_id: trimText(wapp?.workspace_id),
+    pg_owner_actor_id: trimText(wapp?.owner_actor_id),
+    pg_scope_id: trimText(wapp?.scope_id),
+    pg_channel_id: trimText(wapp?.channel_id),
+    pg_created_by_actor_id: trimText(wapp?.created_by_actor_id),
+    pg_updated_by_actor_id: trimText(wapp?.updated_by_actor_id),
+    updated_by_actor_id: trimText(wapp?.updated_by_actor_id),
+    updated_by_actor_npub: trimText(wapp?.updated_by_actor_npub),
+  };
+}
+
 export function mapPgReactionToLocal(reaction, {
   workspaceOwnerNpub,
   targetType,
@@ -946,6 +1037,21 @@ function mergeStoreDailyRows(store, ownerActorId, noteDate, rows = []) {
     ...rows,
   ];
   if (typeof store?.applyDailyNotes === 'function') return store.applyDailyNotes(nextRows);
+  return null;
+}
+
+function mergeStorePersonalWappRows(store, ownerActorId, rows = []) {
+  const existing = Array.isArray(store?.wapps) ? store.wapps : [];
+  const nextRows = [
+    ...existing.filter((row) => !(
+      row?.pg_backend === true
+      && row?.pg_record_type === 'personal_wapp'
+      && String(row?.owner_actor_id || row?.pg_owner_actor_id || '') === ownerActorId
+    )),
+    ...rows,
+  ];
+  if (typeof store?.applyWapps === 'function') return store.applyWapps(nextRows);
+  store.wapps = nextRows;
   return null;
 }
 
@@ -1175,8 +1281,12 @@ export async function hydrateTowerPgEventUpdates(store, events = [], deps = {}) 
   const documentChannels = new Set();
   const audioChannels = new Set();
   const taskCommentTargets = new Set();
+  const docCommentTargets = new Set();
   const dailyTargets = new Map();
   const reactionTargets = new Map();
+  const personalWappOwnerIds = new Set();
+  const responseActivityWrites = [];
+  const responseActivityDeletes = [];
   let fallbackEvents = 0;
 
   for (const event of pgEvents) {
@@ -1197,14 +1307,31 @@ export async function hydrateTowerPgEventUpdates(store, events = [], deps = {}) 
       audioChannels.add(channelId);
     } else if (entityType === 'task_comment' && trimText(payload.task_id)) {
       taskCommentTargets.add(trimText(payload.task_id));
+    } else if (entityType === 'doc_comment' && (trimText(payload.doc_id) || trimText(event?.entity_id))) {
+      docCommentTargets.add(trimText(payload.doc_id) || trimText(event?.entity_id));
     } else if (entityType === 'daily_note' && (trimText(payload.owner_actor_id) || channelId) && trimText(payload.note_date)) {
       const noteDate = trimText(payload.note_date);
       const ownerActorId = trimText(payload.owner_actor_id) || channelId;
       dailyTargets.set(`${ownerActorId}:${noteDate}`, { ownerActorId, noteDate, legacyChannelId: trimText(payload.owner_actor_id) ? null : channelId });
+    } else if (entityType === 'personal_wapp') {
+      const ownerActorId = trimText(payload.owner_actor_id) || currentPgActorId(store);
+      if (ownerActorId) personalWappOwnerIds.add(ownerActorId);
+      else fallbackEvents += 1;
     } else if (entityType === 'reaction' && trimText(payload.target_type) && trimText(payload.target_id)) {
       const targetType = trimText(payload.target_type);
       const targetId = trimText(payload.target_id);
       reactionTargets.set(`${targetType}:${targetId}`, { targetType, targetId });
+    } else if (entityType === 'response_activity') {
+      const activity = mapPgResponseActivity(payload.response_activity || payload.activity || payload);
+      const operation = trimText(event?.operation);
+      if (operation === 'cleared' || activity?.status === 'cleared' || activity?.record_state === 'cleared') {
+        const recordId = activity?.record_id || trimText(event?.entity_id);
+        if (recordId) responseActivityDeletes.push(recordId);
+      } else if (activity) {
+        responseActivityWrites.push(activity);
+      } else {
+        fallbackEvents += 1;
+      }
     } else {
       fallbackEvents += 1;
     }
@@ -1217,8 +1344,12 @@ export async function hydrateTowerPgEventUpdates(store, events = [], deps = {}) 
     ...[...documentChannels].map((channelId) => hydrateTowerPgChannelDocumentsAndFiles(store, channelId, deps)),
     ...[...audioChannels].map((channelId) => hydrateTowerPgChannelAudioNotes(store, channelId, deps)),
     ...[...taskCommentTargets].map((taskId) => hydrateTowerPgTaskComments(store, taskId, deps)),
+    ...[...docCommentTargets].map((docId) => hydrateTowerPgDocComments(store, docId, deps)),
     ...[...dailyTargets.values()].map(({ ownerActorId, noteDate, legacyChannelId }) => hydrateTowerPgDailyNoteTarget(store, ownerActorId, noteDate, { ...deps, legacyChannelId })),
+    ...[...personalWappOwnerIds].map(() => hydrateTowerPgPersonalWapps(store, deps)),
     ...[...reactionTargets.values()].map(({ targetType, targetId }) => hydrateTowerPgReactionTarget(store, targetType, targetId, deps)),
+    ...responseActivityWrites.map((activity) => upsertResponseActivity(activity)),
+    ...responseActivityDeletes.map((recordId) => clearResponseActivity(recordId)),
   ];
 
   await Promise.all(jobs);
@@ -1339,6 +1470,33 @@ export async function hydrateTowerPgDailyNotes(store, deps = {}) {
   await replaceDailyNotes(context.workspaceOwnerNpub, dailyNotes);
   if (typeof store.applyDailyNotes === 'function') await store.applyDailyNotes(dailyNotes);
   return dailyNotes;
+}
+
+export async function hydrateTowerPgPersonalWapps(store, deps = {}) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  if (!context.workspaceId || !context.workspaceOwnerNpub || !context.baseUrl) return [];
+  const ownerActorId = currentPgActorId(store);
+  const readPersonalWapps = deps.getTowerPgPersonalWapps || getTowerPgPersonalWapps;
+  const replacePersonalWapps = deps.replacePgPersonalWappsForOwner || replacePgPersonalWappsForOwner;
+  const result = await readPersonalWapps(context.workspaceId, {
+    baseUrl: context.baseUrl,
+    appNpub: context.appNpub,
+    ownerActorId: ownerActorId || null,
+    limit: 100,
+  });
+  const targetOwnerActorId = ownerActorId || trimText(result?.personal_wapps?.[0]?.owner_actor_id);
+  const personalWapps = (Array.isArray(result?.personal_wapps) ? result.personal_wapps : [])
+    .map((wapp) => mapPgPersonalWappToLocal(wapp, { workspaceOwnerNpub: context.workspaceOwnerNpub }))
+    .filter((wapp) => wapp.record_id && wapp.launch_url);
+  if (targetOwnerActorId) {
+    await replacePersonalWapps(targetOwnerActorId, personalWapps);
+    await mergeStorePersonalWappRows(store, targetOwnerActorId, personalWapps);
+  } else if (typeof store.applyWapps === 'function') {
+    await store.applyWapps(personalWapps);
+  } else {
+    store.wapps = personalWapps;
+  }
+  return personalWapps;
 }
 
 export async function hydrateTowerPgDocumentsAndFiles(store, deps = {}) {

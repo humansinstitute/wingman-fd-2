@@ -81,6 +81,65 @@ function blockText(block) {
   return String(block?.raw ?? block?.text ?? '').trimEnd();
 }
 
+function isStandaloneMarkdownImageLine(line) {
+  return /^\\?!\[[^\]\n]*]\([^)]+\)\s*$/.test(String(line || '').trim());
+}
+
+function isStandaloneMarkdownHeadingLine(line) {
+  return /^#{1,6}\s+\S.*$/.test(String(line || '').trim());
+}
+
+function splitMarkdownIntoBlockSegments(content) {
+  const source = String(content || '').replace(/\r\n?/g, '\n');
+  if (!source.trim()) return [];
+
+  const lines = source.split('\n');
+  const segments = [];
+  let currentLines = [];
+  let startLine = 1;
+
+  const flush = () => {
+    if (currentLines.length === 0) return;
+    const raw = currentLines.join('\n').trimEnd();
+    if (raw) {
+      segments.push({
+        raw,
+        startLine,
+        lineCount: currentLines.length,
+      });
+    }
+    currentLines = [];
+  };
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? '';
+    const lineNumber = index + 1;
+
+    if (!line.trim()) {
+      flush();
+      startLine = lineNumber + 1;
+      continue;
+    }
+
+    if (isStandaloneMarkdownImageLine(line) || isStandaloneMarkdownHeadingLine(line)) {
+      flush();
+      segments.push({
+        raw: line.trimEnd(),
+        startLine: lineNumber,
+        lineCount: 1,
+      });
+      startLine = lineNumber + 1;
+      continue;
+    }
+
+    if (currentLines.length === 0) startLine = lineNumber;
+    currentLines.push(line);
+  }
+
+  flush();
+  return segments;
+}
+
 export function normalizeDocumentBlocks(blocks = [], fallbackContent = '') {
   const sourceBlocks = Array.isArray(blocks) ? blocks : [];
   if (sourceBlocks.length === 0 && String(fallbackContent || '').trim()) {
@@ -88,26 +147,50 @@ export function normalizeDocumentBlocks(blocks = [], fallbackContent = '') {
   }
 
   let line = 1;
-  return sourceBlocks
-    .map((block, index) => {
-      const raw = blockText(block);
-      if (!raw) return null;
-      const lineCount = raw.split('\n').length;
-      const normalized = {
-        id: String(block?.id || '').trim() || makeBlockId(index, line),
+  const normalizedBlocks = [];
+  const usedIds = new Set();
+  const uniqueBlockId = (candidate, fallbackIndex, fallbackLine) => {
+    const fallback = makeBlockId(fallbackIndex, fallbackLine);
+    const base = String(candidate || '').trim() || fallback;
+    let next = base;
+    let suffix = 2;
+    while (usedIds.has(next)) {
+      next = `${base}-${suffix}`;
+      suffix += 1;
+    }
+    usedIds.add(next);
+    return next;
+  };
+
+  sourceBlocks.forEach((block) => {
+    const raw = blockText(block);
+    if (!raw) return;
+    const segments = splitMarkdownIntoBlockSegments(raw);
+    segments.forEach((segment, segmentIndex) => {
+      const blockIndex = normalizedBlocks.length;
+      const sourceId = String(block?.id || '').trim() || makeBlockId(blockIndex, line);
+      normalizedBlocks.push({
+        id: uniqueBlockId(
+          segmentIndex === 0 ? sourceId : `${sourceId}:split-${segmentIndex}`,
+          blockIndex,
+          line,
+        ),
         type: String(block?.type || '').trim() || 'markdown',
-        raw,
-        text: raw,
+        raw: segment.raw,
+        text: segment.raw,
         attrs: block?.attrs && typeof block.attrs === 'object' && !Array.isArray(block.attrs)
           ? { ...block.attrs }
           : {},
         start_line: line,
-        end_line: line + lineCount - 1,
-      };
-      line += lineCount + 1;
-      return normalized;
-    })
-    .filter(Boolean);
+        end_line: line + segment.lineCount - 1,
+      });
+      line += segment.lineCount + 1;
+    });
+  });
+  if (normalizedBlocks.length === 0 && String(fallbackContent || '').trim()) {
+    return parseMarkdownBlocks(fallbackContent);
+  }
+  return normalizedBlocks;
 }
 
 export function createDocumentBlock(raw = '', options = {}) {
@@ -144,49 +227,24 @@ export function documentBlocksToMarkdown(blocks = []) {
 }
 
 export function parseMarkdownBlocks(content, options = {}) {
-  const source = String(content || '').replace(/\r\n?/g, '\n');
-  if (!source.trim()) return [];
-  const lines = source.split('\n');
-  const blocks = [];
-  let currentLines = [];
-  let startLine = 1;
+  const segments = splitMarkdownIntoBlockSegments(content);
+  if (segments.length === 0) return [];
   const previousBlocks = Array.isArray(options?.previousBlocks) ? options.previousBlocks : [];
 
-  const flush = () => {
-    if (currentLines.length === 0) return;
-    const raw = currentLines.join('\n').trimEnd();
-    if (!raw) {
-      currentLines = [];
-      return;
-    }
-    const previous = previousBlocks[blocks.length] || null;
-    blocks.push({
-      id: String(previous?.id || '').trim() || makeBlockId(blocks.length, startLine),
+  return segments.map((segment, index) => {
+    const previous = previousBlocks[index] || null;
+    return {
+      id: String(previous?.id || '').trim() || makeBlockId(index, segment.startLine),
       type: String(previous?.type || '').trim() || 'markdown',
-      raw,
-      text: raw,
+      raw: segment.raw,
+      text: segment.raw,
       attrs: previous?.attrs && typeof previous.attrs === 'object' && !Array.isArray(previous.attrs)
         ? { ...previous.attrs }
         : {},
-      start_line: startLine,
-      end_line: startLine + currentLines.length - 1,
-    });
-    currentLines = [];
-  };
-
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index] ?? '';
-    if (!line.trim()) {
-      flush();
-      startLine = index + 2;
-      continue;
-    }
-    if (currentLines.length === 0) startLine = index + 1;
-    currentLines.push(line);
-  }
-
-  flush();
-  return blocks;
+      start_line: segment.startLine,
+      end_line: segment.startLine + segment.lineCount - 1,
+    };
+  });
 }
 
 export function assembleMarkdownBlocks(blocks = []) {

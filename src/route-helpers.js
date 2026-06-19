@@ -2,7 +2,7 @@ import { normalizeEnabledFlightDeckSection } from './disabled-surfaces.js';
 
 export const KNOWN_PAGES = new Set([
   'flight-deck', 'notifications', 'status', 'tasks',
-  'chat', 'docs', 'files', 'autopilot', 'reports', 'opportunities', 'people', 'settings',
+  'chat', 'docs', 'files', 'reports', 'opportunities', 'people', 'settings',
 ]);
 
 export function pageToSection(page) {

@@ -29,10 +29,12 @@ import {
   hydrateTowerPgDailyNotes,
   hydrateTowerPgDoc,
   hydrateTowerPgDocumentsAndFiles,
+  hydrateTowerPgPersonalWapps,
   hydrateTowerPgTask,
   hydrateTowerPgTaskComments,
   hydrateTowerPgTasks,
   mapPgDailyNoteToLocal,
+  mapPgPersonalWappToLocal,
   resolveTowerPgWorkspaceContext,
 } from './pg-read-hydrator.js';
 import {
@@ -167,7 +169,11 @@ import {
   setBaseUrl,
   prepareStorageObject,
   prepareTowerPgStorageObject,
+  createTowerPgPersonalWapp,
+  deleteTowerPgPersonalWapp,
   getTowerPgDailyScopeAgentAccess,
+  reorderTowerPgPersonalWapps,
+  updateTowerPgPersonalWapp,
   upsertTowerPgDailyScopeAgentAccess,
   upsertTowerPgDailyNote,
   uploadStorageObject,
@@ -496,6 +502,7 @@ export function initApp() {
     selectedChannelId: null,
     messages: [],
     reactionRows: [],
+    threadResponseActivities: [],
     reactionPickerTargetKey: '',
     audioNotes: [],
     groups: [],
@@ -505,6 +512,7 @@ export function initApp() {
     dailyScopeDatePickerOpen: false,
     dailyScopeDatePickerValue: '',
     summaryCollapsedPanels: {},
+    summaryPanelPages: {},
     dailyNoteEditorOpen: false,
     dailyNoteEditorSaving: false,
     dailyNoteEditorError: '',
@@ -627,6 +635,16 @@ export function initApp() {
     organisations: [],
     opportunities: [],
     wapps: [],
+    personalWappsOverlayOpen: false,
+    personalAgentsOverlayOpen: false,
+    personalWappEditorOpen: false,
+    personalWappEditorSaving: false,
+    personalWappEditorError: '',
+    personalWappEditingId: '',
+    personalWappFormTitle: '',
+    personalWappFormDescription: '',
+    personalWappFormLaunchUrl: '',
+    personalWappFormIconUrl: '',
     peopleSubTab: 'people',
     editingPersonId: null,
     editingOrgId: null,
@@ -801,6 +819,7 @@ export function initApp() {
     docEditorBlocks: [],
     docEditingBlockIndex: -1,
     docBlockBuffer: '',
+    docBlockEditorMinHeightPx: 0,
     docEditingTitle: false,
     docComments: [],
     docCommentsVisible: false,
@@ -1173,6 +1192,51 @@ export function initApp() {
 
     get harnessAgentAvatarUrl() {
       return this.workspaceHarnessAgentNpub ? this.getSenderAvatar(this.workspaceHarnessAgentNpub) : null;
+    },
+
+    get visiblePersonalAgents() {
+      const agents = [];
+      const seen = new Set();
+      const addAgent = (agent) => {
+        const npub = String(agent?.npub || '').trim();
+        const launchUrl = String(agent?.launch_url || '').trim();
+        const key = npub || launchUrl;
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        agents.push({
+          npub,
+          launch_url: launchUrl,
+          title: String(agent?.title || '').trim() || (npub ? this.getSenderName(npub) : 'Autopilot agent'),
+          description: String(agent?.description || '').trim() || 'Dive Deeper in Autopilot',
+        });
+      };
+
+      if (this.workspaceHarnessUrl || this.workspaceHarnessAgentNpub) {
+        addAgent({
+          npub: this.workspaceHarnessAgentNpub,
+          launch_url: this.workspaceHarnessUrl,
+          title: this.harnessAgentLabel || 'Autopilot agent',
+          description: 'Dive Deeper in Autopilot',
+        });
+      }
+
+      for (const row of this.dailyScopeAgentAccess || []) {
+        if (row?.revoked_at != null || row?.can_read === false) continue;
+        const npub = String(row.agent_actor_npub || row.agent_npub || '').trim();
+        if (!npub) continue;
+        addAgent({
+          npub,
+          launch_url: String(row.launch_url || row.agent_launch_url || this.workspaceHarnessUrl || '').trim(),
+          title: row.agent_display_name || this.getSenderName(npub),
+          description: row.can_write === false ? 'Daily Scope reader' : 'Daily Scope agent',
+        });
+      }
+
+      return agents;
+    },
+
+    get previewPersonalAgents() {
+      return this.visiblePersonalAgents.slice(0, 3);
     },
 
     // chat message getters applied via chatMessageManagerMixin (applyMixins)
@@ -2345,6 +2409,29 @@ export function initApp() {
       window.open(this.workspaceHarnessUrl, '_blank', 'noopener,noreferrer');
     },
 
+    openPersonalAgentsOverlay() {
+      const agents = this.visiblePersonalAgents;
+      if (agents.length === 1) {
+        this.openPersonalAgent(agents[0]);
+        return;
+      }
+      if (agents.length > 1) {
+        this.closePersonalWappsOverlay();
+        this.personalAgentsOverlayOpen = !this.personalAgentsOverlayOpen;
+      }
+    },
+
+    closePersonalAgentsOverlay() {
+      this.personalAgentsOverlayOpen = false;
+    },
+
+    openPersonalAgent(agent) {
+      const launchUrl = String(agent?.launch_url || this.workspaceHarnessUrl || '').trim();
+      if (!launchUrl || typeof window === 'undefined') return;
+      window.open(launchUrl, '_blank', 'noopener,noreferrer');
+      this.closePersonalAgentsOverlay();
+    },
+
     togglePrimaryNav() {
       if (typeof window !== 'undefined' && window.innerWidth <= 768) {
         this.mobileNavOpen = !this.mobileNavOpen;
@@ -2615,9 +2702,232 @@ export function initApp() {
       this.dailyNotes = Array.isArray(dailyNotes) ? dailyNotes : [];
     },
 
+    applyWapps(wapps = []) {
+      this.wapps = Array.isArray(wapps) ? wapps : [];
+    },
+
+    get currentPgActorId() {
+      return String(
+        this.currentWorkspace?.pgMe?.actor?.actor_id
+        || this.currentWorkspace?.pgMe?.actor?.id
+        || this.currentWorkspace?.pg_me?.actor?.actor_id
+        || this.currentWorkspace?.pg_me?.actor?.id
+        || ''
+      ).trim();
+    },
+
+    get visiblePersonalWapps() {
+      const ownerActorId = this.currentPgActorId;
+      return (this.wapps || [])
+        .filter((wapp) =>
+          wapp?.pg_backend === true
+          && wapp?.pg_record_type === 'personal_wapp'
+          && (!ownerActorId || String(wapp.owner_actor_id || wapp.pg_owner_actor_id || '') === ownerActorId)
+          && wapp.record_state !== 'archived'
+          && wapp.record_state !== 'deleted'
+          && wapp.status !== 'archived'
+          && String(wapp.launch_url || '').trim()
+        )
+        .sort((a, b) => {
+          const orderDelta = Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0);
+          if (orderDelta !== 0) return orderDelta;
+          return String(a.title || '').localeCompare(String(b.title || ''));
+        });
+    },
+
+    get previewPersonalWapps() {
+      return this.visiblePersonalWapps.slice(0, 3);
+    },
+
+    get remainingPersonalWappCount() {
+      return Math.max(0, this.visiblePersonalWapps.length - this.previewPersonalWapps.length);
+    },
+
+    getPersonalWappIconUrl(wapp) {
+      const explicitIcon = String(wapp?.icon_url || '').trim();
+      if (explicitIcon) return explicitIcon;
+      const metadata = wapp?.metadata && typeof wapp.metadata === 'object' && !Array.isArray(wapp.metadata) ? wapp.metadata : {};
+      const metadataIcon = String(metadata.manifest_icon_url || metadata.icon_url || metadata.favicon_url || '').trim();
+      if (metadataIcon) return metadataIcon;
+      try {
+        const launchUrl = new URL(String(wapp?.launch_url || '').trim());
+        return `${launchUrl.origin}/favicon.ico`;
+      } catch {
+        return '';
+      }
+    },
+
+    handlePersonalWappIconError(event) {
+      const image = event?.currentTarget;
+      if (!image) return;
+      image.hidden = true;
+      const fallback = image.nextElementSibling;
+      if (fallback) fallback.hidden = false;
+    },
+
+    handlePersonalWappIconLoad(event) {
+      const image = event?.currentTarget;
+      if (!image) return;
+      image.hidden = false;
+      const fallback = image.nextElementSibling;
+      if (fallback) fallback.hidden = true;
+    },
+
+    async refreshPersonalWapps() {
+      if (!isTowerPgBackendMode()) return [];
+      return hydrateTowerPgPersonalWapps(this);
+    },
+
+    openPersonalWappsOverlay() {
+      if (this.visiblePersonalWapps.length === 0) {
+        this.openPersonalWappEditor();
+        return;
+      }
+      this.closePersonalAgentsOverlay();
+      this.personalWappsOverlayOpen = !this.personalWappsOverlayOpen;
+    },
+
+    closePersonalWappsOverlay() {
+      this.personalWappsOverlayOpen = false;
+    },
+
+    openPersonalWapp(wapp) {
+      const launchUrl = String(wapp?.launch_url || '').trim();
+      if (!launchUrl) return;
+      window.open(launchUrl, '_blank', 'noopener,noreferrer');
+      this.closePersonalWappsOverlay();
+    },
+
+    openPersonalWappEditor(wapp = null) {
+      this.closePersonalWappsOverlay();
+      this.personalWappEditorError = '';
+      this.personalWappEditingId = wapp?.record_id || '';
+      this.personalWappFormTitle = wapp?.title || '';
+      this.personalWappFormDescription = wapp?.description || '';
+      this.personalWappFormLaunchUrl = wapp?.launch_url || '';
+      this.personalWappFormIconUrl = wapp?.icon_url || '';
+      this.personalWappEditorOpen = true;
+    },
+
+    closePersonalWappEditor() {
+      this.personalWappEditorOpen = false;
+      this.personalWappEditorSaving = false;
+      this.personalWappEditorError = '';
+    },
+
+    async savePersonalWappEditor() {
+      if (!isTowerPgBackendMode()) return;
+      const context = resolveTowerPgWorkspaceContext(this);
+      if (!context.workspaceId || !context.baseUrl) {
+        this.personalWappEditorError = 'Configure setup first';
+        return;
+      }
+      const title = String(this.personalWappFormTitle || '').trim();
+      const launchUrl = String(this.personalWappFormLaunchUrl || '').trim();
+      if (!title) {
+        this.personalWappEditorError = 'Title is required';
+        return;
+      }
+      if (!/^https?:\/\//i.test(launchUrl)) {
+        this.personalWappEditorError = 'Launch URL must start with http:// or https://';
+        return;
+      }
+      this.personalWappEditorSaving = true;
+      this.personalWappEditorError = '';
+      try {
+        const body = {
+          title,
+          description: String(this.personalWappFormDescription || '').trim() || null,
+          launch_url: launchUrl,
+          icon_url: String(this.personalWappFormIconUrl || '').trim() || null,
+        };
+        const response = this.personalWappEditingId
+          ? await updateTowerPgPersonalWapp(context.workspaceId, this.personalWappEditingId, body, {
+              baseUrl: context.baseUrl,
+              appNpub: context.appNpub,
+            })
+          : await createTowerPgPersonalWapp(context.workspaceId, body, {
+              baseUrl: context.baseUrl,
+              appNpub: context.appNpub,
+            });
+        const next = response?.personal_wapp;
+        if (next) {
+          const row = mapPgPersonalWappToLocal(next, { workspaceOwnerNpub: context.workspaceOwnerNpub });
+          this.wapps = [
+            ...(this.wapps || []).filter((entry) => entry.record_id !== row.record_id),
+            row,
+          ];
+        } else {
+          await this.refreshPersonalWapps();
+        }
+        this.closePersonalWappEditor();
+      } catch (error) {
+        this.personalWappEditorError = error?.message || 'Failed to save WApp';
+        this.error = this.personalWappEditorError;
+      } finally {
+        this.personalWappEditorSaving = false;
+      }
+    },
+
+    async archivePersonalWapp(wapp) {
+      const recordId = String(wapp?.record_id || '').trim();
+      if (!recordId || !isTowerPgBackendMode()) return;
+      const context = resolveTowerPgWorkspaceContext(this);
+      if (!context.workspaceId || !context.baseUrl) return;
+      try {
+        await deleteTowerPgPersonalWapp(context.workspaceId, recordId, {
+          baseUrl: context.baseUrl,
+          appNpub: context.appNpub,
+        });
+        this.wapps = (this.wapps || []).filter((entry) => entry.record_id !== recordId);
+      } catch (error) {
+        this.error = error?.message || 'Failed to archive WApp';
+      }
+    },
+
+    async movePersonalWapp(wapp, direction) {
+      const rows = this.visiblePersonalWapps;
+      const index = rows.findIndex((entry) => entry.record_id === wapp?.record_id);
+      const offset = direction === 'up' ? -1 : 1;
+      const swapIndex = index + offset;
+      if (index < 0 || swapIndex < 0 || swapIndex >= rows.length) return;
+      const reordered = [...rows];
+      [reordered[index], reordered[swapIndex]] = [reordered[swapIndex], reordered[index]];
+      await this.savePersonalWappOrder(reordered.map((entry) => entry.record_id));
+    },
+
+    async savePersonalWappOrder(orderedIds = []) {
+      if (!isTowerPgBackendMode() || orderedIds.length === 0) return;
+      const context = resolveTowerPgWorkspaceContext(this);
+      if (!context.workspaceId || !context.baseUrl) return;
+      try {
+        const response = await reorderTowerPgPersonalWapps(context.workspaceId, { ordered_ids: orderedIds }, {
+          baseUrl: context.baseUrl,
+          appNpub: context.appNpub,
+        });
+        const rows = (Array.isArray(response?.personal_wapps) ? response.personal_wapps : [])
+          .map((wapp) => mapPgPersonalWappToLocal(wapp, { workspaceOwnerNpub: context.workspaceOwnerNpub }))
+          .filter((wapp) => wapp.record_id);
+        const ownerActorId = this.currentPgActorId;
+        this.wapps = [
+          ...(this.wapps || []).filter((entry) => !(
+            entry?.pg_backend === true
+            && entry?.pg_record_type === 'personal_wapp'
+            && (!ownerActorId || String(entry.owner_actor_id || entry.pg_owner_actor_id || '') === ownerActorId)
+          )),
+          ...rows,
+        ];
+      } catch (error) {
+        this.error = error?.message || 'Failed to reorder WApps';
+      }
+    },
+
     async refreshDailyNotes() {
       if (!isTowerPgBackendMode()) return [];
-      const result = await hydrateTowerPgDailyNotes(this, { limit: 60 });
+      const [result] = await Promise.all([
+        hydrateTowerPgDailyNotes(this, { limit: 60 }),
+        this.refreshPersonalWapps(),
+      ]);
       await this.refreshDailyScopeAgentAccess();
       return result;
     },
@@ -2961,6 +3271,7 @@ export function initApp() {
       this.docEditingBlockIndex = -1;
       this.docSelectedBlockId = null;
       this.docBlockBuffer = '';
+      this.docBlockEditorMinHeightPx = 0;
       this.docEditingTitle = false;
       this.docAutosaveState = 'saved';
       this.scheduleDocCommentConnectorUpdate();

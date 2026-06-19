@@ -123,6 +123,18 @@ This is a Vite project. The source HTML is `index.html` at the project root. Vit
 
 After any source change, always run `bun run build` to regenerate `dist/`. The app is served from `dist/`.
 
+For dev, Flight Deck is always run through Wingman, not by starting a direct
+localhost preview from this repo. If Pete references a number such as `1256`,
+treat it as the Wingman-served app version unless he explicitly says it is a
+port.
+
+Use the Wingman CLI in `../autopilot` to manage the running dev app and app
+versions. Do not start `vite preview`, `bun run start`, or another direct
+localhost server from this repo unless Pete explicitly asks for a standalone
+preview. For Flight Deck workspace operations from an agent shell, prefer the
+Autopilot `wingman` CLI path, e.g. `cd ../autopilot && bun clis/wingman.ts
+flightdeck ...`.
+
 ## Working rules
 
 These rules exist because this repo has been damaged by agents taking

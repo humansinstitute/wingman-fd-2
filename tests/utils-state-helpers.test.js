@@ -206,6 +206,47 @@ describe('parseMarkdownBlocks', () => {
     expect(blocks[1].raw).toBe('Line 3');
   });
 
+  it('splits standalone markdown images into their own blocks', () => {
+    const blocks = parseMarkdownBlocks('Text before\n![diagram](storage://image-1)\nText after');
+
+    expect(blocks).toHaveLength(3);
+    expect(blocks.map((block) => block.raw)).toEqual([
+      'Text before',
+      '![diagram](storage://image-1)',
+      'Text after',
+    ]);
+    expect(blocks.map((block) => [block.start_line, block.end_line])).toEqual([
+      [1, 1],
+      [2, 2],
+      [3, 3],
+    ]);
+  });
+
+  it('does not split inline markdown images out of text blocks', () => {
+    const blocks = parseMarkdownBlocks('Text with ![diagram](storage://image-1) inline\nand more text');
+
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].raw).toBe('Text with ![diagram](storage://image-1) inline\nand more text');
+  });
+
+  it('splits standalone markdown headings into their own blocks', () => {
+    const blocks = parseMarkdownBlocks('Text before\n## Heading 2\nText after');
+
+    expect(blocks).toHaveLength(3);
+    expect(blocks.map((block) => block.raw)).toEqual([
+      'Text before',
+      '## Heading 2',
+      'Text after',
+    ]);
+  });
+
+  it('does not split hash text unless it is a standalone markdown heading', () => {
+    const blocks = parseMarkdownBlocks('Text with ## not a heading\nand more text');
+
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].raw).toBe('Text with ## not a heading\nand more text');
+  });
+
   it('assigns sequential block ids', () => {
     const blocks = parseMarkdownBlocks('A\n\nB');
     expect(blocks[0].id).toMatch(/^block-0-/);
@@ -262,5 +303,64 @@ describe('document block content model', () => {
     expect(blocks).toHaveLength(2);
     expect(blocks[0].raw).toBe('One');
     expect(blocks[1].raw).toBe('Two');
+  });
+
+  it('falls back to markdown content when persisted blocks normalize empty', () => {
+    const blocks = normalizeDocumentBlocks([{ id: 'bad-block', type: 'markdown', attrs: {} }], 'One\n\nTwo');
+
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0].raw).toBe('One');
+    expect(blocks[1].raw).toBe('Two');
+  });
+
+  it('splits standalone images inside persisted markdown blocks', () => {
+    const blocks = normalizeDocumentBlocks([
+      { id: 'blk-combined', type: 'markdown', text: 'Intro\n![shot](storage://image-1)\nOutro', attrs: { source: 'legacy' } },
+    ]);
+
+    expect(blocks).toHaveLength(3);
+    expect(blocks.map((block) => block.raw)).toEqual([
+      'Intro',
+      '![shot](storage://image-1)',
+      'Outro',
+    ]);
+    expect(blocks[0].id).toBe('blk-combined');
+    expect(blocks[1].id).toBe('blk-combined:split-1');
+    expect(blocks[2].id).toBe('blk-combined:split-2');
+    expect(blocks.every((block) => block.attrs.source === 'legacy')).toBe(true);
+  });
+
+  it('splits standalone headings inside persisted markdown blocks', () => {
+    const blocks = normalizeDocumentBlocks([
+      { id: 'blk-combined', type: 'markdown', text: 'Intro\n### Heading\nOutro' },
+    ]);
+
+    expect(blocks).toHaveLength(3);
+    expect(blocks.map((block) => block.raw)).toEqual([
+      'Intro',
+      '### Heading',
+      'Outro',
+    ]);
+  });
+
+  it('keeps split heading block ids unique when later blocks already use generated ids', () => {
+    const blocks = normalizeDocumentBlocks([
+      { id: 'block-0-1', type: 'markdown', text: 'Intro\n## Heading\nOutro' },
+      { id: 'block-1-3', type: 'markdown', text: 'Next persisted block' },
+    ]);
+
+    expect(blocks.map((block) => block.raw)).toEqual([
+      'Intro',
+      '## Heading',
+      'Outro',
+      'Next persisted block',
+    ]);
+    expect(new Set(blocks.map((block) => block.id)).size).toBe(blocks.length);
+    expect(blocks.map((block) => block.id)).toEqual([
+      'block-0-1',
+      'block-0-1:split-1',
+      'block-0-1:split-2',
+      'block-1-3',
+    ]);
   });
 });

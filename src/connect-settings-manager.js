@@ -77,6 +77,48 @@ function pgErrorMessage(error, fallback = 'Flight Deck PG connection failed') {
   return error?.message || String(error || fallback);
 }
 
+function compactContextLine(label, value) {
+  const text = trimText(value);
+  return text ? `${label}: ${text}` : null;
+}
+
+function buildCopyContextText(store) {
+  const workspace = store.currentWorkspace || {};
+  const selectedChannelId = trimText(store.pgContextSelectedChannelId || store.selectedChannelId);
+  const selectedChannel = selectedChannelId
+    ? (store.channels || []).find((channel) => channel?.record_id === selectedChannelId)
+    : null;
+  const selectedThreadId = trimText(store.pgContextSelectedThreadId || store.activeThreadId);
+  const selectedThread = selectedThreadId
+    ? (store.pgContextThreads || []).find((thread) => thread?.id === selectedThreadId)
+    : null;
+  const selectedScope = store.pgContextScope || store.selectedBoardScope || null;
+  const selectedScopeId = trimText(store.pgContextScopeId || selectedScope?.record_id || '');
+  const selectedScopeLabel = selectedScopeId
+    ? (store.getScopeBreadcrumb?.(selectedScopeId) || selectedScope?.title || selectedScopeId)
+    : (trimText(store.selectedBoardLabel) || 'Current workspace');
+  const selectedChannelLabel = selectedChannel
+    ? (store.getChannelLabel?.(selectedChannel) || selectedChannel.title || selectedChannel.name || selectedChannelId)
+    : '';
+
+  return [
+    'Flight Deck Context',
+    compactContextLine('Tower', workspace.towerName || workspace.tower_name || store.superbasedConnectionConfig?.towerName || ''),
+    compactContextLine('Tower URL', workspace.directHttpsUrl || store.currentWorkspaceBackendUrl || store.backendUrl),
+    compactContextLine('Workspace', workspace.name || store.currentWorkspaceName),
+    compactContextLine('Workspace ID', workspace.workspaceId || workspace.workspace_id),
+    compactContextLine('Workspace Key', store.currentWorkspaceKey || workspace.workspaceKey),
+    compactContextLine('Workspace Owner', store.workspaceOwnerNpub || workspace.workspaceOwnerNpub),
+    compactContextLine('Scope', selectedScopeLabel),
+    compactContextLine('Scope ID', selectedScopeId),
+    compactContextLine('Channel', selectedChannelLabel),
+    compactContextLine('Channel ID', selectedChannelId),
+    compactContextLine('Thread', selectedThread?.label || ''),
+    compactContextLine('Thread ID', selectedThreadId),
+    compactContextLine('User', store.session?.npub),
+  ].filter(Boolean).join('\n');
+}
+
 const PG_SELF_INDEX_STATE_KEYS = [
   'pgSelfIndexStatus',
   'pgSelfIndexError',
@@ -839,6 +881,15 @@ export const connectSettingsManagerMixin = {
       await navigator.clipboard.writeText(this.session.npub);
     } catch {
       this.error = 'Failed to copy ID';
+    }
+    this.showAvatarMenu = false;
+  },
+
+  async copyContext() {
+    try {
+      await navigator.clipboard.writeText(buildCopyContextText(this));
+    } catch {
+      this.error = 'Failed to copy context';
     }
     this.showAvatarMenu = false;
   },

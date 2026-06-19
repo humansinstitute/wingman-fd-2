@@ -479,6 +479,50 @@ describe('agent connect', () => {
     fn();
     expect(store.showAgentConnectModal).toBe(false);
   });
+
+  it('copyContext writes the active Flight Deck context to clipboard', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { clipboard: { writeText } },
+      configurable: true,
+    });
+    const { fn, store } = bindMethod('copyContext', {
+      showAvatarMenu: true,
+      backendUrl: 'https://tower.example',
+      session: { npub: 'npub1user' },
+      currentWorkspace: {
+        name: 'Pete Workspace',
+        towerName: 'Pete Tower',
+        directHttpsUrl: 'https://tower.example',
+        workspaceId: 'workspace-123',
+        workspaceKey: 'workspace-key-123',
+        workspaceOwnerNpub: 'npub1owner',
+      },
+      currentWorkspaceName: 'Pete Workspace',
+      currentWorkspaceKey: 'workspace-key-123',
+      workspaceOwnerNpub: 'npub1owner',
+      pgContextScopeId: 'scope-123',
+      pgContextScope: { record_id: 'scope-123', title: 'Build FD' },
+      pgContextSelectedChannelId: 'channel-123',
+      pgContextSelectedThreadId: 'thread-123',
+      pgContextThreads: [{ id: 'thread-123', label: 'Context copy thread' }],
+      selectedBoardLabel: 'Build FD',
+      channels: [{ record_id: 'channel-123', title: 'Autopilot' }],
+      getScopeBreadcrumb: vi.fn(() => 'Wingman / Build FD'),
+      getChannelLabel: vi.fn(() => 'Autopilot'),
+    });
+
+    await fn();
+
+    expect(writeText).toHaveBeenCalledTimes(1);
+    expect(writeText.mock.calls[0][0]).toContain('Tower: Pete Tower');
+    expect(writeText.mock.calls[0][0]).toContain('Workspace ID: workspace-123');
+    expect(writeText.mock.calls[0][0]).toContain('Scope ID: scope-123');
+    expect(writeText.mock.calls[0][0]).toContain('Channel ID: channel-123');
+    expect(writeText.mock.calls[0][0]).toContain('Thread ID: thread-123');
+    expect(writeText.mock.calls[0][0]).toContain('User: npub1user');
+    expect(store.showAvatarMenu).toBe(false);
+  });
 });
 
 // --- loadConnectWorkspaces ---

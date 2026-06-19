@@ -180,6 +180,12 @@ describe('parseRouteLocation', () => {
     }
   });
 
+  it('treats removed Autopilot page as an unknown route', () => {
+    const route = parseRouteLocation(`${base}/my-ws/autopilot`);
+    expect(route.workspaceSlug).toBe('my-ws');
+    expect(route.section).toBe('status');
+  });
+
   it('parses bare /notifications as status section (backward compat)', () => {
     const route = parseRouteLocation(`${base}/notifications`);
     expect(route.section).toBe('status');

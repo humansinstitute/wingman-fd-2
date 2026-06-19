@@ -725,6 +725,7 @@ describe('PG read hydrator', () => {
       dailyNotes: [],
       reactionRows: [],
       applyReactions: vi.fn(),
+      applyDocComments: vi.fn(),
     });
     const getTowerPgChannelDocs = vi.fn(async (_workspaceId, channelId) => ({
       docs: [{ id: `doc-${channelId}`, channel_id: channelId, title: 'Doc' }],
@@ -737,6 +738,9 @@ describe('PG read hydrator', () => {
     }));
     const getTowerPgTaskComments = vi.fn(async (_workspaceId, taskId) => ({
       comments: [{ id: `comment-${taskId}`, task_id: taskId, body: 'Comment' }],
+    }));
+    const getTowerPgDocComments = vi.fn(async (_workspaceId, docId) => ({
+      comments: [{ id: `doc-comment-${docId}`, doc_id: docId, body: 'Doc comment' }],
     }));
     const getTowerPgDailyNotes = vi.fn(async (_workspaceId, options) => ({
       daily_notes: [{ id: `daily-${options.ownerActorId}`, owner_actor_id: options.ownerActorId, owner_actor_npub: 'npub1owner', note_date: options.noteDate, title: 'Daily' }],
@@ -755,6 +759,7 @@ describe('PG read hydrator', () => {
       { entity_type: 'file', channel_id: 'channel-doc' },
       { entity_type: 'audio_note', channel_id: 'channel-audio' },
       { entity_type: 'task_comment', payload: { task_id: 'task-1' } },
+      { entity_type: 'doc_comment', payload: { doc_id: 'doc-1' } },
       { entity_type: 'daily_note', payload: { owner_actor_id: 'owner-actor-1', note_date: '2026-06-13' } },
       { entity_type: 'reaction', payload: { target_type: 'message', target_id: 'message-1' } },
       { entity_type: 'scope' },
@@ -763,6 +768,7 @@ describe('PG read hydrator', () => {
       getTowerPgChannelFiles,
       getTowerPgChannelAudioNotes,
       getTowerPgTaskComments,
+      getTowerPgDocComments,
       getTowerPgDailyNotes,
       getTowerPgReactions,
       replacePgDocumentsForChannel,
@@ -772,13 +778,15 @@ describe('PG read hydrator', () => {
       replacePgReactionsForTarget,
     });
 
-    expect(result).toEqual({ channels: 0, appliedTargets: 5, fallbackEvents: 1, events: 7 });
+    expect(result).toEqual({ channels: 0, appliedTargets: 6, fallbackEvents: 1, events: 8 });
     expect(replacePgDocumentsForChannel).toHaveBeenCalledWith('channel-doc', [
       expect.objectContaining({ record_id: 'doc-channel-doc' }),
       expect.objectContaining({ record_id: 'file-channel-doc' }),
     ]);
     expect(replacePgAudioNotesForChannel).toHaveBeenCalledWith('channel-audio', [expect.objectContaining({ record_id: 'audio-channel-audio' })]);
     expect(replacePgCommentsForTarget).toHaveBeenCalledWith('task-1', [expect.objectContaining({ record_id: 'comment-task-1' })]);
+    expect(replacePgCommentsForTarget).toHaveBeenCalledWith('doc-1', [expect.objectContaining({ record_id: 'doc-comment-doc-1' })]);
+    expect(target.applyDocComments).toHaveBeenCalledWith([expect.objectContaining({ record_id: 'doc-comment-doc-1' })]);
     expect(replacePgDailyNotesForOwnerAndDate).toHaveBeenCalledWith('owner-actor-1', '2026-06-13', [expect.objectContaining({ record_id: 'daily-owner-actor-1' })]);
     expect(replacePgReactionsForTarget).toHaveBeenCalledWith(expect.any(String), 'message-1', [expect.objectContaining({ record_id: 'reaction-1' })]);
   });

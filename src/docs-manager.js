@@ -839,6 +839,7 @@ export const docsManagerMixin = {
       this.docEditorBlocks = [];
       this.docEditingBlockIndex = -1;
       this.docBlockBuffer = '';
+      this.docBlockEditorMinHeightPx = 0;
       this.docEditingTitle = false;
       this.docComments = [];
       this.docCommentsVisible = false;
@@ -868,6 +869,7 @@ export const docsManagerMixin = {
     this.docEditorContent = assembleMarkdownBlocks(contentBlocks);
     this.docEditingBlockIndex = -1;
     this.docBlockBuffer = '';
+    this.docBlockEditorMinHeightPx = 0;
     this.docEditingTitle = false;
     this.docSelectedBlockId = null;
     this.docCommentsVisible = Boolean(this.selectedDocCommentId);
@@ -1754,7 +1756,27 @@ export const docsManagerMixin = {
     this.scheduleStorageImageHydration();
   },
 
-  startDocBlockEdit(index) {
+  measureDocBlockEditorMinHeight(previewEl = null) {
+    const fallback = 88;
+    const height = Number(previewEl?.getBoundingClientRect?.().height) || Number(previewEl?.offsetHeight) || 0;
+    return Math.max(fallback, Math.ceil(height));
+  },
+
+  getDocBlockEditorStyle() {
+    const minHeight = Number(this.docBlockEditorMinHeightPx) || 0;
+    return minHeight > 0 ? { minHeight: `${minHeight}px` } : {};
+  },
+
+  resizeDocBlockEditor(textarea = null) {
+    if (!textarea) return;
+    const minHeight = Number(this.docBlockEditorMinHeightPx) || this.measureDocBlockEditorMinHeight();
+    textarea.style.minHeight = `${minHeight}px`;
+    textarea.style.height = `${minHeight}px`;
+    const nextHeight = Math.max(minHeight, Number(textarea.scrollHeight) || 0);
+    textarea.style.height = `${nextHeight}px`;
+  },
+
+  startDocBlockEdit(index, previewEl = null) {
     if (this.docEditorMode !== 'block') return;
     if (this.docEditingBlockIndex >= 0 && this.docEditingBlockIndex !== index) {
       this.commitDocBlockEdit();
@@ -1762,6 +1784,7 @@ export const docsManagerMixin = {
     if (!this.docEditorBlocks[index]) {
       this.docEditorBlocks = [...this.docEditorBlocks, createDocumentBlock('')];
     }
+    this.docBlockEditorMinHeightPx = this.measureDocBlockEditorMinHeight(previewEl);
     this.selectDocBlockForComment(this.docEditorBlocks[index], index, { clearThread: false });
     this.docEditingBlockIndex = index;
     this.docBlockBuffer = this.docEditorBlocks[index]?.raw ?? '';
@@ -1774,8 +1797,9 @@ export const docsManagerMixin = {
     this.startDocBlockEdit(index);
   },
 
-  updateDocBlockBuffer(value) {
+  updateDocBlockBuffer(value, textarea = null) {
     this.docBlockBuffer = value;
+    this.resizeDocBlockEditor(textarea);
     this.scheduleStorageImageHydration();
   },
 
@@ -1796,6 +1820,7 @@ export const docsManagerMixin = {
     this.docEditorContent = assembleMarkdownBlocks(this.docEditorBlocks);
     this.docEditingBlockIndex = -1;
     this.docBlockBuffer = '';
+    this.docBlockEditorMinHeightPx = 0;
     this.scheduleDocAutosave();
     this.scheduleStorageImageHydration();
   },
@@ -1803,6 +1828,7 @@ export const docsManagerMixin = {
   cancelDocBlockEdit() {
     this.docEditingBlockIndex = -1;
     this.docBlockBuffer = '';
+    this.docBlockEditorMinHeightPx = 0;
   },
 
   scheduleDocAutosave() {
@@ -3045,6 +3071,7 @@ export const docsManagerMixin = {
     this.docEditingBlockIndex = -1;
     this.docSelectedBlockId = null;
     this.docBlockBuffer = '';
+    this.docBlockEditorMinHeightPx = 0;
     this.closeDocVersioning();
     await this.saveSelectedDocItem();
   },

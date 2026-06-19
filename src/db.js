@@ -82,6 +82,10 @@ const WORKSPACE_STORES_V13 = {
   ...WORKSPACE_STORES_V12,
   daily_notes: 'record_id, owner_npub, owner_actor_id, owner_actor_npub, note_date, status, updated_at, sync_status, *group_ids, &[owner_actor_id+note_date]',
 };
+const WORKSPACE_STORES_V14 = {
+  ...WORKSPACE_STORES_V13,
+  response_activities: 'record_id, target_type, target_id, channel_id, thread_id, task_id, doc_id, parent_comment_id, status, expires_at, updated_at',
+};
 
 function createWorkspaceDb(workspaceDbKey) {
   const db = new Dexie(`wingman-fd-ws-${workspaceDbKey}`);
@@ -154,6 +158,7 @@ function createWorkspaceDb(workspaceDbKey) {
   db.version(11).stores(WORKSPACE_STORES_V11);
   db.version(12).stores(WORKSPACE_STORES_V12);
   db.version(13).stores(WORKSPACE_STORES_V13);
+  db.version(14).stores(WORKSPACE_STORES_V14);
   return db;
 }
 
@@ -747,6 +752,45 @@ export async function getManageableWappsByOwner(ownerNpub) {
   return sortRowsByTimestamp([...rowsById.values()].filter((row) => row.record_state !== 'deleted'));
 }
 
+export async function replacePgPersonalWappsForOwner(ownerActorId, personalWapps = []) {
+  const db = wsDb();
+  const rows = (Array.isArray(personalWapps) ? personalWapps : [])
+    .map((wapp) => sanitizeForStorage(wapp))
+    .filter((wapp) => wapp?.record_id);
+  return db.transaction('rw', db.wapps, async () => {
+    const existing = await db.wapps.toArray();
+    const pgWappIds = existing
+      .filter((wapp) =>
+        wapp?.pg_backend === true
+        && wapp?.pg_record_type === 'personal_wapp'
+        && String(wapp?.owner_actor_id || wapp?.pg_owner_actor_id || '') === ownerActorId
+      )
+      .map((wapp) => wapp.record_id)
+      .filter(Boolean);
+    if (pgWappIds.length > 0) await db.wapps.bulkDelete(pgWappIds);
+    if (rows.length > 0) await db.wapps.bulkPut(rows);
+    return rows.length;
+  });
+}
+
+export async function getPgPersonalWappsByOwnerActor(ownerActorId) {
+  const rows = await wsDb().wapps.toArray();
+  return rows
+    .filter((row) =>
+      row?.pg_backend === true
+      && row?.pg_record_type === 'personal_wapp'
+      && String(row?.owner_actor_id || row?.pg_owner_actor_id || '') === ownerActorId
+      && row.record_state !== 'archived'
+      && row.record_state !== 'deleted'
+      && row.status !== 'archived'
+    )
+    .sort((a, b) => {
+      const orderDelta = Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0);
+      if (orderDelta !== 0) return orderDelta;
+      return String(b.updated_at || '').localeCompare(String(a.updated_at || ''));
+    });
+}
+
 export async function getWappById(recordId) {
   return wsDb().wapps.get(recordId);
 }
@@ -1211,6 +1255,45 @@ export async function replacePgReactionsForTarget(targetRecordFamilyHash, target
   });
 }
 
+// ---------------------------------------------------------------------------
+// response activities — workspace DB
+// ---------------------------------------------------------------------------
+
+function isActiveResponseActivity(row = {}, nowMs = Date.now()) {
+  if (!row?.record_id) return false;
+  if (String(row.status || '') === 'cleared' || row.cleared_at) return false;
+  const expiresAt = Date.parse(row.expires_at || '');
+  return !Number.isFinite(expiresAt) || expiresAt > nowMs;
+}
+
+export async function upsertResponseActivity(activity) {
+  const row = sanitizeForStorage(activity);
+  if (!row?.record_id) return null;
+  return wsDb().response_activities.put(row);
+}
+
+export async function clearResponseActivity(recordId) {
+  const id = String(recordId || '').trim();
+  if (!id) return 0;
+  return wsDb().response_activities.delete(id);
+}
+
+export async function getResponseActivitiesForTarget(targetType, targetId) {
+  const type = String(targetType || '').trim();
+  const id = String(targetId || '').trim();
+  if (!type || !id) return [];
+  const nowMs = Date.now();
+  const rows = await wsDb().response_activities.where('target_id').equals(id).toArray();
+  return rows
+    .filter((row) => row.target_type === type && isActiveResponseActivity(row, nowMs))
+    .sort((a, b) => String(a.updated_at || '').localeCompare(String(b.updated_at || '')));
+}
+
+export async function pruneExpiredResponseActivities(now = new Date()) {
+  const nowIso = now.toISOString();
+  return wsDb().response_activities.where('expires_at').belowOrEqual(nowIso).delete();
+}
+
 export async function deleteRuntimeRecordByFamily(familyIdOrHash, recordId) {
   const family = getSyncFamily(familyIdOrHash);
   const tableName = family?.table;
@@ -1431,6 +1514,7 @@ export async function clearRuntimeData() {
     db.schedules.clear(),
     db.comments.clear(),
     db.reactions.clear(),
+    db.response_activities.clear(),
     db.audio_notes.clear(),
     db.scopes.clear(),
     db.flows.clear(),

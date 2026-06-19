@@ -5,7 +5,7 @@ export const DISABLED_FLIGHT_DECK_SURFACES = Object.freeze({
   people: true,
   opportunities: true,
   reports: true,
-  wappVisibility: true,
+  wappVisibility: false,
 });
 
 const DISABLED_SECTION_BY_SURFACE = Object.freeze({

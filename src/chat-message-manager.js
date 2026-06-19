@@ -301,6 +301,17 @@ export const chatMessageManagerMixin = {
   get threadMessages() {
     return getChatDerivedState(this).threadMessages;
   },
+  get activeThreadResponseActivities() {
+    const now = Date.now();
+    return (Array.isArray(this.threadResponseActivities) ? this.threadResponseActivities : [])
+      .filter((activity) => {
+        if (!activity?.record_id) return false;
+        if (String(activity.status || '') === 'cleared' || activity.cleared_at) return false;
+        const expiresAt = Date.parse(activity.expires_at || '');
+        return !Number.isFinite(expiresAt) || expiresAt > now;
+      })
+      .sort((left, right) => String(left.updated_at || '').localeCompare(String(right.updated_at || '')));
+  },
 
   get resolvedThreadVisibleReplyCount() {
     return getChatDerivedState(this).resolvedThreadVisibleReplyCount;
@@ -596,6 +607,9 @@ export const chatMessageManagerMixin = {
     this.pendingChatScrollToLatest = false;
     this.pendingThreadScrollToLatest = false;
   },
+  applyThreadResponseActivities(activities = []) {
+    this.threadResponseActivities = Array.isArray(activities) ? activities : [];
+  },
 
   async refreshMessages(options = {}) {
     const channelId = this.selectedChannelId;
@@ -654,9 +668,11 @@ export const chatMessageManagerMixin = {
       this.selectPgChannelContext?.(message.channel_id);
     }
     this.activeThreadId = recordId;
+    this.threadResponseActivities = [];
     this.threadInput = '';
     this.threadVisibleReplyCount = this.THREAD_REPLY_PAGE_SIZE;
     this.pendingThreadScrollToLatest = options.scrollToLatest !== false;
+    if (typeof this.startWorkspaceLiveQueries === 'function') this.startWorkspaceLiveQueries();
     if (this.pendingThreadScrollToLatest) this.scheduleThreadRepliesScrollToBottom();
     if (options.syncRoute !== false) this.syncRoute();
   },
@@ -667,10 +683,12 @@ export const chatMessageManagerMixin = {
 
   closeThread(options = {}) {
     this.activeThreadId = null;
+    this.threadResponseActivities = [];
     this.threadInput = '';
     this.threadVisibleReplyCount = this.THREAD_REPLY_PAGE_SIZE;
     this.threadSize = 'default';
     this.pendingThreadScrollToLatest = false;
+    if (typeof this.startWorkspaceLiveQueries === 'function') this.startWorkspaceLiveQueries();
     if (options.syncRoute !== false) this.syncRoute();
   },
 

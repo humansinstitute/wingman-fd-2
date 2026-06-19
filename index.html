@@ -233,6 +233,7 @@
             </template>
           </div>
           <button type="button" @click="$store.chat.showAgentConnect()">Agent Connect</button>
+          <button type="button" @click="$store.chat.copyContext()">Copy Context</button>
           <button type="button" @click="$store.chat.copyId()">Copy ID</button>
           <button type="button" x-show="!$store.chat.isTowerPgMode" @click="$store.chat.syncNow()">Sync Now</button>
           <button type="button" x-show="!$store.chat.isTowerPgMode" @click="$store.chat.openPendingWritesModal()">Pending Writes</button>
@@ -707,23 +708,6 @@
             </span>
             <span class="sidebar-label">Jobs</span>
           </li>
-          <li
-            x-cloak
-            x-show="$store.chat.hasHarnessLink"
-            :class="{ active: $store.chat.navSection === 'autopilot' }"
-            @click="$store.chat.navigateTo('autopilot')"
-            :title="$store.chat.workspaceHarnessUrl"
-          >
-            <span class="sidebar-icon" aria-hidden="true">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M7 12V9.5A5.5 5.5 0 0 1 12.5 4h.5a5.5 5.5 0 0 1 5.5 5.5V12"></path>
-                <path d="M5 13.5A2.5 2.5 0 0 1 7.5 11H10v8H7.5A2.5 2.5 0 0 1 5 16.5z"></path>
-                <path d="M14 11h2.5A2.5 2.5 0 0 1 19 13.5v3a2.5 2.5 0 0 1-2.5 2.5H14z"></path>
-                <path d="M10 18c.6 1 1.7 2 3.5 2"></path>
-              </svg>
-            </span>
-            <span class="sidebar-label">Autopilot</span>
-          </li>
           <li :class="{ active: $store.chat.navSection === 'settings' }" @click="$store.chat.navigateTo('settings')">
             <span class="sidebar-icon" aria-hidden="true">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -833,7 +817,7 @@
       </nav>
 
       <div class="main-content">
-          <div class="global-pg-channel-bar" x-show="$store.chat.navSection !== 'chat' && $store.chat.isLoggedIn" x-cloak>
+          <div class="global-pg-channel-bar" x-show="$store.chat.isLoggedIn" x-cloak>
             <div
               class="chat-channel-header"
               :class="{ 'pg-all-scopes-context': $store.chat.pgContextAllScopesSelected }"
@@ -909,17 +893,27 @@
                 <template x-for="channel in $store.chat.pgContextChannels" :key="channel.record_id">
                   <div
                     class="chat-channel-tab-item"
-                    :class="{ active: $store.chat.pgContextSelectedChannelId === channel.record_id && !$store.chat.pgContextSelectedThreadId }"
+                    draggable="true"
+                    :class="{
+                      active: $store.chat.pgContextSelectedChannelId === channel.record_id && !$store.chat.pgContextSelectedThreadId,
+                      'chat-channel-tab-unread': $store.chat.isChannelUnread(channel.record_id),
+                      'chat-channel-tab-dragging': $store.chat.channelDragSourceId === channel.record_id
+                    }"
+                    @dragstart="$store.chat.startChannelTabDrag(channel.record_id, $event)"
+                    @dragover.prevent="$store.chat.handleChannelTabDragOver(channel.record_id, $event)"
+                    @drop.prevent="$store.chat.dropChannelTab(channel.record_id, $event)"
+                    @dragend="$store.chat.endChannelTabDrag()"
                   >
                     <button
                       type="button"
                       class="chat-channel-tab"
                       role="tab"
                       :aria-selected="$store.chat.pgContextSelectedChannelId === channel.record_id && !$store.chat.pgContextSelectedThreadId"
-                      @click="$store.chat.selectPgChannelContext(channel.record_id)"
+                      @click="$store.chat.navSection === 'chat' ? $store.chat.selectChannel(channel.record_id) : $store.chat.selectPgChannelContext(channel.record_id)"
                     >
                       <span class="channel-hash">#</span>
                       <span class="chat-channel-tab-label" x-text="$store.chat.getChannelLabel(channel)"></span>
+                      <span class="unread-dot unread-dot-channel" x-show="$store.chat.isChannelUnread(channel.record_id)" x-cloak></span>
                     </button>
                     <div class="chat-channel-menu chat-channel-tab-menu" x-show="$store.chat.pgContextSelectedChannelId === channel.record_id" x-cloak>
                       <button
@@ -969,6 +963,7 @@
             </div>
           </div>
 
+        <div class="content-scroll-area">
         <template x-if="$store.chat.navSection === 'status'">
           <div class="status-section">
           <div class="pg-work-context-bar" x-show="false" x-cloak>
@@ -1152,30 +1147,117 @@
                 <h2>Welcome <span x-text="$store.chat.greetingName"></span>, where will we focus today?</h2>
                 <p x-text="$store.chat.autopilotOverviewContextLabel"></p>
               </div>
-              <section class="my-agents-panel" aria-label="My Agents">
-                <h3>My Agents</h3>
-                <button
-                  type="button"
-                  class="autopilot-agent-launcher"
-                  @click="$store.chat.openHarnessLink()"
-                  :disabled="!$store.chat.hasHarnessLink"
-                  :title="$store.chat.workspaceHarnessUrl"
-                  aria-label="Dive deeper in Autopilot"
-                >
-                  <span class="autopilot-agent-avatar-ring">
-                    <template x-if="$store.chat.harnessAgentAvatarUrl">
-                      <img :src="$store.chat.harnessAgentAvatarUrl" alt="" />
-                    </template>
-                    <template x-if="!$store.chat.harnessAgentAvatarUrl">
-                      <span x-text="$store.chat.getInitials($store.chat.harnessAgentLabel || 'Autopilot')"></span>
-                    </template>
-                  </span>
-                  <span class="autopilot-agent-launcher-copy">
-                    <strong x-text="$store.chat.harnessAgentLabel || 'Autopilot agent'"></strong>
-                    <small>Dive Deeper in Autopilot</small>
-                  </span>
-                </button>
-              </section>
+              <div class="home-launcher-cluster" aria-label="Personal launchers">
+                <section class="launcher-stack-panel wapps-stack-panel" :class="{ 'wapps-expanded': $store.chat.personalWappsOverlayOpen, 'wapps-has-stack': $store.chat.visiblePersonalWapps.length > 1, 'wapps-has-deep-stack': $store.chat.visiblePersonalWapps.length > 2 }" aria-label="My WApps" @click.outside="$store.chat.closePersonalWappsOverlay()" @keydown.escape.window="$store.chat.closePersonalWappsOverlay()">
+                  <h3>My WApps</h3>
+                  <button
+                    type="button"
+                    class="wapps-stack-hitbox"
+                    x-show="$store.chat.visiblePersonalWapps.length > 0 && !$store.chat.personalWappsOverlayOpen"
+                    x-cloak
+                    @click="$store.chat.openPersonalWappsOverlay()"
+                    aria-label="Open My WApps stack"
+                  ></button>
+                  <button
+                    type="button"
+                    class="launcher-pill launcher-pill-empty"
+                    x-show="$store.chat.visiblePersonalWapps.length === 0"
+                    @click="$store.chat.openPersonalWappEditor()"
+                  >
+                    <span class="launcher-avatar-ring">+</span>
+                    <span class="launcher-pill-copy">
+                      <strong>Add WApp</strong>
+                      <small>Personal launcher</small>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    class="launcher-pill"
+                    x-show="$store.chat.visiblePersonalWapps.length > 0"
+                    @click="$store.chat.personalWappsOverlayOpen ? $store.chat.openPersonalWapp($store.chat.previewPersonalWapps[0]) : $store.chat.openPersonalWappsOverlay()"
+                    :aria-expanded="$store.chat.personalWappsOverlayOpen"
+                    aria-label="Open My WApps"
+                  >
+                    <span class="launcher-avatar-ring">
+                      <img :src="$store.chat.getPersonalWappIconUrl($store.chat.previewPersonalWapps[0])" alt="" @load="$store.chat.handlePersonalWappIconLoad($event)" @error="$store.chat.handlePersonalWappIconError($event)" />
+                      <span hidden x-text="$store.chat.getInitials($store.chat.previewPersonalWapps[0]?.title || 'WApp')"></span>
+                    </span>
+                    <span class="launcher-pill-copy">
+                      <strong x-text="$store.chat.previewPersonalWapps[0]?.title || 'My WApps'"></strong>
+                      <small x-text="$store.chat.previewPersonalWapps[0]?.description || 'Open personal apps'"></small>
+                    </span>
+                  </button>
+                  <template x-for="wapp in $store.chat.visiblePersonalWapps.slice(1)" :key="`home-wapp-${wapp.record_id}`">
+                    <button type="button" class="launcher-pill launcher-pill-stacked" @click="$store.chat.personalWappsOverlayOpen ? $store.chat.openPersonalWapp(wapp) : $store.chat.openPersonalWappsOverlay()" aria-label="Open My WApps">
+                      <span class="launcher-avatar-ring">
+                        <img :src="$store.chat.getPersonalWappIconUrl(wapp)" alt="" @load="$store.chat.handlePersonalWappIconLoad($event)" @error="$store.chat.handlePersonalWappIconError($event)" />
+                        <span hidden x-text="$store.chat.getInitials(wapp.title || 'WApp')"></span>
+                      </span>
+                      <span class="launcher-pill-copy">
+                        <strong x-text="wapp.title"></strong>
+                        <small x-text="wapp.description || 'Open personal app'"></small>
+                      </span>
+                    </button>
+                  </template>
+                  <button type="button" class="launcher-pill launcher-pill-add" x-show="$store.chat.personalWappsOverlayOpen" x-cloak @click="$store.chat.openPersonalWappEditor()">
+                    <span class="launcher-avatar-ring">+</span>
+                    <span class="launcher-pill-copy">
+                      <strong>Add WApp</strong>
+                      <small>Personal launcher</small>
+                    </span>
+                  </button>
+                </section>
+                <section class="launcher-stack-panel my-agents-panel agents-stack-panel" :class="{ 'agents-expanded': $store.chat.personalAgentsOverlayOpen, 'agents-has-stack': $store.chat.visiblePersonalAgents.length > 1, 'agents-has-deep-stack': $store.chat.visiblePersonalAgents.length > 2 }" aria-label="My Agents" @click.outside="$store.chat.closePersonalAgentsOverlay()" @keydown.escape.window="$store.chat.closePersonalAgentsOverlay()">
+                  <h3>My Agents</h3>
+                  <button
+                    type="button"
+                    class="agents-stack-hitbox"
+                    x-show="$store.chat.visiblePersonalAgents.length > 1 && !$store.chat.personalAgentsOverlayOpen"
+                    x-cloak
+                    @click="$store.chat.openPersonalAgentsOverlay()"
+                    aria-label="Open My Agents stack"
+                  ></button>
+                  <button
+                    type="button"
+                    class="launcher-pill autopilot-agent-launcher"
+                    x-show="$store.chat.visiblePersonalAgents.length > 0"
+                    @click="$store.chat.personalAgentsOverlayOpen ? $store.chat.openPersonalAgent($store.chat.previewPersonalAgents[0]) : $store.chat.openPersonalAgentsOverlay()"
+                    :disabled="!$store.chat.previewPersonalAgents[0]?.launch_url"
+                    :title="$store.chat.previewPersonalAgents[0]?.launch_url"
+                    :aria-expanded="$store.chat.personalAgentsOverlayOpen"
+                    aria-label="Dive deeper in Autopilot"
+                  >
+                    <span class="launcher-avatar-ring autopilot-agent-avatar-ring">
+                      <template x-if="$store.chat.previewPersonalAgents[0]?.npub && $store.chat.getSenderAvatar($store.chat.previewPersonalAgents[0].npub)">
+                        <img :src="$store.chat.getSenderAvatar($store.chat.previewPersonalAgents[0].npub)" alt="" />
+                      </template>
+                      <template x-if="!$store.chat.previewPersonalAgents[0]?.npub || !$store.chat.getSenderAvatar($store.chat.previewPersonalAgents[0].npub)">
+                        <span x-text="$store.chat.getInitials($store.chat.previewPersonalAgents[0]?.title || 'Autopilot')"></span>
+                      </template>
+                    </span>
+                    <span class="launcher-pill-copy autopilot-agent-launcher-copy">
+                      <strong x-text="$store.chat.previewPersonalAgents[0]?.title || 'Autopilot agent'"></strong>
+                      <small x-text="$store.chat.previewPersonalAgents[0]?.description || 'Dive Deeper in Autopilot'"></small>
+                    </span>
+                  </button>
+                  <template x-for="agent in $store.chat.visiblePersonalAgents.slice(1)" :key="`home-agent-${agent.npub || agent.launch_url}`">
+                    <button type="button" class="launcher-pill launcher-pill-stacked autopilot-agent-launcher" @click="$store.chat.personalAgentsOverlayOpen ? $store.chat.openPersonalAgent(agent) : $store.chat.openPersonalAgentsOverlay()" :disabled="!agent.launch_url" :title="agent.launch_url" aria-label="Dive deeper in Autopilot">
+                      <span class="launcher-avatar-ring autopilot-agent-avatar-ring">
+                        <template x-if="agent.npub && $store.chat.getSenderAvatar(agent.npub)">
+                          <img :src="$store.chat.getSenderAvatar(agent.npub)" alt="" />
+                        </template>
+                        <template x-if="!agent.npub || !$store.chat.getSenderAvatar(agent.npub)">
+                          <span x-text="$store.chat.getInitials(agent.title || 'Autopilot')"></span>
+                        </template>
+                      </span>
+                      <span class="launcher-pill-copy autopilot-agent-launcher-copy">
+                        <strong x-text="agent.title"></strong>
+                        <small x-text="agent.description || 'Dive Deeper in Autopilot'"></small>
+                      </span>
+                    </button>
+                  </template>
+                </section>
+              </div>
             </div>
 
             <section class="autopilot-daily-scope flightdeck-summary-daily" data-testid="flightdeck-summary-daily-scope" role="button" tabindex="0" @click="$store.chat.openAutopilotOverviewDailyNote()" @keydown.enter.prevent="$store.chat.openAutopilotOverviewDailyNote()" @keydown.space.prevent="$store.chat.openAutopilotOverviewDailyNote()" :aria-label="$store.chat.autopilotOverviewDailyNote.note ? 'Open Daily Scope note' : 'Create Daily Scope note'">
@@ -1230,11 +1312,19 @@
                       <h3>Chats</h3>
                       <svg :class="{ 'summary-panel-chevron-collapsed': $store.chat.isSummaryPanelCollapsed('chats') }" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
                     </button>
-                    <button type="button" class="btn-secondary btn-compact" @click.stop="$store.chat.navigateTo('chat')" aria-label="View all recent chats">View all</button>
+                    <span class="overview-panel-pager daily-note-date-pager" aria-label="Chats paging">
+                      <button type="button" @click.stop="$store.chat.showPreviousSummaryPanelPage('chats')" :disabled="!$store.chat.canShowPreviousSummaryPanelPage('chats')" aria-label="Show previous chats page">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>
+                      </button>
+                      <button type="button" class="overview-panel-pager-all" @click.stop="$store.chat.navigateTo('chat')" aria-label="View all recent chats">All</button>
+                      <button type="button" @click.stop="$store.chat.showNextSummaryPanelPage('chats')" :disabled="!$store.chat.canShowNextSummaryPanelPage('chats')" aria-label="Show next chats page">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg>
+                      </button>
+                    </span>
                   </div>
                   <div id="flightdeck-summary-chats-body" x-show="!$store.chat.isSummaryPanelCollapsed('chats')" x-cloak>
                     <div class="attention-card-list flightdeck-summary-card-list" x-show="$store.chat.autopilotOverviewThreads.length > 0">
-                      <template x-for="thread in $store.chat.autopilotOverviewThreads.slice(0, 5)" :key="thread.id">
+                      <template x-for="thread in $store.chat.pagedAutopilotOverviewThreads" :key="thread.id">
                         <button type="button" class="attention-card flightdeck-summary-card flightdeck-summary-card-chat" :class="{ 'attention-card-unread': thread.isUnread }" @click="$store.chat.openAutopilotOverviewThread(thread)" aria-label="Open selected chat">
                           <span class="attention-card-new-dot" x-show="thread.isUnread" aria-label="New activity"></span>
                           <span class="attention-card-icon" aria-hidden="true" x-html="$store.chat.getAttentionIconSvg('chat')"></span>
@@ -1263,11 +1353,19 @@
                       <h3>Tasks</h3>
                       <svg :class="{ 'summary-panel-chevron-collapsed': $store.chat.isSummaryPanelCollapsed('tasks') }" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
                     </button>
-                    <button type="button" class="btn-secondary btn-compact" @click.stop="$store.chat.navigateTo('tasks')" aria-label="View all recent tasks and comments">View all</button>
+                    <span class="overview-panel-pager daily-note-date-pager" aria-label="Tasks paging">
+                      <button type="button" @click.stop="$store.chat.showPreviousSummaryPanelPage('tasks')" :disabled="!$store.chat.canShowPreviousSummaryPanelPage('tasks')" aria-label="Show previous tasks page">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>
+                      </button>
+                      <button type="button" class="overview-panel-pager-all" @click.stop="$store.chat.navigateTo('tasks')" aria-label="View all recent tasks and comments">All</button>
+                      <button type="button" @click.stop="$store.chat.showNextSummaryPanelPage('tasks')" :disabled="!$store.chat.canShowNextSummaryPanelPage('tasks')" aria-label="Show next tasks page">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg>
+                      </button>
+                    </span>
                   </div>
                   <div id="flightdeck-summary-tasks-body" x-show="!$store.chat.isSummaryPanelCollapsed('tasks')" x-cloak>
                   <div class="attention-card-list flightdeck-summary-card-list" x-show="$store.chat.autopilotOverviewTasks.length > 0">
-                    <template x-for="task in $store.chat.autopilotOverviewTasks.slice(0, 5)" :key="task.id">
+                    <template x-for="task in $store.chat.pagedAutopilotOverviewTasks" :key="task.id">
                       <button type="button" class="attention-card flightdeck-summary-card flightdeck-summary-card-task" :class="{ 'attention-card-unread': task.isUnread }" @click="$store.chat.openAutopilotOverviewTask(task)" aria-label="Open selected task">
                         <span class="attention-card-new-dot" x-show="task.isUnread" aria-label="New activity"></span>
                         <span class="attention-card-icon" aria-hidden="true" x-html="$store.chat.getAttentionIconSvg('task')"></span>
@@ -1298,11 +1396,19 @@
                       <h3>Docs</h3>
                       <svg :class="{ 'summary-panel-chevron-collapsed': $store.chat.isSummaryPanelCollapsed('docs') }" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
                     </button>
-                    <button type="button" class="btn-secondary btn-compact" @click.stop="$store.chat.navigateTo('docs')" aria-label="View all docs">View all</button>
+                    <span class="overview-panel-pager daily-note-date-pager" aria-label="Docs paging">
+                      <button type="button" @click.stop="$store.chat.showPreviousSummaryPanelPage('docs')" :disabled="!$store.chat.canShowPreviousSummaryPanelPage('docs')" aria-label="Show previous docs page">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>
+                      </button>
+                      <button type="button" class="overview-panel-pager-all" @click.stop="$store.chat.navigateTo('docs')" aria-label="View all docs">All</button>
+                      <button type="button" @click.stop="$store.chat.showNextSummaryPanelPage('docs')" :disabled="!$store.chat.canShowNextSummaryPanelPage('docs')" aria-label="Show next docs page">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg>
+                      </button>
+                    </span>
                   </div>
                   <div id="flightdeck-summary-docs-body" x-show="!$store.chat.isSummaryPanelCollapsed('docs')" x-cloak>
                   <div class="attention-card-list flightdeck-summary-card-list" x-show="$store.chat.autopilotOverviewDocuments.length > 0">
-                    <template x-for="doc in $store.chat.autopilotOverviewDocuments.slice(0, 5)" :key="doc.id">
+                    <template x-for="doc in $store.chat.pagedAutopilotOverviewDocuments" :key="doc.id">
                       <button type="button" class="attention-card flightdeck-summary-card flightdeck-summary-card-doc" :class="{ 'attention-card-unread': doc.isUnread }" @click="$store.chat.openAutopilotOverviewDocument(doc)" aria-label="Open selected doc">
                         <span class="attention-card-new-dot" x-show="doc.isUnread" aria-label="New activity"></span>
                         <span class="attention-card-icon" aria-hidden="true" x-html="$store.chat.getAttentionIconSvg('doc')"></span>
@@ -1331,11 +1437,19 @@
                       <h3>Files</h3>
                       <svg :class="{ 'summary-panel-chevron-collapsed': $store.chat.isSummaryPanelCollapsed('files') }" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
                     </button>
-                    <button type="button" class="btn-secondary btn-compact" @click.stop="$store.chat.navigateTo('files')" aria-label="View all files">View all</button>
+                    <span class="overview-panel-pager daily-note-date-pager" aria-label="Files paging">
+                      <button type="button" @click.stop="$store.chat.showPreviousSummaryPanelPage('files')" :disabled="!$store.chat.canShowPreviousSummaryPanelPage('files')" aria-label="Show previous files page">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>
+                      </button>
+                      <button type="button" class="overview-panel-pager-all" @click.stop="$store.chat.navigateTo('files')" aria-label="View all files">All</button>
+                      <button type="button" @click.stop="$store.chat.showNextSummaryPanelPage('files')" :disabled="!$store.chat.canShowNextSummaryPanelPage('files')" aria-label="Show next files page">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg>
+                      </button>
+                    </span>
                   </div>
                   <div id="flightdeck-summary-files-body" x-show="!$store.chat.isSummaryPanelCollapsed('files')" x-cloak>
                   <div class="attention-card-list flightdeck-summary-card-list" x-show="$store.chat.autopilotOverviewFiles.length > 0">
-                    <template x-for="file in $store.chat.autopilotOverviewFiles.slice(0, 5)" :key="file.id">
+                    <template x-for="file in $store.chat.pagedAutopilotOverviewFiles" :key="file.id">
                       <button type="button" class="attention-card flightdeck-summary-card flightdeck-summary-card-file" @click="$store.chat.openFileBrowserSource(file)" aria-label="Open selected file">
                         <span class="attention-card-icon" aria-hidden="true" x-html="$store.chat.getAttentionIconSvg('doc')"></span>
                         <span class="attention-card-content">
@@ -2600,7 +2714,7 @@
             <div
               class="chat-channel-header"
               :class="{ 'pg-all-scopes-context': $store.chat.pgContextAllScopesSelected }"
-              x-show="$store.chat.navSection === 'chat'"
+              x-show="false && $store.chat.navSection === 'chat'"
               x-cloak
             >
               <button
@@ -3085,6 +3199,25 @@
                           </div>
                         </div>
                       </div>
+                    </div>
+                  </div>
+                </template>
+                <template x-for="activity in $store.chat.activeThreadResponseActivities" :key="activity.record_id">
+                  <div class="thread-response-activity" :class="{ 'thread-response-activity-error': activity.severity === 'error' || activity.status === 'failed' }" aria-live="polite">
+                    <button type="button" class="identity-avatar-button" @click.stop="$store.chat.openIdentityCard($event, activity.actor_npub)" :title="$store.chat.getSenderName(activity.actor_npub)">
+                      <template x-if="$store.chat.getSenderAvatar(activity.actor_npub)">
+                        <img class="thread-avatar" :src="$store.chat.getSenderAvatar(activity.actor_npub)" alt="Profile picture" />
+                      </template>
+                      <template x-if="!$store.chat.getSenderAvatar(activity.actor_npub)">
+                        <div class="thread-avatar thread-avatar-fallback" x-text="$store.chat.getInitials($store.chat.getSenderName(activity.actor_npub))"></div>
+                      </template>
+                    </button>
+                    <div class="thread-response-activity-body">
+                      <div class="thread-response-activity-title">
+                        <span x-text="activity.status === 'failed' ? (activity.label || 'Response failed') : ($store.chat.getSenderName(activity.actor_npub) + ' is ' + (activity.label || (activity.status === 'drafting' ? 'writing a reply' : activity.status || 'thinking')).toLowerCase())"></span>
+                        <span class="thread-response-activity-dots" x-show="activity.status !== 'failed'" aria-hidden="true"><span></span><span></span><span></span></span>
+                      </div>
+                      <p x-show="activity.message" x-text="activity.message"></p>
                     </div>
                   </div>
                 </template>
@@ -3598,8 +3731,13 @@
                           >
                             <template x-if="$store.chat.docEditingBlockIndex !== index">
                               <div class="doc-block-main">
-                                <div class="doc-block" @click="$store.chat.selectDocBlockForComment(block, index); $store.chat.startDocBlockEdit(index)">
-                                  <div class="doc-block-rendered" x-html="$store.chat.renderMarkdown(block.raw)"></div>
+                                <div class="doc-block" @click="$store.chat.selectDocBlockForComment(block, index); $store.chat.startDocBlockEdit(index, $event.currentTarget)">
+                                  <div
+                                    class="doc-block-rendered"
+                                    x-html="$store.chat.renderMarkdown(block.raw)"
+                                    x-init="$nextTick(() => $store.chat.scheduleStorageImageHydration())"
+                                    x-effect="block.raw; $nextTick(() => $store.chat.scheduleStorageImageHydration())"
+                                  ></div>
                                 </div>
                               </div>
                             </template>
@@ -3609,7 +3747,9 @@
                                   <textarea
                                     class="doc-block-editor"
                                     x-model="$store.chat.docBlockBuffer"
-                                    @input="$store.chat.updateDocBlockBuffer($event.target.value); $store.chat.handleMentionInput($event.target)"
+                                    :style="$store.chat.getDocBlockEditorStyle()"
+                                    x-init="$nextTick(() => $store.chat.resizeDocBlockEditor($el))"
+                                    @input="$store.chat.updateDocBlockBuffer($event.target.value, $event.target); $store.chat.handleMentionInput($event.target)"
                                     @keydown="$store.chat.handleMentionKeydown($event)"
                                     @paste="$store.chat.handleDocBlockPaste($event)"
                                     @blur="if (!$store.chat.mentionActive) $store.chat.commitDocBlockEdit()"
@@ -4729,204 +4869,6 @@
           </div>
         </template>
 
-        <template x-if="$store.chat.navSection === 'autopilot'">
-          <section class="autopilot-overview-section" data-testid="autopilot-overview-page">
-            <div class="autopilot-overview-header">
-              <div>
-                <h2>Welcome <span x-text="$store.chat.greetingName"></span>, where will we focus today?</h2>
-                <p x-text="$store.chat.autopilotOverviewContextLabel"></p>
-              </div>
-              <section class="my-agents-panel" aria-label="My Agents">
-                <h3>My Agents</h3>
-                <button
-                  type="button"
-                  class="autopilot-agent-launcher"
-                  @click="$store.chat.openHarnessLink()"
-                  :disabled="!$store.chat.hasHarnessLink"
-                  :title="$store.chat.workspaceHarnessUrl"
-                  aria-label="Dive deeper in Autopilot"
-                >
-                  <span class="autopilot-agent-avatar-ring">
-                    <template x-if="$store.chat.harnessAgentAvatarUrl">
-                      <img :src="$store.chat.harnessAgentAvatarUrl" alt="" />
-                    </template>
-                    <template x-if="!$store.chat.harnessAgentAvatarUrl">
-                      <span x-text="$store.chat.getInitials($store.chat.harnessAgentLabel || 'Autopilot')"></span>
-                    </template>
-                  </span>
-                  <span class="autopilot-agent-launcher-copy">
-                    <strong x-text="$store.chat.harnessAgentLabel || 'Autopilot agent'"></strong>
-                    <small>Dive Deeper in Autopilot</small>
-                  </span>
-                </button>
-              </section>
-            </div>
-
-            <section class="autopilot-daily-scope" data-testid="autopilot-overview-daily-scope" role="button" tabindex="0" @click="$store.chat.openAutopilotOverviewDailyNote()" @keydown.enter.prevent="$store.chat.openAutopilotOverviewDailyNote()" @keydown.space.prevent="$store.chat.openAutopilotOverviewDailyNote()" :aria-label="$store.chat.autopilotOverviewDailyNote.note ? 'Open Daily Scope note' : 'Create Daily Scope note'">
-              <div class="daily-note-preview-content">
-                <h3 x-text="$store.chat.autopilotOverviewDailyNote.title"></h3>
-                <div class="daily-note-preview-list" x-show="$store.chat.autopilotOverviewDailyNote.items.length > 0">
-                  <template x-for="item in $store.chat.autopilotOverviewDailyNote.items" :key="item.id">
-                    <button type="button" class="daily-note-preview-item" :class="{ 'daily-note-preview-item-complete': item.completed }" @click.stop="$store.chat.toggleDailyNoteOverviewItem(item.id)" :aria-pressed="item.completed" :aria-label="item.completed ? `Mark ${item.text} incomplete` : `Mark ${item.text} complete`">
-                      <span class="daily-note-checkbox" aria-hidden="true"></span>
-                      <span x-text="item.text"></span>
-                    </button>
-                  </template>
-                </div>
-                <p class="daily-note-narrative-snippet">
-                  <span x-text="$store.chat.autopilotOverviewDailyNote.body"></span>
-                  <span class="daily-note-more" x-show="$store.chat.autopilotOverviewDailyNote.hasMoreBody">... more</span>
-                </p>
-                <div class="autopilot-row-meta daily-note-preview-meta">
-                  <span x-text="$store.chat.autopilotOverviewDailyNote.metaLabel"></span>
-                  <span x-show="$store.chat.autopilotOverviewDailyNote.duplicateCount > 0" x-text="`${$store.chat.autopilotOverviewDailyNote.duplicateCount} duplicate note${$store.chat.autopilotOverviewDailyNote.duplicateCount === 1 ? '' : 's'}`"></span>
-                  <span class="daily-note-date-pager" aria-label="Daily Note date navigation">
-                    <button type="button" @click.stop="$store.chat.showPreviousDailyScopeNote()" aria-label="Show previous Daily Note">
-                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>
-                    </button>
-                    <span class="daily-note-date-picker" @click.stop>
-                      <button type="button" @click.stop="$store.chat.openDailyScopeDatePicker()" aria-label="Choose Daily Note date">
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M8 2v4"></path>
-                          <path d="M16 2v4"></path>
-                          <rect x="3" y="4" width="18" height="18" rx="2"></rect>
-                          <path d="M3 10h18"></path>
-                        </svg>
-                      </button>
-                      <span class="daily-note-date-picker-popover" x-show="$store.chat.dailyScopeDatePickerOpen" x-cloak @click.outside="$store.chat.closeDailyScopeDatePicker()">
-                        <input type="date" x-model="$store.chat.dailyScopeDatePickerValue" @change="$store.chat.selectDailyScopeDate($event.target.value)" aria-label="Daily Note date" />
-                        <button type="button" class="daily-note-today-btn" @click="$store.chat.showTodayDailyScopeNote()">Today</button>
-                      </span>
-                    </span>
-                    <button type="button" @click.stop="$store.chat.showNextDailyScopeNote()" aria-label="Show next Daily Note">
-                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg>
-                    </button>
-                  </span>
-                </div>
-              </div>
-            </section>
-
-            <div class="autopilot-overview-grid">
-              <div class="autopilot-overview-column">
-                <section class="autopilot-overview-panel" :class="{ 'summary-panel-collapsed': $store.chat.isSummaryPanelCollapsed('chats') }" data-testid="autopilot-overview-recent-threads">
-                  <div class="autopilot-panel-heading">
-                    <button type="button" class="summary-panel-heading-toggle" @click="$store.chat.toggleSummaryPanel('chats')" :aria-expanded="(!$store.chat.isSummaryPanelCollapsed('chats')).toString()" aria-controls="autopilot-overview-chats-body">
-                      <h3>Chats</h3>
-                      <svg :class="{ 'summary-panel-chevron-collapsed': $store.chat.isSummaryPanelCollapsed('chats') }" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
-                    </button>
-                    <button type="button" class="btn-secondary btn-compact" @click.stop="$store.chat.navigateTo('chat')" aria-label="View all recent chats" data-testid="autopilot-overview-threads-view-all">View all</button>
-                  </div>
-                  <div id="autopilot-overview-chats-body" x-show="!$store.chat.isSummaryPanelCollapsed('chats')" x-cloak>
-                  <div class="autopilot-overview-list" x-show="$store.chat.autopilotOverviewThreads.length > 0" data-testid="autopilot-overview-threads-list">
-                    <template x-for="thread in $store.chat.autopilotOverviewThreads.slice(0, 5)" :key="thread.id">
-                      <button type="button" class="pg-thread-summary autopilot-thread-card" :class="{ 'overview-row-unread': thread.isUnread }" @click="$store.chat.openAutopilotOverviewThread(thread)" aria-label="Open selected chat" data-testid="autopilot-overview-thread-row">
-                        <span class="overview-row-new-dot" x-show="thread.isUnread" aria-label="New activity"></span>
-                        <span class="chat-thread-preview">
-                          <span class="chat-thread-preview-count" x-text="thread.channelLabel"></span>
-                          <span class="chat-thread-preview-link" x-text="thread.title"></span>
-                        </span>
-                        <span class="chat-thread-latest-preview" x-text="thread.latestMessage"></span>
-                        <span class="autopilot-row-meta">
-                          <span x-text="thread.messageCount + ' ' + (thread.messageCount === 1 ? 'message' : 'messages')"></span>
-                          <span x-text="$store.chat.formatRelativeTime(thread.latestMessageUpdatedAt)"></span>
-                        </span>
-                      </button>
-                    </template>
-                  </div>
-                  <p class="settings-field-help" x-show="$store.chat.autopilotOverviewThreads.length === 0">No matching chats.</p>
-                  </div>
-                </section>
-
-                <section class="autopilot-overview-panel" :class="{ 'summary-panel-collapsed': $store.chat.isSummaryPanelCollapsed('tasks') }" data-testid="autopilot-overview-recent-tasks">
-                  <div class="autopilot-panel-heading">
-                    <button type="button" class="summary-panel-heading-toggle" @click="$store.chat.toggleSummaryPanel('tasks')" :aria-expanded="(!$store.chat.isSummaryPanelCollapsed('tasks')).toString()" aria-controls="autopilot-overview-tasks-body">
-                      <h3>Tasks</h3>
-                      <svg :class="{ 'summary-panel-chevron-collapsed': $store.chat.isSummaryPanelCollapsed('tasks') }" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
-                    </button>
-                    <button type="button" class="btn-secondary btn-compact" @click.stop="$store.chat.navigateTo('tasks')" aria-label="View all recent tasks and comments" data-testid="autopilot-overview-tasks-view-all">View all</button>
-                  </div>
-                  <div id="autopilot-overview-tasks-body" x-show="!$store.chat.isSummaryPanelCollapsed('tasks')" x-cloak>
-                  <div class="task-list-rows autopilot-overview-list" x-show="$store.chat.autopilotOverviewTasks.length > 0" data-testid="autopilot-overview-tasks-list">
-                    <template x-for="task in $store.chat.autopilotOverviewTasks.slice(0, 5)" :key="task.id">
-                      <button type="button" class="task-list-row task-list-row-parent autopilot-task-row" :class="{ 'overview-row-unread': task.isUnread }" @click="$store.chat.openAutopilotOverviewTask(task)" aria-label="Open selected task" data-testid="autopilot-overview-task-row">
-                        <span class="overview-row-new-dot" x-show="task.isUnread" aria-label="New activity"></span>
-                        <span class="task-list-title" x-text="task.title"></span>
-                        <span class="badge badge-date" x-text="task.subtitle"></span>
-                        <span class="autopilot-row-meta">
-                          <span x-text="task.reason"></span>
-                          <span x-text="$store.chat.formatRelativeTime(task.activityAt)"></span>
-                        </span>
-                      </button>
-                    </template>
-                  </div>
-                  <p class="settings-field-help" x-show="$store.chat.autopilotOverviewTasks.length === 0">No recent task activity for this context.</p>
-                  </div>
-                </section>
-              </div>
-
-              <div class="autopilot-overview-column">
-                <section class="autopilot-overview-panel" :class="{ 'summary-panel-collapsed': $store.chat.isSummaryPanelCollapsed('docs') }" data-testid="autopilot-overview-documents">
-                  <div class="autopilot-panel-heading">
-                    <button type="button" class="summary-panel-heading-toggle" @click="$store.chat.toggleSummaryPanel('docs')" :aria-expanded="(!$store.chat.isSummaryPanelCollapsed('docs')).toString()" aria-controls="autopilot-overview-docs-body">
-                      <h3>Docs</h3>
-                      <svg :class="{ 'summary-panel-chevron-collapsed': $store.chat.isSummaryPanelCollapsed('docs') }" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
-                    </button>
-                    <button type="button" class="btn-secondary btn-compact" @click.stop="$store.chat.navigateTo('docs')" aria-label="View all docs" data-testid="autopilot-overview-documents-view-all">View all</button>
-                  </div>
-                  <div id="autopilot-overview-docs-body" x-show="!$store.chat.isSummaryPanelCollapsed('docs')" x-cloak>
-                  <div class="doc-items autopilot-overview-list" x-show="$store.chat.autopilotOverviewDocuments.length > 0" data-testid="autopilot-overview-documents-list">
-                    <template x-for="doc in $store.chat.autopilotOverviewDocuments.slice(0, 5)" :key="doc.id">
-                      <button type="button" class="doc-item autopilot-doc-row" :class="{ 'overview-row-unread': doc.isUnread }" @click="$store.chat.openAutopilotOverviewDocument(doc)" aria-label="Open selected doc" data-testid="autopilot-overview-document-row">
-                        <span class="overview-row-new-dot" x-show="doc.isUnread" aria-label="New activity"></span>
-                        <span class="doc-item-icon">DOC</span>
-                        <span class="doc-item-title" x-text="doc.title"></span>
-                        <span class="doc-item-meta">
-                          <span x-text="doc.reason"></span>
-                          <span x-text="$store.chat.formatRelativeTime(doc.activityAt)"></span>
-                        </span>
-                      </button>
-                    </template>
-                  </div>
-                  <p class="settings-field-help" x-show="$store.chat.autopilotOverviewDocuments.length === 0">No recent doc activity for this context.</p>
-                  </div>
-                </section>
-
-                <section class="autopilot-overview-panel" :class="{ 'summary-panel-collapsed': $store.chat.isSummaryPanelCollapsed('files') }" data-testid="autopilot-overview-files">
-                  <div class="autopilot-panel-heading">
-                    <button type="button" class="summary-panel-heading-toggle" @click="$store.chat.toggleSummaryPanel('files')" :aria-expanded="(!$store.chat.isSummaryPanelCollapsed('files')).toString()" aria-controls="autopilot-overview-files-body">
-                      <h3>Files</h3>
-                      <svg :class="{ 'summary-panel-chevron-collapsed': $store.chat.isSummaryPanelCollapsed('files') }" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
-                    </button>
-                    <button type="button" class="btn-secondary btn-compact" @click.stop="$store.chat.navigateTo('files')" aria-label="View all files" data-testid="autopilot-overview-files-view-all">View all</button>
-                  </div>
-                  <div id="autopilot-overview-files-body" x-show="!$store.chat.isSummaryPanelCollapsed('files')" x-cloak>
-                  <div class="autopilot-overview-list" x-show="$store.chat.autopilotOverviewFiles.length > 0" data-testid="autopilot-overview-files-list">
-                    <template x-for="file in $store.chat.autopilotOverviewFiles.slice(0, 5)" :key="file.id">
-                      <button type="button" class="file-row autopilot-file-row" @click="$store.chat.openFileBrowserSource(file)" aria-label="Open selected file" data-testid="autopilot-overview-file-row">
-                        <span class="file-thumb" :data-kind="file.kind || file.source_type || 'document'">
-                          <span class="file-thumb-icon" x-text="file.kind === 'audio' ? 'AUD' : 'FILE'"></span>
-                        </span>
-                        <span class="file-row-main">
-                          <span class="file-row-title">
-                            <span x-text="file.name"></span>
-                            <span class="file-kind-pill" x-text="file.source_label"></span>
-                          </span>
-                          <span class="file-row-meta">
-                            <span x-text="file.reason"></span>
-                            <span x-text="$store.chat.fileUpdatedLabel(file)"></span>
-                          </span>
-                          <span class="file-object-id" x-text="file.object_id"></span>
-                        </span>
-                      </button>
-                    </template>
-                  </div>
-                  <p class="settings-field-help" x-show="$store.chat.autopilotOverviewFiles.length === 0">No matching files.</p>
-                  </div>
-                </section>
-              </div>
-            </div>
-          </section>
-        </template>
 
 
         <div
@@ -5326,6 +5268,7 @@
           <div class="settings-tabs">
             <button x-show="$store.chat.canAdminWorkspace" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'workspace' }" @click="$store.chat.settingsTab = 'workspace'">Workspace</button>
             <button class="settings-tab" :class="{ active: $store.chat.settingsTab === 'connection' }" @click="$store.chat.settingsTab = 'connection'">Connection</button>
+            <button class="settings-tab" :class="{ active: $store.chat.settingsTab === 'apps' }" @click="$store.chat.openSettingsTab('apps')">Apps</button>
             <button x-show="false" x-cloak class="settings-tab" :class="{ active: $store.chat.settingsTab === 'schedules' }" @click="$store.chat.openSettingsTab('schedules')">Schedules</button>
             <button x-show="$store.chat.canAdminWorkspace" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'scopes' }" @click="$store.chat.openSettingsTab('scopes')">Scopes</button>
             <button x-show="$store.chat.workspaceAdvancedOptionsEnabled && !$store.chat.isTowerPgMode" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'data' }" @click="$store.chat.settingsTab = 'data'">Sync</button>
@@ -5734,6 +5677,39 @@
             </div>
             <p class="settings-field-help">Build: <code x-text="$store.chat.appBuildId"></code></p>
           </section>
+          </div>
+
+          <div class="settings-tab-content" x-show="$store.chat.settingsTab === 'apps'">
+            <section class="settings-panel personal-wapps-settings-panel">
+              <div class="settings-panel-header">
+                <div>
+                  <h2>My WApps</h2>
+                  <p>Personal app launchers shown beside My Agents.</p>
+                </div>
+                <button type="button" class="btn-primary btn-compact" @click="$store.chat.openPersonalWappEditor()">Add WApp</button>
+              </div>
+              <div class="personal-wapps-settings-list" x-show="$store.chat.visiblePersonalWapps.length > 0">
+                <template x-for="(wapp, index) in $store.chat.visiblePersonalWapps" :key="`settings-wapp-${wapp.record_id}`">
+                  <div class="personal-wapp-settings-row">
+                    <span class="launcher-avatar-ring">
+                      <img :src="$store.chat.getPersonalWappIconUrl(wapp)" alt="" @load="$store.chat.handlePersonalWappIconLoad($event)" @error="$store.chat.handlePersonalWappIconError($event)" />
+                      <span hidden x-text="$store.chat.getInitials(wapp.title || 'WApp')"></span>
+                    </span>
+                    <span class="personal-wapp-settings-copy">
+                      <strong x-text="wapp.title"></strong>
+                      <small x-text="wapp.launch_url"></small>
+                    </span>
+                    <span class="personal-wapp-settings-actions">
+                      <button type="button" class="icon-btn" @click="$store.chat.movePersonalWapp(wapp, 'up')" :disabled="index === 0" aria-label="Move WApp up">↑</button>
+                      <button type="button" class="icon-btn" @click="$store.chat.movePersonalWapp(wapp, 'down')" :disabled="index === $store.chat.visiblePersonalWapps.length - 1" aria-label="Move WApp down">↓</button>
+                      <button type="button" class="btn-secondary btn-compact" @click="$store.chat.openPersonalWappEditor(wapp)">Edit</button>
+                      <button type="button" class="btn-danger btn-compact" @click="$store.chat.archivePersonalWapp(wapp)">Archive</button>
+                    </span>
+                  </div>
+                </template>
+              </div>
+              <p class="settings-empty-note" x-show="$store.chat.visiblePersonalWapps.length === 0">No personal WApps yet.</p>
+            </section>
           </div>
 
           <div class="settings-tab-content" x-show="$store.chat.canAdminWorkspace && $store.chat.settingsTab === 'scopes'">
@@ -6926,6 +6902,8 @@
           </div>
         </div>
 
+        </div>
+
         <div class="doc-modal-backdrop channel-settings-modal-backdrop" x-show="$store.chat.showChannelSettingsModal" x-cloak @click.self="$store.chat.closeChannelSettings()">
           <div class="doc-modal-card new-doc-modal channel-settings-modal">
             <h3>Channel settings</h3>
@@ -7730,6 +7708,38 @@
               <button type="button" class="btn-secondary" x-show="$store.chat.audioRecorderState === 'idle'" @click="$store.chat.startAudioRecording()">Start</button>
               <button type="button" class="btn-secondary" x-show="$store.chat.audioRecorderState === 'recording'" @click="$store.chat.stopAudioRecording()">Stop</button>
               <button type="button" class="btn-confirm" x-show="$store.chat.audioRecorderState === 'ready'" @click="$store.chat.attachRecordedAudioDraft()">Retry upload</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="doc-modal-backdrop personal-wapp-editor-backdrop" x-show="$store.chat.personalWappEditorOpen" x-cloak @click.self="$store.chat.closePersonalWappEditor()">
+          <div class="doc-modal-card personal-wapp-editor-modal">
+            <button class="modal-close" type="button" @click="$store.chat.closePersonalWappEditor()">&times;</button>
+            <h3 x-text="$store.chat.personalWappEditingId ? 'Edit WApp' : 'Add WApp'"></h3>
+            <label class="daily-note-field">
+              <span>Title</span>
+              <input type="text" x-model="$store.chat.personalWappFormTitle" placeholder="Time Tracker" />
+            </label>
+            <label class="daily-note-field">
+              <span>Launch URL</span>
+              <input type="url" x-model="$store.chat.personalWappFormLaunchUrl" placeholder="https://..." />
+            </label>
+            <label class="daily-note-field">
+              <span>Description</span>
+              <input type="text" x-model="$store.chat.personalWappFormDescription" placeholder="Track your time for the week" />
+            </label>
+            <label class="daily-note-field">
+              <span>Icon URL</span>
+              <input type="url" x-model="$store.chat.personalWappFormIconUrl" placeholder="https://..." />
+            </label>
+            <p class="settings-field-help">Leave blank to use the app manifest icon or favicon.</p>
+            <p class="error-text" x-show="$store.chat.personalWappEditorError" x-text="$store.chat.personalWappEditorError"></p>
+            <div class="new-doc-modal-actions">
+              <button type="button" class="btn-cancel" @click="$store.chat.closePersonalWappEditor()">Cancel</button>
+              <button type="button" class="btn-confirm" @click="$store.chat.savePersonalWappEditor()" :disabled="$store.chat.personalWappEditorSaving">
+                <span x-show="!$store.chat.personalWappEditorSaving">Save WApp</span>
+                <span x-show="$store.chat.personalWappEditorSaving">Saving...</span>
+              </button>
             </div>
           </div>
         </div>

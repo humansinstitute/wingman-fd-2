@@ -167,11 +167,14 @@ describe('Thread mobile responsive behavior', () => {
       mobileBlock = mobileBlock || findMediaBlock(css, 768);
       const switcherDecl = extractDeclarations(mobileBlock, '.mobile-scope-switcher');
       const triggerDecl = extractDeclarations(mobileBlock, '.mobile-scope-trigger');
+      const resultsDecl = extractDeclarations(mobileBlock, '.mobile-scope-results');
 
       expect(switcherDecl).toMatch(/display\s*:\s*grid/);
       expect(switcherDecl).toMatch(/grid-template-columns\s*:\s*38px minmax\(0,\s*1fr\) 38px/);
+      expect(switcherDecl).toMatch(/z-index\s*:\s*130/);
       expect(triggerDecl).toMatch(/justify-content\s*:\s*center/);
       expect(triggerDecl).toMatch(/text-align\s*:\s*center/);
+      expect(resultsDecl).toMatch(/z-index\s*:\s*131/);
     });
 
     it('mounts mobile composer actions beside the textarea without stretching the textarea', async () => {

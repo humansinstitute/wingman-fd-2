@@ -971,6 +971,41 @@ describe('docsManagerMixin checkout orchestration', () => {
   });
 });
 
+describe('docsManagerMixin document block editor sizing', () => {
+  it('uses the rendered block height as the editor minimum when editing starts', () => {
+    const store = createStore({
+      docEditorMode: 'block',
+      docEditorBlocks: [{ id: 'block-1', raw: '## Rendered heading\n\nRendered body', start_line: 1 }],
+      scheduleDocCommentConnectorUpdate: vi.fn(),
+    });
+    const previewEl = {
+      getBoundingClientRect: () => ({ height: 214.2 }),
+    };
+
+    store.startDocBlockEdit(0, previewEl);
+
+    expect(store.docEditingBlockIndex).toBe(0);
+    expect(store.docBlockBuffer).toBe('## Rendered heading\n\nRendered body');
+    expect(store.docBlockEditorMinHeightPx).toBe(215);
+    expect(store.getDocBlockEditorStyle()).toEqual({ minHeight: '215px' });
+  });
+
+  it('keeps textarea height at least as tall as the rendered block while autosizing', () => {
+    const store = createStore({ docBlockEditorMinHeightPx: 180 });
+    const textarea = { style: {}, scrollHeight: 240 };
+
+    store.resizeDocBlockEditor(textarea);
+
+    expect(textarea.style.minHeight).toBe('180px');
+    expect(textarea.style.height).toBe('240px');
+
+    textarea.scrollHeight = 120;
+    store.resizeDocBlockEditor(textarea);
+
+    expect(textarea.style.height).toBe('180px');
+  });
+});
+
 describe('docsManagerMixin canonical row normalization', () => {
   afterEach(() => {
     vi.restoreAllMocks();

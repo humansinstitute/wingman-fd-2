@@ -113,28 +113,42 @@ describe('Chat channel rendering hooks', () => {
     expect(switcher).toContain('currentWorkspaceInitials');
   });
 
-  it('uses the same PG context controls in the chat channel bar', () => {
-    const chatSectionIndex = html.indexOf('class="chat-section"');
-    const chatBarIndex = html.indexOf('class="chat-channel-header"', chatSectionIndex);
-    const chatBarEndIndex = html.indexOf('<div class="chat-layout"', chatBarIndex);
-    const chatBar = html.slice(chatBarIndex, chatBarEndIndex);
-    const avatarIndex = chatBar.indexOf('class="channel-row-workspace-avatar-btn"');
-    const scopeSwitcherIndex = chatBar.indexOf('class="channel-row-scope-switcher"');
-    const homeIndex = chatBar.indexOf('class="chat-channel-tab-item channel-home-tab-item"');
-    const channelLoopIndex = chatBar.indexOf('<template x-for="ch in $store.chat.pgContextChannels"');
+  it('uses the shared PG context controls as the chat channel bar', () => {
+    const globalBarIndex = html.indexOf('class="global-pg-channel-bar"');
+    const globalBarEndIndex = html.indexOf('<div class="content-scroll-area"', globalBarIndex);
+    const globalBar = html.slice(globalBarIndex, globalBarEndIndex);
+    const avatarIndex = globalBar.indexOf('class="channel-row-workspace-avatar-btn"');
+    const scopeSwitcherIndex = globalBar.indexOf('class="channel-row-scope-switcher"');
+    const homeIndex = globalBar.indexOf('class="chat-channel-tab-item channel-home-tab-item"');
+    const channelLoopIndex = globalBar.indexOf('<template x-for="channel in $store.chat.pgContextChannels"');
 
-    expect(chatSectionIndex).toBeGreaterThan(-1);
-    expect(chatBarIndex).toBeGreaterThan(-1);
+    expect(globalBarIndex).toBeGreaterThan(-1);
     expect(avatarIndex).toBeGreaterThan(-1);
     expect(scopeSwitcherIndex).toBeGreaterThan(-1);
     expect(avatarIndex).toBeLessThan(scopeSwitcherIndex);
     expect(homeIndex).toBeGreaterThan(-1);
     expect(homeIndex).toBeLessThan(channelLoopIndex);
-    expect(chatBar).toContain('@click="$store.chat.openPgScopeHome()"');
-    expect(chatBar).toContain('currentWorkspaceAvatarUrl');
-    expect(chatBar).toContain('active: $store.chat.pgContextSelectedChannelId === ch.record_id');
-    expect(chatBar).toContain(':aria-selected="$store.chat.pgContextSelectedChannelId === ch.record_id"');
-    expect(chatBar).not.toContain('scopeFilteredChannels');
+    expect(globalBar).toContain('@click="$store.chat.openPgScopeHome()"');
+    expect(globalBar).toContain('currentWorkspaceAvatarUrl');
+    expect(globalBar).toContain('active: $store.chat.pgContextSelectedChannelId === channel.record_id');
+    expect(globalBar).toContain(':aria-selected="$store.chat.pgContextSelectedChannelId === channel.record_id');
+    expect(globalBar).toContain("$store.chat.navSection === 'chat' ? $store.chat.selectChannel(channel.record_id) : $store.chat.selectPgChannelContext(channel.record_id)");
+    expect(globalBar).not.toContain('scopeFilteredChannels');
+  });
+
+  it('keeps logged-in chrome fixed above one content scroll area', () => {
+    const mainContentIndex = html.indexOf('class="main-content"');
+    const globalBarIndex = html.indexOf('class="global-pg-channel-bar"', mainContentIndex);
+    const scrollAreaIndex = html.indexOf('class="content-scroll-area"', mainContentIndex);
+    const modalIndex = html.indexOf('class="doc-modal-backdrop channel-settings-modal-backdrop"', mainContentIndex);
+
+    expect(mainContentIndex).toBeGreaterThan(-1);
+    expect(globalBarIndex).toBeGreaterThan(mainContentIndex);
+    expect(scrollAreaIndex).toBeGreaterThan(globalBarIndex);
+    expect(modalIndex).toBeGreaterThan(scrollAreaIndex);
+    expect(styles).toMatch(/\.main-content\s*\{[\s\S]*overflow:\s*hidden;/);
+    expect(styles).toMatch(/\.content-scroll-area\s*\{[\s\S]*overflow-y:\s*auto;/);
+    expect(styles).toMatch(/\.global-pg-channel-bar\s*\{[\s\S]*flex:\s*0 0 auto;/);
   });
 
   it('keeps channel tabs text-only while labels resolve through getChannelLabel', () => {

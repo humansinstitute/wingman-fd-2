@@ -319,6 +319,45 @@ describe('autopilot overview manager', () => {
     expect(store.isSummaryPanelCollapsed('chats')).toBe(false);
   });
 
+  it('pages overview summary panels by five rows', () => {
+    const store = Object.assign(Object.create(autopilotOverviewManagerMixin), {
+      summaryPanelPages: {},
+    });
+    Object.defineProperty(store, 'autopilotOverviewThreads', {
+      get() {
+        return Array.from({ length: 12 }, (_, index) => ({ id: `thread-${index + 1}` }));
+      },
+      configurable: true,
+    });
+
+    expect(store.pagedAutopilotOverviewThreads.map((row) => row.id)).toEqual([
+      'thread-1',
+      'thread-2',
+      'thread-3',
+      'thread-4',
+      'thread-5',
+    ]);
+    expect(store.canShowPreviousSummaryPanelPage('chats')).toBe(false);
+    expect(store.canShowNextSummaryPanelPage('chats')).toBe(true);
+
+    store.showNextSummaryPanelPage('chats');
+    expect(store.pagedAutopilotOverviewThreads.map((row) => row.id)).toEqual([
+      'thread-6',
+      'thread-7',
+      'thread-8',
+      'thread-9',
+      'thread-10',
+    ]);
+    expect(store.canShowPreviousSummaryPanelPage('chats')).toBe(true);
+
+    store.showNextSummaryPanelPage('chats');
+    expect(store.pagedAutopilotOverviewThreads.map((row) => row.id)).toEqual(['thread-11', 'thread-12']);
+    expect(store.canShowNextSummaryPanelPage('chats')).toBe(false);
+
+    store.showPreviousSummaryPanelPage('chats');
+    expect(store.pagedAutopilotOverviewThreads.map((row) => row.id)[0]).toBe('thread-6');
+  });
+
   it('counts only unresolved document comments', () => {
     const documents = [
       { record_id: 'doc-open', title: 'Open', record_state: 'active' },
@@ -499,8 +538,20 @@ describe('autopilot overview manager', () => {
     expect(rows.map((row) => row.object_id)).toEqual(['attachment']);
   });
 
-  it('includes stable overview test ids and accessible labels', () => {
+  it('does not expose the removed standalone Autopilot page', () => {
     const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+
+    [
+      'data-testid="flightdeck-summary-overview"',
+      'data-testid="flightdeck-summary-daily-scope"',
+      'data-testid="flightdeck-summary-threads"',
+      'data-testid="flightdeck-summary-tasks"',
+      'data-testid="flightdeck-summary-documents"',
+      'data-testid="flightdeck-summary-files"',
+      'aria-label="Open selected chat"',
+    ].forEach((expected) => {
+      expect(html).toContain(expected);
+    });
 
     [
       'data-testid="autopilot-overview-page"',
@@ -513,13 +564,9 @@ describe('autopilot overview manager', () => {
       'data-testid="autopilot-overview-tasks-list"',
       'data-testid="autopilot-overview-documents-list"',
       'data-testid="autopilot-overview-files-list"',
-      'aria-label="View all recent chats"',
-      'aria-label="Open selected chat"',
-    ].forEach((expected) => {
-      expect(html).toContain(expected);
-    });
-
-    [
+      "navSection === 'autopilot'",
+      "navigateTo('autopilot')",
+      '<span class="sidebar-label">Autopilot</span>',
       'data-testid="autopilot-overview-scope-select"',
       'data-testid="autopilot-overview-channel-select"',
       'aria-label="Filter Autopilot Overview by scope"',

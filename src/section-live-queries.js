@@ -18,6 +18,7 @@ import {
   getScopesByOwner,
   getCommentsByTarget,
   getReactionsByTargets,
+  getResponseActivitiesForTarget,
   isWorkspaceDbOpenForKey,
 } from './db.js';
 import { recordFamilyHash } from './translators/chat.js';
@@ -270,40 +271,6 @@ function buildWorkspaceSpecs(store) {
         },
       ];
       break;
-    case 'autopilot':
-      sectionSpecs = [
-        {
-          key: 'autopilot:messages',
-          query: () => getMessagesByOwner(ownerNpub),
-          onNext: (messages) => store.applyFileMessages(messages),
-        },
-        {
-          key: 'autopilot:comments',
-          query: () => getCommentsByOwner(ownerNpub),
-          onNext: (comments) => store.applyFileComments(comments),
-        },
-        {
-          key: 'autopilot:audio-notes',
-          query: () => getAudioNotesByOwner(ownerNpub),
-          onNext: (audioNotes) => store.applyAudioNotes(audioNotes),
-        },
-        {
-          key: 'autopilot:directories',
-          query: () => getDirectoriesByOwner(ownerNpub),
-          onNext: (directories) => store.applyDirectories(directories),
-        },
-        {
-          key: 'autopilot:documents',
-          query: () => getDocumentsByOwner(ownerNpub),
-          onNext: (documents) => store.applyDocuments(documents),
-        },
-        {
-          key: 'autopilot:tasks',
-          query: () => getTasksByOwner(ownerNpub),
-          onNext: (tasks) => store.applyTasks(tasks),
-        },
-      ];
-      break;
     case 'docs':
       sectionSpecs = [
         {
@@ -398,7 +365,8 @@ function buildDetailSpecs(store) {
           },
         ];
       }
-      return [
+      const activeThreadId = String(store?.activeThreadId || '').trim();
+      const specs = [
         {
           key: `chat:messages:${channelId}`,
           query: () => getMessagesByChannel(channelId, {
@@ -426,6 +394,19 @@ function buildDetailSpecs(store) {
           },
         },
       ];
+      if (activeThreadId) {
+        specs.push({
+          key: `chat:response-activities:${activeThreadId}`,
+          query: () => getResponseActivitiesForTarget('chat_thread', activeThreadId),
+          onNext: (activities) => {
+            if (store.workspaceOwnerNpub !== ownerNpub || store.selectedChannelId !== channelId || store.activeThreadId !== activeThreadId) return;
+            return store.applyThreadResponseActivities(activities);
+          },
+        });
+      } else if (typeof store.applyThreadResponseActivities === 'function') {
+        store.applyThreadResponseActivities([]);
+      }
+      return specs;
     }
     case 'tasks': {
       const taskId = String(store?.activeTaskId || '').trim();
