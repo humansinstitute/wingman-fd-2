@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-CPJpuFMR.js"></script>
+  <script type="module" crossorigin src="/assets/index-D3MWXLWw.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-DL1ie0QV.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
@@ -3216,7 +3216,7 @@
                     </button>
                     <div class="thread-response-activity-body">
                       <div class="thread-response-activity-title">
-                        <span x-text="activity.status === 'failed' ? (activity.label || 'Response failed') : ($store.chat.getSenderName(activity.actor_npub) + ' is ' + (activity.label || (activity.status === 'drafting' ? 'writing a reply' : activity.status || 'thinking')).toLowerCase())"></span>
+                        <span x-text="$store.chat.formatResponseActivityTitle(activity)"></span>
                         <span class="thread-response-activity-dots" x-show="activity.status !== 'failed'" aria-hidden="true"><span></span><span></span><span></span></span>
                       </div>
                       <p x-show="activity.message" x-text="activity.message"></p>

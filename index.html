@@ -3214,7 +3214,7 @@
                     </button>
                     <div class="thread-response-activity-body">
                       <div class="thread-response-activity-title">
-                        <span x-text="activity.status === 'failed' ? (activity.label || 'Response failed') : ($store.chat.getSenderName(activity.actor_npub) + ' is ' + (activity.label || (activity.status === 'drafting' ? 'writing a reply' : activity.status || 'thinking')).toLowerCase())"></span>
+                        <span x-text="$store.chat.formatResponseActivityTitle(activity)"></span>
                         <span class="thread-response-activity-dots" x-show="activity.status !== 'failed'" aria-hidden="true"><span></span><span></span><span></span></span>
                       </div>
                       <p x-show="activity.message" x-text="activity.message"></p>

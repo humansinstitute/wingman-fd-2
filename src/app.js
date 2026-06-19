@@ -494,6 +494,8 @@ export function initApp() {
     docCommentBackfillAttemptsByDocId: {},
     pendingChatScrollToLatest: false,
     pendingThreadScrollToLatest: false,
+    responseActivityTick: 0,
+    responseActivityTimer: null,
 
     // data
     channels: [],

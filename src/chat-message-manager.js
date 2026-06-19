@@ -64,6 +64,8 @@ import {
 
 const chatDerivedCache = new WeakMap();
 const THREAD_REPLY_PREVIEW_WORD_LIMIT = 50;
+const RESPONSE_ACTIVITY_WORDS = ['thinking', 'wondering', 'working'];
+const RESPONSE_ACTIVITY_SUFFIXES = ['.', '..', '...', ''];
 
 function audioNoteSignature(audioNotes = []) {
   return (Array.isArray(audioNotes) ? audioNotes : [])
@@ -609,6 +611,34 @@ export const chatMessageManagerMixin = {
   },
   applyThreadResponseActivities(activities = []) {
     this.threadResponseActivities = Array.isArray(activities) ? activities : [];
+    this.updateResponseActivityTimer();
+  },
+  updateResponseActivityTimer() {
+    const hasActiveActivities = this.activeThreadResponseActivities.length > 0;
+    if (!hasActiveActivities) {
+      if (this.responseActivityTimer && typeof window !== 'undefined') {
+        window.clearInterval(this.responseActivityTimer);
+      }
+      this.responseActivityTimer = null;
+      return;
+    }
+    if (this.responseActivityTimer || typeof window === 'undefined') return;
+    this.responseActivityTimer = window.setInterval(() => {
+      this.responseActivityTick = Number(this.responseActivityTick || 0) + 1;
+      if (this.activeThreadResponseActivities.length === 0) this.updateResponseActivityTimer();
+    }, 900);
+  },
+  formatResponseActivityTitle(activity = {}) {
+    if (activity.status === 'failed') return activity.label || 'Response failed';
+    const senderName = this.getSenderName(activity.actor_npub);
+    const label = activity.label || (activity.status === 'drafting' ? 'Writing a reply' : activity.status || 'Thinking');
+    const tick = Number(this.responseActivityTick || 0);
+    const suffix = RESPONSE_ACTIVITY_SUFFIXES[tick % RESPONSE_ACTIVITY_SUFFIXES.length];
+    const shouldAnimateWord = !activity.label || String(activity.label).toLowerCase() === 'thinking';
+    const activityText = shouldAnimateWord
+      ? RESPONSE_ACTIVITY_WORDS[Math.floor(tick / RESPONSE_ACTIVITY_SUFFIXES.length) % RESPONSE_ACTIVITY_WORDS.length]
+      : String(label).toLowerCase();
+    return `${senderName} is ${activityText}${suffix}`;
   },
 
   async refreshMessages(options = {}) {
