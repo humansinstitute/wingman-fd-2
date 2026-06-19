@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-ICI74kmm.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-BgOcoe8T.css">
+  <script type="module" crossorigin src="/assets/index-CPJpuFMR.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-DL1ie0QV.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -3339,75 +3339,71 @@
             </div>
 
             <div class="docs-header" x-show="!$store.chat.docsEditorOpen">
-              <div>
+              <div class="docs-title-block">
                 <h2>Docs</h2>
                 <p class="docs-subtitle" x-text="`${$store.chat.filteredDocBrowserItems.length} of ${$store.chat.currentFolderContents.length}`"></p>
               </div>
-            </div>
 
-            <div class="docs-toolbar" x-show="!$store.chat.docsEditorOpen">
-              <input class="docs-search-input" type="text" :placeholder="$store.chat.isTowerPgMode ? 'Search docs' : 'Search docs and folders'" x-model="$store.chat.docFilter" />
-              <button
-                type="button"
-                class="btn-add-folder"
-                :class="{ 'doc-toolbar-btn-active': $store.chat.docSelectionMode }"
-                @click="$store.chat.toggleDocSelectionMode()"
-                :title="$store.chat.docSelectionMode ? 'Exit select mode' : 'Select documents'"
-                :aria-label="$store.chat.docSelectionMode ? 'Exit select mode' : 'Select documents'"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M9 11l3 3L22 4"></path>
-                  <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
-                </svg>
-              </button>
-              <button
-                type="button"
-                class="btn-add-folder"
-                x-show="$store.chat.currentFolder"
-                @click="$store.chat.openDocShareModal('current-folder')"
-                title="Folder sharing"
-                aria-label="Folder sharing"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="18" cy="5" r="3"></circle>
-                  <circle cx="6" cy="12" r="3"></circle>
-                  <circle cx="18" cy="19" r="3"></circle>
-                  <path d="M8.6 13.5l6.8 4"></path>
-                  <path d="M15.4 6.5l-6.8 4"></path>
-                </svg>
-              </button>
-              <button type="button" class="btn-add-folder" x-show="!$store.chat.isTowerPgMode" @click="$store.chat.openNewDocModal('folder')" title="New folder" aria-label="New folder">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-                  <path d="M12 11v6"></path>
-                  <path d="M9 14h6"></path>
-                </svg>
-              </button>
-              <button type="button" class="btn-add-doc" @click="$store.chat.openNewDocModal('doc')" title="New document" aria-label="New document">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path>
-                  <path d="M14 3v5h5"></path>
-                  <path d="M12 11v6"></path>
-                  <path d="M9 14h6"></path>
-                </svg>
-              </button>
-              <div class="doc-actions-menu" x-show="$store.chat.currentFolder && !$store.chat.isTowerPgMode" x-data="{ open: false }" @click.outside="open = false">
-                <button type="button" class="doc-actions-toggle" title="More actions" aria-label="More actions" @click="open = !open">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
-                    <circle cx="12" cy="5" r="1.8"></circle>
-                    <circle cx="12" cy="12" r="1.8"></circle>
-                    <circle cx="12" cy="19" r="1.8"></circle>
+              <div class="docs-toolbar">
+                <input class="docs-search-input" type="text" :placeholder="$store.chat.isTowerPgMode ? 'Search docs' : 'Search docs and folders'" x-model="$store.chat.docFilter" />
+                <button
+                  type="button"
+                  class="btn-add-folder"
+                  :class="{ 'doc-toolbar-btn-active': $store.chat.docSelectionMode }"
+                  @click="$store.chat.toggleDocSelectionMode()"
+                  :title="$store.chat.docSelectionMode ? 'Exit select mode' : 'Select documents'"
+                  :aria-label="$store.chat.docSelectionMode ? 'Exit select mode' : 'Select documents'"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M9 11l3 3L22 4"></path>
+                    <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
                   </svg>
                 </button>
-                <div class="doc-actions-popover" x-show="open" x-cloak x-transition>
-                  <button type="button" @click="$store.chat.openDocScopeModal('current-folder'); open = false">Scope</button>
-	                  <button
-	                    type="button"
-	                    x-show="!$store.chat.isTowerPgMode"
-	                    @click="$store.chat.openRecordStatusModal({ familyId: 'directory', recordId: $store.chat.currentFolder.record_id, label: $store.chat.currentFolder.title || 'Folder' }); open = false"
-	                  >Check status</button>
-                  <button type="button" class="doc-actions-delete" @click="$store.chat.deleteCurrentDirectory(); open = false">Delete folder</button>
+                <button
+                  type="button"
+                  class="btn-add-folder"
+                  x-show="$store.chat.currentFolder"
+                  @click="$store.chat.openDocShareModal('current-folder')"
+                  title="Folder sharing"
+                  aria-label="Folder sharing"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="18" cy="5" r="3"></circle>
+                    <circle cx="6" cy="12" r="3"></circle>
+                    <circle cx="18" cy="19" r="3"></circle>
+                    <path d="M8.6 13.5l6.8 4"></path>
+                    <path d="M15.4 6.5l-6.8 4"></path>
+                  </svg>
+                </button>
+                <button type="button" class="btn-add-folder" x-show="!$store.chat.isTowerPgMode" @click="$store.chat.openNewDocModal('folder')" title="New folder" aria-label="New folder">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                    <path d="M12 11v6"></path>
+                    <path d="M9 14h6"></path>
+                  </svg>
+                </button>
+                <div class="doc-actions-menu" x-show="$store.chat.currentFolder && !$store.chat.isTowerPgMode" x-data="{ open: false }" @click.outside="open = false">
+                  <button type="button" class="doc-actions-toggle" title="More actions" aria-label="More actions" @click="open = !open">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                      <circle cx="12" cy="5" r="1.8"></circle>
+                      <circle cx="12" cy="12" r="1.8"></circle>
+                      <circle cx="12" cy="19" r="1.8"></circle>
+                    </svg>
+                  </button>
+                  <div class="doc-actions-popover" x-show="open" x-cloak x-transition>
+                    <button type="button" @click="$store.chat.openDocScopeModal('current-folder'); open = false">Scope</button>
+	                    <button
+	                      type="button"
+	                      x-show="!$store.chat.isTowerPgMode"
+	                      @click="$store.chat.openRecordStatusModal({ familyId: 'directory', recordId: $store.chat.currentFolder.record_id, label: $store.chat.currentFolder.title || 'Folder' }); open = false"
+	                    >Check status</button>
+                    <button type="button" class="doc-actions-delete" @click="$store.chat.deleteCurrentDirectory(); open = false">Delete folder</button>
+                  </div>
                 </div>
+                <button type="button" class="docs-new-doc-btn" @click="$store.chat.openNewDocModal('doc')" title="New document" aria-label="New document">
+                  <span aria-hidden="true">+</span>
+                  <span>Doc</span>
+                </button>
               </div>
             </div>
 

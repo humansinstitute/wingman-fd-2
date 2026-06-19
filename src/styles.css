@@ -1411,9 +1411,15 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 0.85rem;
   padding: 1.25rem 1.5rem 0.75rem;
   border-bottom: 1px solid var(--border);
   background: #ffffff;
+}
+
+.docs-title-block {
+  flex: 0 0 auto;
+  min-width: 4.75rem;
 }
 
 .files-header h2,
@@ -1430,7 +1436,8 @@ button:disabled {
   font-size: 0.82rem;
 }
 
-.files-upload-open-btn {
+.files-upload-open-btn,
+.docs-new-doc-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1446,11 +1453,13 @@ button:disabled {
   cursor: pointer;
 }
 
-.files-upload-open-btn:hover {
+.files-upload-open-btn:hover,
+.docs-new-doc-btn:hover {
   background: #1d4ed8;
 }
 
-.files-upload-open-btn span[aria-hidden="true"] {
+.files-upload-open-btn span[aria-hidden="true"],
+.docs-new-doc-btn span[aria-hidden="true"] {
   font-size: 1.05rem;
   line-height: 1;
 }
@@ -1901,11 +1910,19 @@ button:disabled {
   .files-header,
   .docs-header,
   .files-toolbar,
-  .docs-toolbar,
   .files-upload-panel,
   .files-list {
     padding-left: 1rem;
     padding-right: 1rem;
+  }
+
+  .docs-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .docs-toolbar {
+    flex-basis: 100%;
   }
 
   .files-toolbar {
@@ -6377,17 +6394,18 @@ button:disabled {
 
 .docs-toolbar {
   display: flex;
-  flex-wrap: wrap;
+  flex: 1 1 28rem;
+  flex-wrap: nowrap;
   gap: 0.5rem;
-  padding: 0.9rem 1.5rem;
-  border-bottom: 1px solid var(--border);
-  background: #ffffff;
+  min-width: 0;
   align-items: center;
+  justify-content: flex-end;
   margin-bottom: 0;
 }
 
 .docs-search-input {
-  flex: 1;
+  flex: 1 1 18rem;
+  min-width: 10rem;
   padding: 0.55rem 0.75rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
