@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-CyD6DcyR.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-CetAImG2.css">
+  <script type="module" crossorigin src="/assets/index-ICI74kmm.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-BgOcoe8T.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -3335,6 +3335,13 @@
                     <span class="chat-thread-latest-preview" x-text="thread.latestPreview"></span>
                   </button>
                 </template>
+              </div>
+            </div>
+
+            <div class="docs-header" x-show="!$store.chat.docsEditorOpen">
+              <div>
+                <h2>Docs</h2>
+                <p class="docs-subtitle" x-text="`${$store.chat.filteredDocBrowserItems.length} of ${$store.chat.currentFolderContents.length}`"></p>
               </div>
             </div>
 

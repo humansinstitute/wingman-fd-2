@@ -3336,6 +3336,13 @@
               </div>
             </div>
 
+            <div class="docs-header" x-show="!$store.chat.docsEditorOpen">
+              <div>
+                <h2>Docs</h2>
+                <p class="docs-subtitle" x-text="`${$store.chat.filteredDocBrowserItems.length} of ${$store.chat.currentFolderContents.length}`"></p>
+              </div>
+            </div>
+
             <div class="docs-toolbar" x-show="!$store.chat.docsEditorOpen">
               <input class="docs-search-input" type="text" :placeholder="$store.chat.isTowerPgMode ? 'Search docs' : 'Search docs and folders'" x-model="$store.chat.docFilter" />
               <button

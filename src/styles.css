@@ -1406,7 +1406,8 @@ button:disabled {
   overflow: hidden;
 }
 
-.files-header {
+.files-header,
+.docs-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1415,13 +1416,15 @@ button:disabled {
   background: #ffffff;
 }
 
-.files-header h2 {
+.files-header h2,
+.docs-header h2 {
   margin: 0;
   font-size: 1.25rem;
   color: var(--text);
 }
 
-.files-subtitle {
+.files-subtitle,
+.docs-subtitle {
   margin: 0.2rem 0 0;
   color: var(--muted);
   font-size: 0.82rem;
@@ -1896,7 +1899,9 @@ button:disabled {
 
 @media (max-width: 640px) {
   .files-header,
+  .docs-header,
   .files-toolbar,
+  .docs-toolbar,
   .files-upload-panel,
   .files-list {
     padding-left: 1rem;
@@ -6374,11 +6379,11 @@ button:disabled {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  padding: 0 0.9rem 0 0;
-  border: none;
-  background: transparent;
+  padding: 0.9rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  background: #ffffff;
   align-items: center;
-  margin-bottom: 1rem;
+  margin-bottom: 0;
 }
 
 .docs-search-input {
