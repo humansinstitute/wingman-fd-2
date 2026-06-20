@@ -2961,6 +2961,12 @@
                         </div>
                       </div>
                     </div>
+                    <template x-for="activity in $store.chat.getResponseActivitiesForThread(msg.record_id)" :key="activity.record_id">
+                      <div class="chat-post-response-activity" :class="{ 'chat-post-response-activity-error': activity.severity === 'error' || activity.status === 'failed' }" aria-live="polite" @click.stop="$store.chat.openThread(msg.record_id)">
+                        <span class="chat-post-response-activity-title" x-text="$store.chat.formatResponseActivityTitle(activity)"></span>
+                        <span class="thread-response-activity-dots" x-show="activity.status !== 'failed'" aria-hidden="true"><span></span><span></span><span></span></span>
+                      </div>
+                    </template>
                     <template x-if="$store.chat.getThreadReplyCount(msg.record_id) > 0">
                       <div class="chat-thread-summary" @click="$store.chat.openThread(msg.record_id)">
                         <div class="chat-thread-preview">

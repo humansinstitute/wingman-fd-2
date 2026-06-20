@@ -1289,6 +1289,16 @@ export async function getResponseActivitiesForTarget(targetType, targetId) {
     .sort((a, b) => String(a.updated_at || '').localeCompare(String(b.updated_at || '')));
 }
 
+export async function getResponseActivitiesForChannel(channelId) {
+  const id = String(channelId || '').trim();
+  if (!id) return [];
+  const nowMs = Date.now();
+  const rows = await wsDb().response_activities.where('channel_id').equals(id).toArray();
+  return rows
+    .filter((row) => row.target_type === 'chat_thread' && isActiveResponseActivity(row, nowMs))
+    .sort((a, b) => String(a.updated_at || '').localeCompare(String(b.updated_at || '')));
+}
+
 export async function pruneExpiredResponseActivities(now = new Date()) {
   const nowIso = now.toISOString();
   return wsDb().response_activities.where('expires_at').belowOrEqual(nowIso).delete();

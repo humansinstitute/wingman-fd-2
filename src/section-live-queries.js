@@ -18,6 +18,7 @@ import {
   getScopesByOwner,
   getCommentsByTarget,
   getReactionsByTargets,
+  getResponseActivitiesForChannel,
   getResponseActivitiesForTarget,
   isWorkspaceDbOpenForKey,
 } from './db.js';
@@ -391,6 +392,14 @@ function buildDetailSpecs(store) {
           onNext: (reactions) => {
             if (store.workspaceOwnerNpub !== ownerNpub || store.selectedChannelId !== channelId) return;
             return store.applyReactions(reactions);
+          },
+        },
+        {
+          key: `chat:channel-response-activities:${channelId}`,
+          query: () => getResponseActivitiesForChannel(channelId),
+          onNext: (activities) => {
+            if (store.workspaceOwnerNpub !== ownerNpub || store.selectedChannelId !== channelId) return;
+            return store.applyChannelResponseActivities?.(activities);
           },
         },
       ];

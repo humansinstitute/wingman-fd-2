@@ -67,6 +67,17 @@ const THREAD_REPLY_PREVIEW_WORD_LIMIT = 50;
 const RESPONSE_ACTIVITY_WORDS = ['thinking', 'wondering', 'working'];
 const RESPONSE_ACTIVITY_SUFFIXES = ['.', '..', '...', ''];
 
+function isVisibleResponseActivity(activity = {}, nowMs = Date.now()) {
+  if (!activity?.record_id) return false;
+  if (String(activity.status || '') === 'cleared' || activity.cleared_at) return false;
+  const expiresAt = Date.parse(activity.expires_at || '');
+  return !Number.isFinite(expiresAt) || expiresAt > nowMs;
+}
+
+function sortResponseActivities(activities = []) {
+  return [...activities].sort((left, right) => String(left.updated_at || '').localeCompare(String(right.updated_at || '')));
+}
+
 function audioNoteSignature(audioNotes = []) {
   return (Array.isArray(audioNotes) ? audioNotes : [])
     .map((note) => [
@@ -306,12 +317,7 @@ export const chatMessageManagerMixin = {
   get activeThreadResponseActivities() {
     const now = Date.now();
     return (Array.isArray(this.threadResponseActivities) ? this.threadResponseActivities : [])
-      .filter((activity) => {
-        if (!activity?.record_id) return false;
-        if (String(activity.status || '') === 'cleared' || activity.cleared_at) return false;
-        const expiresAt = Date.parse(activity.expires_at || '');
-        return !Number.isFinite(expiresAt) || expiresAt > now;
-      })
+      .filter((activity) => isVisibleResponseActivity(activity, now))
       .sort((left, right) => String(left.updated_at || '').localeCompare(String(right.updated_at || '')));
   },
 
@@ -613,8 +619,13 @@ export const chatMessageManagerMixin = {
     this.threadResponseActivities = Array.isArray(activities) ? activities : [];
     this.updateResponseActivityTimer();
   },
+  applyChannelResponseActivities(activities = []) {
+    this.channelResponseActivities = Array.isArray(activities) ? activities : [];
+    this.updateResponseActivityTimer();
+  },
   updateResponseActivityTimer() {
-    const hasActiveActivities = this.activeThreadResponseActivities.length > 0;
+    const hasActiveActivities = this.activeThreadResponseActivities.length > 0
+      || this.getVisibleChannelResponseActivities().length > 0;
     if (!hasActiveActivities) {
       if (this.responseActivityTimer && typeof window !== 'undefined') {
         window.clearInterval(this.responseActivityTimer);
@@ -625,8 +636,22 @@ export const chatMessageManagerMixin = {
     if (this.responseActivityTimer || typeof window === 'undefined') return;
     this.responseActivityTimer = window.setInterval(() => {
       this.responseActivityTick = Number(this.responseActivityTick || 0) + 1;
-      if (this.activeThreadResponseActivities.length === 0) this.updateResponseActivityTimer();
+      if (this.activeThreadResponseActivities.length === 0 && this.getVisibleChannelResponseActivities().length === 0) {
+        this.updateResponseActivityTimer();
+      }
     }, 900);
+  },
+  getVisibleChannelResponseActivities() {
+    const now = Date.now();
+    return sortResponseActivities((Array.isArray(this.channelResponseActivities) ? this.channelResponseActivities : [])
+      .filter((activity) => isVisibleResponseActivity(activity, now)));
+  },
+  getResponseActivitiesForThread(threadId) {
+    const id = String(threadId || '').trim();
+    if (!id) return [];
+    void this.responseActivityTick;
+    return this.getVisibleChannelResponseActivities()
+      .filter((activity) => activity.target_type === 'chat_thread' && activity.target_id === id);
   },
   formatResponseActivityTitle(activity = {}) {
     if (activity.status === 'failed') return activity.label || 'Response failed';

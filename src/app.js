@@ -504,6 +504,7 @@ export function initApp() {
     selectedChannelId: null,
     messages: [],
     reactionRows: [],
+    channelResponseActivities: [],
     threadResponseActivities: [],
     reactionPickerTargetKey: '',
     audioNotes: [],
