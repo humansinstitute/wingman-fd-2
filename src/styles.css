@@ -5577,6 +5577,7 @@ button:disabled {
 
 .chat-post-markdown table,
 .thread-msg-text .chat-post-markdown table,
+.doc-block-rendered table,
 .doc-thread-entry-body table,
 .task-comment-body table {
   display: block;
@@ -5592,6 +5593,8 @@ button:disabled {
 .chat-post-markdown td,
 .thread-msg-text .chat-post-markdown th,
 .thread-msg-text .chat-post-markdown td,
+.doc-block-rendered th,
+.doc-block-rendered td,
 .doc-thread-entry-body th,
 .doc-thread-entry-body td,
 .task-comment-body th,
@@ -5604,6 +5607,7 @@ button:disabled {
 
 .chat-post-markdown th,
 .thread-msg-text .chat-post-markdown th,
+.doc-block-rendered th,
 .doc-thread-entry-body th,
 .task-comment-body th {
   background: #f8fafc;
