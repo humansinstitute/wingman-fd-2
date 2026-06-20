@@ -367,6 +367,8 @@ export function mapPgMessageToLocal(message, {
   const thread = threadId ? threadById.get(threadId) || null : null;
   const sourceMessageId = trimText(thread?.source_message_id || message?.thread_source_message_id || message?.source_message_id);
   const updatedAt = isoTimestamp(message?.updated_at || message?.created_at);
+  const isThreadSourceMessage = Boolean(threadId && sourceMessageId && sourceMessageId === recordId);
+  const threadRecordState = trimText(thread?.record_state) || (thread?.archived_at ? 'archived' : '');
   return {
     record_id: recordId,
     channel_id: trimText(message?.channel_id),
@@ -376,7 +378,7 @@ export function mapPgMessageToLocal(message, {
     sender_npub: resolveSenderNpub(message, actorNpubByActorId)
       || trimText(senderNpub),
     sync_status: 'synced',
-    record_state: 'active',
+    record_state: isThreadSourceMessage && threadRecordState ? threadRecordState : 'active',
     version: rowVersion(message?.row_version || message?.version),
     created_at: isoTimestamp(message?.created_at || updatedAt),
     updated_at: updatedAt,
@@ -385,6 +387,7 @@ export function mapPgMessageToLocal(message, {
     pg_workspace_id: trimText(message?.workspace_id),
     pg_scope_id: trimText(message?.scope_id),
     pg_thread_id: threadId || null,
+    pg_archived_at: isThreadSourceMessage ? (trimText(thread?.archived_at) || null) : null,
     pg_created_by_actor_id: trimText(message?.created_by_actor_id),
     pg_updated_by_actor_id: trimText(message?.updated_by_actor_id),
   };

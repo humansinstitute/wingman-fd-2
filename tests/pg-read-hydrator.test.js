@@ -220,6 +220,53 @@ describe('PG read hydrator', () => {
     });
   });
 
+  it('maps archived PG thread state onto the source message only', () => {
+    const threadById = new Map([
+      ['thread-1', {
+        id: 'thread-1',
+        source_message_id: 'message-1',
+        record_state: 'archived',
+        archived_at: '2026-06-20T05:00:00.000Z',
+      }],
+    ]);
+
+    expect(mapPgMessageToLocal({
+      id: 'message-1',
+      workspace_id: 'workspace-1',
+      scope_id: 'scope-1',
+      channel_id: 'channel-1',
+      thread_id: 'thread-1',
+      body: 'Thread one',
+    }, {
+      workspaceOwnerNpub: 'npub1owner',
+      senderNpub: 'npub1pete',
+      threadById,
+    })).toMatchObject({
+      record_id: 'message-1',
+      parent_message_id: null,
+      record_state: 'archived',
+      pg_archived_at: '2026-06-20T05:00:00.000Z',
+    });
+
+    expect(mapPgMessageToLocal({
+      id: 'message-2',
+      workspace_id: 'workspace-1',
+      scope_id: 'scope-1',
+      channel_id: 'channel-1',
+      thread_id: 'thread-1',
+      body: 'Reply one',
+    }, {
+      workspaceOwnerNpub: 'npub1owner',
+      senderNpub: 'npub1pete',
+      threadById,
+    })).toMatchObject({
+      record_id: 'message-2',
+      parent_message_id: 'message-1',
+      record_state: 'active',
+      pg_archived_at: null,
+    });
+  });
+
   it('maps PG messages using metadata sender override', () => {
     expect(mapPgMessageToLocal({
       id: 'message-3',
@@ -497,7 +544,14 @@ describe('PG read hydrator', () => {
       channels: [{ id: 'channel-1', scope_id: 'scope-1', name: 'Flight Deck PG' }],
     }));
     const getTowerPgChannelThreads = vi.fn(async () => ({
-      threads: [{ id: 'thread-1', channel_id: 'channel-1', source_message_id: 'message-1', title: 'Thread one' }],
+      threads: [{
+        id: 'thread-1',
+        channel_id: 'channel-1',
+        source_message_id: 'message-1',
+        title: 'Thread one',
+        record_state: 'archived',
+        archived_at: '2026-06-20T05:00:00.000Z',
+      }],
     }));
     const getTowerPgChannelMessages = vi.fn(async () => ({
       messages: [
@@ -532,12 +586,15 @@ describe('PG read hydrator', () => {
         record_id: 'message-1',
         body: 'Thread one',
         parent_message_id: null,
+        record_state: 'archived',
+        pg_archived_at: '2026-06-20T05:00:00.000Z',
         pg_record_type: 'message',
       }),
       expect.objectContaining({
         record_id: 'message-2',
         body: 'Reply one',
         parent_message_id: 'message-1',
+        record_state: 'active',
         pg_record_type: 'message',
       }),
     ]);
