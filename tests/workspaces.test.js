@@ -96,6 +96,7 @@ describe('workspace entry normalization', () => {
       name: 'Other Stuff',
       description: 'Main workspace',
       avatarUrl: 'storage://avatar-1',
+      dashboardGreetingTemplate: 'Remember $user.name,\\nYou can just do things?',
       directHttpsUrl: 'https://sb.example',
       serviceNpub: 'npub1service',
       appNpub: 'npub1app',
@@ -114,7 +115,20 @@ describe('workspace entry normalization', () => {
       name: 'Other Stuff',
       description: 'Main workspace',
       avatarUrl: 'storage://avatar-1',
+      dashboardGreetingTemplate: 'Remember $user.name,\\nYou can just do things?',
       directHttpsUrl: 'https://tower.example',
+    });
+  });
+
+  it('accepts dashboard greeting templates from snake_case payloads', () => {
+    const workspace = normalizeWorkspaceEntry({
+      workspace_owner_npub: 'npub1workspace',
+      workspace_name: 'Other Stuff',
+      dashboard_greeting_template: 'Welcome $user.name,\\nwhere next?',
+    });
+
+    expect(workspace).toMatchObject({
+      dashboardGreetingTemplate: 'Welcome $user.name,\\nwhere next?',
     });
   });
 

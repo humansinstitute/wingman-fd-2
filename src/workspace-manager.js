@@ -320,6 +320,7 @@ export const workspaceManagerMixin = {
       name: String(known?.name || '').trim() || String(profile?.name || '').trim(),
       description: String(known?.description || '').trim() || String(profile?.description || '').trim(),
       avatarUrl: String(known?.avatarUrl || '').trim() || String(profile?.avatarUrl || '').trim() || null,
+      dashboardGreetingTemplate: String(known?.dashboardGreetingTemplate || '').trim() || String(profile?.dashboardGreetingTemplate || '').trim(),
       slug: String(known?.slug || '').trim() || String(profile?.slug || '').trim() || '',
     };
   },
@@ -480,6 +481,7 @@ export const workspaceManagerMixin = {
     this.workspaceProfileNameInput = String(workspace?.name || '').trim();
     this.workspaceProfileSlugInput = String(workspace?.slug || '').trim() || slugify(workspace?.name);
     this.workspaceProfileDescriptionInput = String(workspace?.description || '').trim();
+    this.workspaceProfileDashboardGreetingTemplateInput = String(workspace?.dashboardGreetingTemplate || '').trim();
     this.workspaceProfileAvatarInput = storedAvatar;
     this.workspaceAdvancedOptionsEnabled = this.loadWorkspaceAdvancedOptionsPreference(workspace);
     this.setWorkspaceAvatarPreview(storedObjectId ? '' : (this.getWorkspaceAvatar(workspace) || ''));
@@ -505,6 +507,7 @@ export const workspaceManagerMixin = {
     if (field === 'name') this.workspaceProfileNameInput = value;
     if (field === 'slug') this.workspaceProfileSlugInput = slugify(value);
     if (field === 'description') this.workspaceProfileDescriptionInput = value;
+    if (field === 'dashboardGreetingTemplate') this.workspaceProfileDashboardGreetingTemplateInput = value;
     this.markWorkspaceProfileDirty();
   },
 
@@ -740,6 +743,7 @@ export const workspaceManagerMixin = {
       }
       const workspaceOwnerNpub = workspace.workspaceOwnerNpub;
       const description = String(this.workspaceProfileDescriptionInput || '').trim();
+      const dashboardGreetingTemplate = String(this.workspaceProfileDashboardGreetingTemplateInput || '').trim();
       const newSlug = String(this.workspaceProfileSlugInput || '').trim() || slugify(name);
       const currentSlug = String(workspace.slug || '').trim() || slugify(workspace.name);
       if (
@@ -774,6 +778,7 @@ export const workspaceManagerMixin = {
           name: response?.name ?? name,
           description: response?.description ?? description,
           avatarUrl: response?.avatar_url ?? avatarUrl,
+          dashboardGreetingTemplate,
           slug: savedSlug,
         },
       };
@@ -783,6 +788,7 @@ export const workspaceManagerMixin = {
         name: response?.name ?? name,
         description: response?.description ?? description,
         avatarUrl: response?.avatar_url ?? avatarUrl,
+        dashboardGreetingTemplate,
         slug: savedSlug,
       }]);
       await this.persistWorkspaceSettings();

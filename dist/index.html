@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-iOpcnB0D.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-BCH-seKJ.css">
+  <script type="module" crossorigin src="/assets/index-BObuZ3J5.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-CiMz7lCb.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -1147,7 +1147,7 @@
           <section class="flightdeck-summary-overview" data-testid="flightdeck-summary-overview">
             <div class="flightdeck-summary-header">
               <div>
-                <h2>Welcome <span x-text="$store.chat.greetingName"></span>, where will we focus today?</h2>
+                <h2 x-text="$store.chat.dashboardGreetingText"></h2>
                 <p x-text="$store.chat.autopilotOverviewContextLabel"></p>
               </div>
               <div class="home-launcher-cluster" aria-label="Personal launchers">
@@ -5363,6 +5363,15 @@
               rows="3"
               placeholder="What this workspace is for"
             ></textarea>
+            <label class="settings-field-label" for="workspace-dashboard-greeting-input">Flight Deck greeting</label>
+            <textarea
+              id="workspace-dashboard-greeting-input"
+              x-model="$store.chat.workspaceProfileDashboardGreetingTemplateInput"
+              @input="$store.chat.handleWorkspaceProfileField('dashboardGreetingTemplate', $event.target.value)"
+              rows="2"
+              placeholder="Welcome $user.name,\nwhere will we focus today?"
+            ></textarea>
+            <p class="settings-field-help">Use <code>$user.name</code> for the signed-in Nostr name. New lines and <code>\n</code> are shown as line breaks.</p>
             <label class="settings-field-label settings-checkbox-row" for="workspace-advanced-options-input">
               <input
                 id="workspace-advanced-options-input"

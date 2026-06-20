@@ -915,6 +915,7 @@ export function initApp() {
     workspaceProfileNameInput: '',
     workspaceProfileSlugInput: '',
     workspaceProfileDescriptionInput: '',
+    workspaceProfileDashboardGreetingTemplateInput: '',
     workspaceProfileAvatarInput: '',
     workspaceProfileAvatarPreviewUrl: '',
     workspaceProfilePendingAvatarFile: null,
@@ -1054,6 +1055,16 @@ export function initApp() {
     get greetingName() {
       if (!this.session?.npub) return 'there';
       return this.getSenderName(this.session.npub) || getShortNpub(this.session.npub) || 'there';
+    },
+
+    get dashboardGreetingText() {
+      const template = String(
+        this.currentWorkspace?.dashboardGreetingTemplate
+        || 'Welcome $user.name,\\nwhere will we focus today?'
+      );
+      return template
+        .replace(/\\n/g, '\n')
+        .replace(/\$user\.name/g, this.greetingName);
     },
 
     get scopedReports() {

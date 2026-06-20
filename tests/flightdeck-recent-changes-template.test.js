@@ -13,7 +13,7 @@ describe('flight deck summary template', () => {
     const summaryIndex = html.indexOf('data-testid="flightdeck-summary-overview"', statusIndex);
 
     expect(summaryIndex).toBeGreaterThan(statusIndex);
-    expect(html).toContain('Welcome <span x-text="$store.chat.greetingName"></span>, where will we focus today?');
+    expect(html).toContain('<h2 x-text="$store.chat.dashboardGreetingText"></h2>');
     expect(html).toContain('x-text="$store.chat.autopilotOverviewContextLabel"');
     expect(html).toContain('class="launcher-stack-panel my-agents-panel agents-stack-panel"');
     expect(html).toContain('aria-label="My WApps"');
@@ -71,6 +71,7 @@ describe('flight deck summary template', () => {
     expect(html).not.toContain('<h3>Threads</h3>');
     expect(html).not.toContain('<h3>Docs and Comments</h3>');
     expect(styles).toMatch(/summary-panel-collapsed[\s\S]*min-height:\s*0;/);
+    expect(styles).toMatch(/flightdeck-summary-header h2[\s\S]*white-space:\s*pre-line;/);
   });
 
   it('configures Autopilot as an agent plus URL instead of a bare launcher button', () => {

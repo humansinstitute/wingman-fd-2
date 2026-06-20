@@ -32,6 +32,7 @@ function bindMethod(methodName, storeOverrides = {}) {
     workspaceProfileNameInput: '',
     workspaceProfileSlugInput: '',
     workspaceProfileDescriptionInput: '',
+    workspaceProfileDashboardGreetingTemplateInput: '',
     workspaceProfileAvatarInput: '',
     showWorkspaceSwitcherMenu: false,
     showWorkspaceBootstrapModal: false,
@@ -479,6 +480,17 @@ describe('workspace profile editing', () => {
     expect(store.workspaceProfileDirty).toBe(true);
   });
 
+  it('handleWorkspaceProfileField updates dashboard greeting template', () => {
+    const { fn, store } = bindMethod('handleWorkspaceProfileField', {
+      workspaceProfileDashboardGreetingTemplateInput: '',
+      workspaceProfileDirty: false,
+      workspaceProfileError: null,
+    });
+    fn('dashboardGreetingTemplate', 'Remember $user.name,\\nYou can just do things?');
+    expect(store.workspaceProfileDashboardGreetingTemplateInput).toBe('Remember $user.name,\\nYou can just do things?');
+    expect(store.workspaceProfileDirty).toBe(true);
+  });
+
   it('clearWorkspaceAvatarDraft clears avatar state', () => {
     const { fn, store } = bindMethod('clearWorkspaceAvatarDraft', {
       workspaceProfilePendingAvatarFile: { name: 'file.png' },
@@ -534,6 +546,7 @@ describe('workspace profile editing', () => {
         workspaceProfileNameInput: 'Renamed Workspace',
         workspaceProfileSlugInput: 'renamed-workspace',
         workspaceProfileDescriptionInput: 'Updated description',
+        workspaceProfileDashboardGreetingTemplateInput: 'Remember $user.name,\\nYou can just do things?',
         workspaceProfileAvatarInput: 'storage://workspace-avatar-1',
         persistWorkspaceSettings,
         syncWorkspaceProfileDraft,
@@ -551,11 +564,13 @@ describe('workspace profile editing', () => {
       expect(store.workspaceProfileRowsByKey['workspace:npub1ws']).toMatchObject({
         slug: 'canonical-server-slug',
         name: 'Renamed Workspace',
+        dashboardGreetingTemplate: 'Remember $user.name,\\nYou can just do things?',
       });
       expect(mergeKnownWorkspaces).toHaveBeenCalledWith([
         expect.objectContaining({
           slug: 'canonical-server-slug',
           workspaceOwnerNpub: 'npub1ws',
+          dashboardGreetingTemplate: 'Remember $user.name,\\nYou can just do things?',
         }),
       ]);
       expect(persistWorkspaceSettings).toHaveBeenCalledTimes(1);
@@ -600,6 +615,7 @@ describe('workspace profile editing', () => {
         workspaceProfileNameInput: 'Testing Space',
         workspaceProfileSlugInput: 'testing-space',
         workspaceProfileDescriptionInput: 'PG profile',
+        workspaceProfileDashboardGreetingTemplateInput: 'Welcome $user.name,\\nwhere next?',
         workspaceProfileAvatarInput: '',
         persistWorkspaceSettings,
         syncWorkspaceProfileDraft,
@@ -618,6 +634,11 @@ describe('workspace profile editing', () => {
         appNpub: 'flightdeck_pg',
       });
       expect(updateWorkspaceSpy).not.toHaveBeenCalled();
+      expect(mergeKnownWorkspaces).toHaveBeenCalledWith([
+        expect.objectContaining({
+          dashboardGreetingTemplate: 'Welcome $user.name,\\nwhere next?',
+        }),
+      ]);
       expect(persistWorkspaceSettings).toHaveBeenCalledTimes(1);
       expect(syncWorkspaceProfileDraft).toHaveBeenCalledWith({ force: true });
     } finally {

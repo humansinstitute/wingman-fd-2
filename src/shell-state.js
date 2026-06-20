@@ -167,6 +167,7 @@ export const SHELL_STATE_KEYS = Object.freeze([
   'workspaceProfileNameInput',
   'workspaceProfileSlugInput',
   'workspaceProfileDescriptionInput',
+  'workspaceProfileDashboardGreetingTemplateInput',
   'workspaceProfileAvatarInput',
   'workspaceProfileAvatarPreviewUrl',
   'workspaceProfilePendingAvatarFile',
@@ -348,6 +349,7 @@ export function createShellState(options = {}) {
     workspaceProfileNameInput: '',
     workspaceProfileSlugInput: '',
     workspaceProfileDescriptionInput: '',
+    workspaceProfileDashboardGreetingTemplateInput: '',
     workspaceProfileAvatarInput: '',
     workspaceProfileAvatarPreviewUrl: '',
     workspaceProfilePendingAvatarFile: null,
@@ -1025,6 +1027,7 @@ export function createShellState(options = {}) {
       this.workspaceProfileNameInput = '';
       this.workspaceProfileSlugInput = '';
       this.workspaceProfileDescriptionInput = '';
+      this.workspaceProfileDashboardGreetingTemplateInput = '';
       this.workspaceProfileAvatarInput = '';
       this.workspaceProfileAvatarPreviewUrl = '';
       this.workspaceProfilePendingAvatarFile = null;

@@ -2615,6 +2615,7 @@ button:disabled {
   font-size: 2.35rem;
   line-height: 1.15;
   text-wrap: balance;
+  white-space: pre-line;
 }
 
 .flightdeck-summary-header p {
