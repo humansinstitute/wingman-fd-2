@@ -342,7 +342,7 @@ export function mapPgThreadToLocal(thread, {
     sender_npub: resolveSenderNpub(thread, actorNpubByActorId)
       || trimText(senderNpub),
     sync_status: 'synced',
-    record_state: 'active',
+    record_state: trimText(thread?.record_state) || (thread?.archived_at ? 'archived' : 'active'),
     version: rowVersion(thread?.row_version || thread?.version),
     created_at: isoTimestamp(thread?.created_at || updatedAt),
     updated_at: updatedAt,
@@ -351,6 +351,8 @@ export function mapPgThreadToLocal(thread, {
     pg_workspace_id: trimText(thread?.workspace_id),
     pg_scope_id: trimText(thread?.scope_id),
     pg_source_message_id: trimText(thread?.source_message_id) || null,
+    pg_thread_id: recordId || null,
+    pg_archived_at: trimText(thread?.archived_at) || null,
   };
 }
 
@@ -920,6 +922,7 @@ export async function hydrateTowerPgChannels(store, deps = {}) {
     const result = await readThreads(context.workspaceId, channel.record_id, {
       baseUrl: context.baseUrl,
       appNpub: context.appNpub,
+      includeArchived: true,
     });
     const rawThreads = Array.isArray(result?.threads) ? result.threads : [];
     const threadById = new Map(rawThreads.map((thread) => [trimText(thread?.id), thread]).filter(([id]) => id));
@@ -978,6 +981,7 @@ export async function hydrateTowerPgChannelMessages(store, channelId, deps = {})
   const result = await readThreads(context.workspaceId, targetChannelId, {
     baseUrl: context.baseUrl,
     appNpub: context.appNpub,
+    includeArchived: true,
   });
   const rawThreads = Array.isArray(result?.threads) ? result.threads : [];
   const threadById = new Map(rawThreads.map((thread) => [trimText(thread?.id), thread]).filter(([id]) => id));

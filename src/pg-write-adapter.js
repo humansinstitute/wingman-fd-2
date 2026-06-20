@@ -4,6 +4,7 @@ import {
   createTowerPgChannelFile,
   createTowerPgChannelMessage,
   createTowerPgChannelTask,
+  archiveTowerPgThread,
   createTowerPgDocComment,
   createTowerPgTaskComment,
   deleteTowerPgDocComment,
@@ -394,6 +395,17 @@ export async function deleteTowerPgThreadFromLocal(store, parentMessage) {
   const threadId = trimText(parentMessage?.pg_thread_id);
   if (!context.workspaceId || !threadId) throw new Error('Tower PG thread is not ready');
   const result = await deleteTowerPgThread(context.workspaceId, threadId, {
+    ...pgRequestOptions(context),
+  });
+  return result.thread;
+}
+
+export async function archiveTowerPgThreadFromLocal(store, parentMessage, archived = true) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  const threadId = trimText(parentMessage?.pg_thread_id || parentMessage?.record_id);
+  if (!context.workspaceId || !threadId) throw new Error('Tower PG thread is not ready');
+  const result = await archiveTowerPgThread(context.workspaceId, threadId, {
+    archived,
     ...pgRequestOptions(context),
   });
   return result.thread;

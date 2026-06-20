@@ -18,6 +18,7 @@ vi.mock('../src/backend-mode.js', () => ({
 
 vi.mock('../src/pg-write-adapter.js', () => ({
   createTowerPgMessageFromLocal: vi.fn(),
+  archiveTowerPgThreadFromLocal: vi.fn(),
   deleteTowerPgMessageFromLocal: vi.fn(),
   deleteTowerPgThreadFromLocal: vi.fn(),
 }));
@@ -28,6 +29,7 @@ import { createChatThreadFlowDispatchState } from '../src/chat-thread-flow-dispa
 import { createChatGetItDoneState } from '../src/chat-get-it-done.js';
 import { createTowerPgMessageFromLocal } from '../src/pg-write-adapter.js';
 import {
+  archiveTowerPgThreadFromLocal,
   deleteTowerPgMessageFromLocal,
   deleteTowerPgThreadFromLocal,
 } from '../src/pg-write-adapter.js';
@@ -42,6 +44,7 @@ import {
 beforeEach(() => {
   isTowerPgBackendMode.mockReturnValue(false);
   createTowerPgMessageFromLocal.mockReset();
+  archiveTowerPgThreadFromLocal.mockReset();
   deleteTowerPgMessageFromLocal.mockReset();
   deleteTowerPgThreadFromLocal.mockReset();
 });
@@ -80,6 +83,9 @@ function createStore(overrides = {}) {
     flowStartTarget: null,
     flowStartContext: '',
     messageActionsMenuId: null,
+    showArchivedChatThreads: false,
+    chatThreadArchiveSubmittingId: '',
+    chatThreadArchiveSubmittingAction: '',
     chatDeleteConfirm: {
       open: false,
       mode: '',
@@ -231,6 +237,24 @@ describe('chat message computed getters', () => {
     expect(store.hiddenMainFeedCount).toBe(5);
     expect(store.visibleMainFeedMessages[0]?.record_id).toBe('m6');
     expect(store.visibleMainFeedMessages.at(-1)?.record_id).toBe('m85');
+  });
+
+  it('hides archived top-level threads until archived threads are shown', () => {
+    const store = createStore({
+      messages: [
+        { record_id: 'm1', parent_message_id: null, record_state: 'active', updated_at: '2024-01-01T00:00:00Z' },
+        { record_id: 'm2', parent_message_id: null, record_state: 'archived', updated_at: '2024-01-01T01:00:00Z' },
+        { record_id: 'm3', parent_message_id: 'm2', record_state: 'active', updated_at: '2024-01-01T02:00:00Z' },
+      ],
+    });
+
+    expect(store.mainFeedMessages.map((message) => message.record_id)).toEqual(['m1']);
+    expect(store.archivedMainFeedCount).toBe(1);
+    expect(store.hasArchivedChatThreads).toBe(true);
+
+    store.toggleShowArchivedChatThreads();
+
+    expect(store.mainFeedMessages.map((message) => message.record_id)).toEqual(['m1', 'm2']);
   });
 
   it('threadMessages returns empty when no active thread', () => {
@@ -1773,6 +1797,92 @@ describe('chat message actions menu', () => {
     } finally {
       await deleteWorkspaceDb(workspaceDbKey);
     }
+  });
+
+  it('archiveChatThreadByParentId archives and unarchives PG thread roots through Tower', async () => {
+    const workspaceDbKey = 'chat-message-manager-archive-pg-thread';
+    openWorkspaceDb(workspaceDbKey);
+    await clearRuntimeData();
+    isTowerPgBackendMode.mockReturnValue(true);
+    archiveTowerPgThreadFromLocal
+      .mockResolvedValueOnce({
+        id: 'thread-1',
+        record_state: 'archived',
+        row_version: 2,
+        updated_at: '2024-01-01T01:00:00Z',
+        archived_at: '2024-01-01T01:00:00Z',
+      })
+      .mockResolvedValueOnce({
+        id: 'thread-1',
+        record_state: 'active',
+        row_version: 3,
+        updated_at: '2024-01-01T02:00:00Z',
+        archived_at: null,
+      });
+
+    try {
+      const parent = {
+        record_id: 'root-1',
+        channel_id: 'ch1',
+        body: 'Root',
+        parent_message_id: null,
+        record_state: 'active',
+        sync_status: 'synced',
+        pg_backend: true,
+        pg_thread_id: 'thread-1',
+        version: 1,
+      };
+      await upsertMessage(parent);
+      const { fn, store } = bindMethod('archiveChatThreadByParentId', {
+        messages: [parent],
+        scheduleChatPreviewMeasurement: vi.fn(),
+      });
+
+      await fn('root-1', true);
+
+      expect(archiveTowerPgThreadFromLocal).toHaveBeenCalledWith(store, parent, true);
+      expect(store.chatThreadArchiveSubmittingId).toBe('');
+      expect(store.chatThreadArchiveSubmittingAction).toBe('');
+      expect(store.mainFeedMessages).toEqual([]);
+      expect(await getMessageById('root-1')).toMatchObject({ record_state: 'archived', version: 2 });
+
+      store.showArchivedChatThreads = true;
+      await fn('root-1', false);
+
+      expect(archiveTowerPgThreadFromLocal).toHaveBeenLastCalledWith(store, expect.objectContaining({ record_state: 'archived' }), false);
+      expect(store.mainFeedMessages.map((message) => message.record_id)).toEqual(['root-1']);
+      expect(await getMessageById('root-1')).toMatchObject({ record_state: 'active', version: 3 });
+    } finally {
+      await deleteWorkspaceDb(workspaceDbKey);
+    }
+  });
+
+  it('archiveChatThreadByParentId catches PG archive failures and leaves the menu usable', async () => {
+    isTowerPgBackendMode.mockReturnValue(true);
+    archiveTowerPgThreadFromLocal.mockRejectedValue(new Error('Thread row_version is stale'));
+    const parent = {
+      record_id: 'root-1',
+      channel_id: 'ch1',
+      body: 'Root',
+      parent_message_id: null,
+      record_state: 'active',
+      sync_status: 'synced',
+      pg_backend: true,
+      pg_thread_id: 'thread-1',
+      version: 1,
+    };
+    const { fn, store } = bindMethod('archiveChatThreadByParentId', {
+      messages: [parent],
+      scheduleChatPreviewMeasurement: vi.fn(),
+    });
+
+    const result = await fn('root-1', true);
+
+    expect(result).toBeNull();
+    expect(store.error).toBe('Thread row_version is stale');
+    expect(store.chatThreadArchiveSubmittingId).toBe('');
+    expect(store.chatThreadArchiveSubmittingAction).toBe('');
+    expect(store.mainFeedMessages.map((message) => message.record_id)).toEqual(['root-1']);
   });
 });
 

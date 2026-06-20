@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-CJumEPnt.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-DyeM7cDX.css">
+  <script type="module" crossorigin src="/assets/index-CBmLiAky.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-BCH-seKJ.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -239,6 +239,7 @@
           <button type="button" @click="$store.chat.copyId()">Copy ID</button>
           <button type="button" x-show="!$store.chat.isTowerPgMode" @click="$store.chat.syncNow()">Sync Now</button>
           <button type="button" x-show="!$store.chat.isTowerPgMode" @click="$store.chat.openPendingWritesModal()">Pending Writes</button>
+          <button type="button" @click="$store.chat.showAvatarMenu = false; $store.chat.navigateTo('settings'); $store.chat.openSettingsTab('apps')">App Management</button>
           <button type="button" @click="$store.chat.navigateTo('settings')">Setup</button>
           <button type="button" @click="$store.chat.logout()">Log out</button>
         </div>
@@ -2870,13 +2871,22 @@
                   <div class="chat-empty">No messages yet. Start a conversation!</div>
                 </template>
 
-                <button
-                  type="button"
-                  class="thread-load-more-btn"
-                  x-show="$store.chat.showMainFeedLoadMoreControl"
-                  @click="$store.chat.showMoreMainFeedMessages()"
-                  x-text="`Show ${Math.min($store.chat.hiddenMainFeedCount, $store.chat.MAIN_FEED_PAGE_SIZE)} older message${Math.min($store.chat.hiddenMainFeedCount, $store.chat.MAIN_FEED_PAGE_SIZE) === 1 ? '' : 's'}`"
-                ></button>
+                <div class="chat-feed-history-controls" x-show="$store.chat.showMainFeedLoadMoreControl" x-cloak>
+                  <button
+                    type="button"
+                    class="thread-load-more-btn"
+                    x-show="$store.chat.hasMoreMainFeedMessages"
+                    @click="$store.chat.showMoreMainFeedMessages()"
+                    x-text="`Show ${Math.min($store.chat.hiddenMainFeedCount, $store.chat.MAIN_FEED_PAGE_SIZE)} older message${Math.min($store.chat.hiddenMainFeedCount, $store.chat.MAIN_FEED_PAGE_SIZE) === 1 ? '' : 's'}`"
+                  ></button>
+                  <button
+                    type="button"
+                    class="thread-load-more-btn chat-archived-toggle-btn"
+                    x-show="$store.chat.hasArchivedChatThreads"
+                    @click="$store.chat.toggleShowArchivedChatThreads()"
+                    x-text="$store.chat.showArchivedChatThreads ? 'Hide Archived' : `Show Archived (${$store.chat.archivedMainFeedCount})`"
+                  ></button>
+                </div>
 
                 <template x-for="(msg, index) in $store.chat.visibleMainFeedMessages" :key="msg.record_id">
                   <div class="chat-post" :class="{ 'chat-post-focused': $store.chat.isFocusedMessage(msg.record_id), 'chat-post-unread': $store.chat.isMessageUnread(msg), 'chat-post-divider': index > 0 }" :data-message-id="msg.record_id">
@@ -2891,6 +2901,8 @@
                       <div class="chat-msg-actions-popover" x-show="$store.chat.isMessageActionsMenuOpen(msg.record_id)" x-cloak x-transition>
                         <button type="button" :data-record-id="msg.record_id" data-source-surface="main_feed" data-chat-get-it-done="true">Get it done</button>
                         <button type="button" @click.stop.prevent="$store.chat.copyMessageRawText(msg.record_id)">Copy message</button>
+                        <button type="button" x-show="$store.chat.isTowerPgMode && !$store.chat.isChatThreadArchived(msg.record_id)" :disabled="$store.chat.isChatThreadArchiveSubmitting(msg.record_id)" @click.stop.prevent="$store.chat.archiveChatThreadByParentId(msg.record_id, true)" x-text="$store.chat.isChatThreadArchiveSubmitting(msg.record_id, 'archive') ? 'Archiving...' : 'Archive thread'"></button>
+                        <button type="button" x-show="$store.chat.isTowerPgMode && $store.chat.isChatThreadArchived(msg.record_id)" :disabled="$store.chat.isChatThreadArchiveSubmitting(msg.record_id)" @click.stop.prevent="$store.chat.archiveChatThreadByParentId(msg.record_id, false)" x-text="$store.chat.isChatThreadArchiveSubmitting(msg.record_id, 'unarchive') ? 'Unarchiving...' : 'Unarchive thread'"></button>
                         <button type="button" class="chat-msg-actions-danger" @click.stop.prevent="$store.chat.openChatDeleteConfirm('message', msg.record_id)">Delete message</button>
                         <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop.prevent="$store.chat.inspectMessageSyncStatus(msg.record_id)">Check sync status</button>
                       </div>
@@ -2910,6 +2922,7 @@
                         </template>
                       </button>
                       <span class="chat-post-sender" x-text="$store.chat.getSenderName(msg.sender_npub)"></span>
+                      <span class="chat-archived-badge" x-show="$store.chat.isChatThreadArchived(msg.record_id)" x-cloak>Archived</span>
                       <span class="chat-post-time" x-text="new Date(msg.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })"></span>
                     </div>
                     <div
@@ -3077,6 +3090,8 @@
                         <button type="button" :data-record-id="$store.chat.getThreadParentMessage()?.record_id || ''" data-source-surface="thread_parent" data-chat-get-it-done="true">Get it done</button>
                         <button type="button" @click.stop.prevent="$store.chat.copyMessageRawText($store.chat.getThreadParentMessage()?.record_id)">Copy message</button>
                         <button type="button" @click.stop.prevent="$store.chat.copyThreadRawText($store.chat.getThreadParentMessage()?.record_id)">Copy thread</button>
+                        <button type="button" x-show="$store.chat.isTowerPgMode && !$store.chat.isChatThreadArchived($store.chat.getThreadParentMessage()?.record_id)" :disabled="$store.chat.isChatThreadArchiveSubmitting($store.chat.getThreadParentMessage()?.record_id)" @click.stop.prevent="$store.chat.archiveChatThreadByParentId($store.chat.getThreadParentMessage()?.record_id, true)" x-text="$store.chat.isChatThreadArchiveSubmitting($store.chat.getThreadParentMessage()?.record_id, 'archive') ? 'Archiving...' : 'Archive thread'"></button>
+                        <button type="button" x-show="$store.chat.isTowerPgMode && $store.chat.isChatThreadArchived($store.chat.getThreadParentMessage()?.record_id)" :disabled="$store.chat.isChatThreadArchiveSubmitting($store.chat.getThreadParentMessage()?.record_id)" @click.stop.prevent="$store.chat.archiveChatThreadByParentId($store.chat.getThreadParentMessage()?.record_id, false)" x-text="$store.chat.isChatThreadArchiveSubmitting($store.chat.getThreadParentMessage()?.record_id, 'unarchive') ? 'Unarchiving...' : 'Unarchive thread'"></button>
                         <button type="button" class="chat-msg-actions-danger" @click.stop.prevent="$store.chat.openChatDeleteConfirm('message', $store.chat.getThreadParentMessage()?.record_id)">Delete message</button>
                         <button type="button" class="chat-msg-actions-danger" @click.stop.prevent="$store.chat.openChatDeleteConfirm('thread', $store.chat.getThreadParentMessage()?.record_id)">Delete thread</button>
                         <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop.prevent="$store.chat.inspectMessageSyncStatus($store.chat.getThreadParentMessage()?.record_id)">Check sync status</button>
@@ -3099,6 +3114,7 @@
                     <div class="thread-msg-body">
                       <div class="thread-msg-header">
                         <span class="chat-sender" x-text="$store.chat.getSenderName($store.chat.getThreadParentMessage()?.sender_npub)"></span>
+                        <span class="chat-archived-badge" x-show="$store.chat.isChatThreadArchived($store.chat.getThreadParentMessage()?.record_id)" x-cloak>Archived</span>
                         <span class="chat-time" x-text="new Date($store.chat.getThreadParentMessage()?.updated_at || '').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })"></span>
                       </div>
                       <div class="thread-msg-text">
@@ -5277,7 +5293,7 @@
           <div class="settings-tabs">
             <button x-show="$store.chat.canAdminWorkspace" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'workspace' }" @click="$store.chat.settingsTab = 'workspace'">Workspace</button>
             <button class="settings-tab" :class="{ active: $store.chat.settingsTab === 'connection' }" @click="$store.chat.settingsTab = 'connection'">Connection</button>
-            <button class="settings-tab" :class="{ active: $store.chat.settingsTab === 'apps' }" @click="$store.chat.openSettingsTab('apps')">Apps</button>
+            <button class="settings-tab" :class="{ active: $store.chat.settingsTab === 'apps' }" @click="$store.chat.openSettingsTab('apps')">App Management</button>
             <button x-show="false" x-cloak class="settings-tab" :class="{ active: $store.chat.settingsTab === 'schedules' }" @click="$store.chat.openSettingsTab('schedules')">Schedules</button>
             <button x-show="$store.chat.canAdminWorkspace" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'scopes' }" @click="$store.chat.openSettingsTab('scopes')">Scopes</button>
             <button x-show="$store.chat.workspaceAdvancedOptionsEnabled && !$store.chat.isTowerPgMode" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'data' }" @click="$store.chat.settingsTab = 'data'">Sync</button>
@@ -5689,6 +5705,29 @@
           </div>
 
           <div class="settings-tab-content" x-show="$store.chat.settingsTab === 'apps'">
+            <section class="settings-panel app-management-settings-panel">
+              <div class="settings-panel-header">
+                <div>
+                  <h2>App Management</h2>
+                  <p>Clean up local app state and workspace discovery.</p>
+                </div>
+              </div>
+              <div class="workspace-cleanup-panel">
+                <span class="avatar-menu-label">Workspace discovery</span>
+                <p class="settings-field-help">Check saved Flight Deck PG workspaces against Tower and remove entries that no longer verify.</p>
+                <div class="settings-actions">
+                  <button
+                    type="button"
+                    class="btn-cancel"
+                    @click="$store.chat.clearUnavailablePgWorkspaces()"
+                    :disabled="$store.chat.appManagementCleanupBusy || !$store.chat.isTowerPgMode"
+                    x-text="$store.chat.appManagementCleanupBusy ? 'Checking...' : 'Clear unavailable workspaces'"
+                  ></button>
+                </div>
+                <p class="settings-success" x-show="$store.chat.appManagementCleanupMessage" x-text="$store.chat.appManagementCleanupMessage"></p>
+                <p class="error-text" x-show="$store.chat.appManagementCleanupError" x-text="$store.chat.appManagementCleanupError"></p>
+              </div>
+            </section>
             <section class="settings-panel personal-wapps-settings-panel">
               <div class="settings-panel-header">
                 <div>

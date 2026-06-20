@@ -49,6 +49,7 @@ import { isTowerPgBackendMode } from './backend-mode.js';
 import { DM_SCOPE_ID, buildDmChannelDescription, findExistingDmChannel } from './dm-scope.js';
 import {
   createTowerPgMessageFromLocal,
+  archiveTowerPgThreadFromLocal,
   deleteTowerPgMessageFromLocal,
   deleteTowerPgThreadFromLocal,
 } from './pg-write-adapter.js';
@@ -195,6 +196,7 @@ function getChatDerivedState(store) {
   const currentAudioNoteSignature = audioNoteSignature(audioNotes);
   const activeThreadId = store?.activeThreadId ?? null;
   const focusMessageId = store?.focusMessageId ?? null;
+  const showArchivedChatThreads = store?.showArchivedChatThreads === true;
   const mainFeedVisibleCount = Math.max(
     0,
     Number(store?.mainFeedVisibleCount ?? store?.MAIN_FEED_PAGE_SIZE ?? 0) || 0,
@@ -208,6 +210,7 @@ function getChatDerivedState(store) {
     && previous.audioNoteSignature === currentAudioNoteSignature
     && previous.activeThreadId === activeThreadId
     && previous.focusMessageId === focusMessageId
+    && previous.showArchivedChatThreads === showArchivedChatThreads
     && previous.mainFeedVisibleCount === mainFeedVisibleCount
     && previous.threadVisibleReplyCount === threadVisibleReplyCount
   ) {
@@ -218,7 +221,12 @@ function getChatDerivedState(store) {
     sourceMessages.filter((message) => String(message?.record_state || 'active') !== 'deleted'),
     audioNotes,
   );
-  const mainFeedMessages = rankMainFeedMessages(messages);
+  const mainFeedMessagesAll = rankMainFeedMessages(messages);
+  const archivedMainFeedMessages = mainFeedMessagesAll
+    .filter((message) => String(message?.record_state || 'active') === 'archived');
+  const mainFeedMessages = showArchivedChatThreads
+    ? mainFeedMessagesAll
+    : mainFeedMessagesAll.filter((message) => String(message?.record_state || 'active') !== 'archived');
   const resolvedMainFeedVisibleCount = resolveVisibleThreadReplyCount(
     mainFeedMessages,
     mainFeedVisibleCount,
@@ -238,6 +246,7 @@ function getChatDerivedState(store) {
 
   const value = {
     mainFeedMessages,
+    archivedMainFeedMessages,
     resolvedMainFeedVisibleCount,
     visibleMainFeedMessages,
     hiddenMainFeedCount,
@@ -252,6 +261,7 @@ function getChatDerivedState(store) {
     audioNoteSignature: currentAudioNoteSignature,
     activeThreadId,
     focusMessageId,
+    showArchivedChatThreads,
     mainFeedVisibleCount,
     threadVisibleReplyCount,
     value,
@@ -303,12 +313,24 @@ export const chatMessageManagerMixin = {
     return getChatDerivedState(this).hiddenMainFeedCount;
   },
 
+  get archivedMainFeedMessages() {
+    return getChatDerivedState(this).archivedMainFeedMessages;
+  },
+
+  get archivedMainFeedCount() {
+    return this.archivedMainFeedMessages.length;
+  },
+
+  get hasArchivedChatThreads() {
+    return this.archivedMainFeedCount > 0;
+  },
+
   get hasMoreMainFeedMessages() {
     return this.hiddenMainFeedCount > 0;
   },
 
   get showMainFeedLoadMoreControl() {
-    return this.hasMoreMainFeedMessages;
+    return this.hasMoreMainFeedMessages || this.hasArchivedChatThreads;
   },
 
   get threadMessages() {
@@ -1362,6 +1384,22 @@ export const chatMessageManagerMixin = {
     }
   },
 
+  isChatThreadArchived(recordId) {
+    const message = this.getChatMessageById(recordId);
+    return String(message?.record_state || 'active') === 'archived';
+  },
+
+  toggleShowArchivedChatThreads() {
+    this.showArchivedChatThreads = !this.showArchivedChatThreads;
+    this.scheduleChatPreviewMeasurement();
+  },
+
+  isChatThreadArchiveSubmitting(recordId, action = '') {
+    const id = String(recordId || '').trim();
+    if (!id || this.chatThreadArchiveSubmittingId !== id) return false;
+    return !action || this.chatThreadArchiveSubmittingAction === action;
+  },
+
   getChatMessageById(recordId) {
     const id = String(recordId || '').trim();
     if (!id) return null;
@@ -1947,6 +1985,43 @@ export const chatMessageManagerMixin = {
     }
     await this.softDeleteChatMessages(threadMessages, 'Chat thread delete');
     if (this.activeThreadId === parent.record_id) this.closeThread({ syncRoute: false });
+  },
+
+  async archiveChatThreadByParentId(recordId, archived = true) {
+    this.error = null;
+    const parent = this.getChatMessageById(recordId);
+    if (!parent) throw new Error('Thread not found');
+    if (this.isChatThreadArchiveSubmitting(parent.record_id)) return null;
+    const nextState = archived ? 'archived' : 'active';
+    const now = new Date().toISOString();
+    this.chatThreadArchiveSubmittingId = parent.record_id;
+    this.chatThreadArchiveSubmittingAction = archived ? 'archive' : 'unarchive';
+    try {
+      if (!isTowerPgBackendMode() || !parent.pg_backend) throw new Error('Thread archive requires Tower PG mode');
+      const accepted = await archiveTowerPgThreadFromLocal(this, parent, archived);
+      const updatedParent = {
+        ...parent,
+        record_state: accepted?.record_state || nextState,
+        version: accepted?.row_version || accepted?.version || ((parent.version ?? 1) + 1),
+        updated_at: accepted?.updated_at || now,
+        pg_archived_at: accepted?.archived_at || null,
+      };
+      await upsertMessage(updatedParent);
+      this.messages = this.messages.map((message) => (
+        message.record_id === parent.record_id ? updatedParent : message
+      ));
+      this.closeMessageActionsMenu();
+      this.scheduleChatPreviewMeasurement();
+      return updatedParent;
+    } catch (error) {
+      this.error = error?.message || (archived ? 'Failed to archive thread.' : 'Failed to unarchive thread.');
+      return null;
+    } finally {
+      if (this.chatThreadArchiveSubmittingId === parent.record_id) {
+        this.chatThreadArchiveSubmittingId = '';
+        this.chatThreadArchiveSubmittingAction = '';
+      }
+    }
   },
 
   async softDeleteChatMessages(messagesToDelete, label = 'Chat message delete') {

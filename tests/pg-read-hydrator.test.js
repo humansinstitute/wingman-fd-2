@@ -610,6 +610,7 @@ describe('PG read hydrator', () => {
     expect(getTowerPgChannelThreads).toHaveBeenCalledWith('workspace-1', 'channel-1', {
       baseUrl: 'https://tower.example',
       appNpub: 'flightdeck_pg',
+      includeArchived: true,
     });
     expect(getTowerPgChannelMessages).toHaveBeenCalledWith('workspace-1', 'channel-1', {
       baseUrl: 'https://tower.example',

@@ -248,7 +248,7 @@ export const workspaceManagerMixin = {
   normalizeSettingsTab() {
     const advancedTabs = this.workspaceAdvancedOptionsEnabled && !isFlightDeckSurfaceDisabled('flows') ? ['flows', 'data'] : (this.workspaceAdvancedOptionsEnabled ? ['data'] : []);
     const adminAdvancedTabs = this.workspaceAdvancedOptionsEnabled && !isFlightDeckSurfaceDisabled('schedules') ? ['schedules'] : [];
-    const personalTabs = isFlightDeckSurfaceDisabled('wappVisibility') ? [] : ['apps'];
+    const personalTabs = ['apps'];
     const visibleTabs = this.canAdminWorkspace
       ? ['workspace', 'connection', ...personalTabs, 'scopes', 'sharing', ...advancedTabs, ...adminAdvancedTabs]
       : ['connection', ...personalTabs, ...advancedTabs];
@@ -263,9 +263,7 @@ export const workspaceManagerMixin = {
       ? 'flows'
       : requestedTab === 'schedules'
         ? 'schedules'
-        : requestedTab === 'apps'
-          ? 'wappVisibility'
-          : '';
+        : '';
     if (disabledSurface && blockDisabledFlightDeckSurface(this, disabledSurface)) {
       this.settingsTab = 'connection';
       return;
@@ -1334,6 +1332,124 @@ export const workspaceManagerMixin = {
     }
 
     this.removingWorkspace = false;
+  },
+
+  async clearUnavailablePgWorkspaces() {
+    if (this.appManagementCleanupBusy) return null;
+    this.appManagementCleanupMessage = '';
+    this.appManagementCleanupError = '';
+    if (!isTowerPgBackendMode()) {
+      this.appManagementCleanupError = 'Unavailable workspace cleanup only applies to Flight Deck PG workspaces.';
+      return null;
+    }
+    const sessionNpub = String(this.session?.npub || '').trim();
+    if (!sessionNpub) {
+      this.appManagementCleanupError = 'Sign in first.';
+      return null;
+    }
+    const candidates = (this.knownWorkspaces || []).filter((workspace) =>
+      workspace?.pgBackendMode
+      && (!workspace.pgSessionNpub || workspace.pgSessionNpub === sessionNpub)
+    );
+    if (candidates.length === 0) {
+      this.appManagementCleanupMessage = 'No Flight Deck PG workspaces to check.';
+      return { checked: 0, removed: 0, kept: 0, failed: [] };
+    }
+    const confirmed = typeof confirm === 'function'
+      ? confirm(`Check ${candidates.length} Flight Deck PG workspace${candidates.length === 1 ? '' : 's'} and remove any that Tower no longer verifies?\n\nThis removes local workspace entries and publishes deletion markers for workspace discovery. Tower data is not changed.`)
+      : true;
+    if (!confirmed) return null;
+
+    this.appManagementCleanupBusy = true;
+    const summary = { checked: 0, removed: 0, kept: 0, failed: [] };
+    const removedKeys = new Set();
+    try {
+      for (const workspace of candidates) {
+        summary.checked += 1;
+        const descriptorInput = workspace.pgDescriptor || {
+          type: 'wingman_workspace_locator',
+          tower_base_url: workspace.directHttpsUrl || this.backendUrl,
+          identity: {
+            tower_service_npub: workspace.towerServiceNpub || workspace.serviceNpub,
+            workspace_service_npub: workspace.workspaceServiceNpub,
+            workspace_owner_npub: workspace.workspaceOwnerNpub,
+            workspace_id: workspace.workspaceId,
+            app_npub: workspace.appNpub || FLIGHT_DECK_PG_APP_NPUB,
+          },
+          label: workspace.name,
+          description: workspace.description,
+        };
+        try {
+          const { descriptor, me } = await this.verifyPgDescriptor(descriptorInput, {
+            baseUrl: workspace.directHttpsUrl || this.backendUrl,
+          });
+          const verifiedSessionNpub = pgWorkspaceSessionNpubFromMe(me, sessionNpub);
+          if (verifiedSessionNpub !== sessionNpub) {
+            throw new Error('Workspace descriptor was verified by a different signer');
+          }
+          summary.kept += 1;
+          if (typeof this.rememberVerifiedPgWorkspace === 'function') {
+            await this.rememberVerifiedPgWorkspace(descriptor, me, {
+              select: false,
+              publishSelfIndex: false,
+            });
+          }
+        } catch (error) {
+          summary.removed += 1;
+          const workspaceKey = workspace.workspaceKey || workspace.workspaceOwnerNpub || '';
+          if (workspaceKey) removedKeys.add(workspaceKey);
+          summary.failed.push({
+            workspaceKey,
+            name: workspace.name || workspace.workspaceOwnerNpub || workspace.workspaceId || 'Workspace',
+            error: error?.message || String(error || 'Tower verification failed'),
+          });
+          if (typeof this.publishPgWorkspaceSelfIndexTombstone === 'function') {
+            await this.publishPgWorkspaceSelfIndexTombstone(workspace, {
+              towerResult: 'workspace_unavailable',
+              reason: 'app_management_cleanup',
+            }).catch(() => null);
+          }
+        }
+      }
+
+      if (removedKeys.size > 0) {
+        const currentWasRemoved = removedKeys.has(this.currentWorkspaceKey)
+          || removedKeys.has(this.selectedWorkspaceKey)
+          || removedKeys.has(this.currentWorkspaceOwnerNpub);
+        this.knownWorkspaces = (this.knownWorkspaces || []).filter((workspace) =>
+          !removedKeys.has(workspace.workspaceKey || workspace.workspaceOwnerNpub || '')
+        );
+        if (currentWasRemoved) {
+          this.stopBackgroundSync?.();
+          this.stopWorkspaceLiveQueries?.();
+          this.selectedWorkspaceKey = '';
+          this.currentWorkspaceOwnerNpub = '';
+          this.ownerNpub = '';
+          if (this.knownWorkspaces.length > 0) {
+            const nextWorkspace = this.knownWorkspaces[0];
+            await this.selectWorkspace?.(nextWorkspace.workspaceKey || nextWorkspace.workspaceOwnerNpub, {
+              refresh: false,
+              skipPgVerification: true,
+            });
+          } else {
+            await clearRuntimeData().catch(() => {});
+          }
+        }
+        await this.persistWorkspaceSettings();
+      }
+
+      if (summary.removed > 0) {
+        this.appManagementCleanupMessage = `Removed ${summary.removed} unavailable workspace${summary.removed === 1 ? '' : 's'}; ${summary.kept} still verified.`;
+      } else {
+        this.appManagementCleanupMessage = `All ${summary.kept} workspace${summary.kept === 1 ? '' : 's'} verified.`;
+      }
+      return summary;
+    } catch (error) {
+      this.appManagementCleanupError = error?.message || String(error || 'Workspace cleanup failed');
+      return summary;
+    } finally {
+      this.appManagementCleanupBusy = false;
+    }
   },
 
   async loadRemoteWorkspaces() {

@@ -6124,6 +6124,36 @@ button:disabled {
   background: #eff6ff;
 }
 
+.chat-feed-history-controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 0.15rem 0;
+}
+
+.chat-feed-history-controls .thread-load-more-btn {
+  margin: 0.7rem 0 0.85rem;
+}
+
+.chat-archived-toggle-btn {
+  color: #475569;
+}
+
+.chat-archived-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.25rem;
+  padding: 0 0.45rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
 .thread-message {
   position: relative;
   display: flex;
@@ -9518,6 +9548,12 @@ button:disabled {
   gap: 0.65rem;
   align-items: center;
   flex-wrap: wrap;
+}
+
+.workspace-cleanup-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
 }
 
 .repair-settings-panel {

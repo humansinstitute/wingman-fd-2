@@ -7,6 +7,7 @@ import {
   createTowerPgMessageFromLocal,
   createTowerPgTaskCommentFromLocal,
   createTowerPgTaskFromLocal,
+  archiveTowerPgThreadFromLocal,
   deleteTowerPgDocCommentFromLocal,
   deleteTowerPgMessageFromLocal,
   deleteTowerPgTaskFromLocal,
@@ -21,6 +22,7 @@ import { recordFamilyHash } from '../src/translators/chat.js';
 
 vi.mock('../src/api.js', () => ({
   acquireTowerPgEditLease: vi.fn(),
+  archiveTowerPgThread: vi.fn(),
   createTowerPgChannelAudioNote: vi.fn(),
   createTowerPgChannelDoc: vi.fn(),
   createTowerPgChannelFile: vi.fn(),
@@ -49,6 +51,10 @@ vi.mock('../src/api.js', () => ({
   updateTowerPgFile: vi.fn(),
   updateTowerPgTask: vi.fn(),
   updateTowerPgTaskState: vi.fn(),
+}));
+
+vi.mock('../src/message-instruction-signatures.js', () => ({
+  buildAgentInstructionSignature: vi.fn(() => Promise.resolve({ signed_event_id: 'signature-1' })),
 }));
 
 function store(seed = {}) {
@@ -473,6 +479,7 @@ describe('PG write adapter', () => {
 
     expect(api.createTowerPgChannelMessage).toHaveBeenCalledWith('workspace-1', 'channel-1', {
       body: 'Hello',
+      message_signature: { signed_event_id: 'signature-1' },
       create_thread: true,
       thread_title: 'Hello',
     }, { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
@@ -505,6 +512,7 @@ describe('PG write adapter', () => {
 
     expect(api.createTowerPgChannelMessage).toHaveBeenCalledWith('workspace-1', 'channel-1', {
       body: 'Reply',
+      message_signature: { signed_event_id: 'signature-1' },
       thread_id: 'thread-1',
     }, { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
     expect(message).toMatchObject({
@@ -726,5 +734,25 @@ describe('PG write adapter', () => {
       appNpub: 'flightdeck_pg',
     });
     expect(thread).toEqual({ id: 'thread-1' });
+  });
+
+  it('archives Tower PG threads without a stale row version gate', async () => {
+    const api = await import('../src/api.js');
+    api.archiveTowerPgThread.mockResolvedValue({
+      thread: { id: 'thread-1', record_state: 'archived', row_version: 7 },
+    });
+
+    const thread = await archiveTowerPgThreadFromLocal(store(), {
+      record_id: 'message-1',
+      pg_thread_id: 'thread-1',
+      version: 1,
+    }, true);
+
+    expect(api.archiveTowerPgThread).toHaveBeenCalledWith('workspace-1', 'thread-1', {
+      archived: true,
+      baseUrl: 'https://tower.example',
+      appNpub: 'flightdeck_pg',
+    });
+    expect(thread).toEqual({ id: 'thread-1', record_state: 'archived', row_version: 7 });
   });
 });

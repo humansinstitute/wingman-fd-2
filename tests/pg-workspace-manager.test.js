@@ -101,6 +101,7 @@ describe('PG workspace manager mode', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it('loads remote workspaces from Tower PG discovery in PG mode', async () => {
@@ -395,5 +396,79 @@ describe('PG workspace manager mode', () => {
     expect(store.currentWorkspaceOwnerNpub).toBe('');
     expect(store.showWorkspaceBootstrapModal).toBe(false);
     expect(store.showConnectModal).toBe(true);
+  });
+
+  it('clears PG workspaces that Tower no longer verifies', async () => {
+    vi.stubGlobal('confirm', vi.fn(() => true));
+    const descriptor = {
+      type: 'wingman_workspace_locator',
+      tower_base_url: 'https://tower.example',
+      identity: {
+        tower_service_npub: 'npub1tower',
+        workspace_service_npub: 'npub1workspace',
+        workspace_owner_npub: 'npub1owner',
+        workspace_id: 'workspace-1',
+        app_npub: 'flightdeck_pg',
+      },
+    };
+    const kept = {
+      workspaceKey: 'pg:npub1user::tower:npub1tower::workspace:npub1workspace::app:flightdeck_pg',
+      workspaceOwnerNpub: 'npub1owner',
+      directHttpsUrl: 'https://tower.example',
+      towerServiceNpub: 'npub1tower',
+      workspaceServiceNpub: 'npub1workspace',
+      workspaceId: 'workspace-1',
+      appNpub: 'flightdeck_pg',
+      pgSessionNpub: 'npub1user',
+      pgBackendMode: true,
+      pgDescriptor: descriptor,
+    };
+    const stale = {
+      ...kept,
+      workspaceKey: 'pg:npub1user::tower:npub1tower::workspace:npub1stale::app:flightdeck_pg',
+      workspaceOwnerNpub: 'npub1staleowner',
+      workspaceServiceNpub: 'npub1stale',
+      workspaceId: 'workspace-stale',
+      name: 'Removed workspace',
+      pgDescriptor: {
+        ...descriptor,
+        identity: {
+          ...descriptor.identity,
+          workspace_service_npub: 'npub1stale',
+          workspace_owner_npub: 'npub1staleowner',
+          workspace_id: 'workspace-stale',
+        },
+      },
+    };
+    const store = await buildStore({
+      knownWorkspaces: [kept, stale],
+      selectedWorkspaceKey: kept.workspaceKey,
+      appManagementCleanupBusy: false,
+      appManagementCleanupMessage: '',
+      appManagementCleanupError: '',
+      verifyPgDescriptor: vi.fn(async (input) => {
+        if (input.identity?.workspace_id === 'workspace-stale') {
+          throw new Error('Tower PG API 404');
+        }
+        return {
+          descriptor,
+          me: { actor: { npub: 'npub1user' }, membership: { role: 'member' } },
+        };
+      }),
+      rememberVerifiedPgWorkspace: vi.fn().mockResolvedValue(kept),
+      publishPgWorkspaceSelfIndexTombstone: vi.fn().mockResolvedValue(null),
+    });
+
+    const summary = await store.clearUnavailablePgWorkspaces();
+
+    expect(summary).toMatchObject({ checked: 2, kept: 1, removed: 1 });
+    expect(store.knownWorkspaces).toHaveLength(1);
+    expect(store.knownWorkspaces[0].workspaceKey).toBe(kept.workspaceKey);
+    expect(store.publishPgWorkspaceSelfIndexTombstone).toHaveBeenCalledWith(stale, {
+      towerResult: 'workspace_unavailable',
+      reason: 'app_management_cleanup',
+    });
+    expect(store.persistWorkspaceSettings).toHaveBeenCalled();
+    expect(store.appManagementCleanupMessage).toContain('Removed 1 unavailable workspace');
   });
 });
