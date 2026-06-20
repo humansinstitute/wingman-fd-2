@@ -165,9 +165,17 @@ describe('Thread mobile responsive behavior', () => {
     it('centers the mobile scope selector row and keeps quick workspace access', async () => {
       css = css || await loadStylesheet();
       mobileBlock = mobileBlock || findMediaBlock(css, 768);
+      const headerDecl = extractDeclarations(mobileBlock, '.page-header');
+      const backdropDecl = extractDeclarations(mobileBlock, '.mobile-sidebar-backdrop');
+      const sidebarDecl = extractDeclarations(mobileBlock, '.sidebar');
       const switcherDecl = extractDeclarations(mobileBlock, '.mobile-scope-switcher');
       const triggerDecl = extractDeclarations(mobileBlock, '.mobile-scope-trigger');
       const resultsDecl = extractDeclarations(mobileBlock, '.mobile-scope-results');
+      const headerZ = Number(headerDecl.match(/z-index\s*:\s*(\d+)/)?.[1]);
+      const backdropZ = Number(backdropDecl.match(/z-index\s*:\s*(\d+)/)?.[1]);
+      const sidebarZ = Number(sidebarDecl.match(/z-index\s*:\s*(\d+)/)?.[1]);
+      const switcherZ = Number(switcherDecl.match(/z-index\s*:\s*(\d+)/)?.[1]);
+      const resultsZ = Number(resultsDecl.match(/z-index\s*:\s*(\d+)/)?.[1]);
 
       expect(switcherDecl).toMatch(/display\s*:\s*grid/);
       expect(switcherDecl).toMatch(/grid-template-columns\s*:\s*38px minmax\(0,\s*1fr\) 38px/);
@@ -175,6 +183,12 @@ describe('Thread mobile responsive behavior', () => {
       expect(triggerDecl).toMatch(/justify-content\s*:\s*center/);
       expect(triggerDecl).toMatch(/text-align\s*:\s*center/);
       expect(resultsDecl).toMatch(/z-index\s*:\s*131/);
+      expect(backdropZ).toBeGreaterThan(resultsZ);
+      expect(sidebarZ).toBeGreaterThan(resultsZ);
+      expect(headerZ).toBeGreaterThan(resultsZ);
+      expect(headerZ).toBeGreaterThan(sidebarZ);
+      expect(sidebarZ).toBeGreaterThan(backdropZ);
+      expect(switcherZ).toBeLessThan(resultsZ);
     });
 
     it('mounts mobile composer actions beside the textarea without stretching the textarea', async () => {

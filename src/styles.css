@@ -10455,7 +10455,7 @@ button:disabled {
     position: fixed;
     inset: 0;
     background: rgba(15, 23, 42, 0.28);
-    z-index: 59;
+    z-index: 148;
   }
 
   .sidebar {
@@ -10468,7 +10468,7 @@ button:disabled {
     border-bottom: none;
     transform: translateX(-105%);
     transition: transform 0.2s ease;
-    z-index: 60;
+    z-index: 149;
     box-shadow: 0 24px 60px rgba(15, 23, 42, 0.2);
   }
 
@@ -10544,6 +10544,7 @@ button:disabled {
   .page-header {
     border-bottom: none;
     margin-bottom: 0;
+    z-index: 150;
   }
 
   .header-leading {
