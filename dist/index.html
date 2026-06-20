@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-C2L07xvb.js"></script>
+  <script type="module" crossorigin src="/assets/index-CJumEPnt.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-DyeM7cDX.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
@@ -2963,10 +2963,9 @@
                         </div>
                       </div>
                     </div>
-                    <template x-for="activity in $store.chat.getResponseActivitiesForThread(msg.record_id)" :key="activity.record_id">
+                    <template x-for="activity in $store.chat.getResponseActivitiesForThread(msg)" :key="activity.record_id">
                       <div class="chat-post-response-activity" :class="{ 'chat-post-response-activity-error': activity.severity === 'error' || activity.status === 'failed' }" aria-live="polite" @click.stop="$store.chat.openThread(msg.record_id)">
                         <span class="chat-post-response-activity-title" x-text="$store.chat.formatResponseActivityTitle(activity)"></span>
-                        <span class="thread-response-activity-dots" x-show="activity.status !== 'failed'" aria-hidden="true"><span></span><span></span><span></span></span>
                       </div>
                     </template>
                     <template x-if="$store.chat.getThreadReplyCount(msg.record_id) > 0">
@@ -3223,7 +3222,6 @@
                     <div class="thread-response-activity-body">
                       <div class="thread-response-activity-title">
                         <span x-text="$store.chat.formatResponseActivityTitle(activity)"></span>
-                        <span class="thread-response-activity-dots" x-show="activity.status !== 'failed'" aria-hidden="true"><span></span><span></span><span></span></span>
                       </div>
                       <p x-show="activity.message" x-text="activity.message"></p>
                     </div>

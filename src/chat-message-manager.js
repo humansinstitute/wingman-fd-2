@@ -64,12 +64,12 @@ import {
 
 const chatDerivedCache = new WeakMap();
 const THREAD_REPLY_PREVIEW_WORD_LIMIT = 50;
-const RESPONSE_ACTIVITY_WORDS = ['thinking', 'wondering', 'working'];
-const RESPONSE_ACTIVITY_SUFFIXES = ['.', '..', '...', ''];
+const RESPONSE_ACTIVITY_WORDS = ['Thinking', 'Implementing', 'Writing'];
+const RESPONSE_ACTIVITY_SUFFIXES = ['.', '.+', '.*', '..+', '..*', '...', '+', '*'];
 
 function isVisibleResponseActivity(activity = {}, nowMs = Date.now()) {
   if (!activity?.record_id) return false;
-  if (String(activity.status || '') === 'cleared' || activity.cleared_at) return false;
+  if (String(activity.status || '') === 'cleared' || String(activity.record_state || '') === 'cleared' || activity.cleared_at) return false;
   const expiresAt = Date.parse(activity.expires_at || '');
   return !Number.isFinite(expiresAt) || expiresAt > nowMs;
 }
@@ -646,23 +646,43 @@ export const chatMessageManagerMixin = {
     return sortResponseActivities((Array.isArray(this.channelResponseActivities) ? this.channelResponseActivities : [])
       .filter((activity) => isVisibleResponseActivity(activity, now)));
   },
-  getResponseActivitiesForThread(threadId) {
-    const id = String(threadId || '').trim();
-    if (!id) return [];
+  getResponseActivitiesForThread(threadOrMessage) {
+    const ids = new Set();
+    if (threadOrMessage && typeof threadOrMessage === 'object') {
+      [threadOrMessage.record_id, threadOrMessage.pg_thread_id, threadOrMessage.thread_id].forEach((value) => {
+        const id = String(value || '').trim();
+        if (id) ids.add(id);
+      });
+    } else {
+      const id = String(threadOrMessage || '').trim();
+      if (id) ids.add(id);
+      const message = (Array.isArray(this.messages) ? this.messages : [])
+        .find((item) => item?.record_id === id || item?.pg_thread_id === id);
+      [message?.record_id, message?.pg_thread_id, message?.thread_id].forEach((value) => {
+        const resolved = String(value || '').trim();
+        if (resolved) ids.add(resolved);
+      });
+    }
+    if (ids.size === 0) return [];
     void this.responseActivityTick;
     return this.getVisibleChannelResponseActivities()
-      .filter((activity) => activity.target_type === 'chat_thread' && activity.target_id === id);
+      .filter((activity) => activity.target_type === 'chat_thread' && (
+        ids.has(String(activity.target_id || '').trim())
+        || ids.has(String(activity.thread_id || '').trim())
+      ));
   },
   formatResponseActivityTitle(activity = {}) {
     if (activity.status === 'failed') return activity.label || 'Response failed';
     const senderName = this.getSenderName(activity.actor_npub);
-    const label = activity.label || (activity.status === 'drafting' ? 'Writing a reply' : activity.status || 'Thinking');
+    const status = String(activity.status || '').trim().toLowerCase();
+    const statusLabel = status === 'drafting' ? 'Writing' : status;
+    const label = activity.label || statusLabel || 'Thinking';
     const tick = Number(this.responseActivityTick || 0);
     const suffix = RESPONSE_ACTIVITY_SUFFIXES[tick % RESPONSE_ACTIVITY_SUFFIXES.length];
-    const shouldAnimateWord = !activity.label || String(activity.label).toLowerCase() === 'thinking';
+    const shouldAnimateWord = !activity.label || ['thinking', 'implementing', 'writing', 'drafting'].includes(String(activity.label).toLowerCase());
     const activityText = shouldAnimateWord
       ? RESPONSE_ACTIVITY_WORDS[Math.floor(tick / RESPONSE_ACTIVITY_SUFFIXES.length) % RESPONSE_ACTIVITY_WORDS.length]
-      : String(label).toLowerCase();
+      : String(label);
     return `${senderName} is ${activityText}${suffix}`;
   },
 

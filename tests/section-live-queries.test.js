@@ -14,7 +14,24 @@ describe('section live query plan', () => {
 
     expect(plan.shared).toEqual(['address-book']);
     expect(plan.workspace).toEqual(['ws:scopes', 'ws:channels', 'chat:audio-notes']);
-    expect(plan.detail).toEqual(['chat:messages:channel-1', 'chat:reactions:channel-1']);
+    expect(plan.detail).toEqual([
+      'chat:messages:channel-1',
+      'chat:reactions:channel-1',
+      'chat:channel-response-activities:channel-1',
+    ]);
+  });
+
+  it('subscribes to active thread response activities by PG thread id when available', () => {
+    const plan = getSectionLiveQueryPlan({
+      workspaceOwnerNpub: 'npub-owner',
+      navSection: 'chat',
+      selectedChannelId: 'channel-1',
+      activeThreadId: 'root-message-1',
+      messages: [{ record_id: 'root-message-1', pg_thread_id: 'pg-thread-1' }],
+      applyAddressBookPeople() {},
+    });
+
+    expect(plan.detail).toContain('chat:response-activities:pg-thread-1');
   });
 
   it('subscribes to all current scope channels on chat scope home', () => {

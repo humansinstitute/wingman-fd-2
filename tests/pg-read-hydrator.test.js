@@ -2,11 +2,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   hydrateTowerPgChannels,
   hydrateTowerPgChannelMessages,
+  hydrateTowerPgChannelResponseActivities,
   hydrateTowerPgEventUpdates,
   hydrateTowerPgAudioNotes,
   hydrateTowerPgDoc,
   hydrateTowerPgDocComments,
   hydrateTowerPgDocumentsAndFiles,
+  hydrateTowerPgResponseActivitiesForTarget,
   hydrateTowerPgScopes,
   hydrateTowerPgTask,
   hydrateTowerPgTasks,
@@ -562,13 +564,17 @@ describe('PG read hydrator', () => {
     }));
     const replaceChannelsForOwner = vi.fn(async () => 1);
     const replacePgMessagesForChannel = vi.fn(async () => 2);
+    const getTowerPgResponseActivities = vi.fn(async () => ({ response_activities: [] }));
+    const replacePgResponseActivitiesForChannel = vi.fn(async () => 0);
 
     await hydrateTowerPgChannels(target, {
       getTowerPgScopeChannels,
       getTowerPgChannelThreads,
       getTowerPgChannelMessages,
+      getTowerPgResponseActivities,
       replaceChannelsForOwner,
       replacePgMessagesForChannel,
+      replacePgResponseActivitiesForChannel,
     });
 
     const mapped = replacePgMessagesForChannel.mock.calls[0][1];
@@ -590,11 +596,15 @@ describe('PG read hydrator', () => {
       messages: [{ id: 'message-1', channel_id: 'channel-1', thread_id: 'thread-1', body: 'Thread one', created_by_actor_id: 'actor-1' }],
     }));
     const replacePgMessagesForChannel = vi.fn(async () => 2);
+    const getTowerPgResponseActivities = vi.fn(async () => ({ response_activities: [] }));
+    const replacePgResponseActivitiesForChannel = vi.fn(async () => 0);
 
     const rows = await hydrateTowerPgChannelMessages(target, 'channel-1', {
       getTowerPgChannelThreads,
       getTowerPgChannelMessages,
+      getTowerPgResponseActivities,
       replacePgMessagesForChannel,
+      replacePgResponseActivitiesForChannel,
     });
 
     expect(getTowerPgChannelThreads).toHaveBeenCalledWith('workspace-1', 'channel-1', {
@@ -622,6 +632,8 @@ describe('PG read hydrator', () => {
     }));
     const replacePgMessagesForChannel = vi.fn(async () => 1);
     const replacePgTasksForChannel = vi.fn(async () => 1);
+    const getTowerPgResponseActivities = vi.fn(async () => ({ response_activities: [] }));
+    const replacePgResponseActivitiesForChannel = vi.fn(async () => 0);
 
     const result = await hydrateTowerPgEventUpdates(target, [
       { entity_type: 'message', channel_id: 'channel-1' },
@@ -632,8 +644,10 @@ describe('PG read hydrator', () => {
       getTowerPgChannelThreads,
       getTowerPgChannelMessages,
       getTowerPgChannelTasks,
+      getTowerPgResponseActivities,
       replacePgMessagesForChannel,
       replacePgTasksForChannel,
+      replacePgResponseActivitiesForChannel,
     });
 
     expect(result).toEqual({ channels: 2, appliedTargets: 3, fallbackEvents: 0, events: 4 });
@@ -1261,5 +1275,72 @@ describe('PG read hydrator', () => {
     expect(replaceAudioNotesForOwner).toHaveBeenCalledWith('npub1owner', expect.arrayContaining([
       expect.objectContaining({ record_id: 'audio-1', sender_npub: 'npub1alice' }),
     ]));
+  });
+
+  it('hydrates active PG response activities for a channel', async () => {
+    const target = store();
+    const getTowerPgResponseActivities = vi.fn(async () => ({
+      response_activities: [{
+        id: 'activity-1',
+        workspace_id: 'workspace-1',
+        channel_id: 'channel-1',
+        target_type: 'chat_thread',
+        target_id: 'pg-thread-1',
+        status: 'thinking',
+        label: 'Thinking',
+        expires_at: '2999-01-01T00:00:00.000Z',
+      }],
+    }));
+    const replacePgResponseActivitiesForChannel = vi.fn(async () => 1);
+
+    const activities = await hydrateTowerPgChannelResponseActivities(target, 'channel-1', {
+      getTowerPgResponseActivities,
+      replacePgResponseActivitiesForChannel,
+    });
+
+    expect(getTowerPgResponseActivities).toHaveBeenCalledWith('workspace-1', {
+      channelId: 'channel-1',
+      baseUrl: 'https://tower.example',
+      appNpub: 'flightdeck_pg',
+    });
+    expect(activities).toEqual([
+      expect.objectContaining({
+        record_id: 'activity-1',
+        pg_backend: true,
+        target_type: 'chat_thread',
+        target_id: 'pg-thread-1',
+        status: 'thinking',
+      }),
+    ]);
+    expect(replacePgResponseActivitiesForChannel).toHaveBeenCalledWith('channel-1', activities);
+  });
+
+  it('hydrates PG response activities for an open thread target', async () => {
+    const target = store();
+    const getTowerPgResponseActivities = vi.fn(async () => ({
+      response_activities: [{
+        id: 'activity-1',
+        workspace_id: 'workspace-1',
+        channel_id: 'channel-1',
+        target_type: 'chat_thread',
+        target_id: 'pg-thread-1',
+        status: 'writing',
+        expires_at: '2999-01-01T00:00:00.000Z',
+      }],
+    }));
+    const replacePgResponseActivitiesForTarget = vi.fn(async () => 1);
+
+    const activities = await hydrateTowerPgResponseActivitiesForTarget(target, 'chat_thread', 'pg-thread-1', {
+      getTowerPgResponseActivities,
+      replacePgResponseActivitiesForTarget,
+    });
+
+    expect(getTowerPgResponseActivities).toHaveBeenCalledWith('workspace-1', {
+      targetType: 'chat_thread',
+      targetId: 'pg-thread-1',
+      baseUrl: 'https://tower.example',
+      appNpub: 'flightdeck_pg',
+    });
+    expect(replacePgResponseActivitiesForTarget).toHaveBeenCalledWith('chat_thread', 'pg-thread-1', activities);
   });
 });

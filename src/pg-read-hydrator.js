@@ -11,6 +11,7 @@ import {
   getTowerPgDocComments,
   getTowerPgChannelMessages,
   getTowerPgReactions,
+  getTowerPgResponseActivities,
   getTowerPgChannelTasks,
   getTowerPgTask,
   getTowerPgTaskComments,
@@ -33,12 +34,13 @@ import {
   replacePgDocumentsForChannel,
   replacePgMessagesForChannel,
   replacePgReactionsForTarget,
+  replacePgResponseActivitiesForChannel,
+  replacePgResponseActivitiesForTarget,
   replacePgTasksForChannel,
   replaceTasksForOwner,
   replaceScopesForOwner,
   clearResponseActivity,
   upsertDocument,
-  upsertResponseActivity,
   upsertTask,
 } from './db.js';
 import { recordFamilyHash } from './translators/chat.js';
@@ -968,7 +970,9 @@ export async function hydrateTowerPgChannelMessages(store, channelId, deps = {})
 
   const readThreads = deps.getTowerPgChannelThreads || getTowerPgChannelThreads;
   const readMessages = deps.getTowerPgChannelMessages || getTowerPgChannelMessages;
+  const readActivities = deps.getTowerPgResponseActivities || getTowerPgResponseActivities;
   const replaceMessages = deps.replacePgMessagesForChannel || replacePgMessagesForChannel;
+  const replaceActivities = deps.replacePgResponseActivitiesForChannel || replacePgResponseActivitiesForChannel;
   const actorNpubByActorId = await resolveActorNpubByActorIdWithFallback(store, deps, context);
 
   const result = await readThreads(context.workspaceId, targetChannelId, {
@@ -1008,12 +1012,57 @@ export async function hydrateTowerPgChannelMessages(store, channelId, deps = {})
     ...fallbackThreads.filter((thread) => !sourceMessageIds.has(thread.record_id)),
   ];
   await replaceMessages(targetChannelId, rows);
+  await hydrateTowerPgChannelResponseActivities(store, targetChannelId, {
+    ...deps,
+    getTowerPgResponseActivities: readActivities,
+    replacePgResponseActivitiesForChannel: replaceActivities,
+  });
 
   if (store.selectedChannelId === targetChannelId && typeof store.refreshMessages === 'function') {
     await store.refreshMessages({ scrollToLatest: false });
   }
 
   return rows;
+}
+
+export async function hydrateTowerPgChannelResponseActivities(store, channelId, deps = {}) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  const targetChannelId = trimText(channelId);
+  if (!context.workspaceId || !context.workspaceOwnerNpub || !context.baseUrl || !targetChannelId) return [];
+
+  const readActivities = deps.getTowerPgResponseActivities || getTowerPgResponseActivities;
+  const replaceActivities = deps.replacePgResponseActivitiesForChannel || replacePgResponseActivitiesForChannel;
+  const result = await readActivities(context.workspaceId, {
+    channelId: targetChannelId,
+    baseUrl: context.baseUrl,
+    appNpub: context.appNpub,
+  });
+  const activities = (Array.isArray(result?.response_activities) ? result.response_activities : [])
+    .map((activity) => mapPgResponseActivity(activity))
+    .filter((activity) => activity?.record_id);
+  await replaceActivities(targetChannelId, activities);
+  return activities;
+}
+
+export async function hydrateTowerPgResponseActivitiesForTarget(store, targetType, targetId, deps = {}) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  const resolvedTargetType = trimText(targetType);
+  const resolvedTargetId = trimText(targetId);
+  if (!context.workspaceId || !context.workspaceOwnerNpub || !context.baseUrl || !resolvedTargetType || !resolvedTargetId) return [];
+
+  const readActivities = deps.getTowerPgResponseActivities || getTowerPgResponseActivities;
+  const replaceActivities = deps.replacePgResponseActivitiesForTarget || replacePgResponseActivitiesForTarget;
+  const result = await readActivities(context.workspaceId, {
+    targetType: resolvedTargetType,
+    targetId: resolvedTargetId,
+    baseUrl: context.baseUrl,
+    appNpub: context.appNpub,
+  });
+  const activities = (Array.isArray(result?.response_activities) ? result.response_activities : [])
+    .map((activity) => mapPgResponseActivity(activity))
+    .filter((activity) => activity?.record_id);
+  await replaceActivities(resolvedTargetType, resolvedTargetId, activities);
+  return activities;
 }
 
 function mergeStoreChannelRows(store, collectionName, applyName, channelId, rows = []) {
@@ -1348,7 +1397,11 @@ export async function hydrateTowerPgEventUpdates(store, events = [], deps = {}) 
     ...[...dailyTargets.values()].map(({ ownerActorId, noteDate, legacyChannelId }) => hydrateTowerPgDailyNoteTarget(store, ownerActorId, noteDate, { ...deps, legacyChannelId })),
     ...[...personalWappOwnerIds].map(() => hydrateTowerPgPersonalWapps(store, deps)),
     ...[...reactionTargets.values()].map(({ targetType, targetId }) => hydrateTowerPgReactionTarget(store, targetType, targetId, deps)),
-    ...responseActivityWrites.map((activity) => upsertResponseActivity(activity)),
+    ...responseActivityWrites.map((activity) => (
+      activity.target_type && activity.target_id
+        ? hydrateTowerPgResponseActivitiesForTarget(store, activity.target_type, activity.target_id, deps)
+        : hydrateTowerPgChannelResponseActivities(store, activity.channel_id, deps)
+    )),
     ...responseActivityDeletes.map((recordId) => clearResponseActivity(recordId)),
   ];
 

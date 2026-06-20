@@ -26,6 +26,7 @@ import { recordFamilyHash } from './translators/chat.js';
 import { isTowerPgBackendMode } from './backend-mode.js';
 import { isFlightDeckSurfaceDisabled } from './disabled-surfaces.js';
 import { flightDeckLog } from './logging.js';
+import { resolvePgThreadId } from './pg-record-context.js';
 
 const SECTION_STATE = new WeakMap();
 
@@ -404,9 +405,10 @@ function buildDetailSpecs(store) {
         },
       ];
       if (activeThreadId) {
+        const activeActivityThreadId = resolvePgThreadId(store, activeThreadId) || activeThreadId;
         specs.push({
-          key: `chat:response-activities:${activeThreadId}`,
-          query: () => getResponseActivitiesForTarget('chat_thread', activeThreadId),
+          key: `chat:response-activities:${activeActivityThreadId}`,
+          query: () => getResponseActivitiesForTarget('chat_thread', activeActivityThreadId),
           onNext: (activities) => {
             if (store.workspaceOwnerNpub !== ownerNpub || store.selectedChannelId !== channelId || store.activeThreadId !== activeThreadId) return;
             return store.applyThreadResponseActivities(activities);

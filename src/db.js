@@ -1261,7 +1261,7 @@ export async function replacePgReactionsForTarget(targetRecordFamilyHash, target
 
 function isActiveResponseActivity(row = {}, nowMs = Date.now()) {
   if (!row?.record_id) return false;
-  if (String(row.status || '') === 'cleared' || row.cleared_at) return false;
+  if (String(row.status || '') === 'cleared' || String(row.record_state || '') === 'cleared' || row.cleared_at) return false;
   const expiresAt = Date.parse(row.expires_at || '');
   return !Number.isFinite(expiresAt) || expiresAt > nowMs;
 }
@@ -1276,6 +1276,45 @@ export async function clearResponseActivity(recordId) {
   const id = String(recordId || '').trim();
   if (!id) return 0;
   return wsDb().response_activities.delete(id);
+}
+
+export async function replacePgResponseActivitiesForChannel(channelId, activities = []) {
+  const id = String(channelId || '').trim();
+  if (!id) return 0;
+  const rows = (Array.isArray(activities) ? activities : [])
+    .map((activity) => sanitizeForStorage(activity))
+    .filter((activity) => activity?.record_id);
+  const db = wsDb();
+  return db.transaction('rw', db.response_activities, async () => {
+    const existing = await db.response_activities.where('channel_id').equals(id).toArray();
+    const pgActivityIds = existing
+      .filter((activity) => activity?.pg_backend === true && activity?.target_type === 'chat_thread')
+      .map((activity) => activity.record_id)
+      .filter(Boolean);
+    if (pgActivityIds.length > 0) await db.response_activities.bulkDelete(pgActivityIds);
+    if (rows.length > 0) await db.response_activities.bulkPut(rows);
+    return rows.length;
+  });
+}
+
+export async function replacePgResponseActivitiesForTarget(targetType, targetId, activities = []) {
+  const type = String(targetType || '').trim();
+  const id = String(targetId || '').trim();
+  if (!type || !id) return 0;
+  const rows = (Array.isArray(activities) ? activities : [])
+    .map((activity) => sanitizeForStorage(activity))
+    .filter((activity) => activity?.record_id);
+  const db = wsDb();
+  return db.transaction('rw', db.response_activities, async () => {
+    const existing = await db.response_activities.where('target_id').equals(id).toArray();
+    const pgActivityIds = existing
+      .filter((activity) => activity?.pg_backend === true && activity?.target_type === type)
+      .map((activity) => activity.record_id)
+      .filter(Boolean);
+    if (pgActivityIds.length > 0) await db.response_activities.bulkDelete(pgActivityIds);
+    if (rows.length > 0) await db.response_activities.bulkPut(rows);
+    return rows.length;
+  });
 }
 
 export async function getResponseActivitiesForTarget(targetType, targetId) {

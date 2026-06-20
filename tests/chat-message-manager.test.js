@@ -899,6 +899,70 @@ describe('createBotDm', () => {
   });
 });
 
+describe('response activity rendering', () => {
+  it('matches channel response activities by the rendered message PG thread id', () => {
+    const store = createStore({
+      messages: [{ record_id: 'root-message-1', pg_thread_id: 'pg-thread-1' }],
+      channelResponseActivities: [{
+        record_id: 'activity-1',
+        target_type: 'chat_thread',
+        target_id: 'pg-thread-1',
+        status: 'thinking',
+        expires_at: '2999-01-01T00:00:00.000Z',
+      }],
+    });
+
+    expect(store.getResponseActivitiesForThread(store.messages[0])).toEqual([
+      expect.objectContaining({ record_id: 'activity-1' }),
+    ]);
+  });
+
+  it('hides cleared and expired response activities', () => {
+    const store = createStore({
+      messages: [{ record_id: 'root-message-1', pg_thread_id: 'pg-thread-1' }],
+      channelResponseActivities: [
+        {
+          record_id: 'activity-active',
+          target_type: 'chat_thread',
+          target_id: 'pg-thread-1',
+          status: 'implementing',
+          expires_at: '2999-01-01T00:00:00.000Z',
+        },
+        {
+          record_id: 'activity-cleared',
+          target_type: 'chat_thread',
+          target_id: 'pg-thread-1',
+          status: 'thinking',
+          record_state: 'cleared',
+          expires_at: '2999-01-01T00:00:00.000Z',
+        },
+        {
+          record_id: 'activity-expired',
+          target_type: 'chat_thread',
+          target_id: 'pg-thread-1',
+          status: 'writing',
+          expires_at: '2000-01-01T00:00:00.000Z',
+        },
+      ],
+    });
+
+    expect(store.getResponseActivitiesForThread(store.messages[0]).map((activity) => activity.record_id)).toEqual(['activity-active']);
+  });
+
+  it('animates response activity titles from status words and local suffixes', () => {
+    const store = createStore({
+      responseActivityTick: 1,
+      getSenderName: vi.fn(() => 'Autopilot'),
+    });
+
+    expect(store.formatResponseActivityTitle({
+      record_id: 'activity-1',
+      status: 'thinking',
+      actor_npub: 'npub1agent',
+    })).toBe('Autopilot is Thinking.+');
+  });
+});
+
 // ---------------------------------------------------------------------------
 // sendMessage validation
 // ---------------------------------------------------------------------------
