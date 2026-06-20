@@ -144,6 +144,41 @@ describe('section live query plan', () => {
     expect(plan.detail).toEqual([]);
   });
 
+  it('stops workspace subscriptions when the workspace key changes', () => {
+    const subscriptions = [];
+    const store = {
+      currentWorkspaceKey: 'workspace-a',
+      workspaceOwnerNpub: 'npub1owner',
+      navSection: 'chat',
+      selectedChannelId: 'channel-a',
+      startSharedLiveQueries: vi.fn(),
+      createLiveSubscription: vi.fn(() => {
+        const subscription = { unsubscribe: vi.fn() };
+        subscriptions.push(subscription);
+        return subscription;
+      }),
+      stopLiveSubscription: vi.fn((subscription) => subscription.unsubscribe()),
+      initUnreadTracking: vi.fn(),
+      applyScopes: vi.fn(),
+      applyChannels: vi.fn(),
+      applyAudioNotes: vi.fn(),
+      applyMessages: vi.fn(),
+      applyReactions: vi.fn(),
+      applyChannelResponseActivities: vi.fn(),
+    };
+
+    openWorkspaceDb('workspace-a');
+    sectionLiveQueryMixin.startWorkspaceLiveQueries.call(store);
+    expect(subscriptions.length).toBeGreaterThan(0);
+
+    store.currentWorkspaceKey = 'workspace-b';
+    openWorkspaceDb('workspace-b');
+    sectionLiveQueryMixin.startWorkspaceLiveQueries.call(store);
+
+    expect(subscriptions[0].unsubscribe).toHaveBeenCalled();
+    expect(store.stopLiveSubscription).toHaveBeenCalled();
+  });
+
   it('kicks Tower PG hydration when a workspace is restored from cache', async () => {
     const store = {
       currentWorkspace: {

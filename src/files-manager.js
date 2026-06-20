@@ -836,7 +836,8 @@ export const filesManagerMixin = {
   },
 
   get fileEditContextChanged() {
-    const row = this.fileEditRow || {};
+    if (!this.fileEditRow) return false;
+    const row = this.fileEditRow;
     const document = (this.documents || []).find((item) => item?.record_id === row.source_record_id) || null;
     const currentScopeId = getRecordScopeId(document) || normalizeString(row.scope_id);
     const currentChannelId = normalizeString(document?.pg_channel_id || row.channel_id);

@@ -296,6 +296,40 @@ describe('PG workspace manager mode', () => {
     expect(store.currentWorkspaceOwnerNpub).toBe('npub1owner');
   });
 
+  it('clears stale chat state when a newly selected PG workspace was preselected by connect flow', async () => {
+    const workspace = {
+      workspaceKey: 'pg:npub1user::tower:npub1tower::workspace:npub1newworkspace::app:flightdeck_pg',
+      workspaceOwnerNpub: 'npub1owner',
+      directHttpsUrl: 'https://tower.example',
+      pgSessionNpub: 'npub1user',
+      pgBackendMode: true,
+    };
+    const store = await buildStore({
+      knownWorkspaces: [workspace],
+      selectedWorkspaceKey: workspace.workspaceKey,
+      localWorkspaceCoreLoadedForKey: 'pg:npub1user::tower:npub1tower::workspace:npub1oldworkspace::app:flightdeck_pg',
+      selectedChannelId: 'old-channel',
+      activeThreadId: 'old-thread',
+      pgContextSelectedChannelId: 'old-channel',
+      pgContextSelectedThreadId: 'old-thread',
+      channels: [{ record_id: 'old-channel' }],
+      messages: [{ record_id: 'old-message', channel_id: 'old-channel' }],
+      loadLocalWorkspaceCoreData: vi.fn().mockResolvedValue({ scopes: [], channels: [] }),
+      closeThread: vi.fn(),
+      stopSelectedChannelLiveQuery: vi.fn(),
+    });
+
+    await store.selectWorkspace(workspace.workspaceKey, { pgVerified: true });
+
+    expect(store.selectedChannelId).toBeNull();
+    expect(store.pgContextSelectedChannelId).toBe('');
+    expect(store.pgContextSelectedThreadId).toBe('');
+    expect(store.channels).toEqual([]);
+    expect(store.messages).toEqual([]);
+    expect(store.closeThread).toHaveBeenCalledWith({ syncRoute: false });
+    expect(store.stopSelectedChannelLiveQuery).toHaveBeenCalled();
+  });
+
   it('does not reload local PG core data when selecting the same already-loaded workspace', async () => {
     const workspace = {
       workspaceKey: 'pg:npub1user::tower:npub1tower::workspace:npub1workspace::app:flightdeck_pg',

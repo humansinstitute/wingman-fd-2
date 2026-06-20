@@ -189,4 +189,15 @@ describe('files manager', () => {
     expect(editStore.fileEditChannelId).toBe('chan-2');
     expect(editStore.fileEditContextChanged).toBe(true);
   });
+
+  it('does not report file edit context changes when no file is being edited', () => {
+    const editStore = Object.assign(Object.create(filesManagerMixin), {
+      fileEditRow: null,
+      documents: [null],
+      fileEditScopeId: 'scope-1',
+      fileEditChannelId: 'chan-1',
+    });
+
+    expect(editStore.fileEditContextChanged).toBe(false);
+  });
 });

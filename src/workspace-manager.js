@@ -1088,6 +1088,21 @@ export const workspaceManagerMixin = {
 
     const previousWorkspaceKey = this.currentWorkspaceKey;
     const nextWorkspaceKey = workspace.workspaceKey || workspace.workspaceOwnerNpub;
+    const loadedWorkspaceKey = String(this.localWorkspaceCoreLoadedForKey || '').trim();
+    const hasRuntimeData = Boolean(
+      this.selectedChannelId
+      || this.activeThreadId
+      || this.channels?.length
+      || this.messages?.length
+      || this.groups?.length
+      || this.documents?.length
+      || this.tasks?.length
+    );
+    const shouldResetRuntimeData = Boolean(
+      (previousWorkspaceKey && previousWorkspaceKey !== nextWorkspaceKey)
+      || (loadedWorkspaceKey && loadedWorkspaceKey !== nextWorkspaceKey)
+      || (!loadedWorkspaceKey && hasRuntimeData && previousWorkspaceKey !== nextWorkspaceKey)
+    );
     this.selectedWorkspaceKey = workspace.workspaceKey || '';
     this.workspaceSwitchPendingNpub = workspace.workspaceOwnerNpub;
     this.workspaceSwitchPendingKey = workspace.workspaceKey || '';
@@ -1123,13 +1138,18 @@ export const workspaceManagerMixin = {
       // Reset hydration cache so the new workspace can hydrate fresh
       if (this._workspaceProfileHydratedKeys) this._workspaceProfileHydratedKeys.clear();
 
-      if (previousWorkspaceKey && previousWorkspaceKey !== workspace.workspaceKey) {
+      if (shouldResetRuntimeData) {
         await clearRuntimeData();
         evictStorageImageCache().catch(() => {});
         this.revokeStorageImageObjectUrls();
         this.chatProfiles = {};
         this.channels = [];
         this.messages = [];
+        this.selectedChannelId = null;
+        this.pgContextSelectedChannelId = '';
+        this.pgContextSelectedThreadId = '';
+        this.closeThread?.({ syncRoute: false });
+        this.stopSelectedChannelLiveQuery?.();
         this.groups = [];
         this.documents = [];
         this.directories = [];

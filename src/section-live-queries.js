@@ -79,6 +79,15 @@ function stopBucket(store, bucket) {
   bucket.clear();
 }
 
+function currentWorkspaceKey(store) {
+  return String(store?.currentWorkspaceKey || '').trim();
+}
+
+function isSameWorkspace(store, workspaceKey, ownerNpub) {
+  return currentWorkspaceKey(store) === workspaceKey
+    && String(store?.workspaceOwnerNpub || '').trim() === ownerNpub;
+}
+
 function scheduleTowerPgWorkspaceHydration(store, state) {
   if (!isTowerPgBackendMode()) return;
   if (!store?.currentWorkspace?.pgBackendMode) return;
@@ -184,6 +193,7 @@ function buildSharedSpecs() {
 
 function buildWorkspaceSpecs(store) {
   const ownerNpub = String(store?.workspaceOwnerNpub || '').trim();
+  const workspaceKey = currentWorkspaceKey(store);
   if (!ownerNpub) return [];
 
   const alwaysOn = [
@@ -327,6 +337,7 @@ function buildWorkspaceSpecs(store) {
 
 function buildDetailSpecs(store) {
   const ownerNpub = String(store?.workspaceOwnerNpub || '').trim();
+  const workspaceKey = currentWorkspaceKey(store);
   if (!ownerNpub) return [];
 
   switch (store?.navSection) {
@@ -345,7 +356,7 @@ function buildDetailSpecs(store) {
               limit: store?.mainFeedVisibleCount || store?.MAIN_FEED_PAGE_SIZE,
             }),
             onNext: (messages) => {
-              if (store.workspaceOwnerNpub !== ownerNpub || store.selectedChannelId) return;
+              if (!isSameWorkspace(store, workspaceKey, ownerNpub) || store.selectedChannelId) return;
               return store.applyMessages(messages);
             },
           },
@@ -361,7 +372,7 @@ function buildDetailSpecs(store) {
               );
             },
             onNext: (reactions) => {
-              if (store.workspaceOwnerNpub !== ownerNpub || store.selectedChannelId) return;
+              if (!isSameWorkspace(store, workspaceKey, ownerNpub) || store.selectedChannelId) return;
               return store.applyReactions(reactions);
             },
           },
@@ -375,7 +386,7 @@ function buildDetailSpecs(store) {
             limit: store?.mainFeedVisibleCount || store?.MAIN_FEED_PAGE_SIZE,
           }),
           onNext: (messages) => {
-            if (store.workspaceOwnerNpub !== ownerNpub || store.selectedChannelId !== channelId) return;
+            if (!isSameWorkspace(store, workspaceKey, ownerNpub) || store.selectedChannelId !== channelId) return;
             return store.applyMessages(messages);
           },
         },
@@ -391,7 +402,7 @@ function buildDetailSpecs(store) {
             );
           },
           onNext: (reactions) => {
-            if (store.workspaceOwnerNpub !== ownerNpub || store.selectedChannelId !== channelId) return;
+            if (!isSameWorkspace(store, workspaceKey, ownerNpub) || store.selectedChannelId !== channelId) return;
             return store.applyReactions(reactions);
           },
         },
@@ -399,7 +410,7 @@ function buildDetailSpecs(store) {
           key: `chat:channel-response-activities:${channelId}`,
           query: () => getResponseActivitiesForChannel(channelId),
           onNext: (activities) => {
-            if (store.workspaceOwnerNpub !== ownerNpub || store.selectedChannelId !== channelId) return;
+            if (!isSameWorkspace(store, workspaceKey, ownerNpub) || store.selectedChannelId !== channelId) return;
             return store.applyChannelResponseActivities?.(activities);
           },
         },
@@ -410,7 +421,7 @@ function buildDetailSpecs(store) {
           key: `chat:response-activities:${activeActivityThreadId}`,
           query: () => getResponseActivitiesForTarget('chat_thread', activeActivityThreadId),
           onNext: (activities) => {
-            if (store.workspaceOwnerNpub !== ownerNpub || store.selectedChannelId !== channelId || store.activeThreadId !== activeThreadId) return;
+            if (!isSameWorkspace(store, workspaceKey, ownerNpub) || store.selectedChannelId !== channelId || store.activeThreadId !== activeThreadId) return;
             return store.applyThreadResponseActivities(activities);
           },
         });
@@ -427,7 +438,7 @@ function buildDetailSpecs(store) {
           key: `tasks:selected-task:${taskId}`,
           query: () => getTaskById(taskId),
           onNext: (task) => {
-            if (store.workspaceOwnerNpub !== ownerNpub || store.activeTaskId !== taskId) return;
+            if (!isSameWorkspace(store, workspaceKey, ownerNpub) || store.activeTaskId !== taskId) return;
             return store.applySelectedTask(task);
           },
         },
@@ -435,7 +446,7 @@ function buildDetailSpecs(store) {
           key: `tasks:comments:${taskId}`,
           query: () => getCommentsByTarget(taskId),
           onNext: (comments) => {
-            if (store.workspaceOwnerNpub !== ownerNpub || store.activeTaskId !== taskId) return;
+            if (!isSameWorkspace(store, workspaceKey, ownerNpub) || store.activeTaskId !== taskId) return;
             return store.applyTaskComments(comments);
           },
         },
@@ -449,7 +460,7 @@ function buildDetailSpecs(store) {
             );
           },
           onNext: (reactions) => {
-            if (store.workspaceOwnerNpub !== ownerNpub || store.activeTaskId !== taskId) return;
+            if (!isSameWorkspace(store, workspaceKey, ownerNpub) || store.activeTaskId !== taskId) return;
             return store.applyReactions(reactions);
           },
         },
@@ -466,7 +477,7 @@ function buildDetailSpecs(store) {
           query: () => getDocumentById(docId),
           onNext: (document) => {
             if (
-              store.workspaceOwnerNpub !== ownerNpub
+              !isSameWorkspace(store, workspaceKey, ownerNpub)
               || store.selectedDocType !== 'document'
               || store.selectedDocId !== docId
             ) return;
@@ -478,7 +489,7 @@ function buildDetailSpecs(store) {
           query: () => getCommentsByTarget(docId),
           onNext: (comments) => {
             if (
-              store.workspaceOwnerNpub !== ownerNpub
+              !isSameWorkspace(store, workspaceKey, ownerNpub)
               || store.selectedDocType !== 'document'
               || store.selectedDocId !== docId
             ) return;
@@ -502,7 +513,7 @@ function buildDetailSpecs(store) {
           },
           onNext: (reactions) => {
             if (
-              store.workspaceOwnerNpub !== ownerNpub
+              !isSameWorkspace(store, workspaceKey, ownerNpub)
               || store.selectedDocType !== 'document'
               || store.selectedDocId !== docId
             ) return;
@@ -520,7 +531,7 @@ function buildDetailSpecs(store) {
           key: `reports:selected-report:${reportId}`,
           query: () => getReportById(reportId),
           onNext: (report) => {
-            if (store.workspaceOwnerNpub !== ownerNpub || store.selectedReportId !== reportId) return;
+            if (!isSameWorkspace(store, workspaceKey, ownerNpub) || store.selectedReportId !== reportId) return;
             return store.applySelectedReport(report);
           },
         },
@@ -564,6 +575,8 @@ export const sectionLiveQueryMixin = {
     const ownerNpub = String(this.workspaceOwnerNpub || '').trim();
     const workspaceKey = String(this.currentWorkspaceKey || '').trim();
     if (state.workspaceKey !== workspaceKey || state.workspaceOwnerNpub !== ownerNpub) {
+      stopBucket(this, state.workspace);
+      stopBucket(this, state.detail);
       state.workspaceKey = workspaceKey;
       state.workspaceOwnerNpub = ownerNpub;
       this.hasBootstrappedUnreadTracking = false;

@@ -1891,7 +1891,7 @@ export function initApp() {
     createLiveSubscription(query, onNext) {
       let pending = null;
       let rafId = null;
-      return liveQuery(query).subscribe({
+      const subscription = liveQuery(query).subscribe({
         next: (value) => {
           // Coalesce rapid-fire Dexie notifications into one callback per frame
           pending = value;
@@ -1909,6 +1909,16 @@ export function initApp() {
           console.error('Live query failed:', error?.message || error);
         },
       });
+      return {
+        unsubscribe() {
+          if (rafId != null) {
+            cancelAnimationFrame(rafId);
+            rafId = null;
+          }
+          pending = null;
+          subscription.unsubscribe();
+        },
+      };
     },
 
     stopLiveSubscription(subscription) {
