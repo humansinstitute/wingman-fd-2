@@ -179,10 +179,10 @@ describe('Thread mobile responsive behavior', () => {
 
       expect(switcherDecl).toMatch(/display\s*:\s*grid/);
       expect(switcherDecl).toMatch(/grid-template-columns\s*:\s*38px minmax\(0,\s*1fr\) 38px/);
-      expect(switcherDecl).toMatch(/z-index\s*:\s*130/);
+      expect(switcherDecl).toMatch(/z-index\s*:\s*30/);
       expect(triggerDecl).toMatch(/justify-content\s*:\s*center/);
       expect(triggerDecl).toMatch(/text-align\s*:\s*center/);
-      expect(resultsDecl).toMatch(/z-index\s*:\s*131/);
+      expect(resultsDecl).toMatch(/z-index\s*:\s*31/);
       expect(backdropZ).toBeGreaterThan(resultsZ);
       expect(sidebarZ).toBeGreaterThan(resultsZ);
       expect(headerZ).toBeGreaterThan(resultsZ);
@@ -279,7 +279,7 @@ describe('Thread mobile responsive behavior', () => {
       expect(html).not.toContain("threadSize === 'wide'");
     });
 
-    it('uses the command-palette backdrop treatment below nested chat record modals', async () => {
+    it('uses the command-palette backdrop treatment above mobile chrome', async () => {
       const fs = await import('node:fs');
       const path = await import('node:path');
       const cssPath = path.resolve(import.meta.dirname, '..', 'src', 'styles.css');
@@ -291,12 +291,12 @@ describe('Thread mobile responsive behavior', () => {
 
       expect(backdropDecl).toMatch(/background\s*:\s*rgba\(15,\s*23,\s*42,\s*0\.42\)/);
       expect(backdropDecl).toMatch(/backdrop-filter\s*:\s*blur\(10px\)/);
-      expect(backdropDecl).toMatch(/z-index\s*:\s*118/);
+      expect(backdropDecl).toMatch(/z-index\s*:\s*220/);
       expect(panelDecl).toMatch(/width\s*:\s*min\(66\.666vw,\s*1120px\)/);
-      expect(taskBackdropDecl).toMatch(/z-index\s*:\s*119/);
+      expect(taskBackdropDecl).toMatch(/z-index\s*:\s*220/);
       expect(taskBackdropDecl).toMatch(/background\s*:\s*rgba\(15,\s*23,\s*42,\s*0\.42\)/);
       expect(taskBackdropDecl).toMatch(/backdrop-filter\s*:\s*blur\(10px\)/);
-      expect(docBackdropDecl).toMatch(/z-index\s*:\s*119/);
+      expect(docBackdropDecl).toMatch(/z-index\s*:\s*220/);
       expect(docBackdropDecl).toMatch(/background\s*:\s*rgba\(15,\s*23,\s*42,\s*0\.42\)/);
       expect(docBackdropDecl).toMatch(/backdrop-filter\s*:\s*blur\(10px\)/);
     });

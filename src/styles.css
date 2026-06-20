@@ -622,7 +622,7 @@ button:disabled {
   justify-content: center;
   padding: 1rem;
   overflow-y: auto;
-  z-index: 60;
+  z-index: 220;
 }
 
 .modal-overlay-opaque {
@@ -632,7 +632,7 @@ button:disabled {
 .sync-progress-modal-overlay {
   position: fixed;
   inset: 0;
-  z-index: 140;
+  z-index: 230;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1923,6 +1923,17 @@ button:disabled {
 
   .docs-toolbar {
     flex-basis: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .docs-search-input {
+    flex: 1 0 100%;
+    min-width: 0;
+  }
+
+  .docs-new-doc-btn {
+    margin-left: auto;
   }
 
   .files-toolbar {
@@ -6016,7 +6027,7 @@ button:disabled {
 .chat-thread-modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 118;
+  z-index: 220;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -7945,11 +7956,11 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 40;
+  z-index: 220;
 }
 
 .channel-settings-modal-backdrop {
-  z-index: 130;
+  z-index: 220;
 }
 
 .doc-modal-card {
@@ -8251,7 +8262,7 @@ button:disabled {
 .chat-doc-page-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 119;
+  z-index: 220;
   background: rgba(15, 23, 42, 0.42);
   backdrop-filter: blur(10px);
 }
@@ -8264,7 +8275,7 @@ button:disabled {
   width: min(88vw, 1120px);
   max-width: calc(100vw - 2rem);
   transform: translateX(-50%);
-  z-index: 120;
+  z-index: 221;
   display: flex;
   flex-direction: column;
   padding: 1rem;
@@ -10000,7 +10011,7 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 200;
+  z-index: 220;
 }
 
 .new-channel-modal {
@@ -10655,7 +10666,7 @@ button:disabled {
     padding: 0.35rem 0.8rem;
     border-bottom: 1px solid var(--border);
     background: #ffffff;
-    z-index: 130;
+    z-index: 30;
   }
 
   .mobile-scope-workspace-avatar-btn,
@@ -10729,7 +10740,7 @@ button:disabled {
     top: calc(100% + 0.15rem);
     left: 0.5rem;
     right: 0.5rem;
-    z-index: 131;
+    z-index: 31;
     max-height: min(320px, 55dvh);
   }
 
@@ -10847,7 +10858,7 @@ button:disabled {
 .chat-task-page-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 119;
+  z-index: 220;
   background: rgba(15, 23, 42, 0.42);
   backdrop-filter: blur(10px);
 }
@@ -10860,7 +10871,7 @@ button:disabled {
   width: min(88vw, 1120px);
   max-width: calc(100vw - 2rem);
   transform: translateX(-50%);
-  z-index: 120;
+  z-index: 221;
   display: flex;
   flex-direction: column;
   padding: 1rem;
@@ -14374,7 +14385,7 @@ button:disabled {
 /* ---- Doc Versioning ---- */
 
 .doc-modal-backdrop:has(.doc-versioning-modal) {
-  z-index: 100;
+  z-index: 230;
 }
 
 .doc-versioning-modal {
