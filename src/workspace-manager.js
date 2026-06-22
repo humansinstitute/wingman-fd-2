@@ -77,6 +77,8 @@ import { getRecordWriteFieldsForStore } from './preferred-write-group.js';
 import { pgWorkspaceSessionNpubFromMe } from './pg-workspace-descriptor.js';
 import { blockDisabledFlightDeckSurface, isFlightDeckSurfaceDisabled } from './disabled-surfaces.js';
 
+const WORKSPACE_ALL_BOARD_ID = '__all__';
+
 export function guessDefaultBackendUrl() {
   return DEFAULT_SUPERBASED_URL || '';
 }
@@ -366,7 +368,7 @@ export const workspaceManagerMixin = {
     if (workspaceOwnerNpub) {
       void this.ensureWorkspaceProfileHydrated(entry?.workspaceKey || workspaceOwnerNpub);
     }
-    return workspaceOwnerNpub ? this.getSenderAvatar(workspaceOwnerNpub) : null;
+    return null;
   },
 
   getWorkspaceInitials(workspace) {
@@ -1089,6 +1091,7 @@ export const workspaceManagerMixin = {
 
     const previousWorkspaceKey = this.currentWorkspaceKey;
     const nextWorkspaceKey = workspace.workspaceKey || workspace.workspaceOwnerNpub;
+    const shouldOpenWorkspaceHome = Boolean(options.openWorkspaceHome);
     const loadedWorkspaceKey = String(this.localWorkspaceCoreLoadedForKey || '').trim();
     const hasRuntimeData = Boolean(
       this.selectedChannelId
@@ -1174,7 +1177,26 @@ export const workspaceManagerMixin = {
         this.localWorkspaceCoreLoadedForKey = nextWorkspaceKey;
       }
       this.startWorkspaceLiveQueries();
-      this.selectedBoardId = this.readStoredTaskBoardId() || null;
+      if (shouldOpenWorkspaceHome) {
+        this.navSection = 'status';
+        this.selectedBoardId = WORKSPACE_ALL_BOARD_ID;
+        this.persistSelectedBoardId?.(this.selectedBoardId);
+        this.showBoardDescendantTasks = false;
+        this.taskViewMode = 'kanban';
+        this.selectedChannelId = null;
+        this.pgContextSelectedChannelId = '';
+        this.pgContextSelectedThreadId = '';
+        await this.closeThread?.({ syncRoute: false });
+        await this.closeTaskDetail?.({ syncRoute: false });
+        this.selectedDocType = null;
+        this.selectedDocId = null;
+        this.selectedDocCommentId = null;
+        this.currentFolderId = null;
+        this.selectedReportId = null;
+        this.activeOpportunityId = null;
+      } else {
+        this.selectedBoardId = this.readStoredTaskBoardId() || null;
+      }
       this.validateSelectedBoardId();
       this.normalizeSettingsTab();
       await this.persistWorkspaceSettings();
@@ -1191,6 +1213,7 @@ export const workspaceManagerMixin = {
       }
       await this.refreshWorkspaceSettings();
       this.syncWorkspaceProfileDraft({ force: true });
+      if (shouldOpenWorkspaceHome) this.syncRoute?.(true);
     } finally {
       if (this.workspaceSwitchPendingKey === workspace.workspaceKey) {
         this.workspaceSwitchPendingKey = '';

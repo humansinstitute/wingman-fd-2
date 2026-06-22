@@ -73,12 +73,26 @@ async function buildStore(overrides = {}) {
     hasForcedInitialBackfill: false,
     hasForcedTaskFamilyBackfill: false,
     selectedBoardId: null,
+    navSection: 'tasks',
+    selectedChannelId: null,
+    activeThreadId: null,
+    pgContextSelectedChannelId: '',
+    pgContextSelectedThreadId: '',
+    showBoardDescendantTasks: true,
+    taskViewMode: 'list',
+    selectedDocType: null,
+    selectedDocId: null,
+    selectedDocCommentId: null,
+    currentFolderId: null,
+    selectedReportId: null,
+    activeOpportunityId: null,
     startSharedLiveQueries: vi.fn(),
     stopWorkspaceLiveQueries: vi.fn(),
     revokeStorageImageObjectUrls: vi.fn(),
     cancelEditSchedule: vi.fn(),
     startWorkspaceLiveQueries: vi.fn(),
     readStoredTaskBoardId: vi.fn(() => null),
+    persistSelectedBoardId: vi.fn(),
     validateSelectedBoardId: vi.fn(),
     normalizeSettingsTab: vi.fn(),
     persistWorkspaceSettings: vi.fn().mockResolvedValue(undefined),
@@ -87,6 +101,9 @@ async function buildStore(overrides = {}) {
     publishCurrentWorkspaceAppSchema: vi.fn().mockResolvedValue(undefined),
     refreshWorkspaceSettings: vi.fn().mockResolvedValue(undefined),
     syncWorkspaceProfileDraft: vi.fn(),
+    syncRoute: vi.fn(),
+    closeThread: vi.fn(),
+    closeTaskDetail: vi.fn(),
     getSenderAvatar: vi.fn(() => null),
     getInitials: vi.fn((value) => String(value || 'WS').slice(0, 2).toUpperCase()),
     mergeKnownWorkspaces(entries) {
@@ -217,6 +234,71 @@ describe('PG workspace manager mode', () => {
     expect(refreshGroups).not.toHaveBeenCalled();
     expect(api.registerWorkspaceApp).not.toHaveBeenCalled();
     expect(api.publishWorkspaceAppSchema).not.toHaveBeenCalled();
+  });
+
+  it('opens newly created PG workspaces on the home route with all scopes selected', async () => {
+    const workspace = {
+      workspaceKey: 'pg:npub1user::tower:npub1tower::workspace:npub1workspace::app:flightdeck_pg',
+      workspaceOwnerNpub: 'npub1owner',
+      directHttpsUrl: 'https://tower.example',
+      pgSessionNpub: 'npub1user',
+      pgBackendMode: true,
+    };
+    const store = await buildStore({
+      knownWorkspaces: [workspace],
+      selectedWorkspaceKey: workspace.workspaceKey,
+      selectedBoardId: 'old-scope-id',
+      selectedChannelId: 'old-channel-id',
+      activeThreadId: 'old-thread-id',
+      selectedDocType: 'document',
+      selectedDocId: 'old-doc-id',
+      selectedReportId: 'old-report-id',
+      activeOpportunityId: 'old-opportunity-id',
+      readStoredTaskBoardId: vi.fn(() => 'old-scope-id'),
+    });
+
+    await store.selectWorkspace(workspace.workspaceKey, { pgVerified: true, openWorkspaceHome: true });
+
+    expect(store.navSection).toBe('status');
+    expect(store.selectedBoardId).toBe('__all__');
+    expect(store.persistSelectedBoardId).toHaveBeenCalledWith('__all__');
+    expect(store.selectedChannelId).toBeNull();
+    expect(store.pgContextSelectedChannelId).toBe('');
+    expect(store.pgContextSelectedThreadId).toBe('');
+    expect(store.selectedDocType).toBeNull();
+    expect(store.selectedDocId).toBeNull();
+    expect(store.selectedReportId).toBeNull();
+    expect(store.activeOpportunityId).toBeNull();
+    expect(store.showBoardDescendantTasks).toBe(false);
+    expect(store.taskViewMode).toBe('kanban');
+    expect(store.closeThread).toHaveBeenCalledWith({ syncRoute: false });
+    expect(store.closeTaskDetail).toHaveBeenCalledWith({ syncRoute: false });
+    expect(store.syncRoute).toHaveBeenCalledWith(true);
+  });
+
+  it('uses workspace initials instead of the owner Nostr avatar when no workspace avatar is set', async () => {
+    const workspace = {
+      workspaceKey: 'pg:npub1user::tower:npub1tower::workspace:npub1workspace::app:flightdeck_pg',
+      workspaceOwnerNpub: 'npub1owner',
+      name: 'Test 2',
+      directHttpsUrl: 'https://tower.example',
+      pgSessionNpub: 'npub1user',
+      pgBackendMode: true,
+    };
+    const getSenderAvatar = vi.fn(() => 'https://nostr.example/avatar.png');
+    const ensureWorkspaceProfileHydrated = vi.fn();
+    const store = await buildStore({
+      knownWorkspaces: [workspace],
+      selectedWorkspaceKey: workspace.workspaceKey,
+      currentWorkspaceOwnerNpub: workspace.workspaceOwnerNpub,
+      getSenderAvatar,
+      ensureWorkspaceProfileHydrated,
+    });
+
+    expect(store.getWorkspaceAvatar(workspace)).toBeNull();
+    expect(getSenderAvatar).not.toHaveBeenCalled();
+    expect(ensureWorkspaceProfileHydrated).toHaveBeenCalledWith(workspace.workspaceKey);
+    expect(store.getWorkspaceInitials(workspace)).toBe('TE');
   });
 
   it('reverifies a cached same-signer PG workspace before selecting it after reload', async () => {

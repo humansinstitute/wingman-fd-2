@@ -948,11 +948,14 @@ export const connectSettingsManagerMixin = {
     return workspace;
   },
 
-  async connectWithPgDescriptor(descriptorInput, { closeModal = true } = {}) {
+  async connectWithPgDescriptor(descriptorInput, { closeModal = true, selectWorkspaceOptions = {} } = {}) {
     const { descriptor, me } = await this.verifyPgDescriptor(descriptorInput);
     const workspace = await this.rememberVerifiedPgWorkspace(descriptor, me);
     if (closeModal) this.showConnectModal = false;
-    await this.selectWorkspace(workspace.workspaceKey || workspace.workspaceOwnerNpub, { pgVerified: true });
+    await this.selectWorkspace(workspace.workspaceKey || workspace.workspaceOwnerNpub, {
+      pgVerified: true,
+      ...selectWorkspaceOptions,
+    });
     return workspace;
   },
 
@@ -1033,7 +1036,9 @@ export const connectSettingsManagerMixin = {
           completed: 1 + this.connectPgBootstrapCounts().scopes + this.connectPgBootstrapCounts().channels,
           total: 1 + this.connectPgBootstrapCounts().scopes + this.connectPgBootstrapCounts().channels,
         });
-        const workspace = await this.connectWithPgDescriptor(JSON.stringify(result.descriptor));
+        const workspace = await this.connectWithPgDescriptor(JSON.stringify(result.descriptor), {
+          selectWorkspaceOptions: { openWorkspaceHome: true },
+        });
         this.connectNewWorkspaceName = '';
         this.connectNewWorkspaceDescription = '';
         this.resetConnectPgBootstrapState();

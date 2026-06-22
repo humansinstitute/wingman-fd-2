@@ -260,6 +260,10 @@ describe('PG connect settings manager', () => {
       pgBackendMode: true,
       workspaceOwnerNpub: 'npub1owner',
     });
+    expect(store.selectWorkspace).toHaveBeenCalledWith(
+      'pg:npub1user::tower:npub1tower::workspace:npub1workspace::app:flightdeck_pg',
+      { pgVerified: true, openWorkspaceHome: true },
+    );
     expect(store.showConnectModal).toBe(false);
   });
 });
