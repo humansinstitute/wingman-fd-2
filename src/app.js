@@ -961,6 +961,18 @@ export function initApp() {
     channelSettingsSaving: false,
     channelSettingsNotice: '',
     channelSettingsError: '',
+    showWorkspaceAccessGate: false,
+    workspaceAccessGateStep: 'review',
+    workspaceAccessGateWorkspaces: [],
+    workspaceAccessGateProgress: {
+      active: false,
+      phase: 'idle',
+      label: '',
+      completed: 0,
+      total: 0,
+      error: '',
+    },
+    workspaceAccessGateBusy: false,
     superbasedTokenInput: '',
     superbasedError: null,
     knownWorkspaces: [],
@@ -1862,6 +1874,10 @@ export function initApp() {
         await this.hydrateKnownWorkspaceProfiles();
         this.updateWorkspaceBootstrapPrompt();
         await this.loadRemoteWorkspaces();
+        if (this.showWorkspaceAccessGate || this.prepareWorkspaceAccessGate?.()) {
+          this.updateWorkspaceBootstrapPrompt();
+          return;
+        }
         if (this.knownWorkspaces.length === 0 && this.superbasedConnectionConfig?.workspaceOwnerNpub && this.session?.npub) {
           await this.tryRecoverWorkspace();
         }
@@ -2391,6 +2407,10 @@ export function initApp() {
         await this.discoverPgOnboardingAnnouncements();
         await this.discoverPgWorkspaceSelfIndex();
         await this.loadRemoteWorkspaces();
+        if (this.showWorkspaceAccessGate || this.prepareWorkspaceAccessGate?.()) {
+          this.updateWorkspaceBootstrapPrompt();
+          return;
+        }
         if (!this.selectedWorkspaceKey && this.currentWorkspaceOwnerNpub) {
           const legacyMatch = this.knownWorkspaces.find((workspace) => workspace.workspaceOwnerNpub === this.currentWorkspaceOwnerNpub) || null;
           if (legacyMatch) this.selectedWorkspaceKey = legacyMatch.workspaceKey || '';

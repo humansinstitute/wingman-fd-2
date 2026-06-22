@@ -53,6 +53,18 @@ async function buildStore(overrides = {}) {
     groups: [],
     workspaceProfileRowsByKey: {},
     showWorkspaceSwitcherMenu: false,
+    showWorkspaceAccessGate: false,
+    workspaceAccessGateStep: 'review',
+    workspaceAccessGateWorkspaces: [],
+    workspaceAccessGateProgress: {
+      active: false,
+      phase: 'idle',
+      label: '',
+      completed: 0,
+      total: 0,
+      error: '',
+    },
+    workspaceAccessGateBusy: false,
     workspaceSwitchPendingKey: '',
     workspaceSwitchPendingNpub: '',
     _workspaceProfileHydratedKeys: new Set(),
@@ -154,6 +166,59 @@ describe('PG workspace manager mode', () => {
       directHttpsUrl: 'https://tower.example',
       pgSessionNpub: 'npub1user',
       pgBackendMode: true,
+    });
+    expect(store.showWorkspaceAccessGate).toBe(true);
+    expect(store.workspaceAccessGateStep).toBe('review');
+    expect(store.workspaceAccessGateWorkspaces[0]).toMatchObject({
+      name: 'Wingmen',
+      workspaceOwnerNpub: 'npub1owner',
+    });
+  });
+
+  it('continues from the workspace access gate by selecting and bootstrapping the first workspace', async () => {
+    const workspace = {
+      workspaceKey: 'pg:npub1user::tower:npub1tower::workspace:npub1workspace::app:flightdeck_pg',
+      workspaceOwnerNpub: 'npub1owner',
+      workspaceServiceNpub: 'npub1workspace',
+      workspaceId: 'workspace-1',
+      towerServiceNpub: 'npub1tower',
+      serviceNpub: 'npub1tower',
+      appNpub: 'flightdeck_pg',
+      directHttpsUrl: 'https://tower.example',
+      pgSessionNpub: 'npub1user',
+      pgBackendMode: true,
+      name: 'Wingmen',
+    };
+    const selectWorkspace = vi.fn().mockResolvedValue(undefined);
+    const bootstrapSelectedWorkspace = vi.fn().mockResolvedValue(undefined);
+    const persistWorkspaceSettings = vi.fn().mockResolvedValue(undefined);
+    const ensureBackgroundSync = vi.fn();
+    const updateWorkspaceBootstrapPrompt = vi.fn();
+    const store = await buildStore({
+      knownWorkspaces: [workspace],
+      workspaceAccessGateWorkspaces: [workspace],
+      showWorkspaceAccessGate: true,
+      selectWorkspace,
+      bootstrapSelectedWorkspace,
+      persistWorkspaceSettings,
+      ensureBackgroundSync,
+      updateWorkspaceBootstrapPrompt,
+    });
+
+    await store.continueWorkspaceAccessGate();
+
+    expect(selectWorkspace).toHaveBeenCalledWith(workspace.workspaceKey, {
+      refresh: false,
+      openWorkspaceHome: true,
+    });
+    expect(persistWorkspaceSettings).toHaveBeenCalled();
+    expect(bootstrapSelectedWorkspace).toHaveBeenCalledWith({ runAccessPrune: true });
+    expect(ensureBackgroundSync).toHaveBeenCalledWith(true);
+    expect(store.showWorkspaceAccessGate).toBe(false);
+    expect(store.workspaceAccessGateProgress).toMatchObject({
+      phase: 'complete',
+      completed: 4,
+      total: 4,
     });
   });
 

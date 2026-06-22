@@ -1280,6 +1280,90 @@ button:disabled {
   color: #475569;
   font-size: 0.92rem;
 }
+.workspace-access-modal {
+  width: min(92vw, 640px);
+  padding: 1rem;
+  border-color: #e5e7eb;
+  border-radius: 14px;
+  color: var(--text);
+  text-align: left;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
+}
+.workspace-access-review {
+  display: grid;
+  gap: 1rem;
+}
+.workspace-access-top {
+  display: grid;
+  justify-items: center;
+  gap: 0.55rem;
+  padding: 0.25rem 1rem 0;
+  text-align: center;
+}
+.workspace-access-top h2 {
+  margin: 0;
+  color: #111827;
+  font-size: 1.45rem;
+  line-height: 1.18;
+}
+.workspace-access-top p {
+  max-width: 520px;
+  margin: 0;
+  color: #475569;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+.workspace-access-list {
+  display: grid;
+  gap: 0.55rem;
+}
+.workspace-access-row {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  min-width: 0;
+  padding: 0.85rem 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+.workspace-access-avatar {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: #111827;
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+.workspace-access-row span:last-child {
+  min-width: 0;
+  display: grid;
+  gap: 0.2rem;
+}
+.workspace-access-row strong {
+  min-width: 0;
+  color: #111827;
+  font-size: 0.96rem;
+  overflow-wrap: anywhere;
+}
+.workspace-access-row small {
+  min-width: 0;
+  color: #64748b;
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+.workspace-access-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+.workspace-access-loading {
+  min-height: 300px;
+}
 .connect-onboarding-screen {
   display: grid;
   gap: 1rem;

@@ -146,6 +146,13 @@ export const SHELL_STATE_KEYS = Object.freeze([
   'knownHosts',
   'showAgentConnectModal',
 
+  // Workspace access gate
+  'showWorkspaceAccessGate',
+  'workspaceAccessGateStep',
+  'workspaceAccessGateWorkspaces',
+  'workspaceAccessGateProgress',
+  'workspaceAccessGateBusy',
+
   // Workspace bootstrap
   'showWorkspaceBootstrapModal',
   'newWorkspaceName',
@@ -342,6 +349,20 @@ export function createShellState(options = {}) {
     knownHosts: [],
     showAgentConnectModal: false,
 
+    // ── Workspace access gate ─────────────────────────────────
+    showWorkspaceAccessGate: false,
+    workspaceAccessGateStep: 'review',
+    workspaceAccessGateWorkspaces: [],
+    workspaceAccessGateProgress: {
+      active: false,
+      phase: 'idle',
+      label: '',
+      completed: 0,
+      total: 0,
+      error: '',
+    },
+    workspaceAccessGateBusy: false,
+
     // ── Workspace bootstrap ───────────────────────────────────
     showWorkspaceBootstrapModal: false,
     newWorkspaceName: '',
@@ -484,6 +505,10 @@ export function createShellState(options = {}) {
         this.filterKnownWorkspacesForActiveSession?.();
         this.updateWorkspaceBootstrapPrompt();
         await this.loadRemoteWorkspaces();
+        if (this.showWorkspaceAccessGate || this.prepareWorkspaceAccessGate?.()) {
+          this.updateWorkspaceBootstrapPrompt();
+          return;
+        }
         if (this.knownWorkspaces.length === 0 && this.superbasedConnectionConfig?.workspaceOwnerNpub && this.session?.npub) {
           await this.tryRecoverWorkspace();
         }
@@ -965,6 +990,10 @@ export function createShellState(options = {}) {
         await this.discoverPgOnboardingAnnouncements?.();
         await this.discoverPgWorkspaceSelfIndex?.();
         await this.loadRemoteWorkspaces();
+        if (this.showWorkspaceAccessGate || this.prepareWorkspaceAccessGate?.()) {
+          this.updateWorkspaceBootstrapPrompt();
+          return;
+        }
         if (!this.selectedWorkspaceKey && this.currentWorkspaceOwnerNpub) {
           const legacyMatch = this.knownWorkspaces.find((workspace) => workspace.workspaceOwnerNpub === this.currentWorkspaceOwnerNpub) || null;
           if (legacyMatch) this.selectedWorkspaceKey = legacyMatch.workspaceKey || '';

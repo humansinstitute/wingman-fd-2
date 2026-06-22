@@ -1502,11 +1502,109 @@ export const workspaceManagerMixin = {
     }
   },
 
+  prepareWorkspaceAccessGate(workspaces = null) {
+    if (!isTowerPgBackendMode()) return false;
+    if (!this.session?.npub) return false;
+    if (this.selectedWorkspaceKey || this.currentWorkspaceOwnerNpub) return false;
+
+    const source = Array.isArray(workspaces) && workspaces.length > 0 ? workspaces : this.knownWorkspaces;
+    const seen = new Set();
+    const candidates = source
+      .filter((workspace) => workspace?.workspaceKey || workspace?.workspaceOwnerNpub)
+      .filter((workspace) => {
+        const key = workspace.workspaceKey || workspace.workspaceOwnerNpub;
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+    if (candidates.length === 0) return false;
+
+    this.workspaceAccessGateWorkspaces = candidates;
+    this.workspaceAccessGateStep = 'review';
+    this.workspaceAccessGateProgress = {
+      active: false,
+      phase: 'idle',
+      label: '',
+      completed: 0,
+      total: 4,
+      error: '',
+    };
+    this.workspaceAccessGateBusy = false;
+    this.showWorkspaceAccessGate = true;
+    this.showConnectModal = false;
+    this.showWorkspaceBootstrapModal = false;
+    return true;
+  },
+
+  workspaceAccessGateProgressPercent() {
+    const progress = this.workspaceAccessGateProgress || {};
+    const total = Number(progress.total) || 0;
+    if (!total) return progress.active ? 8 : 0;
+    return Math.max(progress.active ? 8 : 0, Math.min(100, Math.round(((Number(progress.completed) || 0) / total) * 100)));
+  },
+
+  setWorkspaceAccessGateProgress(label, completed, phase = 'loading') {
+    const current = this.workspaceAccessGateProgress || {};
+    this.workspaceAccessGateProgress = {
+      active: true,
+      phase,
+      label,
+      completed,
+      total: current.total || 4,
+      error: '',
+    };
+  },
+
+  async continueWorkspaceAccessGate() {
+    if (this.workspaceAccessGateBusy) return;
+    const target = (this.workspaceAccessGateWorkspaces || [])[0];
+    if (!target) {
+      this.showWorkspaceAccessGate = false;
+      return;
+    }
+
+    this.workspaceAccessGateBusy = true;
+    this.workspaceAccessGateStep = 'loading';
+    this.setWorkspaceAccessGateProgress('Verifying workspace access...', 1);
+
+    try {
+      await this.selectWorkspace(target.workspaceKey || target.workspaceOwnerNpub, {
+        refresh: false,
+        openWorkspaceHome: true,
+      });
+      this.setWorkspaceAccessGateProgress('Saving workspace selection...', 2);
+      await this.persistWorkspaceSettings?.();
+      this.setWorkspaceAccessGateProgress('Loading workspace data...', 3);
+      await this.bootstrapSelectedWorkspace?.({ runAccessPrune: true });
+      this.setWorkspaceAccessGateProgress('Opening Flight Deck...', 4, 'complete');
+      this.updateWorkspaceBootstrapPrompt?.();
+      this.ensureBackgroundSync?.(true);
+      this.showWorkspaceAccessGate = false;
+      this.workspaceAccessGateBusy = false;
+    } catch (error) {
+      this.workspaceAccessGateStep = 'error';
+      this.workspaceAccessGateBusy = false;
+      this.workspaceAccessGateProgress = {
+        active: false,
+        phase: 'error',
+        label: 'Workspace data could not be loaded.',
+        completed: 0,
+        total: 4,
+        error: error?.message || 'Workspace data could not be loaded.',
+      };
+    }
+  },
+
   async loadRemoteWorkspaces() {
     if (!this.session?.npub || !this.backendUrl) return;
     try {
       if (isTowerPgBackendMode()) {
         const activeBackendUrl = normalizeBackendUrl(this.backendUrl);
+        const hadSelection = Boolean(this.selectedWorkspaceKey || this.currentWorkspaceOwnerNpub);
+        const existingKeys = new Set((this.knownWorkspaces || [])
+          .map((workspace) => workspace.workspaceKey || workspace.workspaceOwnerNpub)
+          .filter(Boolean));
         const result = await listTowerPgWorkspaces({ baseUrl: activeBackendUrl, appNpub: FLIGHT_DECK_PG_APP_NPUB });
         const workspaces = (result.workspaces || [])
           .map((entry) => {
@@ -1536,7 +1634,11 @@ export const workspaceManagerMixin = {
           })
           .filter(Boolean);
         this.mergeKnownWorkspaces(workspaces);
-        return;
+        const discovered = workspaces.filter((workspace) => !existingKeys.has(workspace.workspaceKey || workspace.workspaceOwnerNpub));
+        if (!hadSelection && !this.showWorkspaceAccessGate) {
+          this.prepareWorkspaceAccessGate(discovered.length > 0 ? discovered : workspaces);
+        }
+        return workspaces;
       }
       const serviceNpub = await this.fetchBackendServiceNpub();
       const activeBackendUrl = normalizeBackendUrl(this.backendUrl);
@@ -1559,6 +1661,7 @@ export const workspaceManagerMixin = {
       });
       this.mergeKnownWorkspaces(workspaces);
       await this.hydrateKnownWorkspaceProfiles();
+      return workspaces;
     } catch (error) {
       console.debug('loadRemoteWorkspaces failed:', error?.message || error);
     }

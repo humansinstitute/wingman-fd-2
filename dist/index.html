@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-CRGhh-sc.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-B4UxWDgk.css">
+  <script type="module" crossorigin src="/assets/index-BleoUiDE.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-Dwg4zrfF.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -325,6 +325,65 @@
     </section>
 
     <p class="hero-hint" x-show="!$store.chat.isLoggedIn">Sign in above to open Wingman and start chatting.</p>
+
+    <div
+      class="modal-overlay modal-overlay-opaque"
+      x-show="$store.chat.showWorkspaceAccessGate"
+      x-cloak
+    >
+      <div class="modal workspace-access-modal" role="dialog" aria-modal="true" aria-labelledby="workspace-access-title">
+        <section class="workspace-access-review" x-show="$store.chat.workspaceAccessGateStep === 'review'">
+          <div class="workspace-access-top">
+            <p class="connect-modal-eyebrow">Flight Deck access</p>
+            <h2 id="workspace-access-title">You've been added to Flight Deck</h2>
+            <p x-text="$store.chat.workspaceAccessGateWorkspaces.length > 1 ? 'These workspaces are ready for you. Continue to load the workspace data before entering Flight Deck.' : 'This workspace is ready for you. Continue to load the workspace data before entering Flight Deck.'"></p>
+          </div>
+          <div class="workspace-access-list">
+            <template x-for="workspace in $store.chat.workspaceAccessGateWorkspaces" :key="workspace.workspaceKey || workspace.workspaceOwnerNpub">
+              <article class="workspace-access-row">
+                <span class="workspace-access-avatar" x-text="$store.chat.getInitials(workspace.name || workspace.workspaceOwnerNpub || 'FD')"></span>
+                <span>
+                  <strong x-text="workspace.name || 'Untitled workspace'"></strong>
+                  <small x-text="workspace.description || workspace.towerName || $store.chat.getShortNpub(workspace.workspaceOwnerNpub || '')"></small>
+                </span>
+              </article>
+            </template>
+          </div>
+          <div class="workspace-access-actions">
+            <button class="auth-option connect-primary-action" type="button" @click="$store.chat.continueWorkspaceAccessGate()" :disabled="$store.chat.workspaceAccessGateBusy">
+              Continue
+            </button>
+          </div>
+        </section>
+
+        <section class="connect-build-screen workspace-access-loading" x-show="$store.chat.workspaceAccessGateStep === 'loading'" x-cloak>
+          <div class="connect-build-icon" aria-hidden="true">FD</div>
+          <div class="connect-build-progress">
+            <div class="connect-build-progress-head">
+              <strong x-text="$store.chat.workspaceAccessGateProgress.label || 'Loading workspace data...'"></strong>
+              <span x-text="`${$store.chat.workspaceAccessGateProgress.completed || 0} / ${$store.chat.workspaceAccessGateProgress.total || 0}`"></span>
+            </div>
+            <div class="connect-build-progress-bar" aria-hidden="true">
+              <span :style="`width: ${$store.chat.workspaceAccessGateProgressPercent()}%`"></span>
+            </div>
+            <p>Flight Deck is loading your workspace before opening the space.</p>
+          </div>
+        </section>
+
+        <section class="workspace-access-review" x-show="$store.chat.workspaceAccessGateStep === 'error'" x-cloak>
+          <div class="workspace-access-top">
+            <p class="connect-modal-eyebrow">Flight Deck access</p>
+            <h2>Workspace data could not be loaded</h2>
+            <p x-text="$store.chat.workspaceAccessGateProgress.error || 'Try again to load your workspace data.'"></p>
+          </div>
+          <div class="workspace-access-actions">
+            <button class="auth-option connect-primary-action" type="button" @click="$store.chat.continueWorkspaceAccessGate()" :disabled="$store.chat.workspaceAccessGateBusy">
+              Try again
+            </button>
+          </div>
+        </section>
+      </div>
+    </div>
 
     <div
       class="modal-overlay modal-overlay-opaque"
