@@ -27,8 +27,9 @@ describe('daily note modal CSS', () => {
     expect(modalDecl).toMatch(/max-height\s*:\s*min\(88dvh,\s*820px\)/);
     expect(modalDecl).toMatch(/overflow-y\s*:\s*auto/);
     expect(modalDecl).toMatch(/overscroll-behavior\s*:\s*contain/);
-    expect(actionsDecl).toMatch(/position\s*:\s*sticky/);
-    expect(actionsDecl).toMatch(/bottom\s*:\s*0/);
+    expect(actionsDecl).toMatch(/position\s*:\s*static/);
+    expect(actionsDecl).not.toMatch(/bottom\s*:\s*0/);
+    expect(actionsDecl).toMatch(/margin-top\s*:\s*1rem/);
     expect(css).toContain('.doc-modal-backdrop:has(.daily-note-modal)');
     expect(css).toContain('max-height: calc(100dvh - 1rem - env(safe-area-inset-top) - env(safe-area-inset-bottom));');
   });
