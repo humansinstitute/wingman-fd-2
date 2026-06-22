@@ -6,7 +6,7 @@ vi.mock('../src/auth/nostr.js', () => ({
 }));
 
 vi.mock('../src/crypto/workspace-keys.js', () => ({
-  getActiveWorkspaceKeySecretForAuth: vi.fn(() => new Uint8Array([1, 2, 3])),
+  getActiveWorkspaceKeySecretForAuth: vi.fn(() => null),
   getActiveWorkspaceKeyNpub: vi.fn(() => 'npub1workspacekey'),
 }));
 
@@ -658,6 +658,32 @@ describe('Tower PG API helpers', () => {
     );
     expect(createNip98AuthHeader).toHaveBeenCalledTimes(2);
     expect(createNip98AuthHeaderForSecret).not.toHaveBeenCalled();
+  });
+
+  it('prefers the active workspace key for Tower PG message deletes', async () => {
+    const { createNip98AuthHeader, createNip98AuthHeaderForSecret } = await import('../src/auth/nostr.js');
+    const { getActiveWorkspaceKeySecretForAuth } = await import('../src/crypto/workspace-keys.js');
+    const api = await import('../src/api.js');
+    api.setBaseUrl('https://tower.example');
+    getActiveWorkspaceKeySecretForAuth.mockReturnValueOnce(new Uint8Array([1, 2, 3]));
+
+    await api.deleteTowerPgMessage('workspace-1', 'message-1', {
+      appNpub: 'flightdeck_pg',
+      rowVersion: 3,
+    });
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/messages/message-1?row_version=3',
+      expect.objectContaining({
+        method: 'DELETE',
+        headers: expect.objectContaining({
+          Authorization: 'NIP98-SECRET DELETE https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/messages/message-1?row_version=3',
+          'x-flightdeck-pg-app-npub': 'flightdeck_pg',
+        }),
+      }),
+    );
+    expect(createNip98AuthHeaderForSecret).toHaveBeenCalledTimes(1);
+    expect(createNip98AuthHeader).not.toHaveBeenCalled();
   });
 
   it('times out Tower PG deletes when NIP-98 signing does not settle', async () => {

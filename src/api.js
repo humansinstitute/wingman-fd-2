@@ -196,7 +196,7 @@ function resolveTowerPgUrl(pathOrUrl, baseUrl = _baseUrl) {
 async function signedTowerPgFetch(pathOrUrl, { method = 'GET', body, baseUrl = _baseUrl, appNpub = FLIGHT_DECK_PG_APP_NPUB } = {}) {
   const requestUrl = resolveTowerPgUrl(pathOrUrl, baseUrl);
   const headers = {
-    Authorization: await createApiAuthHeader(requestUrl, method, body ?? null, { useWorkspaceKey: false }),
+    Authorization: await createApiAuthHeader(requestUrl, method, body ?? null),
   };
   const cleanAppNpub = String(appNpub || '').trim();
   if (cleanAppNpub) headers['x-flightdeck-pg-app-npub'] = cleanAppNpub;
