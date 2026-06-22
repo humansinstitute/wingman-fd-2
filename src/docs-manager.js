@@ -2034,6 +2034,8 @@ export const docsManagerMixin = {
     this.newDocModalChannelId = this.getDefaultDocChannelId(this.newDocModalScopeId);
     this.newDocModalScopeQuery = this.getNewDocModalScopeOptionLabel(this.newDocModalScopeId);
     this.newDocModalChannelQuery = this.getNewDocModalChannelOptionLabel(this.newDocModalChannelId);
+    this.newDocModalScopeDropdownOpen = false;
+    this.newDocModalChannelDropdownOpen = false;
     this.newDocModalSubmitting = false;
     this.scopePickerQuery = '';
   },
@@ -2043,8 +2045,10 @@ export const docsManagerMixin = {
     this.newDocModalTitle = '';
     this.newDocModalScopeId = null;
     this.newDocModalScopeQuery = '';
+    this.newDocModalScopeDropdownOpen = false;
     this.newDocModalChannelId = null;
     this.newDocModalChannelQuery = '';
+    this.newDocModalChannelDropdownOpen = false;
     this.newDocModalSubmitting = false;
     this.scopePickerQuery = '';
   },
@@ -2072,6 +2076,21 @@ export const docsManagerMixin = {
         scopeId: getPgChannelScopeId(channel),
       }))
       .sort((left, right) => String(left.label || '').localeCompare(String(right.label || '')));
+  },
+
+  get filteredNewDocModalScopeOptions() {
+    return this.filterNewDocModalOptions(this.newDocModalScopeOptions, this.newDocModalScopeQuery, ['label', 'title']);
+  },
+
+  get filteredNewDocModalChannelOptions() {
+    return this.filterNewDocModalOptions(this.newDocModalChannelOptions, this.newDocModalChannelQuery, ['label']);
+  },
+
+  filterNewDocModalOptions(options = [], query = '', fields = ['label']) {
+    const needle = String(query || '').trim().toLowerCase();
+    if (!needle) return options;
+    return options.filter((option) => fields.some((field) =>
+      String(option?.[field] || '').toLowerCase().includes(needle)));
   },
 
   get newDocModalSelectedScope() {
@@ -2118,6 +2137,7 @@ export const docsManagerMixin = {
     const scope = this.scopesMap?.get(scopeId) || null;
     this.newDocModalScopeId = scope?.record_id || null;
     this.newDocModalScopeQuery = this.getNewDocModalScopeOptionLabel(this.newDocModalScopeId);
+    this.newDocModalScopeDropdownOpen = false;
     if (!isTowerPgBackendMode()) return;
     const channelStillValid = this.newDocModalChannelId
       && this.newDocModalChannelOptions.some((channel) => channel.id === this.newDocModalChannelId);
@@ -2125,6 +2145,14 @@ export const docsManagerMixin = {
       this.newDocModalChannelId = this.getDefaultDocChannelId(this.newDocModalScopeId);
       this.newDocModalChannelQuery = this.getNewDocModalChannelOptionLabel(this.newDocModalChannelId);
     }
+  },
+
+  openNewDocModalScopeDropdown() {
+    this.newDocModalScopeDropdownOpen = true;
+  },
+
+  closeNewDocModalScopeDropdown() {
+    this.newDocModalScopeDropdownOpen = false;
   },
 
   selectNewDocModalScopeFromQuery(value) {
@@ -2139,17 +2167,27 @@ export const docsManagerMixin = {
       return;
     }
     this.newDocModalScopeQuery = this.getNewDocModalScopeOptionLabel(this.newDocModalScopeId);
+    this.closeNewDocModalScopeDropdown();
   },
 
   selectNewDocModalChannel(channelId) {
     const channel = (this.channels || []).find((entry) => entry?.record_id === channelId && entry.record_state !== 'deleted') || null;
     this.newDocModalChannelId = channel?.record_id || null;
     this.newDocModalChannelQuery = this.getNewDocModalChannelOptionLabel(this.newDocModalChannelId);
+    this.newDocModalChannelDropdownOpen = false;
     const scopeId = getPgChannelScopeId(channel);
     if (scopeId && this.scopesMap?.has(scopeId)) {
       this.newDocModalScopeId = scopeId;
       this.newDocModalScopeQuery = this.getNewDocModalScopeOptionLabel(scopeId);
     }
+  },
+
+  openNewDocModalChannelDropdown() {
+    this.newDocModalChannelDropdownOpen = true;
+  },
+
+  closeNewDocModalChannelDropdown() {
+    this.newDocModalChannelDropdownOpen = false;
   },
 
   selectNewDocModalChannelFromQuery(value) {
@@ -2162,6 +2200,7 @@ export const docsManagerMixin = {
       return;
     }
     this.newDocModalChannelQuery = this.getNewDocModalChannelOptionLabel(this.newDocModalChannelId);
+    this.closeNewDocModalChannelDropdown();
   },
 
   async confirmNewDocModal() {

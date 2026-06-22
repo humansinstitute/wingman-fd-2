@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-CzWFOMtB.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-CIYQu_H8.css">
+  <script type="module" crossorigin src="/assets/index-Dm1xo7jm.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-CkkRO0fj.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -4662,41 +4662,62 @@
                 </label>
                 <label class="new-doc-modal-field">
                   <span>Scope</span>
-                  <input
-                    class="new-doc-modal-input"
-                    type="text"
-                    list="new-doc-scope-options"
-                    placeholder="Search scopes"
-                    x-model="$store.chat.newDocModalScopeQuery"
-                    @change="$store.chat.selectNewDocModalScopeFromQuery($event.target.value)"
-                    @blur="$store.chat.selectNewDocModalScopeFromQuery($event.target.value)"
-                    @keydown.escape="$store.chat.closeNewDocModal()"
-                  />
+                  <div class="new-doc-combobox">
+                    <input
+                      class="new-doc-modal-input"
+                      type="text"
+                      placeholder="Search scopes"
+                      x-model="$store.chat.newDocModalScopeQuery"
+                      @focus="$store.chat.openNewDocModalScopeDropdown()"
+                      @click="$store.chat.openNewDocModalScopeDropdown()"
+                      @input="$store.chat.openNewDocModalScopeDropdown()"
+                      @change="$store.chat.selectNewDocModalScopeFromQuery($event.target.value)"
+                      @blur="$store.chat.selectNewDocModalScopeFromQuery($event.target.value)"
+                      @keydown.escape.stop="$store.chat.closeNewDocModalScopeDropdown()"
+                    />
+                    <button type="button" class="new-doc-combobox-toggle" @mousedown.prevent="$store.chat.newDocModalScopeDropdownOpen ? $store.chat.closeNewDocModalScopeDropdown() : $store.chat.openNewDocModalScopeDropdown()" aria-label="Show scope options">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    </button>
+                    <div class="new-doc-combobox-menu" x-show="$store.chat.newDocModalScopeDropdownOpen" x-cloak>
+                      <template x-for="option in $store.chat.filteredNewDocModalScopeOptions" :key="option.id">
+                        <button type="button" class="new-doc-combobox-option" :class="{ 'new-doc-combobox-option-selected': option.id === $store.chat.newDocModalScopeId }" @mousedown.prevent="$store.chat.selectNewDocModalScope(option.id)">
+                          <span x-text="option.title"></span>
+                          <small x-text="option.label"></small>
+                        </button>
+                      </template>
+                      <p class="new-doc-combobox-empty" x-show="$store.chat.filteredNewDocModalScopeOptions.length === 0">No matching scopes.</p>
+                    </div>
+                  </div>
                 </label>
                 <label class="new-doc-modal-field" x-show="$store.chat.isTowerPgMode && $store.chat.newDocModalType !== 'folder'">
                   <span>Channel</span>
-                  <input
-                    class="new-doc-modal-input"
-                    type="text"
-                    list="new-doc-channel-options"
-                    placeholder="Search channels"
-                    x-model="$store.chat.newDocModalChannelQuery"
-                    @change="$store.chat.selectNewDocModalChannelFromQuery($event.target.value)"
-                    @blur="$store.chat.selectNewDocModalChannelFromQuery($event.target.value)"
-                    @keydown.enter.prevent="$store.chat.confirmNewDocModal()"
-                    @keydown.escape="$store.chat.closeNewDocModal()"
-                  />
+                  <div class="new-doc-combobox">
+                    <input
+                      class="new-doc-modal-input"
+                      type="text"
+                      placeholder="Search channels"
+                      x-model="$store.chat.newDocModalChannelQuery"
+                      @focus="$store.chat.openNewDocModalChannelDropdown()"
+                      @click="$store.chat.openNewDocModalChannelDropdown()"
+                      @input="$store.chat.openNewDocModalChannelDropdown()"
+                      @change="$store.chat.selectNewDocModalChannelFromQuery($event.target.value)"
+                      @blur="$store.chat.selectNewDocModalChannelFromQuery($event.target.value)"
+                      @keydown.enter.prevent="$store.chat.confirmNewDocModal()"
+                      @keydown.escape.stop="$store.chat.closeNewDocModalChannelDropdown()"
+                    />
+                    <button type="button" class="new-doc-combobox-toggle" @mousedown.prevent="$store.chat.newDocModalChannelDropdownOpen ? $store.chat.closeNewDocModalChannelDropdown() : $store.chat.openNewDocModalChannelDropdown()" aria-label="Show channel options">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    </button>
+                    <div class="new-doc-combobox-menu" x-show="$store.chat.newDocModalChannelDropdownOpen" x-cloak>
+                      <template x-for="option in $store.chat.filteredNewDocModalChannelOptions" :key="option.id">
+                        <button type="button" class="new-doc-combobox-option" :class="{ 'new-doc-combobox-option-selected': option.id === $store.chat.newDocModalChannelId }" @mousedown.prevent="$store.chat.selectNewDocModalChannel(option.id)">
+                          <span x-text="option.label"></span>
+                        </button>
+                      </template>
+                      <p class="new-doc-combobox-empty" x-show="$store.chat.filteredNewDocModalChannelOptions.length === 0">No matching channels.</p>
+                    </div>
+                  </div>
                 </label>
-                <datalist id="new-doc-scope-options">
-                  <template x-for="option in $store.chat.newDocModalScopeOptions" :key="option.id">
-                    <option :value="option.label"></option>
-                  </template>
-                </datalist>
-                <datalist id="new-doc-channel-options">
-                  <template x-for="option in $store.chat.newDocModalChannelOptions" :key="option.id">
-                    <option :value="option.label"></option>
-                  </template>
-                </datalist>
                 <p class="docs-browser-empty new-doc-modal-empty" x-show="$store.chat.newDocModalScopeOptions.length === 0">
                   No scopes found<span x-show="$store.chat.canAdminWorkspace">. <a href="/settings" @click.prevent="$store.chat.navSection = 'settings'; $store.chat.settingsTab = 'scopes'; $store.chat.refreshScopes(); $store.chat.startWorkspaceLiveQueries(); $store.chat.syncRoute()">Create scopes</a> first</span>.
                 </p>
