@@ -38,6 +38,19 @@ describe('avatar status component state', () => {
     }, { navigator: { onLine: false } })).toBe('local-only');
   });
 
+  it('returns error status for failed PG background updates', () => {
+    const store = {
+      isTowerPgMode: true,
+      currentWorkspace: { pgBackendMode: true },
+      backendUrl: 'https://tower.example',
+      session: { npub: 'npub1user' },
+      syncStatus: 'error',
+    };
+
+    expect(resolveAvatarConnectionStatus(store, { navigator: { onLine: true } })).toBe('error');
+    expect(avatarConnectionLabel({ ...store, avatarConnectionStatus: 'error' })).toBe('Update Error');
+  });
+
   it('keeps encrypted-record sync labels unchanged outside PG mode', () => {
     const store = { isTowerPgMode: false, syncStatus: 'unsynced' };
 

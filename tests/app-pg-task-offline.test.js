@@ -55,6 +55,13 @@ afterEach(() => {
   });
 });
 
+async function waitForCondition(predicate, attempts = 20) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+}
+
 describe('app PG task offline drafts', () => {
   it('replaces the optimistic local task row when Tower accepts a PG create', async () => {
     const wsDb = openWorkspaceDb('npub1pgworkspace-create');
@@ -307,12 +314,13 @@ describe('app PG task offline drafts', () => {
     expect(store.editingTask.record_id).toBe('task-classic-2');
   });
 
-  it('keeps failed PG bulk task updates selected and avoids refreshing over local changes', async () => {
+  it('archives PG bulk task updates locally before background Tower writes finish', async () => {
     const wsDb = openWorkspaceDb('npub1pgworkspace-bulk-failed');
     await wsDb.open();
     await Promise.all(wsDb.tables.map((table) => table.clear()));
-    updateTowerPgTaskFromLocalMock
-      .mockResolvedValueOnce({
+    let resolveFirstUpdate;
+    updateTowerPgTaskFromLocalMock.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveFirstUpdate = () => resolve({
         record_id: 'task-1',
         title: 'Task one',
         state: 'archive',
@@ -320,8 +328,8 @@ describe('app PG task offline drafts', () => {
         sync_status: 'synced',
         record_state: 'active',
         pg_backend: true,
-      })
-      .mockRejectedValueOnce(new Error('Task row_version is stale'));
+      });
+    }));
 
     const { initApp } = await import('../src/app.js');
     initApp();
@@ -358,6 +366,30 @@ describe('app PG task offline drafts', () => {
 
     await store.applyBulkTaskAction('archive');
 
+    expect(store.tasks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ record_id: 'task-1', state: 'archive', sync_status: 'pending' }),
+      expect.objectContaining({ record_id: 'task-2', state: 'archive', sync_status: 'pending' }),
+    ]));
+    expect(store.selectedTaskIds).toEqual([]);
+    expect(store.bulkTaskBusy).toBe(false);
+    expect(store.syncStatus).toBe('syncing');
+    expect(store.syncProgressLabel()).toBe('Updating tasks 0 / 2');
+    expect(updateTowerPgTaskFromLocalMock).toHaveBeenCalledTimes(1);
+    expect(store.scheduleTasksRefresh).not.toHaveBeenCalled();
+    expect(store.refreshTasks).not.toHaveBeenCalled();
+
+    updateTowerPgTaskFromLocalMock.mockResolvedValueOnce({
+      record_id: 'task-2',
+      title: 'Task two',
+      state: 'archive',
+      version: 2,
+      sync_status: 'synced',
+      record_state: 'active',
+      pg_backend: true,
+    });
+    resolveFirstUpdate();
+    await waitForCondition(() => store.pgTaskWriteInFlight === false);
+
     expect(updateTowerPgTaskFromLocalMock).toHaveBeenCalledWith(store, expect.objectContaining({
       record_id: 'task-1',
       state: 'archive',
@@ -366,13 +398,12 @@ describe('app PG task offline drafts', () => {
       record_id: 'task-2',
       state: 'archive',
     }), expect.objectContaining({ record_id: 'task-2' }), expect.objectContaining({ state: 'archive' }));
-    expect(store.scheduleTasksRefresh).not.toHaveBeenCalled();
+    expect(store.scheduleTasksRefresh).toHaveBeenCalledWith('PG task background writes');
     expect(store.refreshTasks).not.toHaveBeenCalled();
-    expect(store.selectedTaskIds).toEqual(['task-1', 'task-2']);
-    expect(store.error).toBe('1 selected task could not be updated.');
+    expect(store.syncStatus).toBe('synced');
     expect(store.tasks.find((task) => task.record_id === 'task-2')).toMatchObject({
       state: 'archive',
-      sync_status: 'failed',
+      sync_status: 'synced',
     });
   });
 });

@@ -1436,6 +1436,17 @@ describe('syncProgressLabel', () => {
     expect(fn()).toBe('Pushing 3 / 10');
   });
 
+  it('returns PG task background write label', () => {
+    const { fn, store } = bindMethod('syncProgressLabel', {
+      isTowerPgMode: true,
+    });
+    store.syncSession.phase = 'pushing';
+    store.syncSession.currentFamily = 'tasks';
+    store.syncSession.pushed = 3;
+    store.syncSession.pushTotal = 10;
+    expect(fn()).toBe('Updating tasks 3 / 10');
+  });
+
   it('returns pulling label with family', () => {
     const { fn, store } = bindMethod('syncProgressLabel');
     store.syncSession.phase = 'pulling';

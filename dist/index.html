@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-CSE4v6n-.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-RcFgwef5.css">
+  <script type="module" crossorigin src="/assets/index-BEllulaW.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-FrJbwig4.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -188,6 +188,7 @@
             'avatar-status-tower-pg-connected': $store.chat.avatarConnectionStatus === 'tower-pg-connected',
             'avatar-status-syncing': $store.chat.avatarConnectionStatus === 'syncing',
             'avatar-status-local-only': $store.chat.avatarConnectionStatus === 'local-only',
+            'avatar-status-error': $store.chat.avatarConnectionStatus === 'error',
             'sync-status-synced': !$store.chat.isTowerPgMode && $store.chat.syncStatus === 'synced',
             'sync-status-unsynced': !$store.chat.isTowerPgMode && $store.chat.syncStatus === 'unsynced',
             'sync-status-stale': !$store.chat.isTowerPgMode && $store.chat.syncStatus === 'stale',

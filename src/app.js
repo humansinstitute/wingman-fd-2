@@ -714,6 +714,11 @@ export function initApp() {
     taskTagCloudOpen: false,
     selectedTaskIds: [],
     bulkTaskBusy: false,
+    pgTaskWriteQueue: [],
+    pgTaskWriteInFlight: false,
+    pgTaskWriteProgressTotal: 0,
+    pgTaskWriteProgressDone: 0,
+    pgTaskWriteFailedCount: 0,
     selectedBoardId: null,
     showBoardPicker: false,
     boardPickerQuery: '',
@@ -4663,6 +4668,9 @@ export function initApp() {
       const task = this.tasks.find((entry) => entry.record_id === taskId);
       if (!task || !this.session?.npub) return null;
 
+      const usePgBackgroundWrite = isTowerPgBackendMode()
+        && isSyncedPgRecord(task)
+        && options.backgroundPg === true;
       const hadPgLease = isTowerPgBackendMode()
         && isSyncedPgRecord(task)
         && Boolean(getPgEditLeaseSession(this, 'task', task.record_id)?.lease?.lease_token);
@@ -4670,7 +4678,7 @@ export function initApp() {
         && isSyncedPgRecord(task)
         && !hadPgLease
         && options.retainPgLease !== true;
-      if (isTowerPgBackendMode()) {
+      if (isTowerPgBackendMode() && !usePgBackgroundWrite) {
         try {
           await preparePgSyncedRecordMutation(this, task, 'task', options);
         } catch (error) {
@@ -4701,6 +4709,13 @@ export function initApp() {
       }
 
       if (isTowerPgBackendMode()) {
+        if (usePgBackgroundWrite) {
+          this.enqueuePgTaskPatch(updated, task, patch, {
+            ...options,
+            releasePatchPgLease,
+          });
+          return updated;
+        }
         if (isUnsyncedLocalPgRecord(task)) {
           if (!isOnlineForPgEdit(options.env)) {
             const localOnlyTask = {
@@ -4761,6 +4776,115 @@ export function initApp() {
         await this.refreshTasks();
       }
       return updated;
+    },
+
+    enqueuePgTaskPatch(updatedTask, previousTask, patch = {}, options = {}) {
+      this.pgTaskWriteQueue = [
+        ...(this.pgTaskWriteQueue || []),
+        {
+          recordId: updatedTask.record_id,
+          updatedTask: toRaw(updatedTask),
+          previousTask: toRaw(previousTask),
+          patch: { ...(patch || {}) },
+          options: { ...(options || {}) },
+        },
+      ];
+      this.pgTaskWriteProgressTotal = Math.max(
+        Number(this.pgTaskWriteProgressTotal || 0),
+        Number(this.pgTaskWriteProgressDone || 0)
+          + this.pgTaskWriteQueue.length
+          + (this.pgTaskWriteInFlight ? 1 : 0),
+      );
+      this.syncStatus = 'syncing';
+      this.updateSyncSession?.({
+        state: 'syncing',
+        phase: 'pushing',
+        currentFamily: 'tasks',
+        pushed: this.pgTaskWriteProgressDone,
+        pushTotal: this.pgTaskWriteProgressTotal,
+        error: null,
+      });
+      void this.processPgTaskWriteQueue();
+    },
+
+    async processPgTaskWriteQueue() {
+      if (this.pgTaskWriteInFlight) return;
+      this.pgTaskWriteInFlight = true;
+      try {
+        while ((this.pgTaskWriteQueue || []).length > 0) {
+          const [item, ...rest] = this.pgTaskWriteQueue;
+          this.pgTaskWriteQueue = rest;
+          const previousTask = item.previousTask;
+          let acceptedTask = null;
+          try {
+            await preparePgSyncedRecordMutation(this, previousTask, 'task', item.options || {});
+            const currentLocal = this.tasks.find((task) => task.record_id === item.recordId) || item.updatedTask;
+            acceptedTask = await updateTowerPgTaskFromLocal(this, {
+              ...currentLocal,
+              record_id: item.recordId,
+            }, previousTask, item.patch || {});
+            await upsertTask(acceptedTask);
+            const currentAfterWrite = this.tasks.find((task) => task.record_id === item.recordId);
+            const currentVersion = Number(currentAfterWrite?.version ?? 0) || 0;
+            const queuedVersion = Number(item.updatedTask?.version ?? 0) || 0;
+            if (!currentAfterWrite || currentVersion <= queuedVersion) {
+              this.tasks = this.tasks.map((task) => task.record_id === item.recordId ? acceptedTask : task);
+              if (!this.tasks.some((task) => task.record_id === item.recordId)) {
+                this.tasks = mergeTaskIntoList(this.tasks, acceptedTask);
+              }
+              if (this.editingTask?.record_id === item.recordId) this.editingTask = { ...acceptedTask };
+            }
+            if (item.options?.releasePatchPgLease) await releasePgEditLeaseForRecord(this, previousTask, 'task');
+          } catch (error) {
+            const failedTask = {
+              ...(this.tasks.find((task) => task.record_id === item.recordId) || item.updatedTask),
+              sync_status: 'failed',
+              updated_at: new Date().toISOString(),
+            };
+            await upsertTask(failedTask);
+            this.tasks = this.tasks.map((task) => task.record_id === item.recordId ? failedTask : task);
+            if (this.editingTask?.record_id === item.recordId) this.editingTask = { ...failedTask };
+            this.error = error?.message || 'Failed to update PG task';
+            this.pgTaskWriteFailedCount = Number(this.pgTaskWriteFailedCount || 0) + 1;
+            if (item.options?.releasePatchPgLease) await releasePgEditLeaseForRecord(this, previousTask, 'task');
+          } finally {
+            this.pgTaskWriteProgressDone = Number(this.pgTaskWriteProgressDone || 0) + 1;
+            this.updateSyncSession?.({
+              state: 'syncing',
+              phase: 'pushing',
+              currentFamily: 'tasks',
+              pushed: this.pgTaskWriteProgressDone,
+              pushTotal: this.pgTaskWriteProgressTotal,
+            });
+          }
+        }
+        const failedCount = Number(this.pgTaskWriteFailedCount || 0);
+        this.syncStatus = failedCount > 0 ? 'error' : 'synced';
+        this.updateSyncSession?.(failedCount > 0
+          ? {
+            state: 'error',
+            phase: 'error',
+            currentFamily: 'tasks',
+            pushed: this.pgTaskWriteProgressDone,
+            pushTotal: this.pgTaskWriteProgressTotal,
+            error: `${failedCount} task update${failedCount === 1 ? '' : 's'} failed.`,
+          }
+          : {
+            state: 'synced',
+            phase: 'done',
+            currentFamily: 'tasks',
+            pushed: this.pgTaskWriteProgressDone,
+            pushTotal: this.pgTaskWriteProgressTotal,
+            lastSuccessAt: Date.now(),
+            error: null,
+          });
+        this.pgTaskWriteProgressDone = 0;
+        this.pgTaskWriteProgressTotal = 0;
+        this.pgTaskWriteFailedCount = 0;
+        this.scheduleTasksRefresh('PG task background writes');
+      } finally {
+        this.pgTaskWriteInFlight = false;
+      }
     },
 
     async cascadeTaskScopeToSubtasks(parentTask, nextParentTask) {
@@ -4868,7 +4992,12 @@ export function initApp() {
     },
 
     async updateTaskField(taskId, field, value) {
-      await this.applyTaskPatch(taskId, { [field]: value }, { silent: true, sync: true });
+      await this.applyTaskPatch(taskId, { [field]: value }, {
+        silent: true,
+        sync: true,
+        backgroundPg: isTowerPgBackendMode(),
+        intent: `quick_${field}`,
+      });
     },
 
     getTaskDueTodayDateKey() {
@@ -4931,10 +5060,15 @@ export function initApp() {
       const taskId = this.editingTask.record_id;
       this.taskDetailSaving = true;
       try {
-        const updated = await this.applyTaskPatch(taskId, patch, { sync: false, intent: `quick_${action}` });
-        await this.flushAndBackgroundSync();
-        if (isTowerPgBackendMode()) this.scheduleTasksRefresh('PG task quick action');
-        else await this.refreshTasks();
+        const updated = await this.applyTaskPatch(taskId, patch, {
+          sync: false,
+          intent: `quick_${action}`,
+          backgroundPg: isTowerPgBackendMode(),
+        });
+        if (!isTowerPgBackendMode()) {
+          await this.flushAndBackgroundSync();
+          await this.refreshTasks();
+        }
         if (this.activeTaskId === taskId) {
           const current = this.tasks.find((task) => task.record_id === taskId) || updated;
           if (current) {
@@ -6067,14 +6201,18 @@ export function initApp() {
         for (const taskId of selectedIds) {
           const patch = patchForAction(taskId);
           if (!patch) continue;
-          const updated = await this.applyTaskPatch(taskId, patch, { sync: false, intent: `bulk_${action}` });
+          const updated = await this.applyTaskPatch(taskId, patch, {
+            sync: false,
+            intent: `bulk_${action}`,
+            backgroundPg: isTowerPgBackendMode(),
+          });
           if (!updated) failedCount += 1;
         }
-        await this.flushAndBackgroundSync();
+        if (!isTowerPgBackendMode()) await this.flushAndBackgroundSync();
         if (failedCount > 0) {
           this.error = `${failedCount} selected task${failedCount === 1 ? '' : 's'} could not be updated.`;
         } else if (isTowerPgBackendMode()) {
-          this.scheduleTasksRefresh('PG bulk task action');
+          this.error = '';
         } else {
           await this.refreshTasks();
         }

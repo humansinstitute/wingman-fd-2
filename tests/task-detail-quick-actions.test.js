@@ -16,10 +16,11 @@ describe('task detail quick actions', () => {
     expect(indexContent).toContain("@click=\"$store.chat.applyTaskDetailQuickAction('this_week')\"");
   });
 
-  it('routes view-mode quick actions through the local task patch and flush path', () => {
+  it('routes view-mode quick actions through the local task patch and PG background path', () => {
     expect(appContent).toContain('async applyTaskDetailQuickAction(action)');
     expect(appContent).toContain("this.buildTaskDetailQuickActionPatch(action)");
-    expect(appContent).toContain("this.applyTaskPatch(taskId, patch, { sync: false, intent: `quick_${action}` })");
+    expect(appContent).toContain('backgroundPg: isTowerPgBackendMode()');
+    expect(appContent).toContain('if (!isTowerPgBackendMode())');
     expect(appContent).toContain('await this.flushAndBackgroundSync();');
     expect(appContent).toContain("return { state: 'done', assigned_to_npub: null };");
     expect(appContent).toContain("return { state: 'archive', assigned_to_npub: null };");

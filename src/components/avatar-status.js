@@ -1,6 +1,7 @@
 export const AVATAR_STATUS_TOWER_PG_CONNECTED = 'tower-pg-connected';
 export const AVATAR_STATUS_SYNCING = 'syncing';
 export const AVATAR_STATUS_LOCAL_ONLY = 'local-only';
+export const AVATAR_STATUS_ERROR = 'error';
 
 const ENCRYPTED_STATUS_LABELS = Object.freeze({
   synced: 'Synced',
@@ -26,6 +27,7 @@ const PG_STATUS_LABELS = Object.freeze({
   [AVATAR_STATUS_TOWER_PG_CONNECTED]: 'Tower Connected (PG)',
   [AVATAR_STATUS_SYNCING]: 'Syncing',
   [AVATAR_STATUS_LOCAL_ONLY]: 'Offline (Local Only)',
+  [AVATAR_STATUS_ERROR]: 'Update Error',
 });
 
 export function resolveAvatarConnectionStatus(store = {}, env = globalThis) {
@@ -40,6 +42,7 @@ export function resolveAvatarConnectionStatus(store = {}, env = globalThis) {
   ) {
     return AVATAR_STATUS_SYNCING;
   }
+  if (store.syncStatus === 'error' || store.syncSession?.state === 'error') return AVATAR_STATUS_ERROR;
   const offline = typeof env?.navigator !== 'undefined' && env.navigator?.onLine === false;
   const connected = Boolean(store.currentWorkspace?.pgBackendMode && store.backendUrl && store.session?.npub);
   if (offline || !connected) return AVATAR_STATUS_LOCAL_ONLY;

@@ -2415,7 +2415,10 @@ export const syncManagerMixin = {
       return s.manual ? 'Full sync complete.' : '';
     }
     if (s.phase === 'checking') return s.manual ? 'Starting full sync...' : 'Checking...';
-    if (s.phase === 'pushing') return `Pushing ${s.pushed} / ${s.pushTotal}`;
+    if (s.phase === 'pushing') {
+      if (this.isTowerPgMode && s.currentFamily === 'tasks') return `Updating tasks ${s.pushed} / ${s.pushTotal}`;
+      return `Pushing ${s.pushed} / ${s.pushTotal}`;
+    }
     if (s.phase === 'pulling') {
       if (s.heartbeat && s.totalFamilies === 0) return 'Up to date';
       const familyPart = s.currentFamily ? `Fetching ${s.currentFamily}` : 'Pulling';

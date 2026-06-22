@@ -186,6 +186,7 @@
             'avatar-status-tower-pg-connected': $store.chat.avatarConnectionStatus === 'tower-pg-connected',
             'avatar-status-syncing': $store.chat.avatarConnectionStatus === 'syncing',
             'avatar-status-local-only': $store.chat.avatarConnectionStatus === 'local-only',
+            'avatar-status-error': $store.chat.avatarConnectionStatus === 'error',
             'sync-status-synced': !$store.chat.isTowerPgMode && $store.chat.syncStatus === 'synced',
             'sync-status-unsynced': !$store.chat.isTowerPgMode && $store.chat.syncStatus === 'unsynced',
             'sync-status-stale': !$store.chat.isTowerPgMode && $store.chat.syncStatus === 'stale',
