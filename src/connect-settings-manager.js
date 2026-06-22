@@ -84,6 +84,12 @@ const PG_WORKSPACE_BOOTSTRAP_TEMPLATES = {
     id: 'company',
     label: 'Company',
     description: 'Shared scopes for leadership, product, customers, and growth.',
+    goals: [
+      { title: 'Coordinate leadership', description: 'Strategy, ideas, and decisions need a visible home.', selected: true },
+      { title: 'Ship product', description: 'Roadmap, features, bugs, implementation, and releases.', selected: true },
+      { title: 'Grow the business', description: 'Marketing, campaigns, partnerships, and pipeline.', selected: false },
+      { title: 'Serve customers', description: 'Key accounts and support escalations.', selected: false },
+    ],
     scopes: [
       {
         name: 'Leadership',
@@ -132,6 +138,12 @@ const PG_WORKSPACE_BOOTSTRAP_TEMPLATES = {
     id: 'personal',
     label: 'Personal',
     description: 'Private scopes for home, projects, learning, and planning.',
+    goals: [
+      { title: 'Plan the week', description: 'Keep planning, reviews, and decisions together.', selected: true },
+      { title: 'Manage life admin', description: 'Home, finances, and schedule.', selected: true },
+      { title: 'Move projects forward', description: 'Active projects, ideas, and reviews.', selected: false },
+      { title: 'Keep learning visible', description: 'Research, reading, and experiments.', selected: false },
+    ],
     scopes: [
       {
         name: 'Home',
@@ -169,6 +181,7 @@ const PG_WORKSPACE_BOOTSTRAP_TEMPLATES = {
 function clonePgWorkspaceBootstrapTemplates() {
   return Object.values(PG_WORKSPACE_BOOTSTRAP_TEMPLATES).map((template) => ({
     ...template,
+    goals: (template.goals || []).map((goal) => ({ ...goal })),
     scopes: template.scopes.map((scope) => ({
       ...scope,
       channels: scope.channels.map((channel) => ({ ...channel })),
@@ -488,6 +501,8 @@ export const connectSettingsManagerMixin = {
     this.showWorkspaceBootstrapModal = false;
     this.showConnectModal = true;
     this.connectStep = 1;
+    this.connectPgOnboardingStep = 1;
+    this.connectPgSelectedScopeIndex = 0;
     this.connectHostUrl = '';
     this.connectHostLabel = '';
     this.connectHostServiceNpub = '';
@@ -516,6 +531,8 @@ export const connectSettingsManagerMixin = {
   },
 
   resetConnectPgBootstrapState() {
+    this.connectPgOnboardingStep = 1;
+    this.connectPgSelectedScopeIndex = 0;
     this.connectPgBootstrapTemplateId = 'company';
     this.connectPgBootstrapTemplates = clonePgWorkspaceBootstrapTemplates();
     this.connectPgBootstrapProgress = {
@@ -530,6 +547,82 @@ export const connectSettingsManagerMixin = {
 
   selectedConnectPgBootstrapScopes() {
     return selectedPgBootstrapScopes(this.connectPgBootstrapTemplates, this.connectPgBootstrapTemplateId);
+  },
+
+  connectPgBootstrapTemplate() {
+    return this.connectPgBootstrapTemplates.find((entry) => entry.id === this.connectPgBootstrapTemplateId)
+      || this.connectPgBootstrapTemplates[0]
+      || null;
+  },
+
+  connectPgBootstrapGoals() {
+    return this.connectPgBootstrapTemplate()?.goals || [];
+  },
+
+  connectPgSelectedScope() {
+    const template = this.connectPgBootstrapTemplate();
+    const scopes = template?.scopes || [];
+    return scopes[this.connectPgSelectedScopeIndex] || scopes[0] || null;
+  },
+
+  connectPgSetBootstrapTemplate(templateId) {
+    this.connectPgBootstrapTemplateId = templateId;
+    this.connectPgSelectedScopeIndex = 0;
+  },
+
+  connectPgWizardTitle() {
+    if (this.connectCreatingWorkspace) return 'Building workspace';
+    const titles = {
+      1: 'Connect to a Tower',
+      2: 'Choose or create a workspace',
+      3: 'What kind of workspace is this?',
+      4: 'What should this workspace help with?',
+      5: 'Choose the spaces to create',
+    };
+    return titles[this.connectPgOnboardingStep] || titles[2];
+  },
+
+  connectPgWizardSummary() {
+    if (this.connectCreatingWorkspace) {
+      return 'Flight Deck is creating the workspace, spaces, channel grants, and local materialized view.';
+    }
+    const counts = this.connectPgBootstrapCounts();
+    if (this.connectPgOnboardingStep === 2) return 'Create a workspace first, then bootstrap spaces inside it.';
+    if (this.connectPgOnboardingStep === 5) {
+      return `${counts.scopes} scopes and ${counts.channels} channels selected. Create runs the Tower updates in the background.`;
+    }
+    return 'Private until people or groups are granted to channels.';
+  },
+
+  connectPgPrimaryLabel() {
+    if (this.connectCreatingWorkspace) return 'Building...';
+    if (this.connectPgOnboardingStep === 2) return 'Create workspace';
+    if (this.connectPgOnboardingStep === 5) return 'Create';
+    return 'Continue';
+  },
+
+  connectPgCanContinue() {
+    if (this.connectCreatingWorkspace) return false;
+    if (this.connectPgOnboardingStep === 2) return Boolean(trimText(this.connectNewWorkspaceName));
+    if (this.connectPgOnboardingStep === 5) return this.connectPgBootstrapCounts().scopes > 0;
+    return true;
+  },
+
+  connectPgNext() {
+    if (this.connectPgOnboardingStep < 5) {
+      this.connectPgOnboardingStep += 1;
+      return;
+    }
+    this.connectCreateWorkspace();
+  },
+
+  connectPgBack() {
+    if (this.connectCreatingWorkspace) return;
+    if (this.connectPgOnboardingStep > 2) {
+      this.connectPgOnboardingStep -= 1;
+      return;
+    }
+    this.connectGoBack();
   },
 
   connectPgBootstrapCounts() {
@@ -626,6 +719,7 @@ export const connectSettingsManagerMixin = {
       this.superbasedTokenInput = token;
       await this.saveSettings();
       this.connectStep = 2;
+      this.connectPgOnboardingStep = 2;
       await this.loadConnectWorkspaces();
     } catch (error) {
       this.connectHostError = `Failed to connect: ${error?.message || error}`;
@@ -668,6 +762,7 @@ export const connectSettingsManagerMixin = {
       });
       await this.saveSettings();
       this.connectStep = 2;
+      this.connectPgOnboardingStep = 2;
       await this.loadConnectWorkspaces();
     } catch (error) {
       this.connectHostError = `Failed to connect: ${pgErrorMessage(error)}`;
@@ -1024,6 +1119,8 @@ export const connectSettingsManagerMixin = {
 
   connectGoBack() {
     this.connectStep = 1;
+    this.connectPgOnboardingStep = 1;
+    this.connectPgSelectedScopeIndex = 0;
     this.connectWorkspaces = [];
     this.connectWorkspacesError = null;
     this.connectNewWorkspaceName = '';

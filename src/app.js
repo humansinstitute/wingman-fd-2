@@ -465,6 +465,8 @@ export function initApp() {
     // Connect modal (two-step)
     showConnectModal: false,
     connectStep: 1,
+    connectPgOnboardingStep: 1,
+    connectPgSelectedScopeIndex: 0,
     connectHostUrl: '',
     connectHostLabel: '',
     connectHostServiceNpub: '',

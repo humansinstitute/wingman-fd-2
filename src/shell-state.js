@@ -120,6 +120,8 @@ export const SHELL_STATE_KEYS = Object.freeze([
   // Connect modal (two-step)
   'showConnectModal',
   'connectStep',
+  'connectPgOnboardingStep',
+  'connectPgSelectedScopeIndex',
   'connectHostUrl',
   'connectHostLabel',
   'connectHostServiceNpub',
@@ -305,6 +307,8 @@ export function createShellState(options = {}) {
     // ── Connect modal (two-step) ──────────────────────────────
     showConnectModal: false,
     connectStep: 1,
+    connectPgOnboardingStep: 1,
+    connectPgSelectedScopeIndex: 0,
     connectHostUrl: '',
     connectHostLabel: '',
     connectHostServiceNpub: '',

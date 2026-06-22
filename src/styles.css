@@ -1396,6 +1396,17 @@ button:disabled {
   gap: 0.9rem;
   align-items: start;
 }
+.connect-v8-flow {
+  display: grid;
+  gap: 1rem;
+}
+.connect-copy {
+  max-width: 620px;
+  margin: 0 auto 1rem;
+  color: #475569;
+  text-align: center;
+  line-height: 1.45;
+}
 .connect-section-head {
   display: flex;
   align-items: center;
@@ -1432,6 +1443,11 @@ button:disabled {
   background: #eff6ff;
   box-shadow: inset 3px 0 0 var(--accent, #3b82f6);
 }
+.connect-workspace-row.active {
+  border-color: rgba(59, 130, 246, 0.4);
+  background: #eff6ff;
+  box-shadow: inset 3px 0 0 var(--accent, #3b82f6);
+}
 .connect-workspace-name {
   font-weight: 700;
   color: #111827;
@@ -1457,8 +1473,27 @@ button:disabled {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 0.7rem;
 }
+.connect-v8-create-fields {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e5e7eb;
+}
 .connect-create-form label span { display: block; font-size: 0.84rem; font-weight: 600; margin-bottom: 0.25rem; color: #1f2937; }
 .connect-create-form input { width: 100%; padding: 0.55rem 0.75rem; border: 1px solid var(--border); border-radius: 8px; font-size: 0.92rem; color: var(--text); }
+.connect-v8-create-fields label span {
+  display: block;
+  margin-bottom: 0.25rem;
+  color: #1f2937;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+.connect-v8-create-fields input {
+  width: 100%;
+  padding: 0.58rem 0.75rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  color: var(--text);
+}
 .connect-build-screen {
   min-height: 350px;
   display: grid;
@@ -1540,6 +1575,45 @@ button:disabled {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.75rem;
+}
+.connect-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+.connect-choice-card {
+  min-height: 150px;
+  display: grid;
+  align-content: start;
+  gap: 0.45rem;
+  padding: 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: #f8fafc;
+  color: #111827;
+  text-align: left;
+  cursor: pointer;
+}
+.connect-choice-card.active {
+  border-color: rgba(59, 130, 246, 0.38);
+  background: #eff6ff;
+  box-shadow: inset 3px 0 0 var(--accent, #3b82f6);
+}
+.connect-choice-card span {
+  color: var(--accent, #3b82f6);
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.connect-choice-card strong {
+  color: #111827;
+  font-size: 1rem;
+}
+.connect-choice-card small {
+  color: #64748b;
+  font-size: 0.86rem;
+  line-height: 1.4;
 }
 .connect-template-option {
   min-height: 112px;
@@ -1630,6 +1704,111 @@ button:disabled {
   color: #334155;
   font-size: 0.78rem;
 }
+.connect-scope-picker {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.46fr) minmax(0, 1fr);
+  gap: 0.9rem;
+}
+.connect-scope-panel,
+.connect-channel-panel {
+  min-width: 0;
+  padding: 0.85rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+.connect-panel-label {
+  display: block;
+  margin-bottom: 0.7rem;
+  color: #6b7280;
+}
+.connect-scope-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.connect-scope-button {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fff;
+  color: #111827;
+  text-align: left;
+  cursor: pointer;
+}
+.connect-scope-button.active {
+  border-color: rgba(59, 130, 246, 0.34);
+  background: #eff6ff;
+}
+.connect-scope-button input,
+.connect-channel-card input {
+  width: 16px;
+  height: 16px;
+  accent-color: #111827;
+}
+.connect-scope-button strong {
+  overflow: hidden;
+  font-size: 0.88rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.connect-scope-button span {
+  color: #6b7280;
+  font-size: 0.72rem;
+}
+.connect-channel-panel {
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  gap: 0.85rem;
+}
+.connect-selected-scope {
+  display: grid;
+  gap: 0.25rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+.connect-selected-scope h3 {
+  margin: 0;
+  color: #111827;
+  font-size: 1.1rem;
+}
+.connect-selected-scope p {
+  margin: 0;
+  color: #6b7280;
+  line-height: 1.4;
+}
+.connect-channel-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: start;
+  gap: 0.55rem;
+}
+.connect-channel-card {
+  min-height: 64px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-content: center;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.65rem 0.7rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fff;
+}
+.connect-channel-card strong {
+  display: block;
+  color: #111827;
+  font-size: 0.88rem;
+}
+.connect-channel-card small {
+  color: #6b7280;
+  font-size: 0.72rem;
+}
 .connect-included-tools {
   display: grid;
   gap: 0.45rem;
@@ -1659,6 +1838,74 @@ button:disabled {
   color: #111827;
   font-size: 0.78rem;
 }
+.connect-automation-note {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+.connect-automation-note-head {
+  display: grid;
+  gap: 0.22rem;
+}
+.connect-automation-note-head strong {
+  color: #1e293b;
+  font-size: 0.92rem;
+}
+.connect-automation-note p,
+.connect-automation-note li {
+  color: #475569;
+  font-size: 0.86rem;
+  line-height: 1.42;
+}
+.connect-automation-note p {
+  margin: 0;
+}
+.connect-automation-note details {
+  width: fit-content;
+}
+.connect-automation-note summary {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 0.65rem;
+  border: 1px solid #bfdbfe;
+  border-radius: 6px;
+  background: #fff;
+  color: #1d4ed8;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+.connect-automation-note details[open] {
+  width: 100%;
+}
+.connect-automation-note ol {
+  margin: 0.6rem 0 0;
+  padding-left: 1.25rem;
+}
+.connect-modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e5e7eb;
+}
+.connect-modal-actions p {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.86rem;
+  line-height: 1.4;
+}
+.connect-modal-actions > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
 .connect-primary-action {
   align-self: flex-end;
   min-width: 180px;
@@ -1670,7 +1917,10 @@ button:disabled {
   }
   .connect-workspace-layout,
   .connect-create-fields,
-  .connect-bootstrap-scope-list {
+  .connect-bootstrap-scope-list,
+  .connect-choice-grid,
+  .connect-scope-picker,
+  .connect-channel-list {
     grid-template-columns: 1fr;
   }
   .connect-template-toggle {
@@ -1678,6 +1928,13 @@ button:disabled {
   }
   .connect-primary-action {
     width: 100%;
+  }
+  .connect-modal-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .connect-modal-actions > div {
+    flex-direction: column-reverse;
   }
 }
 
