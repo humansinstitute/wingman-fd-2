@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const {
   alpineStartMock,
   alpineStoreMock,
+  getTowerPgDailyNoteVersionsMock,
   getTowerPgDailyScopeAgentAccessMock,
   upsertDailyNoteMock,
   upsertTowerPgDailyNoteMock,
@@ -10,6 +11,7 @@ const {
 } = vi.hoisted(() => ({
   alpineStartMock: vi.fn(),
   alpineStoreMock: vi.fn(),
+  getTowerPgDailyNoteVersionsMock: vi.fn(),
   getTowerPgDailyScopeAgentAccessMock: vi.fn(),
   upsertDailyNoteMock: vi.fn(),
   upsertTowerPgDailyNoteMock: vi.fn(),
@@ -25,6 +27,7 @@ vi.mock('alpinejs', () => ({
 
 vi.mock('../src/api.js', async (importOriginal) => ({
   ...(await importOriginal()),
+  getTowerPgDailyNoteVersions: getTowerPgDailyNoteVersionsMock,
   getTowerPgDailyScopeAgentAccess: getTowerPgDailyScopeAgentAccessMock,
   upsertTowerPgDailyNote: upsertTowerPgDailyNoteMock,
   upsertTowerPgDailyScopeAgentAccess: upsertTowerPgDailyScopeAgentAccessMock,
@@ -39,6 +42,7 @@ beforeEach(() => {
   vi.resetModules();
   alpineStartMock.mockClear();
   alpineStoreMock.mockClear();
+  getTowerPgDailyNoteVersionsMock.mockReset();
   getTowerPgDailyScopeAgentAccessMock.mockReset();
   upsertDailyNoteMock.mockReset();
   upsertTowerPgDailyNoteMock.mockReset();
@@ -287,5 +291,86 @@ describe('app Daily Scope behavior', () => {
     expect(upsertTowerPgDailyNoteMock.mock.calls[0][1].channel_id).toBeNull();
     expect(store.dailyNoteEditorOpen).toBe(true);
     expect(store.dailyNoteEditorRecordId).toBe('daily-yesterday');
+  });
+
+  it('loads and restores Daily Scope versions from Tower PG', async () => {
+    const store = await createStore();
+    Object.assign(store, {
+      dailyNotes: [{
+        record_id: 'daily-1',
+        owner_actor_id: 'owner-actor-1',
+        owner_actor_npub: 'npub-human',
+        note_date: '2026-06-17',
+        title: 'Daily Scope',
+        body: 'Current body',
+        focus: 'Current focus',
+        items: [{ id: 'task-1', text: 'Current item', completed: false }],
+        metadata: { source: 'manual' },
+        status: 'active',
+        row_version: 3,
+      }],
+      dailyNoteEditorRecordId: 'daily-1',
+      dailyNoteEditorTitle: 'Daily Scope',
+      dailyNoteEditorBody: 'Current body',
+      dailyNoteEditorFocus: 'Current focus',
+      dailyNoteEditorItems: [{ id: 'task-1', text: 'Current item', completed: false }],
+      getTodayDateKey: () => '2026-06-17',
+    });
+    getTowerPgDailyNoteVersionsMock.mockResolvedValueOnce({
+      versions: [
+        {
+          row_version: 3,
+          title: 'Daily Scope',
+          body: 'Current body',
+          focus: 'Current focus',
+          items: [{ id: 'task-1', text: 'Current item', completed: false }],
+          updated_at: '2026-06-17T10:00:00.000Z',
+        },
+        {
+          row_version: 2,
+          title: 'Daily Scope',
+          body: 'Previous body',
+          focus: 'Previous focus',
+          items: [{ id: 'task-1', text: 'Previous item', completed: true }],
+          updated_at: '2026-06-17T09:00:00.000Z',
+        },
+      ],
+    });
+    upsertTowerPgDailyNoteMock.mockResolvedValueOnce({
+      daily_note: {
+        id: 'daily-1',
+        owner_actor_id: 'owner-actor-1',
+        owner_actor_npub: 'npub-human',
+        note_date: '2026-06-17',
+        title: 'Daily Scope',
+        body: 'Previous body',
+        focus: 'Previous focus',
+        items: [{ id: 'task-1', text: 'Previous item', completed: true }],
+        status: 'active',
+        row_version: 4,
+        updated_at: '2026-06-17T10:15:00.000Z',
+      },
+    });
+
+    await store.openDailyNoteVersioning();
+
+    expect(getTowerPgDailyNoteVersionsMock).toHaveBeenCalledWith('workspace-1', 'daily-1', {
+      baseUrl: 'https://tower.example',
+      appNpub: 'flightdeck_pg',
+      limit: 50,
+    });
+    expect(store.dailyNoteVersionHistory).toHaveLength(2);
+    store.selectDailyNoteVersion(1);
+    await store.restoreDailyNoteVersion();
+
+    expect(store.dailyNoteEditorBody).toBe('Previous body');
+    expect(store.dailyNoteEditorFocus).toBe('Previous focus');
+    expect(upsertTowerPgDailyNoteMock).toHaveBeenCalledWith('workspace-1', expect.objectContaining({
+      title: 'Daily Scope',
+      body: 'Previous body',
+      focus: 'Previous focus',
+      items: [expect.objectContaining({ text: 'Previous item', completed: true })],
+    }), { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
+    expect(store.dailyNoteVersioningOpen).toBe(false);
   });
 });

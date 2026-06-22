@@ -8145,7 +8145,7 @@
             <button class="modal-close" type="button" @click="$store.chat.closeDailyNoteEditor()">&times;</button>
             <div class="daily-note-modal-meta">
               <p class="doc-comment-modal-copy">Daily note for <span x-text="$store.chat.getDailyScopeDateKey()"></span></p>
-              <span x-show="$store.chat.dailyNoteEditorVersionLabel" x-text="$store.chat.dailyNoteEditorVersionLabel"></span>
+              <button type="button" class="daily-note-version-button" x-show="$store.chat.dailyNoteEditorVersionLabel" @click="$store.chat.openDailyNoteVersioning()" x-text="$store.chat.dailyNoteEditorVersionLabel"></button>
             </div>
             <input class="daily-note-title-input" type="text" x-model="$store.chat.dailyNoteEditorTitle" placeholder="Daily Scope" />
             <div class="daily-note-field">
@@ -8188,6 +8188,95 @@
                 <span x-show="!$store.chat.dailyNoteEditorSaving">Save daily note</span>
                 <span x-show="$store.chat.dailyNoteEditorSaving">Saving...</span>
               </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="doc-modal-backdrop" x-show="$store.chat.dailyNoteVersioningOpen" x-cloak @click.self="$store.chat.closeDailyNoteVersioning()">
+          <div class="doc-modal-card doc-versioning-modal daily-note-versioning-modal">
+            <div class="doc-versioning-header">
+              <h3>Daily Focus Versions</h3>
+              <div class="doc-versioning-header-actions">
+                <button type="button" class="doc-versioning-action-btn" :class="{ 'doc-versioning-action-btn-active': $store.chat.dailyNoteDiffMode }" :disabled="$store.chat.dailyNoteVersioningSelectedIndex < 0" @click="$store.chat.toggleDailyNoteDiffMode()" title="Toggle diff view">Diff</button>
+                <button type="button" class="doc-versioning-action-btn" :disabled="$store.chat.dailyNoteVersioningSelectedIndex < 0" @click="$store.chat.copyDailyNoteVersionSource()" title="Copy source markdown">Copy Source</button>
+                <button type="button" class="doc-versioning-action-btn doc-versioning-restore-btn" :disabled="$store.chat.dailyNoteVersioningSelectedIndex < 0" @click="$store.chat.restoreDailyNoteVersion()">Restore</button>
+                <button class="modal-close" type="button" @click="$store.chat.closeDailyNoteVersioning()">&times;</button>
+              </div>
+            </div>
+            <div class="doc-versioning-body">
+              <aside class="doc-versioning-list">
+                <template x-if="$store.chat.dailyNoteVersioningLoading">
+                  <div class="doc-versioning-status">Loading versions...</div>
+                </template>
+                <template x-if="$store.chat.dailyNoteVersioningError">
+                  <div class="doc-versioning-status doc-versioning-error" x-text="$store.chat.dailyNoteVersioningError"></div>
+                </template>
+                <template x-if="!$store.chat.dailyNoteVersioningLoading && !$store.chat.dailyNoteVersioningError && $store.chat.dailyNoteVersionHistory.length === 0">
+                  <div class="doc-versioning-status">No version history available.</div>
+                </template>
+                <template x-for="(ver, index) in $store.chat.dailyNoteVersionHistory" :key="ver.version">
+                  <button type="button"
+                    class="doc-version-item"
+                    :class="{ 'doc-version-item-selected': $store.chat.dailyNoteVersioningSelectedIndex === index }"
+                    @click="$store.chat.selectDailyNoteVersion(index)"
+                  >
+                    <span class="doc-version-number" x-text="'v' + ver.version"></span>
+                    <span class="doc-version-title" x-text="ver.title"></span>
+                    <span class="doc-version-date" x-text="$store.chat.formatRelativeTime(ver.updated_at)"></span>
+                  </button>
+                </template>
+              </aside>
+              <div class="doc-versioning-preview">
+                <template x-if="$store.chat.dailyNoteVersioningSelectedIndex >= 0 && !$store.chat.dailyNoteDiffMode">
+                  <div class="doc-versioning-preview-content" x-html="$store.chat.dailyNoteVersioningPreviewHtml"></div>
+                </template>
+                <template x-if="$store.chat.dailyNoteVersioningSelectedIndex >= 0 && $store.chat.dailyNoteDiffMode">
+                  <div class="doc-diff-view">
+                    <div class="doc-diff-header">
+                      <div class="doc-diff-pickers">
+                        <label class="doc-diff-picker-label">
+                          From
+                          <select class="doc-diff-picker-select"
+                            :value="$store.chat.dailyNoteDiffFromIndex"
+                            @change="$store.chat.setDailyNoteDiffFromIndex(parseInt($event.target.value))">
+                            <option value="-1">(initial)</option>
+                            <template x-for="(ver, idx) in $store.chat.dailyNoteVersionHistory" :key="'daily-from-'+ver.version">
+                              <option :value="idx" x-text="'v' + ver.version + ' - ' + ver.title" :selected="idx === $store.chat.dailyNoteDiffFromIndex"></option>
+                            </template>
+                          </select>
+                        </label>
+                        <span class="doc-diff-arrow">&rarr;</span>
+                        <label class="doc-diff-picker-label">
+                          To
+                          <select class="doc-diff-picker-select"
+                            :value="$store.chat.dailyNoteDiffToIndex"
+                            @change="$store.chat.setDailyNoteDiffToIndex(parseInt($event.target.value))">
+                            <template x-for="(ver, idx) in $store.chat.dailyNoteVersionHistory" :key="'daily-to-'+ver.version">
+                              <option :value="idx" x-text="'v' + ver.version + ' - ' + ver.title" :selected="idx === $store.chat.dailyNoteDiffToIndex"></option>
+                            </template>
+                          </select>
+                        </label>
+                      </div>
+                    </div>
+                    <div class="doc-diff-body">
+                      <template x-for="(hunk, hi) in $store.chat.dailyNoteDiffHunks" :key="hi">
+                        <div class="doc-diff-hunk"
+                          :class="{
+                            'doc-diff-line-added': hunk.added,
+                            'doc-diff-line-removed': hunk.removed,
+                            'doc-diff-line-context': !hunk.added && !hunk.removed
+                          }">
+                          <span class="doc-diff-gutter" x-text="hunk.added ? '+' : hunk.removed ? '-' : ' '"></span>
+                          <pre class="doc-diff-content" x-text="hunk.value"></pre>
+                        </div>
+                      </template>
+                    </div>
+                  </div>
+                </template>
+                <template x-if="$store.chat.dailyNoteVersioningSelectedIndex < 0 && !$store.chat.dailyNoteVersioningLoading">
+                  <div class="doc-versioning-status">Select a version to preview.</div>
+                </template>
+              </div>
             </div>
           </div>
         </div>

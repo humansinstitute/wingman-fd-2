@@ -8709,10 +8709,26 @@ button:disabled {
   gap: 0.75rem;
 }
 
-.daily-note-modal-meta span {
+.daily-note-modal-meta span,
+.daily-note-version-button {
   color: #64748b;
   font-size: 0.78rem;
   font-weight: 650;
+}
+
+.daily-note-version-button {
+  border: 1px solid rgba(100, 116, 139, 0.22);
+  border-radius: 999px;
+  background: #f8fafc;
+  padding: 0.25rem 0.55rem;
+  cursor: pointer;
+}
+
+.daily-note-version-button:hover,
+.daily-note-version-button:focus-visible {
+  background: #eef2ff;
+  color: #1d4ed8;
+  outline: none;
 }
 
 .daily-note-title-input {

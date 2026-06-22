@@ -5,6 +5,7 @@
 
 import Alpine from 'alpinejs';
 import { liveQuery } from 'dexie';
+import { diffLines } from 'diff';
 import { commentBelongsToDocBlock } from './doc-comment-anchors.js';
 import { docsManagerMixin } from './docs-manager.js';
 import { scopesManagerMixin } from './scopes-manager.js';
@@ -175,6 +176,7 @@ import {
   prepareTowerPgStorageObject,
   createTowerPgPersonalWapp,
   deleteTowerPgPersonalWapp,
+  getTowerPgDailyNoteVersions,
   getTowerPgDailyScopeAgentAccess,
   reorderTowerPgPersonalWapps,
   updateTowerPgPersonalWapp,
@@ -587,6 +589,16 @@ export function initApp() {
     dailyNoteEditorItems: [],
     dailyNoteEditorRecordId: '',
     dailyNoteEditorMode: 'preview',
+    dailyNoteVersioningOpen: false,
+    dailyNoteVersionHistory: [],
+    dailyNoteVersioningLoading: false,
+    dailyNoteVersioningError: null,
+    dailyNoteVersioningSelectedIndex: -1,
+    dailyNoteVersioningPreviewHtml: '',
+    dailyNoteDiffMode: false,
+    dailyNoteDiffHunks: [],
+    dailyNoteDiffFromIndex: -1,
+    dailyNoteDiffToIndex: -1,
     dailyScopeAgentAccess: [],
     dailyScopeAgentAccessSaving: false,
     directories: [],
@@ -2816,6 +2828,148 @@ export function initApp() {
 
     get dailyNoteEditorPreviewHtml() {
       return this.renderMarkdown(this.dailyNoteEditorBody || '');
+    },
+
+    dailyNoteVersionSource(version) {
+      if (!version) return '';
+      const focus = String(version.focus || '').trim();
+      const items = this.normalizeDailyNoteItemsForDisplay(version.items || []);
+      const checklist = items.length > 0
+        ? items.map((item) => `${item.completed ? '- [x]' : '- [ ]'} ${item.text}`).join('\n')
+        : '';
+      return [
+        `# ${version.title || 'Daily note'}`,
+        focus ? `Focus: ${focus}` : '',
+        checklist,
+        String(version.body || '').trim(),
+      ].filter(Boolean).join('\n\n');
+    },
+
+    async openDailyNoteVersioning() {
+      const note = (this.dailyNotes || []).find((item) => item.record_id === this.dailyNoteEditorRecordId) || this.getCurrentDailyNote();
+      if (!note || !isTowerPgBackendMode()) return;
+      this.dailyNoteVersioningOpen = true;
+      this.dailyNoteVersionHistory = [];
+      this.dailyNoteVersioningLoading = true;
+      this.dailyNoteVersioningError = null;
+      this.dailyNoteVersioningSelectedIndex = -1;
+      this.dailyNoteVersioningPreviewHtml = '';
+      this.dailyNoteDiffMode = false;
+      this.dailyNoteDiffHunks = [];
+      this.dailyNoteDiffFromIndex = -1;
+      this.dailyNoteDiffToIndex = -1;
+      try {
+        const context = resolveTowerPgWorkspaceContext(this);
+        if (!context.workspaceId || !context.baseUrl) throw new Error('Flight Deck PG workspace is not connected.');
+        const result = await getTowerPgDailyNoteVersions(context.workspaceId, note.record_id, {
+          baseUrl: context.baseUrl,
+          appNpub: context.appNpub,
+          limit: 50,
+        });
+        const versions = Array.isArray(result?.versions) ? result.versions : [];
+        this.dailyNoteVersionHistory = versions.map((version) => ({
+          version: version.version ?? version.row_version ?? 0,
+          title: version.title || 'Daily note',
+          body: typeof version.body === 'string' ? version.body : '',
+          focus: typeof version.focus === 'string' ? version.focus : '',
+          items: this.normalizeDailyNoteItemsForDisplay(version.items),
+          status: version.status || 'active',
+          metadata: version.metadata && typeof version.metadata === 'object' ? version.metadata : {},
+          note_date: version.note_date || note.note_date || this.getDailyScopeDateKey(),
+          updated_at: version.updated_at || '',
+          operation: version.operation || 'updated',
+          actor_npub: version.actor_npub || null,
+        })).sort((left, right) => Number(right.version || 0) - Number(left.version || 0));
+        if (this.dailyNoteVersionHistory.length > 0) this.selectDailyNoteVersion(0);
+      } catch (error) {
+        this.dailyNoteVersioningError = error?.status === 404
+          ? 'Daily Focus version history is not available yet.'
+          : `Failed to load Daily Focus versions: ${error?.message || error}`;
+      } finally {
+        this.dailyNoteVersioningLoading = false;
+      }
+    },
+
+    closeDailyNoteVersioning() {
+      this.dailyNoteVersioningOpen = false;
+      this.dailyNoteVersionHistory = [];
+      this.dailyNoteVersioningSelectedIndex = -1;
+      this.dailyNoteVersioningPreviewHtml = '';
+      this.dailyNoteVersioningError = null;
+      this.dailyNoteDiffMode = false;
+      this.dailyNoteDiffHunks = [];
+      this.dailyNoteDiffFromIndex = -1;
+      this.dailyNoteDiffToIndex = -1;
+    },
+
+    selectDailyNoteVersion(index) {
+      if (index < 0 || index >= this.dailyNoteVersionHistory.length) return;
+      this.dailyNoteVersioningSelectedIndex = index;
+      const version = this.dailyNoteVersionHistory[index];
+      this.dailyNoteVersioningPreviewHtml = renderMarkdownToHtml(this.dailyNoteVersionSource(version));
+      if (this.dailyNoteDiffMode) {
+        this.dailyNoteDiffToIndex = index;
+        this.computeDailyNoteDiff();
+      }
+    },
+
+    toggleDailyNoteDiffMode() {
+      this.dailyNoteDiffMode = !this.dailyNoteDiffMode;
+      if (this.dailyNoteDiffMode) {
+        const toIndex = this.dailyNoteVersioningSelectedIndex >= 0 ? this.dailyNoteVersioningSelectedIndex : 0;
+        const fromIndex = Math.min(toIndex + 1, this.dailyNoteVersionHistory.length - 1);
+        this.dailyNoteDiffToIndex = toIndex;
+        this.dailyNoteDiffFromIndex = toIndex !== fromIndex ? fromIndex : -1;
+        this.computeDailyNoteDiff();
+      }
+    },
+
+    setDailyNoteDiffFromIndex(index) {
+      this.dailyNoteDiffFromIndex = index;
+      if (this.dailyNoteDiffMode) this.computeDailyNoteDiff();
+    },
+
+    setDailyNoteDiffToIndex(index) {
+      this.dailyNoteDiffToIndex = index;
+      if (index >= 0 && index < this.dailyNoteVersionHistory.length) {
+        this.dailyNoteVersioningSelectedIndex = index;
+        this.dailyNoteVersioningPreviewHtml = renderMarkdownToHtml(this.dailyNoteVersionSource(this.dailyNoteVersionHistory[index]));
+      }
+      if (this.dailyNoteDiffMode) this.computeDailyNoteDiff();
+    },
+
+    computeDailyNoteDiff() {
+      const toIndex = this.dailyNoteDiffToIndex >= 0 ? this.dailyNoteDiffToIndex : this.dailyNoteVersioningSelectedIndex;
+      const selected = this.dailyNoteVersionHistory[toIndex];
+      if (!selected) {
+        this.dailyNoteDiffHunks = [];
+        return;
+      }
+      const fromIndex = this.dailyNoteDiffFromIndex >= 0 ? this.dailyNoteDiffFromIndex : toIndex + 1;
+      const older = this.dailyNoteVersionHistory[fromIndex];
+      if (!older) {
+        this.dailyNoteDiffHunks = [{ value: this.dailyNoteVersionSource(selected), added: true }];
+        return;
+      }
+      this.dailyNoteDiffHunks = diffLines(this.dailyNoteVersionSource(older), this.dailyNoteVersionSource(selected));
+    },
+
+    async restoreDailyNoteVersion() {
+      const version = this.dailyNoteVersionHistory[this.dailyNoteVersioningSelectedIndex];
+      if (!version) return;
+      this.dailyNoteEditorTitle = version.title || 'Daily note';
+      this.dailyNoteEditorBody = version.body || '';
+      this.dailyNoteEditorFocus = version.focus || '';
+      this.dailyNoteEditorItems = this.normalizeDailyNoteEditorItems(version.items || []);
+      this.dailyNoteEditorMode = 'preview';
+      this.closeDailyNoteVersioning();
+      await this.saveDailyNoteEditor({ close: false });
+    },
+
+    copyDailyNoteVersionSource() {
+      const version = this.dailyNoteVersionHistory[this.dailyNoteVersioningSelectedIndex];
+      if (!version) return;
+      navigator.clipboard.writeText(this.dailyNoteVersionSource(version)).catch(() => {});
     },
 
     applyDailyNotes(dailyNotes = []) {

@@ -27,6 +27,7 @@ describe('Tower PG API helpers', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     globalThis.fetch = originalFetch;
     vi.restoreAllMocks();
   });
@@ -595,6 +596,31 @@ describe('Tower PG API helpers', () => {
     expect(createNip98AuthHeaderForSecret).not.toHaveBeenCalled();
   });
 
+  it('reads Tower PG Daily Scope versions with browser NIP-98 auth', async () => {
+    const { createNip98AuthHeader, createNip98AuthHeaderForSecret } = await import('../src/auth/nostr.js');
+    const api = await import('../src/api.js');
+    api.setBaseUrl('https://tower.example');
+
+    await api.getTowerPgDailyNoteVersions('workspace-1', 'daily-1', {
+      appNpub: 'flightdeck_pg',
+      limit: 25,
+    });
+
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      1,
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/daily-notes/daily-1/versions?limit=25',
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({
+          Authorization: 'NIP98 GET https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/daily-notes/daily-1/versions?limit=25',
+          'x-flightdeck-pg-app-npub': 'flightdeck_pg',
+        }),
+      }),
+    );
+    expect(createNip98AuthHeader).toHaveBeenCalledTimes(1);
+    expect(createNip98AuthHeaderForSecret).not.toHaveBeenCalled();
+  });
+
   it('deletes Tower PG messages and threads with browser NIP-98 auth', async () => {
     const { createNip98AuthHeader, createNip98AuthHeaderForSecret } = await import('../src/auth/nostr.js');
     const api = await import('../src/api.js');
@@ -632,5 +658,27 @@ describe('Tower PG API helpers', () => {
     );
     expect(createNip98AuthHeader).toHaveBeenCalledTimes(2);
     expect(createNip98AuthHeaderForSecret).not.toHaveBeenCalled();
+  });
+
+  it('times out Tower PG deletes when NIP-98 signing does not settle', async () => {
+    vi.useFakeTimers();
+    const { createNip98AuthHeader } = await import('../src/auth/nostr.js');
+    const api = await import('../src/api.js');
+    api.setBaseUrl('https://tower.example');
+    createNip98AuthHeader.mockImplementationOnce(() => new Promise(() => {}));
+
+    const deletion = api.deleteTowerPgMessage('workspace-1', 'message-1', {
+      appNpub: 'flightdeck_pg',
+      rowVersion: 3,
+    });
+    const assertion = expect(deletion).rejects.toMatchObject({
+      code: 'auth_timeout',
+      message: expect.stringContaining('NIP-98 signing timed out for DELETE'),
+    });
+
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    await assertion;
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 });

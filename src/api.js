@@ -14,6 +14,7 @@ let _baseUrl = '';
 
 const DEFAULT_FETCH_TIMEOUT_MS = 20_000;
 const UPLOAD_FETCH_TIMEOUT_MS = 60_000;
+const AUTH_HEADER_TIMEOUT_MS = 10_000;
 
 function bytesToBase64(bytes) {
   let binary = '';
@@ -72,10 +73,31 @@ async function createApiAuthHeader(requestUrl, method, body = null, options = {}
   const workspaceSecret = options.useWorkspaceKey === false
     ? null
     : getActiveWorkspaceKeySecretForAuth();
-  if (workspaceSecret) {
-    return createNip98AuthHeaderForSecret(requestUrl, method, body ?? null, workspaceSecret);
-  }
-  return createNip98AuthHeader(requestUrl, method, body ?? null);
+  const authPromise = workspaceSecret
+    ? createNip98AuthHeaderForSecret(requestUrl, method, body ?? null, workspaceSecret)
+    : createNip98AuthHeader(requestUrl, method, body ?? null);
+  return withTimeout(
+    authPromise,
+    AUTH_HEADER_TIMEOUT_MS,
+    `NIP-98 signing timed out for ${String(method || 'GET').toUpperCase()} ${requestUrl}`,
+  );
+}
+
+function withTimeout(promise, timeoutMs, message) {
+  let timer = null;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const error = new Error(message);
+      error.code = 'auth_timeout';
+      reject(error);
+    }, timeoutMs);
+  });
+  return Promise.race([
+    Promise.resolve(promise).finally(() => {
+      if (timer) clearTimeout(timer);
+    }),
+    timeout,
+  ]);
 }
 
 async function buildApiError(resp, { requestUrl = '', method = 'GET', prefix = 'API' } = {}) {
@@ -783,6 +805,19 @@ export async function upsertTowerPgDailyNote(workspaceId, body, { baseUrl = _bas
   const requestUrl = resolveTowerPgUrl(requestPath, baseUrl);
   const resp = await signedTowerPgFetch(requestPath, { method: 'POST', body, baseUrl, appNpub });
   return json(resp, { requestUrl, method: 'POST', prefix: 'Tower PG API' });
+}
+
+export async function getTowerPgDailyNoteVersions(workspaceId, dailyNoteId, { baseUrl = _baseUrl, appNpub = FLIGHT_DECK_PG_APP_NPUB, limit = 50 } = {}) {
+  const encodedWorkspaceId = encodeURIComponent(String(workspaceId || '').trim());
+  const encodedDailyNoteId = encodeURIComponent(String(dailyNoteId || '').trim());
+  if (!encodedWorkspaceId) throw new Error('Tower PG workspace id is required');
+  if (!encodedDailyNoteId) throw new Error('Tower PG daily note id is required');
+  const params = new URLSearchParams();
+  if (limit) params.set('limit', String(limit));
+  const requestPath = `/api/v4/flightdeck-pg/workspaces/${encodedWorkspaceId}/daily-notes/${encodedDailyNoteId}/versions${params.size > 0 ? `?${params.toString()}` : ''}`;
+  const requestUrl = resolveTowerPgUrl(requestPath, baseUrl);
+  const resp = await signedTowerPgFetch(requestPath, { baseUrl, appNpub });
+  return json(resp, { requestUrl, method: 'GET', prefix: 'Tower PG API' });
 }
 
 export async function getTowerPgPersonalWapps(workspaceId, { baseUrl = _baseUrl, appNpub = FLIGHT_DECK_PG_APP_NPUB, ownerActorId = null, ownerNpub = null, includeArchived = false, limit = 100 } = {}) {
