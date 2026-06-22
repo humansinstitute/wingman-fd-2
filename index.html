@@ -362,127 +362,169 @@
       @click.self="$store.chat.closeConnectModal()"
       @keydown.escape.window="$store.chat.closeConnectModal()"
     >
-      <div class="modal connect-modal">
+      <div class="modal connect-modal" :class="{ 'connect-onboarding-modal': $store.chat.isTowerPgMode }">
         <button class="modal-close" type="button" @click="$store.chat.closeConnectModal()">&times;</button>
 
         <!-- Step 1: Choose host -->
         <template x-if="$store.chat.connectStep === 1">
-          <div>
-            <h2 x-text="$store.chat.isTowerPgMode ? 'Connect to Flight Deck PG' : 'Connect to SuperBased'"></h2>
-            <p x-text="$store.chat.isTowerPgMode ? 'Choose a Tower host or paste a workspace descriptor.' : 'Choose a host or enter a custom URL.'"></p>
-            <div class="connect-hosts-list">
-              <template x-for="host in $store.chat.mergedHostsList" :key="host.url">
-                <button type="button" class="connect-host-row" @click="$store.chat.connectToHost(host.url, host.towerName || host.label || host.url)" :disabled="$store.chat.connectHostBusy">
-                  <span class="connect-host-label" x-text="host.towerName || host.label || host.url"></span>
-                  <span class="connect-host-url" x-text="host.url"></span>
-                  <span class="connect-host-description" x-show="host.towerDescription" x-text="host.towerDescription"></span>
-                </button>
-              </template>
+          <div class="connect-onboarding-screen">
+            <div class="connect-wizard-top">
+              <p class="connect-modal-eyebrow" x-text="$store.chat.isTowerPgMode ? 'New workspace' : 'Workspace connection'"></p>
+              <h2 x-text="$store.chat.isTowerPgMode ? 'Connect to a Tower' : 'Connect to SuperBased'"></h2>
+              <div class="connect-wizard-steps" x-show="$store.chat.isTowerPgMode" aria-label="Onboarding progress">
+                <span class="active">1</span>
+                <span>2</span>
+                <span>3</span>
+              </div>
+              <p x-text="$store.chat.isTowerPgMode ? 'Choose a Tower host or paste a workspace descriptor. Flight Deck opens into an empty workspace shell, then builds the selected spaces through Tower.' : 'Choose a host or enter a custom URL.'"></p>
             </div>
-            <form class="connect-manual-form" @submit.prevent="$store.chat.connectByo()">
-              <label>
-                <span x-text="$store.chat.isTowerPgMode ? 'BYO Tower PG' : 'BYO SuperBased'"></span>
-                <input type="text" x-model="$store.chat.connectManualUrl" :placeholder="$store.chat.isTowerPgMode ? 'URL or workspace descriptor JSON' : 'URL or connection token'" :disabled="$store.chat.connectHostBusy" />
-              </label>
-              <button class="auth-option" type="submit" :disabled="$store.chat.connectHostBusy || !$store.chat.connectManualUrl.trim()">
-                <span x-show="!$store.chat.connectHostBusy">Connect</span>
-                <span x-show="$store.chat.connectHostBusy">Connecting...</span>
-              </button>
-            </form>
-            <p class="auth-error" x-show="$store.chat.connectHostError" x-text="$store.chat.connectHostError"></p>
+            <section class="connect-onboarding-card">
+              <div class="connect-hosts-list">
+                <template x-for="host in $store.chat.mergedHostsList" :key="host.url">
+                  <button type="button" class="connect-host-row" @click="$store.chat.connectToHost(host.url, host.towerName || host.label || host.url)" :disabled="$store.chat.connectHostBusy">
+                    <span class="connect-host-label" x-text="host.towerName || host.label || host.url"></span>
+                    <span class="connect-host-url" x-text="host.url"></span>
+                    <span class="connect-host-description" x-show="host.towerDescription" x-text="host.towerDescription"></span>
+                  </button>
+                </template>
+              </div>
+              <form class="connect-manual-form" @submit.prevent="$store.chat.connectByo()">
+                <label>
+                  <span x-text="$store.chat.isTowerPgMode ? 'BYO Tower PG' : 'BYO SuperBased'"></span>
+                  <input type="text" x-model="$store.chat.connectManualUrl" :placeholder="$store.chat.isTowerPgMode ? 'URL or workspace descriptor JSON' : 'URL or connection token'" :disabled="$store.chat.connectHostBusy" />
+                </label>
+                <button class="auth-option" type="submit" :disabled="$store.chat.connectHostBusy || !$store.chat.connectManualUrl.trim()">
+                  <span x-show="!$store.chat.connectHostBusy">Connect</span>
+                  <span x-show="$store.chat.connectHostBusy">Connecting...</span>
+                </button>
+              </form>
+              <p class="auth-error" x-show="$store.chat.connectHostError" x-text="$store.chat.connectHostError"></p>
+            </section>
           </div>
         </template>
 
         <!-- Step 2: Choose workspace -->
         <template x-if="$store.chat.connectStep === 2">
-          <div>
-            <h2>Select Workspace</h2>
-            <p>
-              Connected to <strong x-text="$store.chat.connectHostTowerName || $store.chat.connectHostLabel || $store.chat.connectHostUrl"></strong>
-              <button type="button" class="connect-back-link" @click="$store.chat.connectGoBack()">Change</button>
-            </p>
-            <p class="connect-host-description" x-show="$store.chat.connectHostTowerDescription" x-text="$store.chat.connectHostTowerDescription"></p>
-            <p class="connect-workspace-loading" x-show="$store.chat.connectWorkspacesBusy">Loading workspaces...</p>
-            <div class="connect-workspace-list" x-show="$store.chat.connectWorkspaces.length > 0 && !$store.chat.connectWorkspacesBusy">
-              <template x-for="ws in $store.chat.connectWorkspaces" :key="ws.workspace_owner_npub || ws.workspaceOwnerNpub">
-                <button type="button" class="connect-workspace-row" @click="$store.chat.connectSelectWorkspace(ws)">
-                  <span class="connect-workspace-name" x-text="ws.name || 'Untitled workspace'"></span>
-                  <span class="connect-workspace-meta" x-text="ws.description || $store.chat.getShortNpub(ws.workspace_owner_npub || ws.workspaceOwnerNpub || '')"></span>
-                </button>
-              </template>
-            </div>
-            <p
-              class="connect-workspace-empty"
-              x-show="$store.chat.connectWorkspaces.length === 0 && !$store.chat.connectWorkspacesBusy && !$store.chat.connectWorkspacesError"
-              x-text="$store.chat.isTowerPgMode ? 'No PG workspaces found on this Tower. Create one below if your signer is a Tower admin.' : 'No workspaces found on this host. Create one below.'"
-            >
-            </p>
-            <p class="auth-error" x-show="$store.chat.connectWorkspacesError" x-text="$store.chat.connectWorkspacesError"></p>
-            <div class="connect-build-progress" x-show="$store.chat.connectCreatingWorkspace && $store.chat.connectPgBootstrapProgress.active" x-cloak>
-              <div class="connect-build-progress-head">
-                <strong>Building workspace</strong>
-                <span x-text="`${$store.chat.connectPgBootstrapProgress.completed || 0} / ${$store.chat.connectPgBootstrapProgress.total || 0}`"></span>
+          <div class="connect-onboarding-screen">
+            <div class="connect-wizard-top">
+              <p class="connect-modal-eyebrow">New workspace</p>
+              <h2 x-text="$store.chat.connectCreatingWorkspace ? 'Building workspace' : 'Choose or create a workspace'"></h2>
+              <div class="connect-wizard-steps" x-show="$store.chat.isTowerPgMode" aria-label="Onboarding progress">
+                <span>1</span>
+                <span :class="{ active: !$store.chat.connectCreatingWorkspace }">2</span>
+                <span :class="{ active: $store.chat.connectCreatingWorkspace }">3</span>
               </div>
-              <div class="connect-build-progress-bar" aria-hidden="true">
-                <span :style="`width: ${$store.chat.connectPgBootstrapProgress.total ? Math.round((($store.chat.connectPgBootstrapProgress.completed || 0) / $store.chat.connectPgBootstrapProgress.total) * 100) : 8}%`"></span>
-              </div>
-              <p x-text="$store.chat.connectPgBootstrapProgress.label || 'Preparing workspace...'"></p>
+              <p>
+                Connected to <strong x-text="$store.chat.connectHostTowerName || $store.chat.connectHostLabel || $store.chat.connectHostUrl"></strong>
+                <button type="button" class="connect-back-link" @click="$store.chat.connectGoBack()" :disabled="$store.chat.connectCreatingWorkspace">Change Tower</button>
+              </p>
+              <p class="connect-host-description" x-show="$store.chat.connectHostTowerDescription" x-text="$store.chat.connectHostTowerDescription"></p>
             </div>
-            <div class="connect-create-workspace">
-              <strong x-text="$store.chat.isTowerPgMode ? 'Create new PG workspace' : 'Create new workspace'"></strong>
-              <form class="connect-create-form" @submit.prevent="$store.chat.connectCreateWorkspace()">
-                <label><span>Name</span><input type="text" x-model="$store.chat.connectNewWorkspaceName" placeholder="My workspace" /></label>
-                <label><span>Description (optional)</span><input type="text" x-model="$store.chat.connectNewWorkspaceDescription" placeholder="" /></label>
-                <div class="connect-pg-bootstrap" x-show="$store.chat.isTowerPgMode">
-                  <div class="connect-pg-bootstrap-head">
-                    <strong>Starter spaces</strong>
-                    <span x-text="`${$store.chat.connectPgBootstrapCounts().scopes} scopes, ${$store.chat.connectPgBootstrapCounts().channels} channels`"></span>
-                  </div>
-                  <div class="connect-template-toggle" role="group" aria-label="Workspace starter template">
-                    <template x-for="template in $store.chat.connectPgBootstrapTemplates" :key="template.id">
-                      <button
-                        type="button"
-                        class="connect-template-option"
-                        :class="{ active: $store.chat.connectPgBootstrapTemplateId === template.id }"
-                        @click="$store.chat.connectPgBootstrapTemplateId = template.id"
-                        :disabled="$store.chat.connectCreatingWorkspace"
-                      >
-                        <span x-text="template.label"></span>
-                      </button>
-                    </template>
-                  </div>
-                  <template x-for="template in $store.chat.connectPgBootstrapTemplates" :key="`template-${template.id}`">
-                    <div class="connect-bootstrap-template" x-show="$store.chat.connectPgBootstrapTemplateId === template.id">
-                      <p x-text="template.description"></p>
-                      <div class="connect-bootstrap-scope-list">
-                        <template x-for="scope in template.scopes" :key="`${template.id}-${scope.name}`">
-                          <section class="connect-bootstrap-scope">
-                            <label class="connect-bootstrap-scope-row">
-                              <input type="checkbox" x-model="scope.selected" :disabled="$store.chat.connectCreatingWorkspace" />
-                              <span>
-                                <strong x-text="scope.name"></strong>
-                                <small x-text="scope.description"></small>
-                              </span>
-                            </label>
-                            <div class="connect-bootstrap-channel-list" x-show="scope.selected">
-                              <template x-for="channel in scope.channels" :key="`${scope.name}-${channel.name}`">
-                                <label class="connect-bootstrap-channel">
-                                  <input type="checkbox" x-model="channel.selected" :disabled="$store.chat.connectCreatingWorkspace" />
-                                  <span x-text="channel.name"></span>
-                                </label>
-                              </template>
-                            </div>
-                          </section>
-                        </template>
-                      </div>
-                    </div>
+
+            <section class="connect-build-screen" x-show="$store.chat.connectCreatingWorkspace && $store.chat.connectPgBootstrapProgress.active" x-cloak>
+              <div class="connect-build-icon" aria-hidden="true">W</div>
+              <div class="connect-build-progress">
+                <div class="connect-build-progress-head">
+                  <strong x-text="$store.chat.connectPgBootstrapProgress.label || 'Preparing workspace...'"></strong>
+                  <span x-text="`${$store.chat.connectPgBootstrapProgress.completed || 0} / ${$store.chat.connectPgBootstrapProgress.total || 0}`"></span>
+                </div>
+                <div class="connect-build-progress-bar" aria-hidden="true">
+                  <span :style="`width: ${$store.chat.connectPgBootstrapProgress.total ? Math.max(8, Math.round((($store.chat.connectPgBootstrapProgress.completed || 0) / $store.chat.connectPgBootstrapProgress.total) * 100)) : 8}%`"></span>
+                </div>
+                <p>Tower is creating the workspace, scopes, and channels before Flight Deck opens the space.</p>
+              </div>
+            </section>
+
+            <div class="connect-workspace-layout" x-show="!$store.chat.connectCreatingWorkspace">
+              <section class="connect-onboarding-card">
+                <div class="connect-section-head">
+                  <span class="connect-panel-label">Workspace</span>
+                  <span x-show="$store.chat.connectWorkspaces.length > 0 && !$store.chat.connectWorkspacesBusy" x-text="`${$store.chat.connectWorkspaces.length} available`"></span>
+                </div>
+                <p class="connect-workspace-loading" x-show="$store.chat.connectWorkspacesBusy">Loading workspaces...</p>
+                <div class="connect-workspace-list" x-show="$store.chat.connectWorkspaces.length > 0 && !$store.chat.connectWorkspacesBusy">
+                  <template x-for="ws in $store.chat.connectWorkspaces" :key="ws.workspace_owner_npub || ws.workspaceOwnerNpub">
+                    <button type="button" class="connect-workspace-row" @click="$store.chat.connectSelectWorkspace(ws)">
+                      <span class="connect-workspace-name" x-text="ws.name || 'Untitled workspace'"></span>
+                      <span class="connect-workspace-meta" x-text="ws.description || $store.chat.getShortNpub(ws.workspace_owner_npub || ws.workspaceOwnerNpub || '')"></span>
+                    </button>
                   </template>
                 </div>
-                <button class="auth-option" type="submit" :disabled="$store.chat.connectCreatingWorkspace || !$store.chat.connectNewWorkspaceName.trim()">
-                  <span x-show="!$store.chat.connectCreatingWorkspace">Create workspace</span>
-                  <span x-show="$store.chat.connectCreatingWorkspace">Building...</span>
-                </button>
-              </form>
+                <p
+                  class="connect-workspace-empty"
+                  x-show="$store.chat.connectWorkspaces.length === 0 && !$store.chat.connectWorkspacesBusy && !$store.chat.connectWorkspacesError"
+                  x-text="$store.chat.isTowerPgMode ? 'No PG workspaces found on this Tower. Create a new one below.' : 'No workspaces found on this host. Create one below.'"
+                >
+                </p>
+                <p class="auth-error" x-show="$store.chat.connectWorkspacesError" x-text="$store.chat.connectWorkspacesError"></p>
+              </section>
+
+              <section class="connect-onboarding-card connect-create-workspace">
+                <div class="connect-section-head">
+                  <span class="connect-panel-label" x-text="$store.chat.isTowerPgMode ? 'Create workspace' : 'New workspace'"></span>
+                  <span x-show="$store.chat.isTowerPgMode" x-text="`${$store.chat.connectPgBootstrapCounts().scopes} scopes, ${$store.chat.connectPgBootstrapCounts().channels} channels`"></span>
+                </div>
+                <form class="connect-create-form" @submit.prevent="$store.chat.connectCreateWorkspace()">
+                  <div class="connect-create-fields">
+                    <label><span>Name</span><input type="text" x-model="$store.chat.connectNewWorkspaceName" placeholder="My workspace" /></label>
+                    <label><span>Description</span><input type="text" x-model="$store.chat.connectNewWorkspaceDescription" placeholder="Optional" /></label>
+                  </div>
+                  <div class="connect-pg-bootstrap" x-show="$store.chat.isTowerPgMode">
+                    <div class="connect-template-toggle" role="group" aria-label="Workspace starter template">
+                      <template x-for="template in $store.chat.connectPgBootstrapTemplates" :key="template.id">
+                        <button
+                          type="button"
+                          class="connect-template-option"
+                          :class="{ active: $store.chat.connectPgBootstrapTemplateId === template.id }"
+                          @click="$store.chat.connectPgBootstrapTemplateId = template.id"
+                          :disabled="$store.chat.connectCreatingWorkspace"
+                        >
+                          <span x-text="template.label"></span>
+                          <small x-text="template.description"></small>
+                        </button>
+                      </template>
+                    </div>
+                    <template x-for="template in $store.chat.connectPgBootstrapTemplates" :key="`template-${template.id}`">
+                      <div class="connect-bootstrap-template" x-show="$store.chat.connectPgBootstrapTemplateId === template.id">
+                        <div class="connect-bootstrap-scope-list">
+                          <template x-for="scope in template.scopes" :key="`${template.id}-${scope.name}`">
+                            <section class="connect-bootstrap-scope">
+                              <label class="connect-bootstrap-scope-row">
+                                <input type="checkbox" x-model="scope.selected" :disabled="$store.chat.connectCreatingWorkspace" />
+                                <span>
+                                  <strong x-text="scope.name"></strong>
+                                  <small x-text="scope.description"></small>
+                                </span>
+                              </label>
+                              <div class="connect-bootstrap-channel-list" x-show="scope.selected">
+                                <template x-for="channel in scope.channels" :key="`${scope.name}-${channel.name}`">
+                                  <label class="connect-bootstrap-channel">
+                                    <input type="checkbox" x-model="channel.selected" :disabled="$store.chat.connectCreatingWorkspace" />
+                                    <span x-text="channel.name"></span>
+                                  </label>
+                                </template>
+                              </div>
+                            </section>
+                          </template>
+                        </div>
+                        <div class="connect-included-tools">
+                          <span>Every scope and channel includes</span>
+                          <div>
+                            <strong>Chat</strong>
+                            <strong>Task board</strong>
+                            <strong>Docs</strong>
+                            <strong>Files</strong>
+                          </div>
+                        </div>
+                      </div>
+                    </template>
+                  </div>
+                  <button class="auth-option connect-primary-action" type="submit" :disabled="$store.chat.connectCreatingWorkspace || !$store.chat.connectNewWorkspaceName.trim()">
+                    <span x-show="!$store.chat.connectCreatingWorkspace">Create workspace</span>
+                    <span x-show="$store.chat.connectCreatingWorkspace">Building...</span>
+                  </button>
+                </form>
+              </section>
             </div>
           </div>
         </template>
