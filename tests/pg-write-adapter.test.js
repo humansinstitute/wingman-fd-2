@@ -822,6 +822,38 @@ describe('PG write adapter', () => {
     });
   });
 
+  it('treats missing Tower PG messages as already deleted locally', async () => {
+    const api = await import('../src/api.js');
+    const error = new Error('Tower PG API 404 DELETE https://tower.example/messages/message-missing: {"code":"message_not_found"}');
+    error.status = 404;
+    error.code = 'message_not_found';
+    error.responseText = '{"error":"Flight Deck PG message not found","code":"message_not_found","status":404}';
+    api.deleteTowerPgMessage.mockRejectedValue(error);
+
+    const message = await deleteTowerPgMessageFromLocal(store(), {
+      record_id: 'message-missing',
+      channel_id: 'channel-1',
+      body: 'Already gone',
+      version: 2,
+      pg_backend: true,
+      record_state: 'active',
+    });
+
+    expect(api.deleteTowerPgMessage).toHaveBeenCalledWith('workspace-1', 'message-missing', {
+      rowVersion: 2,
+      baseUrl: 'https://tower.example',
+      appNpub: 'flightdeck_pg',
+    });
+    expect(message).toMatchObject({
+      record_id: 'message-missing',
+      record_state: 'deleted',
+      sync_status: 'synced',
+      version: 3,
+      pg_backend: true,
+      pg_workspace_id: 'workspace-1',
+    });
+  });
+
   it('deletes Tower PG threads by PG thread id', async () => {
     const api = await import('../src/api.js');
     api.deleteTowerPgThread.mockResolvedValue({

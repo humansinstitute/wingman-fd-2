@@ -1749,6 +1749,48 @@ describe('chat message actions menu', () => {
     }
   });
 
+  it('deleteChatMessageById hides stale PG messages when Tower reports them missing', async () => {
+    const workspaceDbKey = 'chat-message-manager-delete-missing-pg-message';
+    openWorkspaceDb(workspaceDbKey);
+    await clearRuntimeData();
+    isTowerPgBackendMode.mockReturnValue(true);
+    deleteTowerPgMessageFromLocal.mockImplementation(async (_store, message) => ({
+      ...message,
+      record_state: 'deleted',
+      sync_status: 'synced',
+      version: (message.version || 1) + 1,
+      pg_backend: true,
+    }));
+
+    try {
+      const message = {
+        record_id: 'pg-message-missing',
+        channel_id: 'ch1',
+        body: 'Duplicate sent in error',
+        parent_message_id: null,
+        record_state: 'active',
+        sync_status: 'synced',
+        version: 2,
+        pg_backend: true,
+      };
+      await upsertMessage(message);
+      const { fn, store } = bindMethod('deleteChatMessageById', {
+        messages: [message],
+      });
+
+      await fn('pg-message-missing');
+
+      expect(deleteTowerPgMessageFromLocal).toHaveBeenCalledWith(store, message);
+      expect(store.mainFeedMessages).toEqual([]);
+      expect(await getMessageById('pg-message-missing')).toMatchObject({
+        record_state: 'deleted',
+        sync_status: 'synced',
+      });
+    } finally {
+      await deleteWorkspaceDb(workspaceDbKey);
+    }
+  });
+
   it('deleteChatThreadByParentId deletes PG threads through Tower and hides parent plus replies locally', async () => {
     const workspaceDbKey = 'chat-message-manager-delete-pg-thread';
     openWorkspaceDb(workspaceDbKey);

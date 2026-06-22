@@ -40,6 +40,14 @@ function trimText(value) {
   return String(value ?? '').trim();
 }
 
+function isMissingPgMessageDeleteError(error) {
+  if (!error || error.status !== 404) return false;
+  const responseText = String(error.responseText || error.message || '');
+  return error.code === 'message_not_found'
+    || responseText.includes('"code":"message_not_found"')
+    || responseText.includes('Flight Deck PG message not found');
+}
+
 export function resolveTowerPgTaskChannel(store, task = {}) {
   const explicitChannelId = trimText(task.pg_channel_id || task.channel_id);
   const channels = Array.isArray(store?.channels) ? store.channels : [];
@@ -416,10 +424,29 @@ export async function createTowerPgMessageFromLocal(store, message, options = {}
 export async function deleteTowerPgMessageFromLocal(store, message) {
   const context = resolveTowerPgWorkspaceContext(store);
   if (!context.workspaceId || !message?.record_id) throw new Error('Tower PG message is not ready');
-  const result = await deleteTowerPgMessage(context.workspaceId, message.record_id, {
-    rowVersion: message.version || undefined,
-    ...pgRequestOptions(context),
-  });
+  let result;
+  try {
+    result = await deleteTowerPgMessage(context.workspaceId, message.record_id, {
+      rowVersion: message.version || undefined,
+      ...pgRequestOptions(context),
+    });
+  } catch (error) {
+    if (isMissingPgMessageDeleteError(error)) {
+      const now = new Date().toISOString();
+      return {
+        ...message,
+        owner_npub: message.owner_npub || context.workspaceOwnerNpub,
+        record_state: 'deleted',
+        sync_status: 'synced',
+        version: (Number(message.version) || 1) + 1,
+        updated_at: now,
+        pg_backend: true,
+        pg_record_type: message.pg_record_type || 'message',
+        pg_workspace_id: message.pg_workspace_id || context.workspaceId,
+      };
+    }
+    throw error;
+  }
   return {
     ...mapPgMessageToLocal(result.message, {
       workspaceOwnerNpub: context.workspaceOwnerNpub,
