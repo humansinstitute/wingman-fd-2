@@ -160,6 +160,9 @@ import {
   addPendingWrite,
   getPendingWrites,
   removePendingWrite,
+  getSyncState,
+  setSyncState,
+  deleteSyncState,
   getChannelById,
   getAddressBookPeople,
   clearRuntimeData,
@@ -310,6 +313,7 @@ function documentRecordSignature(document = {}) {
 }
 
 const NUMBER_FORMATTER = new Intl.NumberFormat();
+const PG_TASK_WRITE_QUEUE_SYNC_STATE_KEY = 'pg_task_write_queue:v1';
 const MAX_STATUS_RECENT_CHANGES = 50;
 const STATUS_RECORD_TYPE_LABELS = Object.freeze({
   chat: 'Chat',
@@ -356,6 +360,32 @@ function getReportDerivedCache(cacheStore, store) {
   const created = new Map();
   cacheStore.set(store, created);
   return created;
+}
+
+function createPgTaskWriteQueueId(recordId = '') {
+  const prefix = String(recordId || 'task').trim() || 'task';
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `${prefix}:${crypto.randomUUID()}`;
+  }
+  return `${prefix}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+}
+
+function normalizePgTaskWriteQueue(items = []) {
+  return (Array.isArray(items) ? items : [])
+    .map((item) => {
+      const recordId = String(item?.recordId || item?.updatedTask?.record_id || '').trim();
+      if (!recordId || !item?.updatedTask || !item?.previousTask) return null;
+      return {
+        queueId: String(item.queueId || createPgTaskWriteQueueId(recordId)),
+        recordId,
+        updatedTask: toRaw(item.updatedTask),
+        previousTask: toRaw(item.previousTask),
+        patch: { ...(item.patch || {}) },
+        options: { ...(item.options || {}) },
+        createdAt: item.createdAt || new Date().toISOString(),
+      };
+    })
+    .filter(Boolean);
 }
 
 function mergeTaskIntoList(tasks = [], nextTask) {
@@ -1888,6 +1918,7 @@ export function initApp() {
           this.localWorkspaceCoreLoadedForKey = workspaceKey;
         }
         this.startWorkspaceLiveQueries?.();
+        await this.resumePgTaskWriteQueue();
       }
       await this.refreshAddressBook?.();
       this.selectedBoardId = this.readStoredTaskBoardId();
@@ -4710,7 +4741,7 @@ export function initApp() {
 
       if (isTowerPgBackendMode()) {
         if (usePgBackgroundWrite) {
-          this.enqueuePgTaskPatch(updated, task, patch, {
+          await this.enqueuePgTaskPatch(updated, task, patch, {
             ...options,
             releasePatchPgLease,
           });
@@ -4778,22 +4809,68 @@ export function initApp() {
       return updated;
     },
 
-    enqueuePgTaskPatch(updatedTask, previousTask, patch = {}, options = {}) {
-      this.pgTaskWriteQueue = [
+    async readPersistedPgTaskWriteQueue() {
+      try {
+        return normalizePgTaskWriteQueue(await getSyncState(PG_TASK_WRITE_QUEUE_SYNC_STATE_KEY));
+      } catch {
+        return [];
+      }
+    },
+
+    async persistPgTaskWriteQueue(queue = null) {
+      const rows = normalizePgTaskWriteQueue(queue || this.pgTaskWriteQueue || []);
+      if (rows.length === 0) {
+        await deleteSyncState(PG_TASK_WRITE_QUEUE_SYNC_STATE_KEY);
+      } else {
+        await setSyncState(PG_TASK_WRITE_QUEUE_SYNC_STATE_KEY, rows);
+      }
+      return rows;
+    },
+
+    async resumePgTaskWriteQueue() {
+      if (!isTowerPgBackendMode()) return 0;
+      const persisted = await this.readPersistedPgTaskWriteQueue();
+      if (persisted.length === 0) return 0;
+      const currentById = new Map((this.pgTaskWriteQueue || []).map((item) => [item.queueId, item]));
+      for (const item of persisted) {
+        if (!currentById.has(item.queueId)) currentById.set(item.queueId, item);
+      }
+      this.pgTaskWriteQueue = normalizePgTaskWriteQueue([...currentById.values()]);
+      this.pgTaskWriteProgressDone = 0;
+      this.pgTaskWriteProgressTotal = this.pgTaskWriteQueue.length;
+      this.pgTaskWriteFailedCount = 0;
+      this.syncStatus = 'syncing';
+      this.updateSyncSession?.({
+        state: 'syncing',
+        phase: 'pushing',
+        currentFamily: 'tasks',
+        pushed: 0,
+        pushTotal: this.pgTaskWriteProgressTotal,
+        error: null,
+      });
+      if (this.session?.npub) void this.processPgTaskWriteQueue();
+      return this.pgTaskWriteQueue.length;
+    },
+
+    async enqueuePgTaskPatch(updatedTask, previousTask, patch = {}, options = {}) {
+      const item = {
+        queueId: createPgTaskWriteQueueId(updatedTask.record_id),
+        recordId: updatedTask.record_id,
+        updatedTask: toRaw(updatedTask),
+        previousTask: toRaw(previousTask),
+        patch: { ...(patch || {}) },
+        options: { ...(options || {}) },
+        createdAt: new Date().toISOString(),
+      };
+      this.pgTaskWriteQueue = normalizePgTaskWriteQueue([
         ...(this.pgTaskWriteQueue || []),
-        {
-          recordId: updatedTask.record_id,
-          updatedTask: toRaw(updatedTask),
-          previousTask: toRaw(previousTask),
-          patch: { ...(patch || {}) },
-          options: { ...(options || {}) },
-        },
-      ];
+        item,
+      ]);
+      await this.persistPgTaskWriteQueue();
       this.pgTaskWriteProgressTotal = Math.max(
         Number(this.pgTaskWriteProgressTotal || 0),
         Number(this.pgTaskWriteProgressDone || 0)
-          + this.pgTaskWriteQueue.length
-          + (this.pgTaskWriteInFlight ? 1 : 0),
+          + this.pgTaskWriteQueue.length,
       );
       this.syncStatus = 'syncing';
       this.updateSyncSession?.({
@@ -4812,13 +4889,23 @@ export function initApp() {
       this.pgTaskWriteInFlight = true;
       try {
         while ((this.pgTaskWriteQueue || []).length > 0) {
-          const [item, ...rest] = this.pgTaskWriteQueue;
-          this.pgTaskWriteQueue = rest;
+          const item = this.pgTaskWriteQueue[0];
           const previousTask = item.previousTask;
           let acceptedTask = null;
           try {
+            const currentBeforeWrite = await getTaskById(item.recordId) || this.tasks.find((task) => task.record_id === item.recordId);
+            const queuedVersion = Number(item.updatedTask?.version ?? 0) || 0;
+            const currentVersionBeforeWrite = Number(currentBeforeWrite?.version ?? 0) || 0;
+            const currentSyncStatus = String(currentBeforeWrite?.sync_status || '').trim();
+            if (currentBeforeWrite && currentSyncStatus !== 'pending' && currentVersionBeforeWrite >= queuedVersion) {
+              this.pgTaskWriteQueue = normalizePgTaskWriteQueue((this.pgTaskWriteQueue || []).slice(1));
+              await this.persistPgTaskWriteQueue();
+              continue;
+            }
             await preparePgSyncedRecordMutation(this, previousTask, 'task', item.options || {});
-            const currentLocal = this.tasks.find((task) => task.record_id === item.recordId) || item.updatedTask;
+            const currentLocal = await getTaskById(item.recordId)
+              || this.tasks.find((task) => task.record_id === item.recordId)
+              || item.updatedTask;
             acceptedTask = await updateTowerPgTaskFromLocal(this, {
               ...currentLocal,
               record_id: item.recordId,
@@ -4826,7 +4913,6 @@ export function initApp() {
             await upsertTask(acceptedTask);
             const currentAfterWrite = this.tasks.find((task) => task.record_id === item.recordId);
             const currentVersion = Number(currentAfterWrite?.version ?? 0) || 0;
-            const queuedVersion = Number(item.updatedTask?.version ?? 0) || 0;
             if (!currentAfterWrite || currentVersion <= queuedVersion) {
               this.tasks = this.tasks.map((task) => task.record_id === item.recordId ? acceptedTask : task);
               if (!this.tasks.some((task) => task.record_id === item.recordId)) {
@@ -4834,6 +4920,8 @@ export function initApp() {
               }
               if (this.editingTask?.record_id === item.recordId) this.editingTask = { ...acceptedTask };
             }
+            this.pgTaskWriteQueue = normalizePgTaskWriteQueue((this.pgTaskWriteQueue || []).slice(1));
+            await this.persistPgTaskWriteQueue();
             if (item.options?.releasePatchPgLease) await releasePgEditLeaseForRecord(this, previousTask, 'task');
           } catch (error) {
             const failedTask = {
@@ -4846,6 +4934,8 @@ export function initApp() {
             if (this.editingTask?.record_id === item.recordId) this.editingTask = { ...failedTask };
             this.error = error?.message || 'Failed to update PG task';
             this.pgTaskWriteFailedCount = Number(this.pgTaskWriteFailedCount || 0) + 1;
+            this.pgTaskWriteQueue = normalizePgTaskWriteQueue((this.pgTaskWriteQueue || []).slice(1));
+            await this.persistPgTaskWriteQueue();
             if (item.options?.releasePatchPgLease) await releasePgEditLeaseForRecord(this, previousTask, 'task');
           } finally {
             this.pgTaskWriteProgressDone = Number(this.pgTaskWriteProgressDone || 0) + 1;
