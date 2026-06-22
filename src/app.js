@@ -5171,6 +5171,18 @@ export function initApp() {
           if (updated.title !== taskForSave.title) scalarPatch.title = updated.title;
           if ((updated.description || '') !== (taskForSave.description || '')) scalarPatch.description = updated.description;
           if (updated.priority !== taskForSave.priority) scalarPatch.priority = updated.priority;
+          if ((updated.scheduled_for || null) !== (taskForSave.scheduled_for || null)) scalarPatch.scheduled_for = updated.scheduled_for || null;
+          if ((updated.tags || '') !== (taskForSave.tags || '')) scalarPatch.tags = updated.tags || '';
+          if ((updated.assigned_to_npub || null) !== (taskForSave.assigned_to_npub || null)) scalarPatch.assigned_to_npub = updated.assigned_to_npub || null;
+          if (JSON.stringify(updated.predecessor_task_ids || null) !== JSON.stringify(taskForSave.predecessor_task_ids || null)) {
+            scalarPatch.predecessor_task_ids = updated.predecessor_task_ids || null;
+          }
+          if ((updated.flow_id || null) !== (taskForSave.flow_id || null)) scalarPatch.flow_id = updated.flow_id || null;
+          if ((updated.flow_run_id || null) !== (taskForSave.flow_run_id || null)) scalarPatch.flow_run_id = updated.flow_run_id || null;
+          if ((updated.flow_step || null) !== (taskForSave.flow_step || null)) scalarPatch.flow_step = updated.flow_step || null;
+          if (JSON.stringify(updated.source_links || []) !== JSON.stringify(taskForSave.source_links || [])) scalarPatch.source_links = updated.source_links || [];
+          if (JSON.stringify(updated.references || []) !== JSON.stringify(taskForSave.references || [])) scalarPatch.references = updated.references || [];
+          if (JSON.stringify(updated.deliverable_links || []) !== JSON.stringify(taskForSave.deliverable_links || [])) scalarPatch.deliverable_links = updated.deliverable_links || [];
           if (stateChanged) {
             acceptedTask = await updateTowerPgTaskFromLocal(this, updated, taskForSave, { state: updated.state });
           }

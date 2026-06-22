@@ -300,7 +300,15 @@ describe('PG read hydrator', () => {
       description: 'Implement task writes',
       state: 'in_progress',
       priority: 'stone',
-      metadata: { tags: 'pg,migration', board_order: 4 },
+      metadata: {
+        tags: 'pg,migration',
+        board_order: 4,
+        scheduled_for: '2026-06-22',
+        assigned_to_npub: 'npub1agent',
+        predecessor_task_ids: ['task-prev'],
+        flow_id: 'flow-1',
+        source_links: [{ type: 'message', id: 'msg-1' }],
+      },
       row_version: 6,
       updated_at: '2026-06-05T02:00:00.000Z',
     }, { workspaceOwnerNpub: 'npub1owner' })).toMatchObject({
@@ -311,12 +319,18 @@ describe('PG read hydrator', () => {
       priority: 'stone',
       board_order: 4,
       tags: 'pg,migration',
+      scheduled_for: '2026-06-22',
+      assigned_to_npub: 'npub1agent',
+      predecessor_task_ids: ['task-prev'],
+      flow_id: 'flow-1',
+      source_links: [{ type: 'message', id: 'msg-1' }],
       scope_id: 'scope-1',
       scope_l1_id: 'scope-1',
       pg_channel_id: 'channel-1',
       pg_thread_id: 'thread-1',
       pg_backend: true,
       pg_record_type: 'task',
+      pg_metadata: expect.objectContaining({ scheduled_for: '2026-06-22' }),
     });
   });
 

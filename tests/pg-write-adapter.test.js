@@ -118,9 +118,49 @@ describe('PG write adapter', () => {
       state: 'new',
       priority: 'sand',
       thread_id: null,
-      metadata: { board_order: null, tags: '' },
+      metadata: expect.objectContaining({ board_order: null, tags: '' }),
     }, { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
     expect(task).toMatchObject({ record_id: 'task-1', pg_channel_id: 'channel-1' });
+  });
+
+  it('stores classic quick task fields in PG task metadata on create', async () => {
+    const api = await import('../src/api.js');
+    api.createTowerPgChannelTask.mockResolvedValue({
+      task: {
+        id: 'task-quick',
+        workspace_id: 'workspace-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        title: 'Task',
+        state: 'new',
+        priority: 'sand',
+        metadata: {
+          scheduled_for: '2026-06-22',
+          assigned_to_npub: 'npub1agent',
+          tags: 'ops,urgent',
+          predecessor_task_ids: ['task-prev'],
+        },
+        row_version: 1,
+      },
+    });
+
+    await createTowerPgTaskFromLocal(store(), {
+      title: 'Task',
+      scope_id: 'scope-1',
+      scheduled_for: '2026-06-22',
+      assigned_to_npub: 'npub1agent',
+      tags: 'ops,urgent',
+      predecessor_task_ids: ['task-prev'],
+    });
+
+    expect(api.createTowerPgChannelTask).toHaveBeenCalledWith('workspace-1', 'channel-1', expect.objectContaining({
+      metadata: expect.objectContaining({
+        scheduled_for: '2026-06-22',
+        assigned_to_npub: 'npub1agent',
+        tags: 'ops,urgent',
+        predecessor_task_ids: ['task-prev'],
+      }),
+    }), { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
   });
 
   it('passes PG thread context when creating a Tower PG task', async () => {
@@ -345,6 +385,70 @@ describe('PG write adapter', () => {
       state: 'done',
     }, { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
     expect(task).toMatchObject({ record_id: 'task-1', state: 'done', version: 2 });
+  });
+
+  it('splits PG task state changes from classic metadata quick patches', async () => {
+    const api = await import('../src/api.js');
+    api.updateTowerPgTaskState.mockResolvedValue({
+      task: {
+        id: 'task-1',
+        workspace_id: 'workspace-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        title: 'Task',
+        state: 'archive',
+        priority: 'sand',
+        row_version: 2,
+      },
+    });
+    api.updateTowerPgTask.mockResolvedValue({
+      task: {
+        id: 'task-1',
+        workspace_id: 'workspace-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        title: 'Task',
+        state: 'archive',
+        priority: 'sand',
+        metadata: { assigned_to_npub: null, scheduled_for: '2026-06-22', tags: '' },
+        row_version: 3,
+      },
+    });
+
+    const task = await updateTowerPgTaskFromLocal(store({
+      pgEditLeaseSessions: {
+        'task:task-1': { lease: { lease_token: 'quick-lease-token' } },
+      },
+    }), {
+      record_id: 'task-1',
+      pg_backend: true,
+      sync_status: 'synced',
+      title: 'Task',
+      state: 'archive',
+      priority: 'sand',
+      assigned_to_npub: null,
+      scheduled_for: '2026-06-22',
+      version: 2,
+    }, { record_id: 'task-1', version: 1, pg_backend: true, sync_status: 'synced' }, {
+      state: 'archive',
+      assigned_to_npub: null,
+      scheduled_for: '2026-06-22',
+    });
+
+    expect(api.updateTowerPgTaskState).toHaveBeenCalledWith('workspace-1', 'task-1', {
+      row_version: 1,
+      lease_token: 'quick-lease-token',
+      state: 'archive',
+    }, { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
+    expect(api.updateTowerPgTask).toHaveBeenCalledWith('workspace-1', 'task-1', expect.objectContaining({
+      row_version: 2,
+      lease_token: 'quick-lease-token',
+      metadata: expect.objectContaining({
+        assigned_to_npub: null,
+        scheduled_for: '2026-06-22',
+      }),
+    }), { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
+    expect(task).toMatchObject({ record_id: 'task-1', state: 'archive', version: 3, scheduled_for: '2026-06-22' });
   });
 
   it('adds PG edit lease token and row version to synced task save payloads', async () => {

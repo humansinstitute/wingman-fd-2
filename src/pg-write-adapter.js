@@ -85,6 +85,44 @@ function pgMetadataWithThread(metadata = {}, threadId = null) {
   return base;
 }
 
+function pgTaskMetadata(task = {}) {
+  const base = task.pg_metadata && typeof task.pg_metadata === 'object' && !Array.isArray(task.pg_metadata)
+    ? { ...task.pg_metadata }
+    : task.metadata && typeof task.metadata === 'object' && !Array.isArray(task.metadata)
+      ? { ...task.metadata }
+      : {};
+  base.board_order = task.board_order ?? null;
+  base.tags = typeof task.tags === 'string' ? task.tags : '';
+  base.scheduled_for = task.scheduled_for || null;
+  base.assigned_to_npub = task.assigned_to_npub || null;
+  base.predecessor_task_ids = Array.isArray(task.predecessor_task_ids)
+    ? task.predecessor_task_ids
+    : null;
+  base.flow_id = task.flow_id || null;
+  base.flow_run_id = task.flow_run_id || null;
+  base.flow_step = task.flow_step || null;
+  base.source_links = Array.isArray(task.source_links) ? task.source_links : [];
+  base.references = Array.isArray(task.references) ? task.references : [];
+  base.deliverable_links = Array.isArray(task.deliverable_links) ? task.deliverable_links : [];
+  return base;
+}
+
+function isMetadataTaskPatch(patch = {}) {
+  return [
+    'board_order',
+    'tags',
+    'scheduled_for',
+    'assigned_to_npub',
+    'predecessor_task_ids',
+    'flow_id',
+    'flow_run_id',
+    'flow_step',
+    'source_links',
+    'references',
+    'deliverable_links',
+  ].some((key) => Object.prototype.hasOwnProperty.call(patch, key));
+}
+
 function pgAudioTargetType(familyHash) {
   const family = trimText(familyHash);
   if (family === recordFamilyHash('chat_message')) return 'message';
@@ -114,10 +152,7 @@ export async function createTowerPgTaskFromLocal(store, task) {
     state: task.state || 'new',
     priority: task.priority || 'sand',
     thread_id: recordContext.threadId || null,
-    metadata: {
-      board_order: task.board_order ?? null,
-      tags: task.tags || '',
-    },
+    metadata: pgTaskMetadata(task),
   }, pgRequestOptions(context));
   return mapPgTaskToLocal(result.task, { workspaceOwnerNpub: context.workspaceOwnerNpub });
 }
@@ -232,24 +267,28 @@ export async function updateTowerPgTaskFromLocal(store, task, previousTask = nul
   };
   const patchKeys = Object.keys(patch || {});
   const onlyState = patchKeys.length === 1 && Object.prototype.hasOwnProperty.call(patch, 'state');
-  if (onlyState) {
+  let acceptedTask = null;
+  if (Object.prototype.hasOwnProperty.call(patch, 'state')) {
     const result = await updateTowerPgTaskState(context.workspaceId, task.record_id, {
       ...addPgEditLeaseToSaveBody(store, previousTask || task, 'task', body),
       state: task.state,
     }, pgRequestOptions(context));
-    return mapPgTaskToLocal(result.task, { workspaceOwnerNpub: context.workspaceOwnerNpub });
+    acceptedTask = mapPgTaskToLocal(result.task, { workspaceOwnerNpub: context.workspaceOwnerNpub });
+    if (onlyState) return acceptedTask;
   }
-  if (Object.prototype.hasOwnProperty.call(patch, 'title')) body.title = task.title;
-  if (Object.prototype.hasOwnProperty.call(patch, 'description')) body.description = task.description || null;
-  if (Object.prototype.hasOwnProperty.call(patch, 'priority')) body.priority = task.priority || 'sand';
-  body.metadata = {
-    board_order: task.board_order ?? null,
-    tags: task.tags || '',
+  const patchBody = {
+    row_version: acceptedTask?.version || body.row_version,
   };
+  const patchTask = acceptedTask ? { ...task, version: acceptedTask.version } : task;
+  const previousForPatch = acceptedTask || previousTask || task;
+  if (Object.prototype.hasOwnProperty.call(patch, 'title')) patchBody.title = task.title;
+  if (Object.prototype.hasOwnProperty.call(patch, 'description')) patchBody.description = task.description || null;
+  if (Object.prototype.hasOwnProperty.call(patch, 'priority')) patchBody.priority = task.priority || 'sand';
+  if (patchKeys.length === 0 || isMetadataTaskPatch(patch)) patchBody.metadata = pgTaskMetadata(task);
   const result = await updateTowerPgTask(
     context.workspaceId,
     task.record_id,
-    addPgEditLeaseToSaveBody(store, { ...task, ...(previousTask || {}) }, 'task', body),
+    addPgEditLeaseToSaveBody(store, { ...patchTask, ...previousForPatch }, 'task', patchBody),
     pgRequestOptions(context),
   );
   return mapPgTaskToLocal(result.task, { workspaceOwnerNpub: context.workspaceOwnerNpub });
