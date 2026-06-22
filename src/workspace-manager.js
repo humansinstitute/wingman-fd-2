@@ -248,7 +248,7 @@ export const workspaceManagerMixin = {
   normalizeSettingsTab() {
     const advancedTabs = this.workspaceAdvancedOptionsEnabled && !isFlightDeckSurfaceDisabled('flows') ? ['flows', 'data'] : (this.workspaceAdvancedOptionsEnabled ? ['data'] : []);
     const adminAdvancedTabs = this.workspaceAdvancedOptionsEnabled && !isFlightDeckSurfaceDisabled('schedules') ? ['schedules'] : [];
-    const personalTabs = ['apps'];
+    const personalTabs = ['notifications', 'apps'];
     const visibleTabs = this.canAdminWorkspace
       ? ['workspace', 'connection', ...personalTabs, 'scopes', 'sharing', ...advancedTabs, ...adminAdvancedTabs]
       : ['connection', ...personalTabs, ...advancedTabs];
@@ -271,6 +271,7 @@ export const workspaceManagerMixin = {
     this.settingsTab = requestedTab;
     this.normalizeSettingsTab();
     if (this.settingsTab === 'schedules') this.refreshSchedules?.();
+    if (this.settingsTab === 'notifications') this.refreshNotificationSettings?.();
     if (this.settingsTab === 'apps') this.refreshPersonalWapps?.();
     if (this.settingsTab === 'scopes') this.refreshScopes?.();
     if (this.settingsTab === 'sharing') this.prepareWorkspaceSharingSettings?.();

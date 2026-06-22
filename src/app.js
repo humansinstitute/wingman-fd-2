@@ -25,6 +25,7 @@ import { reportsManagerMixin } from './reports-manager.js';
 import { filesManagerMixin } from './files-manager.js';
 import { writeContextManagerMixin } from './write-context-manager.js';
 import { autopilotOverviewManagerMixin } from './autopilot-overview-manager.js';
+import { notificationsManagerMixin } from './notifications-manager.js';
 import {
   hydrateTowerPgDailyNotes,
   hydrateTowerPgDoc,
@@ -2599,6 +2600,7 @@ export function initApp() {
         if (this.settingsTab === 'schedules') this.refreshSchedules();
         if (this.settingsTab === 'scopes') this.refreshScopes();
         if (this.settingsTab === 'sharing') this.prepareWorkspaceSharingSettings?.();
+        if (this.settingsTab === 'notifications') this.refreshNotificationSettings?.();
       }
       if (options.syncRoute !== false) this.syncRoute();
       this.startWorkspaceLiveQueries();
@@ -7509,6 +7511,7 @@ export function initApp() {
     storageImageManagerMixin,
     filesManagerMixin,
     autopilotOverviewManagerMixin,
+    notificationsManagerMixin,
     writeContextManagerMixin,
     sectionLiveQueryMixin,
     unreadStoreMixin,

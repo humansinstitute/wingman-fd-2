@@ -5291,6 +5291,7 @@
           <div class="settings-tabs">
             <button x-show="$store.chat.canAdminWorkspace" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'workspace' }" @click="$store.chat.settingsTab = 'workspace'">Workspace</button>
             <button class="settings-tab" :class="{ active: $store.chat.settingsTab === 'connection' }" @click="$store.chat.settingsTab = 'connection'">Connection</button>
+            <button class="settings-tab" :class="{ active: $store.chat.settingsTab === 'notifications' }" @click="$store.chat.openSettingsTab('notifications')">Notifications</button>
             <button class="settings-tab" :class="{ active: $store.chat.settingsTab === 'apps' }" @click="$store.chat.openSettingsTab('apps')">App Management</button>
             <button x-show="false" x-cloak class="settings-tab" :class="{ active: $store.chat.settingsTab === 'schedules' }" @click="$store.chat.openSettingsTab('schedules')">Schedules</button>
             <button x-show="$store.chat.canAdminWorkspace" class="settings-tab" :class="{ active: $store.chat.settingsTab === 'scopes' }" @click="$store.chat.openSettingsTab('scopes')">Scopes</button>
@@ -5709,6 +5710,103 @@
             </div>
             <p class="settings-field-help">Build: <code x-text="$store.chat.appBuildId"></code></p>
           </section>
+          </div>
+
+          <div class="settings-tab-content" x-show="$store.chat.settingsTab === 'notifications'">
+            <section class="settings-panel notification-settings-panel">
+              <div class="settings-panel-header">
+                <div>
+                  <h2>Notifications</h2>
+                  <p>Workspace notification preferences for this signed-in user.</p>
+                </div>
+                <button
+                  type="button"
+                  class="btn-cancel btn-compact"
+                  @click="$store.chat.refreshNotificationSettings()"
+                  :disabled="$store.chat.notificationBusy"
+                  x-text="$store.chat.notificationBusy ? 'Refreshing...' : 'Refresh'"
+                ></button>
+              </div>
+              <div class="notification-status-grid">
+                <div class="notification-status-item">
+                  <span class="avatar-menu-label">Permission</span>
+                  <strong x-text="$store.chat.notificationPermissionLabel"></strong>
+                </div>
+                <div class="notification-status-item">
+                  <span class="avatar-menu-label">Workspace</span>
+                  <strong x-text="$store.chat.currentWorkspaceName"></strong>
+                </div>
+                <div class="notification-status-item">
+                  <span class="avatar-menu-label">This browser</span>
+                  <strong x-text="$store.chat.notificationCurrentDevice ? 'Registered' : 'Not registered'"></strong>
+                </div>
+              </div>
+              <p class="settings-field-help">
+                Flight Deck asks the browser for notification permission only when you press Enable on this device.
+              </p>
+              <div class="settings-actions">
+                <button
+                  type="button"
+                  class="btn-confirm"
+                  @click="$store.chat.enablePushNotifications()"
+                  :disabled="!$store.chat.notificationCanSubscribe || $store.chat.notificationSubscribing"
+                  x-text="$store.chat.notificationSubscribing ? 'Enabling...' : 'Enable on this device'"
+                ></button>
+              </div>
+              <p class="settings-field-help" x-show="!$store.chat.notificationsSupported">This browser does not expose Web Push notification support.</p>
+              <p class="settings-field-help" x-show="$store.chat.notificationsSupported && !$store.chat.notificationVapidPublicKey">Waiting for Tower to publish the Web Push application server key.</p>
+              <p class="settings-success" x-show="$store.chat.notificationNotice" x-text="$store.chat.notificationNotice"></p>
+              <p class="error-text" x-show="$store.chat.notificationError" x-text="$store.chat.notificationError"></p>
+            </section>
+
+            <section class="settings-panel notification-settings-panel">
+              <div class="settings-panel-header">
+                <div>
+                  <h2>Workspace preferences</h2>
+                  <p>Applies only to the current workspace.</p>
+                </div>
+              </div>
+              <div class="notification-category-list">
+                <template x-for="category in $store.chat.notificationCategories" :key="`notification-category-${category.key}`">
+                  <label class="notification-category-row">
+                    <span class="notification-category-copy">
+                      <strong x-text="category.label"></strong>
+                    </span>
+                    <input
+                      type="checkbox"
+                      :checked="$store.chat.notificationPreferences[category.key]"
+                      :disabled="$store.chat.notificationSaving || $store.chat.notificationBusy"
+                      @change="$store.chat.setNotificationPreference(category.key, $event.target.checked)"
+                    />
+                  </label>
+                </template>
+              </div>
+            </section>
+
+            <section class="settings-panel notification-settings-panel">
+              <div class="settings-panel-header">
+                <div>
+                  <h2>Devices</h2>
+                  <p>Active browser subscriptions for this user.</p>
+                </div>
+              </div>
+              <div class="notification-device-list" x-show="$store.chat.notificationActiveDevices.length > 0">
+                <template x-for="device in $store.chat.notificationActiveDevices" :key="device.id || device.endpoint">
+                  <div class="notification-device-row">
+                    <span class="notification-device-copy">
+                      <strong x-text="device.label"></strong>
+                      <small x-text="[device.platform, device.lastSeenAt ? `Seen ${device.lastSeenAt}` : '', device.isCurrent ? 'This browser' : ''].filter(Boolean).join(' | ')"></small>
+                    </span>
+                    <button
+                      type="button"
+                      class="btn-danger btn-compact"
+                      @click="$store.chat.revokeNotificationDevice(device)"
+                    >Revoke</button>
+                  </div>
+                </template>
+              </div>
+              <p class="settings-empty-note" x-show="$store.chat.notificationActiveDevices.length === 0">No active notification devices yet.</p>
+            </section>
           </div>
 
           <div class="settings-tab-content" x-show="$store.chat.settingsTab === 'apps'">
