@@ -761,6 +761,38 @@ describe('PG read hydrator', () => {
     expect(replacePgMessagesForChannel).toHaveBeenCalledWith('channel-1', rows);
   });
 
+  it('does not recreate a missing source message from a PG thread fallback row', async () => {
+    const target = store({
+      selectedChannelId: 'channel-1',
+    });
+    const getTowerPgChannelThreads = vi.fn(async () => ({
+      threads: [{
+        id: 'thread-1',
+        channel_id: 'channel-1',
+        source_message_id: 'message-deleted',
+        title: 'Deleted message',
+        record_state: 'active',
+      }],
+    }));
+    const getTowerPgChannelMessages = vi.fn(async () => ({
+      messages: [],
+    }));
+    const replacePgMessagesForChannel = vi.fn(async () => 0);
+    const getTowerPgResponseActivities = vi.fn(async () => ({ response_activities: [] }));
+    const replacePgResponseActivitiesForChannel = vi.fn(async () => 0);
+
+    const rows = await hydrateTowerPgChannelMessages(target, 'channel-1', {
+      getTowerPgChannelThreads,
+      getTowerPgChannelMessages,
+      getTowerPgResponseActivities,
+      replacePgMessagesForChannel,
+      replacePgResponseActivitiesForChannel,
+    });
+
+    expect(rows).toEqual([]);
+    expect(replacePgMessagesForChannel).toHaveBeenCalledWith('channel-1', []);
+  });
+
   it('hydrates changed PG channels from event payloads in parallel', async () => {
     const target = store({ selectedChannelId: 'channel-1' });
     const getTowerPgChannelThreads = vi.fn(async (_workspaceId, channelId) => ({

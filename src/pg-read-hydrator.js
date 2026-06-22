@@ -130,6 +130,13 @@ function pgMetadataThreadId(record = {}) {
   return trimText(record?.thread_id || metadata.thread_id || metadata.pg_thread_id) || null;
 }
 
+function shouldMaterializeFallbackThread(thread) {
+  if (!thread) return false;
+  const recordState = trimText(thread?.record_state) || (thread?.archived_at ? 'archived' : 'active');
+  if (recordState !== 'active') return false;
+  return !trimText(thread?.source_message_id);
+}
+
 function resolveActorId(record = {}) {
   return trimText(
     record?.sender_actor_id
@@ -966,10 +973,7 @@ export async function hydrateTowerPgChannels(store, deps = {}) {
       .filter((message) => message.record_id && message.channel_id);
     const messageIds = new Set(messageRows.map((message) => message.record_id));
     const fallbackThreads = rawThreads
-      .filter((thread) => {
-        const sourceMessageId = trimText(thread?.source_message_id);
-        return !sourceMessageId || !messageIds.has(sourceMessageId);
-      })
+      .filter(shouldMaterializeFallbackThread)
       .map((thread) => mapPgThreadToLocal(thread, {
         workspaceOwnerNpub: context.workspaceOwnerNpub,
         senderNpub: '',
@@ -1025,10 +1029,7 @@ export async function hydrateTowerPgChannelMessages(store, channelId, deps = {})
     .filter((message) => message.record_id && message.channel_id);
   const messageIds = new Set(messageRows.map((message) => message.record_id));
   const fallbackThreads = rawThreads
-    .filter((thread) => {
-      const sourceMessageId = trimText(thread?.source_message_id);
-      return !sourceMessageId || !messageIds.has(sourceMessageId);
-    })
+    .filter(shouldMaterializeFallbackThread)
     .map((thread) => mapPgThreadToLocal(thread, {
       workspaceOwnerNpub: context.workspaceOwnerNpub,
       senderNpub: '',
