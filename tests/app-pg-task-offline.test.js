@@ -6,11 +6,13 @@ const {
   alpineStoreMock,
   createTowerPgTaskFromLocalMock,
   releaseTowerPgEditLeaseMock,
+  updateTowerPgTaskFromLocalMock,
 } = vi.hoisted(() => ({
   alpineStartMock: vi.fn(),
   alpineStoreMock: vi.fn(),
   createTowerPgTaskFromLocalMock: vi.fn(),
   releaseTowerPgEditLeaseMock: vi.fn(),
+  updateTowerPgTaskFromLocalMock: vi.fn(),
 }));
 
 vi.mock('alpinejs', () => ({
@@ -30,7 +32,7 @@ vi.mock('../src/pg-write-adapter.js', () => ({
   deleteTowerPgDocFromLocal: vi.fn(),
   resolveTowerPgTaskChannel: vi.fn(),
   updateTowerPgDocFromLocal: vi.fn(),
-  updateTowerPgTaskFromLocal: vi.fn(),
+  updateTowerPgTaskFromLocal: updateTowerPgTaskFromLocalMock,
 }));
 
 vi.mock('../src/api.js', async (importOriginal) => ({
@@ -43,6 +45,7 @@ beforeEach(() => {
   alpineStoreMock.mockClear();
   createTowerPgTaskFromLocalMock.mockReset();
   releaseTowerPgEditLeaseMock.mockReset();
+  updateTowerPgTaskFromLocalMock.mockReset();
 });
 
 afterEach(() => {
@@ -302,5 +305,74 @@ describe('app PG task offline drafts', () => {
     expect(releaseTowerPgEditLeaseMock).not.toHaveBeenCalled();
     expect(store.activeTaskId).toBe('task-classic-2');
     expect(store.editingTask.record_id).toBe('task-classic-2');
+  });
+
+  it('keeps failed PG bulk task updates selected and avoids refreshing over local changes', async () => {
+    const wsDb = openWorkspaceDb('npub1pgworkspace-bulk-failed');
+    await wsDb.open();
+    await Promise.all(wsDb.tables.map((table) => table.clear()));
+    updateTowerPgTaskFromLocalMock
+      .mockResolvedValueOnce({
+        record_id: 'task-1',
+        title: 'Task one',
+        state: 'archive',
+        version: 2,
+        sync_status: 'synced',
+        record_state: 'active',
+        pg_backend: true,
+      })
+      .mockRejectedValueOnce(new Error('Task row_version is stale'));
+
+    const { initApp } = await import('../src/app.js');
+    initApp();
+    const store = alpineStoreMock.mock.calls.find(([name]) => name === 'chat')?.[1];
+    expect(store).toBeTruthy();
+
+    Object.assign(store, {
+      session: { npub: 'npub1owner' },
+      ownerNpub: 'npub1pgworkspace-bulk-failed',
+      currentWorkspaceOwnerNpub: 'npub1pgworkspace-bulk-failed',
+      selectedWorkspaceKey: 'workspace-1',
+      knownWorkspaces: [{
+        workspaceKey: 'workspace-1',
+        workspaceId: 'workspace-1',
+        workspaceOwnerNpub: 'npub1pgworkspace-bulk-failed',
+        directHttpsUrl: 'https://tower.example',
+        appNpub: 'flightdeck_pg',
+        pgBackendMode: true,
+      }],
+      backendUrl: 'https://tower.example',
+      tasks: [
+        { record_id: 'task-1', title: 'Task one', state: 'ready', version: 1, sync_status: 'synced', record_state: 'active', pg_backend: true },
+        { record_id: 'task-2', title: 'Task two', state: 'ready', version: 1, sync_status: 'synced', record_state: 'active', pg_backend: true },
+      ],
+      selectedTaskIds: ['task-1', 'task-2'],
+      pgEditLeaseSessions: {
+        'task:task-1': { acquireState: 'held', lease: { id: 'lease-task-1', lease_token: 'token-1' } },
+        'task:task-2': { acquireState: 'held', lease: { id: 'lease-task-2', lease_token: 'token-2' } },
+      },
+      flushAndBackgroundSync: vi.fn(async () => ({ pushed: 0 })),
+      scheduleTasksRefresh: vi.fn(),
+      refreshTasks: vi.fn(),
+    });
+
+    await store.applyBulkTaskAction('archive');
+
+    expect(updateTowerPgTaskFromLocalMock).toHaveBeenCalledWith(store, expect.objectContaining({
+      record_id: 'task-1',
+      state: 'archive',
+    }), expect.objectContaining({ record_id: 'task-1' }), expect.objectContaining({ state: 'archive' }));
+    expect(updateTowerPgTaskFromLocalMock).toHaveBeenCalledWith(store, expect.objectContaining({
+      record_id: 'task-2',
+      state: 'archive',
+    }), expect.objectContaining({ record_id: 'task-2' }), expect.objectContaining({ state: 'archive' }));
+    expect(store.scheduleTasksRefresh).not.toHaveBeenCalled();
+    expect(store.refreshTasks).not.toHaveBeenCalled();
+    expect(store.selectedTaskIds).toEqual(['task-1', 'task-2']);
+    expect(store.error).toBe('1 selected task could not be updated.');
+    expect(store.tasks.find((task) => task.record_id === 'task-2')).toMatchObject({
+      state: 'archive',
+      sync_status: 'failed',
+    });
   });
 });

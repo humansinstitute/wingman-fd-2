@@ -6041,15 +6041,22 @@ export function initApp() {
 
       this.bulkTaskBusy = true;
       try {
+        let failedCount = 0;
         for (const taskId of selectedIds) {
           const patch = patchForAction(taskId);
           if (!patch) continue;
-          await this.applyTaskPatch(taskId, patch, { sync: false });
+          const updated = await this.applyTaskPatch(taskId, patch, { sync: false, intent: `bulk_${action}` });
+          if (!updated) failedCount += 1;
         }
         await this.flushAndBackgroundSync();
-        if (isTowerPgBackendMode()) this.scheduleTasksRefresh('PG bulk task action');
-        else await this.refreshTasks();
-        this.clearSelectedTasks();
+        if (failedCount > 0) {
+          this.error = `${failedCount} selected task${failedCount === 1 ? '' : 's'} could not be updated.`;
+        } else if (isTowerPgBackendMode()) {
+          this.scheduleTasksRefresh('PG bulk task action');
+        } else {
+          await this.refreshTasks();
+        }
+        if (failedCount === 0) this.clearSelectedTasks();
       } finally {
         this.bulkTaskBusy = false;
       }

@@ -453,11 +453,16 @@ export function mergePgHydratedTasksWithLocal(hydratedTasks = [], localTasks = [
     const recordId = trimText(localTask?.record_id);
     if (!recordId || localTask?.pg_backend !== true || localTask?.record_state === 'deleted') continue;
     const hydratedTask = mergedById.get(recordId);
-    if (!hydratedTask) continue;
+    const localSyncStatus = trimText(localTask?.sync_status || 'synced') || 'synced';
+    const isLocalPending = localSyncStatus !== 'synced';
+    if (!hydratedTask) {
+      if (isLocalPending) mergedById.set(recordId, localTask);
+      continue;
+    }
 
     const localVersion = Number(localTask.version ?? 0) || 0;
     const hydratedVersion = Number(hydratedTask.version ?? 0) || 0;
-    if (localVersion > hydratedVersion) {
+    if (localVersion > hydratedVersion || (isLocalPending && localVersion >= hydratedVersion)) {
       mergedById.set(recordId, localTask);
     }
   }

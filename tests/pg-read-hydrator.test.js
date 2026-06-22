@@ -1039,6 +1039,27 @@ describe('PG read hydrator', () => {
     expect(result).toEqual([{ record_id: 'task-1', state: 'done', version: 3, pg_backend: true }]);
   });
 
+  it('keeps pending local PG task rows over same-version hydrated rows', () => {
+    const result = mergePgHydratedTasksWithLocal(
+      [{ record_id: 'task-1', state: 'in_progress', version: 3, pg_backend: true, sync_status: 'synced' }],
+      [{ record_id: 'task-1', state: 'archive', version: 3, pg_backend: true, sync_status: 'failed' }],
+    );
+
+    expect(result).toEqual([{ record_id: 'task-1', state: 'archive', version: 3, pg_backend: true, sync_status: 'failed' }]);
+  });
+
+  it('keeps local-only pending PG task rows during hydration', () => {
+    const result = mergePgHydratedTasksWithLocal(
+      [{ record_id: 'task-1', state: 'done', version: 2, pg_backend: true, sync_status: 'synced' }],
+      [{ record_id: 'task-local', state: 'archive', version: 1, pg_backend: true, sync_status: 'failed' }],
+    );
+
+    expect(result).toEqual([
+      { record_id: 'task-1', state: 'done', version: 2, pg_backend: true, sync_status: 'synced' },
+      { record_id: 'task-local', state: 'archive', version: 1, pg_backend: true, sync_status: 'failed' },
+    ]);
+  });
+
   it('hydrates one PG task by id without replacing the whole local task set', async () => {
     const target = store({
       tasks: [{ record_id: 'existing-task', title: 'Existing task', record_state: 'active' }],
