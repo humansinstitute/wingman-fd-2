@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-D6NnYyNN.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-CjDlfPM5.css">
+  <script type="module" crossorigin src="/assets/index-DwMC4CDS.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-CIYQu_H8.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -4643,65 +4643,70 @@
 
           <div class="doc-modal-backdrop" x-show="$store.chat.newDocModalType" x-cloak>
             <div class="doc-modal-card new-doc-modal">
-              <h3 x-text="$store.chat.newDocModalType === 'folder' ? 'New folder' : 'New document'"></h3>
-              <input
-                class="new-doc-modal-input"
-                type="text"
-                :placeholder="$store.chat.newDocModalType === 'folder' ? 'Folder name' : 'Document title'"
-                x-model="$store.chat.newDocModalTitle"
-                @keydown.enter.prevent="$store.chat.confirmNewDocModal()"
-              />
-              <div class="doc-scope-modal-current">
-                <span class="docs-field-label">Scope</span>
-                <template x-if="$store.chat.newDocModalSelectedScope">
-                  <div class="doc-scope-modal-selection">
-                    <span
-                      class="doc-scope-pill"
-                      :class="`doc-scope-pill-${$store.chat.newDocModalSelectedScope.level || 'none'}`"
-                      :title="$store.chat.newDocModalScopeLabel"
-                      x-text="$store.chat.newDocModalSelectedScope.title"
-                    ></span>
-                    <small x-text="$store.chat.newDocModalScopeLabel"></small>
-                  </div>
-                </template>
-                <p class="docs-browser-empty" x-show="!$store.chat.newDocModalSelectedScope">Select a scope before creating this record.</p>
+              <div class="new-doc-modal-header">
+                <span class="connect-modal-eyebrow">Docs</span>
+                <h3 x-text="$store.chat.newDocModalType === 'folder' ? 'Create folder' : 'Create doc'"></h3>
+                <p x-show="$store.chat.newDocModalContextSummary" x-text="$store.chat.newDocModalContextSummary"></p>
               </div>
-              <input
-                class="docs-share-input"
-                type="text"
-                placeholder="Search scopes"
-                x-model="$store.chat.scopePickerQuery"
-                @keydown.escape="$store.chat.closeNewDocModal()"
-              />
-              <div class="scope-picker-results doc-scope-modal-results">
-                <template x-for="[levelKey, levelScopes] in Object.entries($store.chat.scopePickerResults)" :key="levelKey">
-                  <template x-if="levelScopes.length > 0">
-                    <div class="scope-picker-group">
-                      <div class="scope-picker-group-label" x-text="levelKey.toUpperCase()"></div>
-                      <template x-for="item in levelScopes" :key="item.record_id">
-                        <button
-                          type="button"
-                          class="scope-picker-option"
-                          :class="{ 'scope-picker-option-selected': $store.chat.newDocModalScopeId === item.record_id }"
-                          @click="$store.chat.selectNewDocModalScope(item.record_id)"
-                        >
-                          <span class="scope-level-badge" :data-level="levelKey" x-text="levelKey.toUpperCase()"></span>
-                          <span x-text="item.title"></span>
-                          <span class="scope-picker-breadcrumb" x-show="item.breadcrumb" x-text="item.breadcrumb"></span>
-                        </button>
-                      </template>
-                    </div>
+              <div class="new-doc-modal-form">
+                <label class="new-doc-modal-field new-doc-modal-field-full">
+                  <span x-text="$store.chat.newDocModalType === 'folder' ? 'Folder name' : 'Document title'"></span>
+                  <input
+                    class="new-doc-modal-input"
+                    type="text"
+                    :placeholder="$store.chat.newDocModalType === 'folder' ? 'Folder name' : 'Document title'"
+                    x-model="$store.chat.newDocModalTitle"
+                    @keydown.enter.prevent="$store.chat.confirmNewDocModal()"
+                    @keydown.escape="$store.chat.closeNewDocModal()"
+                  />
+                </label>
+                <label class="new-doc-modal-field">
+                  <span>Scope</span>
+                  <input
+                    class="new-doc-modal-input"
+                    type="text"
+                    list="new-doc-scope-options"
+                    placeholder="Search scopes"
+                    x-model="$store.chat.newDocModalScopeQuery"
+                    @change="$store.chat.selectNewDocModalScopeFromQuery($event.target.value)"
+                    @blur="$store.chat.selectNewDocModalScopeFromQuery($event.target.value)"
+                    @keydown.escape="$store.chat.closeNewDocModal()"
+                  />
+                </label>
+                <label class="new-doc-modal-field" x-show="$store.chat.isTowerPgMode && $store.chat.newDocModalType !== 'folder'">
+                  <span>Channel</span>
+                  <input
+                    class="new-doc-modal-input"
+                    type="text"
+                    list="new-doc-channel-options"
+                    placeholder="Search channels"
+                    x-model="$store.chat.newDocModalChannelQuery"
+                    @change="$store.chat.selectNewDocModalChannelFromQuery($event.target.value)"
+                    @blur="$store.chat.selectNewDocModalChannelFromQuery($event.target.value)"
+                    @keydown.enter.prevent="$store.chat.confirmNewDocModal()"
+                    @keydown.escape="$store.chat.closeNewDocModal()"
+                  />
+                </label>
+                <datalist id="new-doc-scope-options">
+                  <template x-for="option in $store.chat.newDocModalScopeOptions" :key="option.id">
+                    <option :value="option.label"></option>
                   </template>
-                </template>
-                <div class="scope-picker-empty" x-show="$store.chat.scopePickerFlat.length === 0">
-                  <p>
-                    No scopes found<span x-show="$store.chat.canAdminWorkspace">. <a href="/settings" @click.prevent="$store.chat.navSection = 'settings'; $store.chat.settingsTab = 'scopes'; $store.chat.refreshScopes(); $store.chat.startWorkspaceLiveQueries(); $store.chat.syncRoute()">Create scopes</a> first</span>.
-                  </p>
-                </div>
+                </datalist>
+                <datalist id="new-doc-channel-options">
+                  <template x-for="option in $store.chat.newDocModalChannelOptions" :key="option.id">
+                    <option :value="option.label"></option>
+                  </template>
+                </datalist>
+                <p class="docs-browser-empty new-doc-modal-empty" x-show="$store.chat.newDocModalScopeOptions.length === 0">
+                  No scopes found<span x-show="$store.chat.canAdminWorkspace">. <a href="/settings" @click.prevent="$store.chat.navSection = 'settings'; $store.chat.settingsTab = 'scopes'; $store.chat.refreshScopes(); $store.chat.startWorkspaceLiveQueries(); $store.chat.syncRoute()">Create scopes</a> first</span>.
+                </p>
+                <p class="docs-browser-empty new-doc-modal-empty" x-show="$store.chat.isTowerPgMode && $store.chat.newDocModalType !== 'folder' && $store.chat.newDocModalScopeId && $store.chat.newDocModalChannelOptions.length === 0">
+                  No channels found in this scope.
+                </p>
               </div>
               <div class="new-doc-modal-actions">
                 <button type="button" class="btn-cancel" :disabled="$store.chat.newDocModalSubmitting" @click="$store.chat.closeNewDocModal()">Cancel</button>
-                <button type="button" class="btn-confirm" :disabled="$store.chat.newDocModalSubmitting || !$store.chat.newDocModalTitle.trim() || !$store.chat.newDocModalScopeId" @click="$store.chat.confirmNewDocModal()" x-text="$store.chat.newDocModalSubmitting ? 'Creating…' : 'Create'"></button>
+                <button type="button" class="btn-confirm" :disabled="$store.chat.newDocModalSubmitting || !$store.chat.newDocModalTitle.trim() || !$store.chat.newDocModalScopeId || ($store.chat.isTowerPgMode && $store.chat.newDocModalType !== 'folder' && !$store.chat.newDocModalChannelId)" @click="$store.chat.confirmNewDocModal()" x-text="$store.chat.newDocModalSubmitting ? 'Creating…' : 'Create'"></button>
               </div>
             </div>
           </div>

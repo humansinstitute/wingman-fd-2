@@ -82,6 +82,7 @@ import {
 import { resolveFlightDeckRecordCheckoutPolicy } from './record-checkout-policy.js';
 import { isTowerPgBackendMode } from './backend-mode.js';
 import { hydrateTowerPgDoc, hydrateTowerPgDocComments, resolveTowerPgWorkspaceContext } from './pg-read-hydrator.js';
+import { getPgChannelScopeId } from './pg-record-context.js';
 import {
   acquirePgEditLeaseForRecord,
   getPgEditLeaseSession,
@@ -2030,6 +2031,9 @@ export const docsManagerMixin = {
     this.newDocModalType = type;
     this.newDocModalTitle = '';
     this.newDocModalScopeId = this.getDefaultDocScopeId(this.getDefaultParentDirectoryId());
+    this.newDocModalChannelId = this.getDefaultDocChannelId(this.newDocModalScopeId);
+    this.newDocModalScopeQuery = this.getNewDocModalScopeOptionLabel(this.newDocModalScopeId);
+    this.newDocModalChannelQuery = this.getNewDocModalChannelOptionLabel(this.newDocModalChannelId);
     this.newDocModalSubmitting = false;
     this.scopePickerQuery = '';
   },
@@ -2038,8 +2042,36 @@ export const docsManagerMixin = {
     this.newDocModalType = null;
     this.newDocModalTitle = '';
     this.newDocModalScopeId = null;
+    this.newDocModalScopeQuery = '';
+    this.newDocModalChannelId = null;
+    this.newDocModalChannelQuery = '';
     this.newDocModalSubmitting = false;
     this.scopePickerQuery = '';
+  },
+
+  get newDocModalScopeOptions() {
+    return (this.scopes || [])
+      .filter((scope) => scope?.record_id && scope.record_state !== 'deleted')
+      .map((scope) => ({
+        id: scope.record_id,
+        title: scope.title || 'Untitled scope',
+        label: this.getScopeBreadcrumb?.(scope.record_id) || scope.title || scope.record_id,
+        level: scope.level || 'scope',
+      }))
+      .sort((left, right) => String(left.label || '').localeCompare(String(right.label || '')));
+  },
+
+  get newDocModalChannelOptions() {
+    const scopeId = String(this.newDocModalScopeId || '').trim();
+    return (this.channels || [])
+      .filter((channel) => channel?.record_id && channel.record_state !== 'deleted')
+      .filter((channel) => !scopeId || getPgChannelScopeId(channel) === scopeId)
+      .map((channel) => ({
+        id: channel.record_id,
+        label: this.getChannelLabel?.(channel) || channel.title || channel.record_id,
+        scopeId: getPgChannelScopeId(channel),
+      }))
+      .sort((left, right) => String(left.label || '').localeCompare(String(right.label || '')));
   },
 
   get newDocModalSelectedScope() {
@@ -2052,9 +2084,84 @@ export const docsManagerMixin = {
     return this.getScopeBreadcrumb(scope.record_id) || scope.title || 'Selected scope';
   },
 
+  get newDocModalSelectedChannel() {
+    const channelId = String(this.newDocModalChannelId || '').trim();
+    if (!channelId) return null;
+    return (this.channels || []).find((channel) => channel?.record_id === channelId && channel.record_state !== 'deleted') || null;
+  },
+
+  get newDocModalContextSummary() {
+    const scopeLabel = this.newDocModalScopeLabel || 'Select a scope';
+    if (!isTowerPgBackendMode() || this.newDocModalType === 'folder') return scopeLabel;
+    const channelLabel = this.getNewDocModalChannelOptionLabel(this.newDocModalChannelId);
+    return channelLabel ? `${channelLabel} · ${scopeLabel}` : scopeLabel;
+  },
+
+  getNewDocModalScopeOptionLabel(scopeId) {
+    const option = this.newDocModalScopeOptions.find((item) => item.id === scopeId);
+    return option?.label || '';
+  },
+
+  getNewDocModalChannelOptionLabel(channelId) {
+    const option = this.newDocModalChannelOptions.find((item) => item.id === channelId)
+      || (this.channels || [])
+        .filter((channel) => channel?.record_id && channel.record_state !== 'deleted')
+        .map((channel) => ({
+          id: channel.record_id,
+          label: this.getChannelLabel?.(channel) || channel.title || channel.record_id,
+        }))
+        .find((item) => item.id === channelId);
+    return option?.label || '';
+  },
+
   selectNewDocModalScope(scopeId) {
     const scope = this.scopesMap?.get(scopeId) || null;
     this.newDocModalScopeId = scope?.record_id || null;
+    this.newDocModalScopeQuery = this.getNewDocModalScopeOptionLabel(this.newDocModalScopeId);
+    if (!isTowerPgBackendMode()) return;
+    const channelStillValid = this.newDocModalChannelId
+      && this.newDocModalChannelOptions.some((channel) => channel.id === this.newDocModalChannelId);
+    if (!channelStillValid) {
+      this.newDocModalChannelId = this.getDefaultDocChannelId(this.newDocModalScopeId);
+      this.newDocModalChannelQuery = this.getNewDocModalChannelOptionLabel(this.newDocModalChannelId);
+    }
+  },
+
+  selectNewDocModalScopeFromQuery(value) {
+    const query = String(value || '').trim();
+    const lower = query.toLowerCase();
+    const match = this.newDocModalScopeOptions.find((option) =>
+      option.id === query
+      || String(option.label || '').toLowerCase() === lower
+      || String(option.title || '').toLowerCase() === lower);
+    if (match) {
+      this.selectNewDocModalScope(match.id);
+      return;
+    }
+    this.newDocModalScopeQuery = this.getNewDocModalScopeOptionLabel(this.newDocModalScopeId);
+  },
+
+  selectNewDocModalChannel(channelId) {
+    const channel = (this.channels || []).find((entry) => entry?.record_id === channelId && entry.record_state !== 'deleted') || null;
+    this.newDocModalChannelId = channel?.record_id || null;
+    this.newDocModalChannelQuery = this.getNewDocModalChannelOptionLabel(this.newDocModalChannelId);
+    const scopeId = getPgChannelScopeId(channel);
+    if (scopeId && this.scopesMap?.has(scopeId)) {
+      this.newDocModalScopeId = scopeId;
+      this.newDocModalScopeQuery = this.getNewDocModalScopeOptionLabel(scopeId);
+    }
+  },
+
+  selectNewDocModalChannelFromQuery(value) {
+    const query = String(value || '').trim();
+    const lower = query.toLowerCase();
+    const match = this.newDocModalChannelOptions.find((option) =>
+      option.id === query || String(option.label || '').toLowerCase() === lower);
+    if (match) {
+      this.selectNewDocModalChannel(match.id);
+      return;
+    }
+    this.newDocModalChannelQuery = this.getNewDocModalChannelOptionLabel(this.newDocModalChannelId);
   },
 
   async confirmNewDocModal() {
@@ -2065,13 +2172,18 @@ export const docsManagerMixin = {
       this.error = 'Select a scope before creating a document or folder.';
       return;
     }
+    if (isTowerPgBackendMode() && modalType !== 'folder' && !this.newDocModalChannelId) {
+      this.error = 'Select a channel before creating a document.';
+      return;
+    }
     this.newDocModalSubmitting = true;
     const scopeId = this.newDocModalScopeId;
+    const channelId = this.newDocModalChannelId;
     try {
       if (modalType === 'folder') {
         await this.createDirectory(title, { scopeId });
       } else {
-        await this.createDocument(title, { scopeId });
+        await this.createDocument(title, { scopeId, channelId });
       }
     } finally {
       this.closeNewDocModal();
@@ -2232,6 +2344,25 @@ export const docsManagerMixin = {
     if (this.selectedBoardScope?.record_id) return this.selectedBoardScope.record_id;
     if (this.selectedBoardId && this.scopesMap?.has(this.selectedBoardId)) return this.selectedBoardId;
     return null;
+  },
+
+  getDefaultDocChannelId(scopeId = null) {
+    if (!isTowerPgBackendMode()) return null;
+    const requestedScopeId = String(scopeId || '').trim();
+    const context = this.resolvePgWriteContext?.({
+      scopeId: requestedScopeId,
+      channelId: this.pgContextSelectedChannelId || this.selectedChannelId,
+      boardId: this.selectedBoardId,
+    }) || null;
+    if (context?.channelId) return context.channelId;
+    const selectedChannel = this.selectedChannel?.record_id ? this.selectedChannel : null;
+    if (selectedChannel && (!requestedScopeId || getPgChannelScopeId(selectedChannel) === requestedScopeId)) {
+      return selectedChannel.record_id;
+    }
+    const scopedChannels = (this.channels || [])
+      .filter((channel) => channel?.record_id && channel.record_state !== 'deleted')
+      .filter((channel) => !requestedScopeId || getPgChannelScopeId(channel) === requestedScopeId);
+    return scopedChannels.length === 1 ? scopedChannels[0].record_id : null;
   },
 
   buildDocAccessForScope(scopeId, shares = []) {
