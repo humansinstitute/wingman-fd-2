@@ -1791,6 +1791,64 @@ describe('chat message actions menu', () => {
     }
   });
 
+  it('deleteChatMessageById removes the accepted PG row when stale client id delete resolves to it', async () => {
+    const workspaceDbKey = 'chat-message-manager-delete-stale-client-pg-message';
+    openWorkspaceDb(workspaceDbKey);
+    await clearRuntimeData();
+    isTowerPgBackendMode.mockReturnValue(true);
+    deleteTowerPgMessageFromLocal.mockResolvedValue({
+      record_id: 'server-message-1',
+      channel_id: 'ch1',
+      body: 'Duplicate sent in error',
+      parent_message_id: null,
+      record_state: 'deleted',
+      sync_status: 'synced',
+      version: 3,
+      pg_backend: true,
+      pg_client_record_id: 'local-message-1',
+    });
+
+    try {
+      const staleMessage = {
+        record_id: 'local-message-1',
+        channel_id: 'ch1',
+        body: 'Duplicate sent in error',
+        parent_message_id: null,
+        record_state: 'active',
+        sync_status: 'synced',
+        version: 1,
+        pg_backend: true,
+      };
+      const acceptedMessage = {
+        record_id: 'server-message-1',
+        channel_id: 'ch1',
+        body: 'Duplicate sent in error',
+        parent_message_id: null,
+        record_state: 'active',
+        sync_status: 'synced',
+        version: 2,
+        pg_backend: true,
+        pg_client_record_id: 'local-message-1',
+      };
+      await upsertMessage(staleMessage);
+      await upsertMessage(acceptedMessage);
+      const { fn, store } = bindMethod('deleteChatMessageById', {
+        messages: [staleMessage, acceptedMessage],
+      });
+
+      await fn('local-message-1');
+
+      expect(deleteTowerPgMessageFromLocal).toHaveBeenCalledWith(store, staleMessage);
+      expect(store.mainFeedMessages).toEqual([]);
+      expect(await getMessageById('server-message-1')).toMatchObject({
+        record_state: 'deleted',
+        sync_status: 'synced',
+      });
+    } finally {
+      await deleteWorkspaceDb(workspaceDbKey);
+    }
+  });
+
   it('deleteChatThreadByParentId deletes PG threads through Tower and hides parent plus replies locally', async () => {
     const workspaceDbKey = 'chat-message-manager-delete-pg-thread';
     openWorkspaceDb(workspaceDbKey);

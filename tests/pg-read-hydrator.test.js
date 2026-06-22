@@ -302,6 +302,7 @@ describe('PG read hydrator', () => {
       updated_at: '2026-06-05T02:00:00.000Z',
       metadata: {
         sender_npub: 'npub1dave',
+        client_record_id: 'local-message-3',
       },
     }, {
       workspaceOwnerNpub: 'npub1owner',
@@ -310,6 +311,11 @@ describe('PG read hydrator', () => {
     })).toMatchObject({
       record_id: 'message-3',
       sender_npub: 'npub1dave',
+      pg_client_record_id: 'local-message-3',
+      pg_metadata: {
+        sender_npub: 'npub1dave',
+        client_record_id: 'local-message-3',
+      },
       pg_record_type: 'message',
     });
   });

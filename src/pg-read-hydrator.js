@@ -377,6 +377,9 @@ export function mapPgMessageToLocal(message, {
   const isThreadSourceMessage = Boolean(threadId && sourceMessageId && sourceMessageId === recordId);
   const threadRecordState = trimText(thread?.record_state) || (thread?.archived_at ? 'archived' : '');
   const messageRecordState = trimText(message?.record_state) || (message?.deleted_at ? 'deleted' : 'active');
+  const metadata = message?.metadata && typeof message.metadata === 'object' && !Array.isArray(message.metadata)
+    ? message.metadata
+    : {};
   return {
     record_id: recordId,
     channel_id: trimText(message?.channel_id),
@@ -400,6 +403,8 @@ export function mapPgMessageToLocal(message, {
     pg_archived_at: isThreadSourceMessage ? (trimText(thread?.archived_at) || null) : null,
     pg_created_by_actor_id: trimText(message?.created_by_actor_id),
     pg_updated_by_actor_id: trimText(message?.updated_by_actor_id),
+    pg_client_record_id: trimText(metadata.client_record_id),
+    pg_metadata: metadata,
   };
 }
 

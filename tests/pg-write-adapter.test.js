@@ -577,6 +577,7 @@ describe('PG write adapter', () => {
     });
 
     const message = await createTowerPgMessageFromLocal(store(), {
+      record_id: 'local-message-1',
       channel_id: 'channel-1',
       body: 'Hello',
     });
@@ -584,10 +585,47 @@ describe('PG write adapter', () => {
     expect(api.createTowerPgChannelMessage).toHaveBeenCalledWith('workspace-1', 'channel-1', {
       body: 'Hello',
       message_signature: { signed_event_id: 'signature-1' },
+      metadata: { client_record_id: 'local-message-1' },
       create_thread: true,
       thread_title: 'Hello',
     }, { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
     expect(message).toMatchObject({ record_id: 'message-1', parent_message_id: null, pg_thread_id: 'thread-1' });
+  });
+
+  it('creates Tower PG messages with the local client record id in metadata', async () => {
+    const api = await import('../src/api.js');
+    api.createTowerPgChannelMessage.mockResolvedValue({
+      message: {
+        id: 'message-1',
+        workspace_id: 'workspace-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        thread_id: 'thread-1',
+        body: 'Hello',
+        row_version: 1,
+        metadata: {
+          client_record_id: 'local-message-1',
+        },
+      },
+      thread: {
+        id: 'thread-1',
+        source_message_id: 'message-1',
+      },
+    });
+
+    const message = await createTowerPgMessageFromLocal(store(), {
+      record_id: 'local-message-1',
+      channel_id: 'channel-1',
+      body: 'Hello',
+    });
+
+    expect(api.createTowerPgChannelMessage.mock.calls[0][2]).toMatchObject({
+      metadata: { client_record_id: 'local-message-1' },
+    });
+    expect(message).toMatchObject({
+      record_id: 'message-1',
+      pg_client_record_id: 'local-message-1',
+    });
   });
 
   it('maps Tower PG replies to the local thread parent when the response omits thread metadata', async () => {
@@ -605,6 +643,7 @@ describe('PG write adapter', () => {
     });
 
     const message = await createTowerPgMessageFromLocal(store(), {
+      record_id: 'local-reply-1',
       channel_id: 'channel-1',
       body: 'Reply',
     }, {
@@ -617,12 +656,65 @@ describe('PG write adapter', () => {
     expect(api.createTowerPgChannelMessage).toHaveBeenCalledWith('workspace-1', 'channel-1', {
       body: 'Reply',
       message_signature: { signed_event_id: 'signature-1' },
+      metadata: { client_record_id: 'local-reply-1' },
       thread_id: 'thread-1',
     }, { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
     expect(message).toMatchObject({
       record_id: 'reply-1',
       parent_message_id: 'root-message-1',
       pg_thread_id: 'thread-1',
+    });
+  });
+
+  it('retries message delete against the accepted PG row when a stale client id is missing', async () => {
+    const api = await import('../src/api.js');
+    const missing = new Error('Flight Deck PG message not found');
+    missing.status = 404;
+    missing.code = 'message_not_found';
+    api.deleteTowerPgMessage
+      .mockRejectedValueOnce(missing)
+      .mockResolvedValueOnce({
+        message: {
+          id: 'server-message-1',
+          workspace_id: 'workspace-1',
+          channel_id: 'channel-1',
+          body: 'Delete me',
+          record_state: 'deleted',
+          row_version: 3,
+          metadata: {
+            client_record_id: 'local-message-1',
+          },
+        },
+      });
+
+    const message = await deleteTowerPgMessageFromLocal(store({
+      messages: [
+        {
+          record_id: 'server-message-1',
+          channel_id: 'channel-1',
+          body: 'Delete me',
+          version: 2,
+          record_state: 'active',
+          pg_backend: true,
+          pg_client_record_id: 'local-message-1',
+        },
+      ],
+    }), {
+      record_id: 'local-message-1',
+      channel_id: 'channel-1',
+      body: 'Delete me',
+      version: 1,
+      pg_backend: true,
+    });
+
+    expect(api.deleteTowerPgMessage.mock.calls.map((call) => call[1])).toEqual([
+      'local-message-1',
+      'server-message-1',
+    ]);
+    expect(message).toMatchObject({
+      record_id: 'server-message-1',
+      record_state: 'deleted',
+      pg_client_record_id: 'local-message-1',
     });
   });
 

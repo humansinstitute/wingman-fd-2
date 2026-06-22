@@ -386,6 +386,11 @@ export async function createTowerPgMessageFromLocal(store, message, options = {}
   if (!context.workspaceId || !message?.channel_id) throw new Error('Tower PG chat is not ready');
   const parentMessage = options.parentMessage || null;
   const threadId = trimText(options.threadId || parentMessage?.pg_thread_id);
+  const metadata = message?.pg_metadata && typeof message.pg_metadata === 'object' && !Array.isArray(message.pg_metadata)
+    ? { ...message.pg_metadata }
+    : {};
+  const clientRecordId = trimText(message?.pg_client_record_id || message?.record_id);
+  if (clientRecordId) metadata.client_record_id = clientRecordId;
   const messageSignature = await buildAgentInstructionSignature({
     body: message.body,
     workspaceId: context.workspaceId,
@@ -395,6 +400,7 @@ export async function createTowerPgMessageFromLocal(store, message, options = {}
   const result = await createTowerPgChannelMessage(context.workspaceId, message.channel_id, {
     body: message.body,
     message_signature: messageSignature,
+    ...(Object.keys(metadata).length ? { metadata } : {}),
     ...(threadId ? { thread_id: threadId } : { create_thread: true, thread_title: message.body.slice(0, 80) }),
   }, pgRequestOptions(context));
   const threadById = new Map();
@@ -424,14 +430,33 @@ export async function createTowerPgMessageFromLocal(store, message, options = {}
 export async function deleteTowerPgMessageFromLocal(store, message) {
   const context = resolveTowerPgWorkspaceContext(store);
   if (!context.workspaceId || !message?.record_id) throw new Error('Tower PG message is not ready');
+  const deleteMessage = async (targetMessage) => deleteTowerPgMessage(context.workspaceId, targetMessage.record_id, {
+    rowVersion: targetMessage.version || undefined,
+    ...pgRequestOptions(context),
+  });
   let result;
   try {
-    result = await deleteTowerPgMessage(context.workspaceId, message.record_id, {
-      rowVersion: message.version || undefined,
-      ...pgRequestOptions(context),
-    });
+    result = await deleteMessage(message);
   } catch (error) {
     if (isMissingPgMessageDeleteError(error)) {
+      const acceptedMessage = Array.isArray(store?.messages)
+        ? store.messages.find((candidate) => (
+          candidate?.pg_backend === true
+          && candidate.record_state !== 'deleted'
+          && candidate.record_id !== message.record_id
+          && trimText(candidate.pg_client_record_id) === message.record_id
+        ))
+        : null;
+      if (acceptedMessage?.record_id) {
+        const retryResult = await deleteMessage(acceptedMessage);
+        return {
+          ...mapPgMessageToLocal(retryResult.message, {
+            workspaceOwnerNpub: context.workspaceOwnerNpub,
+            senderNpub: store?.session?.npub,
+          }),
+          record_state: 'deleted',
+        };
+      }
       const now = new Date().toISOString();
       return {
         ...message,

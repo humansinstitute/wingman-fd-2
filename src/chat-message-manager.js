@@ -1949,7 +1949,7 @@ export const chatMessageManagerMixin = {
       const accepted = await deleteTowerPgMessageFromLocal(this, message);
       await upsertMessage(accepted);
       this.messages = this.messages
-        .filter((candidate) => candidate.record_id !== message.record_id)
+        .filter((candidate) => candidate.record_id !== message.record_id && candidate.record_id !== accepted.record_id)
         .concat(accepted);
       if (this.activeThreadId === message.record_id) this.closeThread({ syncRoute: false });
       return;
