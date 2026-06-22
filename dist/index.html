@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-BnhCsDwL.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-DtAlqZAq.css">
+  <script type="module" crossorigin src="/assets/index-vgyzvGRm.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-B3T4APfB.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -553,23 +553,6 @@
                     </div>
                   </section>
                 </div>
-
-                <aside class="connect-automation-note" x-show="$store.chat.connectPgOnboardingStep >= 3">
-                  <div class="connect-automation-note-head">
-                    <span class="connect-panel-label">Background automation</span>
-                    <strong>After Create, Flight Deck handles the Tower writes.</strong>
-                  </div>
-                  <p>The user does not step through this. The wizard collects intent, then the app creates the workspace, spaces, channel grants, and local materialized view in the background.</p>
-                  <details>
-                    <summary>Show background note</summary>
-                    <ol>
-                      <li>Create the workspace through Tower.</li>
-                      <li>Create selected scope rows.</li>
-                      <li>Create selected channel rows under each scope.</li>
-                      <li>Refresh Flight Deck from Tower PG before opening the workspace.</li>
-                    </ol>
-                  </details>
-                </aside>
 
                 <p class="auth-error" x-show="$store.chat.connectWorkspacesError" x-text="$store.chat.connectWorkspacesError"></p>
               </section>

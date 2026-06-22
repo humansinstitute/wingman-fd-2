@@ -552,23 +552,6 @@
                   </section>
                 </div>
 
-                <aside class="connect-automation-note" x-show="$store.chat.connectPgOnboardingStep >= 3">
-                  <div class="connect-automation-note-head">
-                    <span class="connect-panel-label">Background automation</span>
-                    <strong>After Create, Flight Deck handles the Tower writes.</strong>
-                  </div>
-                  <p>The user does not step through this. The wizard collects intent, then the app creates the workspace, spaces, channel grants, and local materialized view in the background.</p>
-                  <details>
-                    <summary>Show background note</summary>
-                    <ol>
-                      <li>Create the workspace through Tower.</li>
-                      <li>Create selected scope rows.</li>
-                      <li>Create selected channel rows under each scope.</li>
-                      <li>Refresh Flight Deck from Tower PG before opening the workspace.</li>
-                    </ol>
-                  </details>
-                </aside>
-
                 <p class="auth-error" x-show="$store.chat.connectWorkspacesError" x-text="$store.chat.connectWorkspacesError"></p>
               </section>
 

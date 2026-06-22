@@ -319,10 +319,22 @@ describe('app PG task offline drafts', () => {
     await wsDb.open();
     await Promise.all(wsDb.tables.map((table) => table.clear()));
     let resolveFirstUpdate;
+    let resolveSecondUpdate;
     updateTowerPgTaskFromLocalMock.mockImplementationOnce(() => new Promise((resolve) => {
       resolveFirstUpdate = () => resolve({
         record_id: 'task-1',
         title: 'Task one',
+        state: 'archive',
+        version: 2,
+        sync_status: 'synced',
+        record_state: 'active',
+        pg_backend: true,
+      });
+    }));
+    updateTowerPgTaskFromLocalMock.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveSecondUpdate = () => resolve({
+        record_id: 'task-2',
+        title: 'Task two',
         state: 'archive',
         version: 2,
         sync_status: 'synced',
@@ -375,20 +387,13 @@ describe('app PG task offline drafts', () => {
     expect(store.syncStatus).toBe('syncing');
     expect(store.syncProgressLabel()).toBe('Updating tasks 0 / 2');
     expect(await getSyncState('pg_task_write_queue:v1')).toHaveLength(2);
-    expect(updateTowerPgTaskFromLocalMock).toHaveBeenCalledTimes(1);
+    await waitForCondition(() => updateTowerPgTaskFromLocalMock.mock.calls.length === 2);
+    expect(updateTowerPgTaskFromLocalMock).toHaveBeenCalledTimes(2);
     expect(store.scheduleTasksRefresh).not.toHaveBeenCalled();
     expect(store.refreshTasks).not.toHaveBeenCalled();
 
-    updateTowerPgTaskFromLocalMock.mockResolvedValueOnce({
-      record_id: 'task-2',
-      title: 'Task two',
-      state: 'archive',
-      version: 2,
-      sync_status: 'synced',
-      record_state: 'active',
-      pg_backend: true,
-    });
     resolveFirstUpdate();
+    resolveSecondUpdate();
     await waitForCondition(() => store.pgTaskWriteInFlight === false);
 
     expect(updateTowerPgTaskFromLocalMock).toHaveBeenCalledWith(store, expect.objectContaining({
@@ -478,6 +483,7 @@ describe('app PG task offline drafts', () => {
     });
 
     await store.resumePgTaskWriteQueue();
+    await waitForCondition(() => updateTowerPgTaskFromLocalMock.mock.calls.length === 1);
     await waitForCondition(() => store.pgTaskWriteInFlight === false);
 
     expect(updateTowerPgTaskFromLocalMock).toHaveBeenCalledWith(store, expect.objectContaining({

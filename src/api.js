@@ -393,9 +393,18 @@ export async function updateTowerPgNotificationPreferences(workspaceId, preferen
   if (!encodedWorkspaceId) throw new Error('Tower PG workspace id is required');
   const requestPath = `/api/v4/flightdeck-pg/workspaces/${encodedWorkspaceId}/notifications/preferences`;
   const requestUrl = resolveTowerPgUrl(requestPath, baseUrl);
+  const patch = preferences && typeof preferences === 'object' && !Array.isArray(preferences)
+    ? {
+      chat_threads_enabled: Boolean(preferences.channel_threads ?? preferences.chat_threads_enabled),
+      mentions_enabled: Boolean(preferences.mentions ?? preferences.mentions_enabled),
+      dms_enabled: Boolean(preferences.dms ?? preferences.dms_enabled),
+      comment_tags_enabled: Boolean(preferences.comment_tags ?? preferences.comment_tags_enabled),
+      task_assignments_enabled: Boolean(preferences.task_assignments ?? preferences.task_assignments_enabled),
+    }
+    : {};
   const resp = await signedTowerPgFetch(requestPath, {
     method: 'PATCH',
-    body: { preferences },
+    body: patch,
     baseUrl,
     appNpub,
   });

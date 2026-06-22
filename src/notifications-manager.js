@@ -28,9 +28,13 @@ function trimText(value) {
 
 function normalizePreferences(value = {}) {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-  return Object.fromEntries(
-    NOTIFICATION_CATEGORIES.map(({ key }) => [key, Boolean(source[key] ?? DEFAULT_PREFERENCES[key])]),
-  );
+  return {
+    channel_threads: Boolean(source.channel_threads ?? source.chat_threads_enabled ?? DEFAULT_PREFERENCES.channel_threads),
+    mentions: Boolean(source.mentions ?? source.mentions_enabled ?? DEFAULT_PREFERENCES.mentions),
+    dms: Boolean(source.dms ?? source.dms_enabled ?? DEFAULT_PREFERENCES.dms),
+    comment_tags: Boolean(source.comment_tags ?? source.comment_tags_enabled ?? DEFAULT_PREFERENCES.comment_tags),
+    task_assignments: Boolean(source.task_assignments ?? source.task_assignments_enabled ?? DEFAULT_PREFERENCES.task_assignments),
+  };
 }
 
 function normalizeSubscriptionRow(row = {}, { currentEndpoint = '' } = {}) {
@@ -125,17 +129,17 @@ function getNotificationContext(store) {
   };
 }
 
-function buildSubscriptionBody(store, subscription) {
+export function buildSubscriptionBody(store, subscription) {
   const context = getNotificationContext(store);
+  const serialized = serializePushSubscription(subscription);
   return {
-    subscription: serializePushSubscription(subscription),
-    device: {
-      label: defaultDeviceLabel(),
-      platform: browserPlatformLabel(),
-      user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
-      app_build_id: trimText(store.appBuildId),
-      app_display_mode: typeof window !== 'undefined' && window.matchMedia?.('(display-mode: standalone)').matches ? 'standalone' : 'browser',
-    },
+    endpoint: serialized.endpoint,
+    expiration_time: serialized.expiration_time,
+    keys: serialized.keys,
+    device_label: defaultDeviceLabel(),
+    platform: browserPlatformLabel(),
+    app_version: trimText(store.appBuildId),
+    app_display_mode: typeof window !== 'undefined' && window.matchMedia?.('(display-mode: standalone)').matches ? 'standalone' : 'browser',
     workspace_context: {
       workspace_id: context.workspaceId,
       workspace_name: context.workspaceName,
