@@ -9,6 +9,8 @@ import {
   setBaseUrl,
   createWorkspace,
   createTowerPgAdminWorkspace,
+  createTowerPgScopeChannel,
+  createTowerPgWorkspaceScope,
   getWorkspaces,
   getTowerPgService,
   getTowerPgWorkspaceDescriptor,
@@ -75,6 +77,124 @@ function pgWorkspaceLabel(entry = {}) {
 
 function pgErrorMessage(error, fallback = 'Flight Deck PG connection failed') {
   return error?.message || String(error || fallback);
+}
+
+const PG_WORKSPACE_BOOTSTRAP_TEMPLATES = {
+  company: {
+    id: 'company',
+    label: 'Company',
+    description: 'Shared scopes for leadership, product, customers, and growth.',
+    scopes: [
+      {
+        name: 'Leadership',
+        description: 'Shared direction and executive decisions.',
+        selected: true,
+        channels: [
+          { name: 'Strategy', selected: true },
+          { name: 'Ideas', selected: true },
+        ],
+      },
+      {
+        name: 'Product',
+        description: 'Product direction and delivery work.',
+        selected: true,
+        channels: [
+          { name: 'Roadmap', selected: true },
+          { name: 'Features', selected: true },
+          { name: 'Bugs', selected: true },
+          { name: 'Implementation', selected: true },
+          { name: 'Releases', selected: true },
+        ],
+      },
+      {
+        name: 'Customer Operations',
+        description: 'Customer-facing work across accounts and support.',
+        selected: true,
+        channels: [
+          { name: 'Key accounts', selected: true },
+          { name: 'Support escalations', selected: true },
+        ],
+      },
+      {
+        name: 'Growth',
+        description: 'Market, partnership, and pipeline work.',
+        selected: true,
+        channels: [
+          { name: 'Marketing', selected: true },
+          { name: 'Campaigns', selected: true },
+          { name: 'Partnerships', selected: true },
+          { name: 'Pipeline', selected: true },
+        ],
+      },
+    ],
+  },
+  personal: {
+    id: 'personal',
+    label: 'Personal',
+    description: 'Private scopes for home, projects, learning, and planning.',
+    scopes: [
+      {
+        name: 'Home',
+        description: 'Personal operating context for recurring life admin.',
+        selected: true,
+        channels: [
+          { name: 'Finances', selected: true },
+          { name: 'Schedule', selected: true },
+        ],
+      },
+      {
+        name: 'Projects',
+        description: 'Active personal work that needs a place to move forward.',
+        selected: true,
+        channels: [
+          { name: 'Active projects', selected: true },
+          { name: 'Ideas', selected: true },
+          { name: 'Reviews', selected: true },
+        ],
+      },
+      {
+        name: 'Learning',
+        description: 'Research, reading, and experiments worth keeping together.',
+        selected: true,
+        channels: [
+          { name: 'Research', selected: true },
+          { name: 'Reading', selected: true },
+          { name: 'Experiments', selected: true },
+        ],
+      },
+    ],
+  },
+};
+
+function clonePgWorkspaceBootstrapTemplates() {
+  return Object.values(PG_WORKSPACE_BOOTSTRAP_TEMPLATES).map((template) => ({
+    ...template,
+    scopes: template.scopes.map((scope) => ({
+      ...scope,
+      channels: scope.channels.map((channel) => ({ ...channel })),
+    })),
+  }));
+}
+
+function selectedPgBootstrapScopes(templates = [], templateId = '') {
+  const template = templates.find((entry) => entry.id === templateId) || templates[0];
+  if (!template) return [];
+  return template.scopes
+    .filter((scope) => scope.selected)
+    .map((scope) => ({
+      ...scope,
+      name: trimText(scope.name),
+      description: trimText(scope.description),
+      channels: (scope.channels || [])
+        .filter((channel) => channel.selected)
+        .map((channel) => ({
+          ...channel,
+          name: trimText(channel.name),
+          description: trimText(channel.description),
+        }))
+        .filter((channel) => channel.name),
+    }))
+    .filter((scope) => scope.name);
 }
 
 function compactContextLine(label, value) {
@@ -382,6 +502,7 @@ export const connectSettingsManagerMixin = {
     this.connectNewWorkspaceName = '';
     this.connectNewWorkspaceDescription = '';
     this.connectCreatingWorkspace = false;
+    this.resetConnectPgBootstrapState();
     this.connectTokenInput = '';
     this.connectShowTokenFallback = false;
     this.showWorkspaceSwitcherMenu = false;
@@ -392,6 +513,91 @@ export const connectSettingsManagerMixin = {
   closeConnectModal() {
     if (this.connectHostBusy || this.connectWorkspacesBusy || this.connectCreatingWorkspace) return;
     this.showConnectModal = false;
+  },
+
+  resetConnectPgBootstrapState() {
+    this.connectPgBootstrapTemplateId = 'company';
+    this.connectPgBootstrapTemplates = clonePgWorkspaceBootstrapTemplates();
+    this.connectPgBootstrapProgress = {
+      active: false,
+      phase: 'idle',
+      label: '',
+      completed: 0,
+      total: 0,
+      error: '',
+    };
+  },
+
+  selectedConnectPgBootstrapScopes() {
+    return selectedPgBootstrapScopes(this.connectPgBootstrapTemplates, this.connectPgBootstrapTemplateId);
+  },
+
+  connectPgBootstrapCounts() {
+    const scopes = this.selectedConnectPgBootstrapScopes();
+    return {
+      scopes: scopes.length,
+      channels: scopes.reduce((total, scope) => total + (scope.channels || []).length, 0),
+    };
+  },
+
+  updateConnectPgBootstrapProgress(patch = {}) {
+    this.connectPgBootstrapProgress = {
+      ...(this.connectPgBootstrapProgress || {}),
+      ...patch,
+    };
+  },
+
+  async createConnectPgBootstrapSpaces(workspaceId, { baseUrl, appNpub, completed: initialCompleted = 0, total: totalOverride = null } = {}) {
+    const scopes = this.selectedConnectPgBootstrapScopes();
+    const total = totalOverride ?? scopes.reduce((count, scope) => count + 1 + (scope.channels || []).length, 0);
+    if (!workspaceId || scopes.length === 0 || total === 0) return;
+    let completed = initialCompleted;
+    this.updateConnectPgBootstrapProgress({
+      active: true,
+      phase: 'spaces',
+      label: 'Creating starter spaces...',
+      completed,
+      total,
+      error: '',
+    });
+    for (const scope of scopes) {
+      this.updateConnectPgBootstrapProgress({
+        label: `Creating scope: ${scope.name}`,
+        completed,
+        total,
+      });
+      const scopeResult = await createTowerPgWorkspaceScope(workspaceId, {
+        name: scope.name,
+        description: scope.description,
+        kind: 'project',
+      }, { baseUrl, appNpub });
+      completed += 1;
+      const scopeId = trimText(scopeResult?.scope?.id || scopeResult?.scope?.record_id || scopeResult?.id || scopeResult?.record_id);
+      if (!scopeId && (scope.channels || []).length > 0) {
+        throw new Error(`Tower did not return a scope id for ${scope.name}`);
+      }
+      this.updateConnectPgBootstrapProgress({
+        completed,
+        total,
+      });
+      for (const channel of (scope.channels || [])) {
+        this.updateConnectPgBootstrapProgress({
+          label: `Creating channel: ${channel.name}`,
+          completed,
+          total,
+        });
+        await createTowerPgScopeChannel(workspaceId, scopeId, {
+          name: channel.name,
+          description: channel.description || undefined,
+          kind: 'channel',
+        }, { baseUrl, appNpub });
+        completed += 1;
+        this.updateConnectPgBootstrapProgress({
+          completed,
+          total,
+        });
+      }
+    }
   },
 
   async connectToHost(hostUrl, hostLabel) {
@@ -695,6 +901,14 @@ export const connectSettingsManagerMixin = {
       }
       this.connectCreatingWorkspace = true;
       this.connectWorkspacesError = null;
+      this.updateConnectPgBootstrapProgress({
+        active: true,
+        phase: 'workspace',
+        label: 'Creating workspace...',
+        completed: 0,
+        total: 1 + this.connectPgBootstrapCounts().scopes + this.connectPgBootstrapCounts().channels,
+        error: '',
+      });
       try {
         const result = await createTowerPgAdminWorkspace({
           workspace_name: name,
@@ -702,12 +916,41 @@ export const connectSettingsManagerMixin = {
           app_npub: FLIGHT_DECK_PG_APP_NPUB,
         }, { baseUrl, appNpub: FLIGHT_DECK_PG_APP_NPUB });
         if (!result?.descriptor) throw new Error('Tower did not return a workspace descriptor');
+        const descriptor = parsePgWorkspaceDescriptor({
+          ...result.descriptor,
+          tower_base_url: result.descriptor.tower_base_url || baseUrl,
+        });
+        this.updateConnectPgBootstrapProgress({
+          phase: 'spaces',
+          label: 'Workspace created. Preparing starter spaces...',
+          completed: 1,
+          total: 1 + this.connectPgBootstrapCounts().scopes + this.connectPgBootstrapCounts().channels,
+        });
+        await this.createConnectPgBootstrapSpaces(descriptor.workspaceId, {
+          baseUrl,
+          appNpub: descriptor.appNpub || FLIGHT_DECK_PG_APP_NPUB,
+          completed: 1,
+          total: 1 + this.connectPgBootstrapCounts().scopes + this.connectPgBootstrapCounts().channels,
+        });
+        this.updateConnectPgBootstrapProgress({
+          phase: 'verify',
+          label: 'Opening workspace...',
+          completed: 1 + this.connectPgBootstrapCounts().scopes + this.connectPgBootstrapCounts().channels,
+          total: 1 + this.connectPgBootstrapCounts().scopes + this.connectPgBootstrapCounts().channels,
+        });
         const workspace = await this.connectWithPgDescriptor(JSON.stringify(result.descriptor));
         this.connectNewWorkspaceName = '';
         this.connectNewWorkspaceDescription = '';
+        this.resetConnectPgBootstrapState();
         return workspace;
       } catch (error) {
         this.connectWorkspacesError = pgErrorMessage(error, 'Failed to create Flight Deck PG workspace');
+        this.updateConnectPgBootstrapProgress({
+          active: true,
+          phase: 'error',
+          label: 'Workspace setup failed.',
+          error: this.connectWorkspacesError,
+        });
       } finally {
         this.connectCreatingWorkspace = false;
       }
@@ -785,6 +1028,7 @@ export const connectSettingsManagerMixin = {
     this.connectWorkspacesError = null;
     this.connectNewWorkspaceName = '';
     this.connectNewWorkspaceDescription = '';
+    this.resetConnectPgBootstrapState();
   },
 
   // --- known hosts ---

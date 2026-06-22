@@ -418,14 +418,69 @@
             >
             </p>
             <p class="auth-error" x-show="$store.chat.connectWorkspacesError" x-text="$store.chat.connectWorkspacesError"></p>
+            <div class="connect-build-progress" x-show="$store.chat.connectCreatingWorkspace && $store.chat.connectPgBootstrapProgress.active" x-cloak>
+              <div class="connect-build-progress-head">
+                <strong>Building workspace</strong>
+                <span x-text="`${$store.chat.connectPgBootstrapProgress.completed || 0} / ${$store.chat.connectPgBootstrapProgress.total || 0}`"></span>
+              </div>
+              <div class="connect-build-progress-bar" aria-hidden="true">
+                <span :style="`width: ${$store.chat.connectPgBootstrapProgress.total ? Math.round((($store.chat.connectPgBootstrapProgress.completed || 0) / $store.chat.connectPgBootstrapProgress.total) * 100) : 8}%`"></span>
+              </div>
+              <p x-text="$store.chat.connectPgBootstrapProgress.label || 'Preparing workspace...'"></p>
+            </div>
             <div class="connect-create-workspace">
               <strong x-text="$store.chat.isTowerPgMode ? 'Create new PG workspace' : 'Create new workspace'"></strong>
               <form class="connect-create-form" @submit.prevent="$store.chat.connectCreateWorkspace()">
                 <label><span>Name</span><input type="text" x-model="$store.chat.connectNewWorkspaceName" placeholder="My workspace" /></label>
                 <label><span>Description (optional)</span><input type="text" x-model="$store.chat.connectNewWorkspaceDescription" placeholder="" /></label>
+                <div class="connect-pg-bootstrap" x-show="$store.chat.isTowerPgMode">
+                  <div class="connect-pg-bootstrap-head">
+                    <strong>Starter spaces</strong>
+                    <span x-text="`${$store.chat.connectPgBootstrapCounts().scopes} scopes, ${$store.chat.connectPgBootstrapCounts().channels} channels`"></span>
+                  </div>
+                  <div class="connect-template-toggle" role="group" aria-label="Workspace starter template">
+                    <template x-for="template in $store.chat.connectPgBootstrapTemplates" :key="template.id">
+                      <button
+                        type="button"
+                        class="connect-template-option"
+                        :class="{ active: $store.chat.connectPgBootstrapTemplateId === template.id }"
+                        @click="$store.chat.connectPgBootstrapTemplateId = template.id"
+                        :disabled="$store.chat.connectCreatingWorkspace"
+                      >
+                        <span x-text="template.label"></span>
+                      </button>
+                    </template>
+                  </div>
+                  <template x-for="template in $store.chat.connectPgBootstrapTemplates" :key="`template-${template.id}`">
+                    <div class="connect-bootstrap-template" x-show="$store.chat.connectPgBootstrapTemplateId === template.id">
+                      <p x-text="template.description"></p>
+                      <div class="connect-bootstrap-scope-list">
+                        <template x-for="scope in template.scopes" :key="`${template.id}-${scope.name}`">
+                          <section class="connect-bootstrap-scope">
+                            <label class="connect-bootstrap-scope-row">
+                              <input type="checkbox" x-model="scope.selected" :disabled="$store.chat.connectCreatingWorkspace" />
+                              <span>
+                                <strong x-text="scope.name"></strong>
+                                <small x-text="scope.description"></small>
+                              </span>
+                            </label>
+                            <div class="connect-bootstrap-channel-list" x-show="scope.selected">
+                              <template x-for="channel in scope.channels" :key="`${scope.name}-${channel.name}`">
+                                <label class="connect-bootstrap-channel">
+                                  <input type="checkbox" x-model="channel.selected" :disabled="$store.chat.connectCreatingWorkspace" />
+                                  <span x-text="channel.name"></span>
+                                </label>
+                              </template>
+                            </div>
+                          </section>
+                        </template>
+                      </div>
+                    </div>
+                  </template>
+                </div>
                 <button class="auth-option" type="submit" :disabled="$store.chat.connectCreatingWorkspace || !$store.chat.connectNewWorkspaceName.trim()">
                   <span x-show="!$store.chat.connectCreatingWorkspace">Create workspace</span>
-                  <span x-show="$store.chat.connectCreatingWorkspace">Creating...</span>
+                  <span x-show="$store.chat.connectCreatingWorkspace">Building...</span>
                 </button>
               </form>
             </div>
