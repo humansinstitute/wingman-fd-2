@@ -503,6 +503,8 @@ export const connectSettingsManagerMixin = {
     this.connectStep = 1;
     this.connectPgOnboardingStep = 1;
     this.connectPgSelectedScopeIndex = 0;
+    this.connectPgNewScopeName = '';
+    this.connectPgNewChannelName = '';
     this.connectHostUrl = '';
     this.connectHostLabel = '';
     this.connectHostServiceNpub = '';
@@ -533,6 +535,8 @@ export const connectSettingsManagerMixin = {
   resetConnectPgBootstrapState() {
     this.connectPgOnboardingStep = 1;
     this.connectPgSelectedScopeIndex = 0;
+    this.connectPgNewScopeName = '';
+    this.connectPgNewChannelName = '';
     this.connectPgBootstrapTemplateId = 'company';
     this.connectPgBootstrapTemplates = clonePgWorkspaceBootstrapTemplates();
     this.connectPgBootstrapProgress = {
@@ -568,6 +572,47 @@ export const connectSettingsManagerMixin = {
   connectPgSetBootstrapTemplate(templateId) {
     this.connectPgBootstrapTemplateId = templateId;
     this.connectPgSelectedScopeIndex = 0;
+    this.connectPgNewScopeName = '';
+    this.connectPgNewChannelName = '';
+  },
+
+  connectPgAddBootstrapScope() {
+    const name = trimText(this.connectPgNewScopeName);
+    if (!name) return;
+    const template = this.connectPgBootstrapTemplate();
+    if (!template) return;
+    const existingIndex = (template.scopes || []).findIndex((scope) => trimText(scope.name).toLowerCase() === name.toLowerCase());
+    if (existingIndex >= 0) {
+      template.scopes[existingIndex].selected = true;
+      this.connectPgSelectedScopeIndex = existingIndex;
+      this.connectPgNewScopeName = '';
+      return;
+    }
+    template.scopes.push({
+      name,
+      description: 'Custom scope.',
+      selected: true,
+      channels: [],
+    });
+    this.connectPgSelectedScopeIndex = template.scopes.length - 1;
+    this.connectPgNewScopeName = '';
+    this.connectPgNewChannelName = '';
+  },
+
+  connectPgAddBootstrapChannel() {
+    const name = trimText(this.connectPgNewChannelName);
+    const scope = this.connectPgSelectedScope();
+    if (!name || !scope) return;
+    const existing = (scope.channels || []).find((channel) => trimText(channel.name).toLowerCase() === name.toLowerCase());
+    if (existing) {
+      existing.selected = true;
+      this.connectPgNewChannelName = '';
+      return;
+    }
+    if (!Array.isArray(scope.channels)) scope.channels = [];
+    scope.channels.push({ name, selected: true });
+    scope.selected = true;
+    this.connectPgNewChannelName = '';
   },
 
   connectPgWizardTitle() {

@@ -1727,6 +1727,43 @@ button:disabled {
   flex-direction: column;
   gap: 0.5rem;
 }
+.connect-space-add-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.4rem;
+  margin-bottom: 0.7rem;
+}
+.connect-space-add-form input {
+  width: 100%;
+  min-height: 36px;
+  padding: 0 0.65rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  color: #111827;
+  font-size: 0.86rem;
+}
+.connect-space-add-form input:disabled {
+  background: #f1f5f9;
+  color: #94a3b8;
+}
+.connect-space-add-form button {
+  min-height: 36px;
+  padding: 0 0.75rem;
+  border: 1px solid #111827;
+  border-radius: 8px;
+  background: #111827;
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+.connect-space-add-form button:disabled {
+  border-color: #cbd5e1;
+  background: #e2e8f0;
+  color: #94a3b8;
+  cursor: not-allowed;
+}
 .connect-scope-button {
   width: 100%;
   display: grid;

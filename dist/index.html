@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-CZYrzaUR.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-B3T4APfB.css">
+  <script type="module" crossorigin src="/assets/index-CRGhh-sc.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-B4UxWDgk.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -510,6 +510,10 @@
                 <div class="connect-scope-picker" x-show="$store.chat.connectPgOnboardingStep === 5">
                   <section class="connect-scope-panel">
                     <span class="connect-panel-label">Suggested scopes</span>
+                    <form class="connect-space-add-form" @submit.prevent="$store.chat.connectPgAddBootstrapScope()">
+                      <input type="text" x-model="$store.chat.connectPgNewScopeName" placeholder="New scope name" />
+                      <button type="submit" :disabled="!$store.chat.connectPgNewScopeName.trim()">Add</button>
+                    </form>
                     <div class="connect-scope-list">
                       <template x-for="(scope, index) in ($store.chat.connectPgBootstrapTemplate()?.scopes || [])" :key="scope.name">
                         <button
@@ -531,6 +535,10 @@
                       <h3 x-text="$store.chat.connectPgSelectedScope()?.name"></h3>
                       <p x-text="$store.chat.connectPgSelectedScope()?.description"></p>
                     </div>
+                    <form class="connect-space-add-form" @submit.prevent="$store.chat.connectPgAddBootstrapChannel()">
+                      <input type="text" x-model="$store.chat.connectPgNewChannelName" placeholder="New channel name" :disabled="!$store.chat.connectPgSelectedScope()" />
+                      <button type="submit" :disabled="!$store.chat.connectPgSelectedScope() || !$store.chat.connectPgNewChannelName.trim()">Add</button>
+                    </form>
                     <div class="connect-channel-list">
                       <template x-for="channel in ($store.chat.connectPgSelectedScope()?.channels || [])" :key="channel.name">
                         <label class="connect-channel-card">

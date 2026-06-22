@@ -266,4 +266,31 @@ describe('PG connect settings manager', () => {
     );
     expect(store.showConnectModal).toBe(false);
   });
+
+  it('adds custom bootstrap scopes and channels before creating a PG workspace', async () => {
+    const { connectSettingsManagerMixin } = await import('../src/connect-settings-manager.js');
+    const store = createStore();
+    Object.defineProperties(store, Object.getOwnPropertyDescriptors(connectSettingsManagerMixin));
+    store.resetConnectPgBootstrapState();
+
+    store.connectPgNewScopeName = 'Finance';
+    store.connectPgAddBootstrapScope();
+    expect(store.connectPgSelectedScope()).toMatchObject({
+      name: 'Finance',
+      selected: true,
+    });
+
+    store.connectPgNewChannelName = 'Budgets';
+    store.connectPgAddBootstrapChannel();
+
+    expect(store.connectPgBootstrapCounts()).toEqual({ scopes: 5, channels: 14 });
+    expect(store.selectedConnectPgBootstrapScopes()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'Finance',
+          channels: [expect.objectContaining({ name: 'Budgets' })],
+        }),
+      ]),
+    );
+  });
 });

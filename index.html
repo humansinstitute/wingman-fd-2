@@ -508,6 +508,10 @@
                 <div class="connect-scope-picker" x-show="$store.chat.connectPgOnboardingStep === 5">
                   <section class="connect-scope-panel">
                     <span class="connect-panel-label">Suggested scopes</span>
+                    <form class="connect-space-add-form" @submit.prevent="$store.chat.connectPgAddBootstrapScope()">
+                      <input type="text" x-model="$store.chat.connectPgNewScopeName" placeholder="New scope name" />
+                      <button type="submit" :disabled="!$store.chat.connectPgNewScopeName.trim()">Add</button>
+                    </form>
                     <div class="connect-scope-list">
                       <template x-for="(scope, index) in ($store.chat.connectPgBootstrapTemplate()?.scopes || [])" :key="scope.name">
                         <button
@@ -529,6 +533,10 @@
                       <h3 x-text="$store.chat.connectPgSelectedScope()?.name"></h3>
                       <p x-text="$store.chat.connectPgSelectedScope()?.description"></p>
                     </div>
+                    <form class="connect-space-add-form" @submit.prevent="$store.chat.connectPgAddBootstrapChannel()">
+                      <input type="text" x-model="$store.chat.connectPgNewChannelName" placeholder="New channel name" :disabled="!$store.chat.connectPgSelectedScope()" />
+                      <button type="submit" :disabled="!$store.chat.connectPgSelectedScope() || !$store.chat.connectPgNewChannelName.trim()">Add</button>
+                    </form>
                     <div class="connect-channel-list">
                       <template x-for="channel in ($store.chat.connectPgSelectedScope()?.channels || [])" :key="channel.name">
                         <label class="connect-channel-card">

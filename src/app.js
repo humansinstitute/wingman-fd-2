@@ -484,6 +484,8 @@ export function initApp() {
     connectStep: 1,
     connectPgOnboardingStep: 1,
     connectPgSelectedScopeIndex: 0,
+    connectPgNewScopeName: '',
+    connectPgNewChannelName: '',
     connectHostUrl: '',
     connectHostLabel: '',
     connectHostServiceNpub: '',
