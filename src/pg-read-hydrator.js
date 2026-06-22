@@ -376,6 +376,7 @@ export function mapPgMessageToLocal(message, {
   const updatedAt = isoTimestamp(message?.updated_at || message?.created_at);
   const isThreadSourceMessage = Boolean(threadId && sourceMessageId && sourceMessageId === recordId);
   const threadRecordState = trimText(thread?.record_state) || (thread?.archived_at ? 'archived' : '');
+  const messageRecordState = trimText(message?.record_state) || (message?.deleted_at ? 'deleted' : 'active');
   return {
     record_id: recordId,
     channel_id: trimText(message?.channel_id),
@@ -385,7 +386,9 @@ export function mapPgMessageToLocal(message, {
     sender_npub: resolveSenderNpub(message, actorNpubByActorId)
       || trimText(senderNpub),
     sync_status: 'synced',
-    record_state: isThreadSourceMessage && threadRecordState ? threadRecordState : 'active',
+    record_state: messageRecordState === 'deleted'
+      ? 'deleted'
+      : (isThreadSourceMessage && threadRecordState ? threadRecordState : messageRecordState),
     version: rowVersion(message?.row_version || message?.version),
     created_at: isoTimestamp(message?.created_at || updatedAt),
     updated_at: updatedAt,

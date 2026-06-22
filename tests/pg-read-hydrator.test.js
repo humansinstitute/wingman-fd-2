@@ -221,6 +221,30 @@ describe('PG read hydrator', () => {
     });
   });
 
+  it('preserves deleted PG message state during local mapping', () => {
+    expect(mapPgMessageToLocal({
+      id: 'message-deleted',
+      workspace_id: 'workspace-1',
+      scope_id: 'scope-1',
+      channel_id: 'channel-1',
+      body: 'Deleted message',
+      record_state: 'deleted',
+      deleted_at: '2026-06-22T01:00:00.000Z',
+      row_version: 3,
+      updated_at: '2026-06-22T01:00:00.000Z',
+    }, {
+      workspaceOwnerNpub: 'npub1owner',
+      senderNpub: 'npub1pete',
+      threadById: new Map(),
+    })).toMatchObject({
+      record_id: 'message-deleted',
+      record_state: 'deleted',
+      sync_status: 'synced',
+      version: 3,
+      pg_backend: true,
+    });
+  });
+
   it('maps archived PG thread state onto the source message only', () => {
     const threadById = new Map([
       ['thread-1', {
@@ -690,6 +714,45 @@ describe('PG read hydrator', () => {
     });
     expect(replacePgMessagesForChannel).toHaveBeenCalledWith('channel-1', rows);
     expect(target.refreshMessages).toHaveBeenCalledWith({ scrollToLatest: false });
+  });
+
+  it('hydrates deleted PG messages as tombstones so they do not reappear', async () => {
+    const target = store({
+      selectedChannelId: 'channel-1',
+    });
+    const getTowerPgChannelThreads = vi.fn(async () => ({
+      threads: [],
+    }));
+    const getTowerPgChannelMessages = vi.fn(async () => ({
+      messages: [{
+        id: 'message-deleted',
+        channel_id: 'channel-1',
+        body: 'Deleted message',
+        record_state: 'deleted',
+        deleted_at: '2026-06-22T01:00:00.000Z',
+        row_version: 4,
+      }],
+    }));
+    const replacePgMessagesForChannel = vi.fn(async () => 1);
+    const getTowerPgResponseActivities = vi.fn(async () => ({ response_activities: [] }));
+    const replacePgResponseActivitiesForChannel = vi.fn(async () => 0);
+
+    const rows = await hydrateTowerPgChannelMessages(target, 'channel-1', {
+      getTowerPgChannelThreads,
+      getTowerPgChannelMessages,
+      getTowerPgResponseActivities,
+      replacePgMessagesForChannel,
+      replacePgResponseActivitiesForChannel,
+    });
+
+    expect(rows).toEqual([
+      expect.objectContaining({
+        record_id: 'message-deleted',
+        record_state: 'deleted',
+        version: 4,
+      }),
+    ]);
+    expect(replacePgMessagesForChannel).toHaveBeenCalledWith('channel-1', rows);
   });
 
   it('hydrates changed PG channels from event payloads in parallel', async () => {
