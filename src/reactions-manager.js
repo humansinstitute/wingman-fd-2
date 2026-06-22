@@ -33,6 +33,10 @@ function targetKey(targetRecordFamilyHash, targetRecordId) {
   return `${String(targetRecordFamilyHash || '').trim()}::${String(targetRecordId || '').trim()}`;
 }
 
+function pgTargetKey(targetType, targetId) {
+  return `${String(targetType || '').trim()}::${String(targetId || '').trim()}`;
+}
+
 function sameReactionList(left = [], right = []) {
   if (left.length !== right.length) return false;
   for (let index = 0; index < left.length; index += 1) {
@@ -175,6 +179,8 @@ export const reactionsManagerMixin = {
     if (isTowerPgBackendMode()) {
       const context = resolveTowerPgWorkspaceContext(this);
       const collectPg = async (targetType, targetId, familyHash) => {
+        const missingKey = pgTargetKey(targetType, targetId);
+        if (this.pgMissingReactionTargetKeys?.has(missingKey)) return;
         let result;
         try {
           result = await getTowerPgReactions(context.workspaceId, {
@@ -184,7 +190,11 @@ export const reactionsManagerMixin = {
             appNpub: context.appNpub,
           });
         } catch (error) {
-          if (isMissingPgReactionTargetError(error)) return;
+          if (isMissingPgReactionTargetError(error)) {
+            if (!this.pgMissingReactionTargetKeys) this.pgMissingReactionTargetKeys = new Set();
+            this.pgMissingReactionTargetKeys.add(missingKey);
+            return;
+          }
           throw error;
         }
         for (const reaction of Array.isArray(result?.reactions) ? result.reactions : []) {

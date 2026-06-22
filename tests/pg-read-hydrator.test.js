@@ -26,6 +26,7 @@ import {
   mapPgThreadToLocal,
   resolveTowerPgWorkspaceContext,
 } from '../src/pg-read-hydrator.js';
+import { recordFamilyHash } from '../src/translators/chat.js';
 
 function store(seed = {}) {
   return {
@@ -875,6 +876,40 @@ describe('PG read hydrator', () => {
     expect(target.applyDocComments).toHaveBeenCalledWith([expect.objectContaining({ record_id: 'doc-comment-doc-1' })]);
     expect(replacePgDailyNotesForOwnerAndDate).toHaveBeenCalledWith('owner-actor-1', '2026-06-13', [expect.objectContaining({ record_id: 'daily-owner-actor-1' })]);
     expect(replacePgReactionsForTarget).toHaveBeenCalledWith(expect.any(String), 'message-1', [expect.objectContaining({ record_id: 'reaction-1' })]);
+  });
+
+  it('treats missing PG reaction targets from SSE hydration as empty reactions', async () => {
+    const target = store({
+      reactionRows: [
+        {
+          record_id: 'old-reaction',
+          target_record_id: 'message-missing',
+          target_record_family_hash: recordFamilyHash('chat_message'),
+          emoji: 'thumbs_up',
+          record_state: 'active',
+          pg_backend: true,
+        },
+      ],
+      applyReactions: vi.fn(),
+    });
+    const missingTarget = new Error('Tower PG API 404: {"error":"reaction_target_not_found"}');
+    missingTarget.status = 404;
+    missingTarget.responseText = '{"error":"reaction_target_not_found"}';
+    const getTowerPgReactions = vi.fn(async () => {
+      throw missingTarget;
+    });
+    const replacePgReactionsForTarget = vi.fn(async () => 0);
+
+    const result = await hydrateTowerPgEventUpdates(target, [
+      { entity_type: 'reaction', payload: { target_type: 'message', target_id: 'message-missing' } },
+    ], {
+      getTowerPgReactions,
+      replacePgReactionsForTarget,
+    });
+
+    expect(result).toEqual({ channels: 0, appliedTargets: 1, fallbackEvents: 0, events: 1 });
+    expect(replacePgReactionsForTarget).toHaveBeenCalledWith(expect.any(String), 'message-missing', []);
+    expect(target.applyReactions).toHaveBeenCalledWith([]);
   });
 
   it('hydrates Daily Scope events by owner/date without removing another owner same date', async () => {

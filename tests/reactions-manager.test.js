@@ -299,6 +299,31 @@ describe('reactionsManagerMixin', () => {
     expect(store.reactionRows).toEqual([]);
   });
 
+  it('remembers missing PG reaction targets so visible refreshes do not keep retrying them', async () => {
+    mocks.isTowerPgBackendMode.mockReturnValue(true);
+    const missingTarget = new Error('Tower PG API 404: {"error":"reaction_target_not_found"}');
+    missingTarget.status = 404;
+    missingTarget.responseText = '{"error":"reaction_target_not_found"}';
+    mocks.getReactionsByTargets.mockResolvedValue([]);
+    mocks.getTowerPgReactions.mockRejectedValue(missingTarget);
+
+    const store = createStore({
+      currentWorkspace: {
+        workspaceId: 'workspace-1',
+        workspaceOwnerNpub: 'npub1owner',
+        directHttpsUrl: 'https://tower.example',
+        appNpub: 'flightdeck_pg',
+      },
+      messages: [{ record_id: 'message-missing', pg_backend: true }],
+    });
+
+    await store.refreshReactionsForVisibleTargets();
+    await store.refreshReactionsForVisibleTargets();
+
+    expect(mocks.getTowerPgReactions).toHaveBeenCalledTimes(1);
+    expect(store.pgMissingReactionTargetKeys.has('message::message-missing')).toBe(true);
+  });
+
   it('soft-deletes an active own reaction and inherits task comment groups', async () => {
     mocks.getReactionByIdentity.mockResolvedValue({
       record_id: 'reaction-existing',

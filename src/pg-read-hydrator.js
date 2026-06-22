@@ -50,6 +50,13 @@ function trimText(value) {
   return String(value ?? '').trim();
 }
 
+function isMissingPgReactionTargetError(error) {
+  if (!error || error.status !== 404) return false;
+  const responseText = String(error.responseText || error.message || '');
+  return responseText.includes('reaction_target_not_found')
+    || responseText.includes('Flight Deck PG reaction target was not found');
+}
+
 function normalizeTextArray(value) {
   return [...new Set((Array.isArray(value) ? value : [])
     .map((entry) => trimText(entry))
@@ -1317,12 +1324,22 @@ export async function hydrateTowerPgReactionTarget(store, targetType, targetId, 
 
   const readReactions = deps.getTowerPgReactions || getTowerPgReactions;
   const replaceReactions = deps.replacePgReactionsForTarget || replacePgReactionsForTarget;
-  const result = await readReactions(context.workspaceId, {
-    targetType: resolvedTargetType,
-    targetId: resolvedTargetId,
-    baseUrl: context.baseUrl,
-    appNpub: context.appNpub,
-  });
+  let result;
+  try {
+    result = await readReactions(context.workspaceId, {
+      targetType: resolvedTargetType,
+      targetId: resolvedTargetId,
+      baseUrl: context.baseUrl,
+      appNpub: context.appNpub,
+    });
+  } catch (error) {
+    if (isMissingPgReactionTargetError(error)) {
+      await replaceReactions(targetFamilyHash, resolvedTargetId, []);
+      await mergeStoreReactionRows(store, targetFamilyHash, resolvedTargetId, []);
+      return [];
+    }
+    throw error;
+  }
   const reactions = (Array.isArray(result?.reactions) ? result.reactions : [])
     .map((reaction) => mapPgReactionToLocal(reaction, {
       workspaceOwnerNpub: context.workspaceOwnerNpub,
