@@ -33,10 +33,11 @@ function normalizePreferences(value = {}) {
   );
 }
 
-function normalizeSubscriptionRow(row = {}) {
+function normalizeSubscriptionRow(row = {}, { currentEndpoint = '' } = {}) {
   const subscription = row && typeof row === 'object' && !Array.isArray(row) ? row : {};
   const id = trimText(subscription.id || subscription.subscription_id || subscription.record_id || subscription.endpoint);
   const endpoint = trimText(subscription.endpoint);
+  const cleanCurrentEndpoint = trimText(currentEndpoint);
   return {
     id,
     endpoint,
@@ -45,7 +46,7 @@ function normalizeSubscriptionRow(row = {}) {
     status: trimText(subscription.status) || (subscription.revoked_at ? 'revoked' : 'active'),
     lastSeenAt: trimText(subscription.last_seen_at || subscription.updated_at || subscription.created_at),
     lastSuccessAt: trimText(subscription.last_successful_delivery_at || subscription.last_success_at),
-    isCurrent: Boolean(subscription.is_current || subscription.current),
+    isCurrent: Boolean(subscription.is_current || subscription.current || (cleanCurrentEndpoint && endpoint === cleanCurrentEndpoint)),
   };
 }
 
@@ -154,6 +155,8 @@ export const notificationsManagerMixin = {
   notificationBusy: false,
   notificationSaving: false,
   notificationSubscribing: false,
+  notificationRevokingId: '',
+  notificationCurrentEndpoint: '',
   notificationError: '',
   notificationNotice: '',
   notificationInitializedWorkspaceId: '',
@@ -214,7 +217,9 @@ export const notificationsManagerMixin = {
     const subscriptions = result.subscriptions || result.devices || result.push_subscriptions || [];
     this.notificationPreferences = normalizePreferences(preferences);
     this.notificationDevices = Array.isArray(subscriptions)
-      ? subscriptions.map((row) => normalizeSubscriptionRow(row)).filter((row) => row.id || row.endpoint)
+      ? subscriptions
+        .map((row) => normalizeSubscriptionRow(row, { currentEndpoint: this.notificationCurrentEndpoint }))
+        .filter((row) => row.id || row.endpoint)
       : [];
     this.notificationVapidPublicKey = trimText(result.vapid_public_key || result.vapidPublicKey || result.application_server_key);
   },
@@ -291,6 +296,7 @@ export const notificationsManagerMixin = {
         userVisibleOnly: true,
         applicationServerKey: base64UrlToBytes(this.notificationVapidPublicKey),
       });
+      this.notificationCurrentEndpoint = trimText(subscription.endpoint);
       const result = await upsertTowerPgPushSubscription(context.workspaceId, buildSubscriptionBody(this, subscription), {
         baseUrl: context.baseUrl,
         appNpub: context.appNpub || undefined,
@@ -315,6 +321,7 @@ export const notificationsManagerMixin = {
     if (!context.workspaceId || !context.baseUrl || (!row.id && !row.endpoint)) return;
     this.notificationError = '';
     this.notificationNotice = '';
+    this.notificationRevokingId = row.id || row.endpoint;
     try {
       await revokeTowerPgPushSubscription(context.workspaceId, row.id, {
         endpoint: row.endpoint,
@@ -325,12 +332,14 @@ export const notificationsManagerMixin = {
         const registration = await navigator.serviceWorker.ready.catch(() => null);
         const subscription = await registration?.pushManager?.getSubscription?.();
         await subscription?.unsubscribe?.().catch(() => undefined);
+        this.notificationCurrentEndpoint = '';
       }
       this.notificationDevices = this.notificationDevices.filter((item) => item.id !== row.id && item.endpoint !== row.endpoint);
       this.notificationNotice = 'Notification device revoked.';
     } catch (error) {
       this.notificationError = error?.message || 'Could not revoke notification device.';
+    } finally {
+      this.notificationRevokingId = '';
     }
   },
 };
-

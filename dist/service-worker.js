@@ -1,5 +1,5 @@
 
-const BUILD_ID = "20260622-0109-1-1298";
+const BUILD_ID = "20260622-0122-3-1300";
 const CACHE_PREFIX = 'wingman-fd';
 const CACHE_NAME = `${CACHE_PREFIX}-${BUILD_ID}`;
 const PRECACHE_URLS = [
@@ -60,12 +60,14 @@ function pushTargetUrl(payload = {}) {
   const workspaceSlug = String(payload.workspace_slug || target.workspace_slug || target.workspaceSlug || '').trim();
   const workspaceKey = String(payload.workspace_key || target.workspace_key || target.workspaceKey || '').trim();
   const section = String(target.section || target.surface || target.type || '').trim().toLowerCase();
+  const hasTaskTarget = Boolean(target.task_id || target.taskId);
+  const hasDocumentTarget = Boolean(target.doc_id || target.document_id || target.docId || target.documentId);
   const routeSection = section === 'dm' || section === 'thread' || section === 'message' || section === 'chat'
     ? 'chat'
-    : section === 'document' || section === 'doc' || section === 'comment'
-      ? 'docs'
-      : section === 'task' || section === 'task_assignment'
-        ? 'tasks'
+    : section === 'task' || section === 'task_assignment' || section === 'task_comment' || (section === 'comment' && hasTaskTarget)
+      ? 'tasks'
+      : section === 'document' || section === 'doc' || section === 'doc_comment' || section === 'document_comment' || (section === 'comment' && hasDocumentTarget)
+        ? 'docs'
         : 'flight-deck';
   const path = workspaceSlug ? `/${encodeURIComponent(workspaceSlug)}/${routeSection}` : `/${routeSection}`;
   const url = new URL(path, self.location.origin);
@@ -85,6 +87,7 @@ function pushTargetUrl(payload = {}) {
     if (commentId) url.searchParams.set('commentid', commentId);
   } else if (routeSection === 'tasks') {
     if (taskId) url.searchParams.set('taskid', taskId);
+    if (commentId) url.searchParams.set('commentid', commentId);
   }
   return url.toString();
 }

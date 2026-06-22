@@ -5800,8 +5800,10 @@
                     <button
                       type="button"
                       class="btn-danger btn-compact"
+                      :disabled="$store.chat.notificationRevokingId === (device.id || device.endpoint)"
                       @click="$store.chat.revokeNotificationDevice(device)"
-                    >Revoke</button>
+                      x-text="$store.chat.notificationRevokingId === (device.id || device.endpoint) ? 'Revoking...' : 'Revoke'"
+                    ></button>
                   </div>
                 </template>
               </div>
