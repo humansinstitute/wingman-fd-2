@@ -93,6 +93,13 @@ import {
   startPgEditLeaseRenewal,
 } from './pg-edit-session.js';
 import { diffLines } from 'diff';
+import { createTiptapEditorAdapter } from './docs/editor/tiptap-editor-adapter.js';
+import {
+  createDocumentEditorState,
+  shouldUseRichDocumentEditor,
+} from './docs/editor/document-editor-store.js';
+import { prosemirrorToFlightDeckContentModel } from './docs/editor/prosemirror-to-flightdeck.js';
+import { FLIGHTDECK_PROSEMIRROR_CONTENT_FORMAT } from './docs/editor/prosemirror-flightdeck-schema.js';
 
 // ---------------------------------------------------------------------------
 // Pure utility functions (no `this` dependency)
@@ -119,6 +126,11 @@ function buildStoredDocumentContent(contentModel) {
     format: DOCUMENT_CONTENT_STORAGE_FORMAT,
     content_model: contentModel,
   };
+}
+
+function hasProseMirrorContentModel(contentModel = {}) {
+  return contentModel?.content_format === FLIGHTDECK_PROSEMIRROR_CONTENT_FORMAT
+    && contentModel?.editor_state?.type === 'doc';
 }
 
 export function mergeDocumentSaveReferences(record = {}, parsedReferences = []) {
@@ -842,6 +854,7 @@ export const docsManagerMixin = {
   loadDocEditorFromSelection() {
     const item = this.selectedDocument;
     this.docShareQuery = '';
+    this.destroyDocRichEditor?.();
     if (!item) {
       this.docEditorTitle = '';
       this.docEditorContent = '';
@@ -865,6 +878,8 @@ export const docsManagerMixin = {
       this.showDocShareModal = false;
       this.docShareTargetType = '';
       this.docShareTargetId = '';
+      this.docEditorProseMirrorState = null;
+      this.docEditorContentModel = null;
       return;
     }
 
@@ -879,6 +894,14 @@ export const docsManagerMixin = {
     this.docEditorSharesDirty = false;
     this.docEditorBlocks = contentBlocks;
     this.docEditorContent = assembleMarkdownBlocks(contentBlocks);
+    if (this.selectedDocType === 'document') {
+      const editorState = createDocumentEditorState(item);
+      this.docEditorProseMirrorState = editorState.editorState;
+      this.docEditorContentModel = editorState.contentModel;
+    } else {
+      this.docEditorProseMirrorState = null;
+      this.docEditorContentModel = null;
+    }
     this.docEditingBlockIndex = -1;
     this.docBlockBuffer = '';
     this.docBlockEditorMinHeightPx = 0;
@@ -896,6 +919,82 @@ export const docsManagerMixin = {
     this.docShareTargetId = '';
     this.scheduleDocCommentConnectorUpdate();
     this.scheduleStorageImageHydration();
+  },
+
+  isTiptapDocsEditorEnabled() {
+    return shouldUseRichDocumentEditor(this.selectedDocument || {}, {
+      enabled: this.docEditorRichFeatureEnabled === true,
+    });
+  },
+
+  destroyDocRichEditor() {
+    if (!this.docRichEditorAdapter) return;
+    this.docRichEditorAdapter.destroy();
+    this.docRichEditorAdapter = null;
+    this.docRichEditorMountEl = null;
+  },
+
+  syncDocRichEditorContentModel(contentModel = null) {
+    const model = contentModel || this.docRichEditorAdapter?.getContentModel?.() || null;
+    if (!hasProseMirrorContentModel(model)) return null;
+    this.docEditorContentModel = model;
+    this.docEditorProseMirrorState = model.editor_state;
+    this.docEditorContent = model.content || '';
+    this.docEditorBlocks = normalizeDocumentBlocks(model.content_blocks, model.content);
+    return model;
+  },
+
+  buildSelectedDocContentModel() {
+    if (this.docEditorMode === 'rich') {
+      const synced = this.syncDocRichEditorContentModel();
+      if (synced) return synced;
+    }
+    if (
+      this.selectedDocument?.content_format === FLIGHTDECK_PROSEMIRROR_CONTENT_FORMAT
+      && this.docEditorProseMirrorState?.type === 'doc'
+    ) {
+      const model = prosemirrorToFlightDeckContentModel(this.docEditorProseMirrorState);
+      this.syncDocRichEditorContentModel(model);
+      return model;
+    }
+    return buildDocumentContentModel(this.docEditorBlocks);
+  },
+
+  refreshProseMirrorStateFromCompatibility() {
+    if (this.selectedDocument?.content_format !== FLIGHTDECK_PROSEMIRROR_CONTENT_FORMAT) return null;
+    const editorState = createDocumentEditorState({
+      ...(this.selectedDocument || {}),
+      content: this.docEditorContent,
+      content_blocks: this.docEditorBlocks,
+      editor_state: null,
+    });
+    this.docEditorProseMirrorState = editorState.editorState;
+    this.docEditorContentModel = editorState.contentModel;
+    return editorState.contentModel;
+  },
+
+  mountDocRichEditor(element = null) {
+    if (!element || this.docEditorMode !== 'rich') return;
+    if (this.docRichEditorAdapter && this.docRichEditorMountEl === element) return;
+    this.destroyDocRichEditor();
+    const sourceDoc = {
+      ...(this.selectedDocument || {}),
+      content: this.docEditorContent,
+      content_blocks: this.docEditorBlocks,
+      editor_state: this.docEditorProseMirrorState,
+    };
+    this.docRichEditorMountEl = element;
+    this.docRichEditorAdapter = createTiptapEditorAdapter({
+      element,
+      document: sourceDoc,
+      editorState: this.docEditorProseMirrorState,
+      editable: true,
+      onUpdate: (contentModel) => {
+        this.syncDocRichEditorContentModel(contentModel);
+        this.scheduleDocAutosave();
+      },
+    });
+    this.syncDocRichEditorContentModel();
   },
 
   async loadDocComments(docId, options = {}) {
@@ -1633,7 +1732,7 @@ export const docsManagerMixin = {
       const acquired = await this.acquireSelectedDocCheckout();
       if (!acquired) return false;
     }
-    this.setDocEditorMode(mode === 'source' ? 'source' : 'block');
+    this.setDocEditorMode(mode === 'source' ? 'source' : mode === 'rich' ? 'rich' : 'block');
     if (isTowerPgBackendMode() && isSyncedPgRecord(item)) {
       startPgEditLeaseRenewal(this, item, 'document');
     }
@@ -1672,7 +1771,8 @@ export const docsManagerMixin = {
   },
 
   setDocEditorMode(mode) {
-    const nextMode = mode === 'source' ? 'source' : mode === 'block' ? 'block' : 'preview';
+    const nextMode = mode === 'rich' ? 'rich' : mode === 'source' ? 'source' : mode === 'block' ? 'block' : 'preview';
+    if (nextMode === 'rich' && !this.isTiptapDocsEditorEnabled()) return;
     if (nextMode !== 'preview') {
       if (isTowerPgBackendMode()) {
         const item = this.selectedDocument;
@@ -1685,8 +1785,24 @@ export const docsManagerMixin = {
     if (nextMode === 'source' && this.docEditingBlockIndex >= 0) {
       this.commitDocBlockEdit();
     }
+    if (this.docEditorMode === 'rich' && nextMode !== 'rich') {
+      this.syncDocRichEditorContentModel();
+      this.destroyDocRichEditor();
+    }
     if (nextMode === 'preview' && this.docEditingBlockIndex >= 0) {
       this.cancelDocBlockEdit();
+    }
+    if (nextMode === 'rich' && this.docEditingBlockIndex >= 0) {
+      this.commitDocBlockEdit();
+    }
+    if (nextMode === 'rich' && !this.docEditorProseMirrorState) {
+      const editorState = createDocumentEditorState({
+        ...(this.selectedDocument || {}),
+        content: this.docEditorContent,
+        content_blocks: this.docEditorBlocks,
+      });
+      this.docEditorProseMirrorState = editorState.editorState;
+      this.docEditorContentModel = editorState.contentModel;
     }
     this.docEditorMode = nextMode;
   },
@@ -1698,6 +1814,10 @@ export const docsManagerMixin = {
     }
     if (this.docEditorMode === 'block') {
       this.setDocEditorMode('source');
+      return;
+    }
+    if (this.docEditorMode === 'source' && this.isTiptapDocsEditorEnabled()) {
+      this.setDocEditorMode('rich');
       return;
     }
     this.setDocEditorMode('preview');
@@ -1764,6 +1884,7 @@ export const docsManagerMixin = {
   handleDocSourceInput(value) {
     this.docEditorContent = value;
     this.syncDocBlocksFromContent();
+    this.refreshProseMirrorStateFromCompatibility();
     this.scheduleDocAutosave();
     this.scheduleStorageImageHydration();
   },
@@ -1830,6 +1951,7 @@ export const docsManagerMixin = {
     }
     this.docEditorBlocks = normalizeDocumentBlocks(blocks);
     this.docEditorContent = assembleMarkdownBlocks(this.docEditorBlocks);
+    this.refreshProseMirrorStateFromCompatibility();
     this.docEditingBlockIndex = -1;
     this.docBlockBuffer = '';
     this.docBlockEditorMinHeightPx = 0;
@@ -2930,7 +3052,7 @@ export const docsManagerMixin = {
     const autosave = options.autosave === true;
     const allowStaleRetry = options.staleRetry !== false;
     const nextTitle = this.docEditorTitle.trim() || 'Untitled document';
-    const contentModel = buildDocumentContentModel(this.docEditorBlocks);
+    const contentModel = this.buildSelectedDocContentModel();
     const nextReferences = mergeDocumentSaveReferences(item, parseRecordReferencesFromText(contentModel.content));
     const nextLinksSerialized = JSON.stringify(buildRecordLinkPayload({
       ...item,
@@ -2986,6 +3108,9 @@ export const docsManagerMixin = {
             content: contentModel.content,
             content_format: contentModel.content_format,
             content_blocks: contentModel.content_blocks,
+            editor_state: contentModel.editor_state ?? null,
+            editor_state_format: contentModel.editor_state_format ?? null,
+            editor_state_version: contentModel.editor_state_version ?? null,
             content_storage_object_id: contentPayload.content_storage_object_id,
             content_storage_format: contentPayload.content_storage_format,
             content_storage_content_type: contentPayload.content_storage_content_type,
@@ -3035,6 +3160,9 @@ export const docsManagerMixin = {
         content: contentModel.content,
         content_format: contentModel.content_format,
         content_blocks: contentModel.content_blocks,
+        editor_state: contentModel.editor_state ?? null,
+        editor_state_format: contentModel.editor_state_format ?? null,
+        editor_state_version: contentModel.editor_state_version ?? null,
         content_storage_object_id: contentPayload.content_storage_object_id,
         content_storage_format: contentPayload.content_storage_format,
         content_storage_content_type: contentPayload.content_storage_content_type,

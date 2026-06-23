@@ -579,6 +579,9 @@ export function mapPgDocToLocal(doc, { workspaceOwnerNpub } = {}) {
     content: trimText(doc?.summary),
     content_format: null,
     content_blocks: [],
+    editor_state: null,
+    editor_state_format: null,
+    editor_state_version: null,
     content_storage_object_id: storageObjectId || null,
     content_storage_format: storageObjectId ? 'flightdeck_pg_doc_body' : null,
     content_storage_content_type: trimText(storageObject.content_type),
@@ -628,6 +631,11 @@ function resolveStoredDocumentContent(raw, fallback = {}) {
         content_blocks: Array.isArray(model.content_blocks)
           ? model.content_blocks
           : (Array.isArray(fallback.content_blocks) ? fallback.content_blocks : []),
+        editor_state: model.editor_state && typeof model.editor_state === 'object'
+          ? model.editor_state
+          : (fallback.editor_state || null),
+        editor_state_format: model.editor_state_format ?? fallback.editor_state_format ?? null,
+        editor_state_version: model.editor_state_version ?? fallback.editor_state_version ?? null,
       };
     }
   } catch {
@@ -637,6 +645,9 @@ function resolveStoredDocumentContent(raw, fallback = {}) {
     content: raw,
     content_format: fallback.content_format ?? null,
     content_blocks: Array.isArray(fallback.content_blocks) ? fallback.content_blocks : [],
+    editor_state: fallback.editor_state || null,
+    editor_state_format: fallback.editor_state_format ?? null,
+    editor_state_version: fallback.editor_state_version ?? null,
   };
 }
 

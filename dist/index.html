@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-CsYmCAnp.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-nWCfdSox.css">
+  <script type="module" crossorigin src="/assets/index-z6idodCu.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-BmS6haPL.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -2421,6 +2421,16 @@
 	                        type="button"
 	                        @click="if ($store.chat.editingTask?.record_id) $store.chat.copyFlightDeckReference('task', $store.chat.editingTask.record_id, $store.chat.editingTask.title || 'Untitled task'); open = false"
 	                      >FD Ref</button>
+                        <button
+                          type="button"
+                          x-show="$store.chat.isTowerPgMode"
+                          @click="$store.chat.openInvocationModal('task', $store.chat.editingTask); open = false"
+                        >Invoke</button>
+                        <button
+                          type="button"
+                          x-show="$store.chat.isTowerPgMode"
+                          @click="$store.chat.openInvocationHistoryModal('task', $store.chat.editingTask); open = false"
+                        >Invocation history</button>
 	                      <button
 	                        type="button"
 	                        x-show="!$store.chat.isTowerPgMode"
@@ -3903,6 +3913,28 @@
                     </div>
                     <button
                       type="button"
+                      class="doc-invocation-btn"
+                      x-show="$store.chat.isTowerPgMode && $store.chat.selectedDocument?.pg_backend"
+                      title="Request review"
+                      @click="$store.chat.openInvocationModal('document')"
+                    >
+                      <span class="doc-invocation-avatar-stack" aria-hidden="true">
+                        <template x-for="agent in $store.chat.previewPersonalAgents" :key="agent.npub || agent.launch_url">
+                          <span class="doc-invocation-avatar">
+                            <template x-if="agent.npub && $store.chat.getSenderAvatar(agent.npub)">
+                              <img :src="$store.chat.getSenderAvatar(agent.npub)" alt="" />
+                            </template>
+                            <template x-if="!agent.npub || !$store.chat.getSenderAvatar(agent.npub)">
+                              <span x-text="$store.chat.getInitials(agent.title || agent.npub || 'Agent')"></span>
+                            </template>
+                          </span>
+                        </template>
+                        <span class="doc-invocation-avatar doc-invocation-avatar-empty" x-show="$store.chat.previewPersonalAgents.length === 0">A</span>
+                      </span>
+                      <span>Review</span>
+                    </button>
+                    <button
+                      type="button"
                       class="doc-icon-btn"
                       title="Share"
                       aria-label="Share"
@@ -3936,6 +3968,11 @@
                         >
                           <span x-text="$store.chat.docEditorMode === 'source' ? 'Block editor' : 'Source editor'"></span>
                         </button>
+                        <button
+                          type="button"
+                          x-show="$store.chat.isTowerPgMode && $store.chat.isTiptapDocsEditorEnabled()"
+                          @click="$store.chat.enterSelectedDocEditMode('rich'); open = false"
+                        >Rich editor</button>
 	                        <button
 	                          type="button"
 	                          x-show="!$store.chat.isTowerPgMode"
@@ -3944,6 +3981,7 @@
                         <button type="button" @click="$store.chat.toggleDocCommentsVisible(); open = false">
                           <span x-text="$store.chat.docCommentsVisible ? 'Hide comments' : 'Show comments'"></span>
                         </button>
+                        <button type="button" x-show="$store.chat.isTowerPgMode" @click="$store.chat.openInvocationHistoryModal('document'); open = false">Invocation history</button>
                         <button type="button" @click="$store.chat.openDocVersioning(); open = false">Versioning</button>
                         <button type="button" @click="$store.chat.exportDocMarkdown(); open = false">Export as .md</button>
                         <button type="button" @click="$store.chat.exportDocPDF(); open = false">Export as .pdf</button>
@@ -4008,7 +4046,22 @@
                 </template>
 
                 <div class="doc-content-block">
-                  <template x-if="$store.chat.docEditorMode !== 'source'">
+                  <template x-if="$store.chat.docEditorMode === 'rich'">
+                    <div
+                      class="doc-content-layout"
+                      data-doc-content-layout
+                      :class="{ 'doc-content-layout-with-thread': $store.chat.docCommentsVisible }"
+                    >
+                      <div class="doc-preview-surface">
+                        <div
+                          class="doc-rich-editor"
+                          x-init="$nextTick(() => $store.chat.mountDocRichEditor($el))"
+                          x-effect="$store.chat.docEditorMode; if ($store.chat.docEditorMode === 'rich') $nextTick(() => $store.chat.mountDocRichEditor($el))"
+                        ></div>
+                      </div>
+                    </div>
+                  </template>
+                  <template x-if="$store.chat.docEditorMode !== 'source' && $store.chat.docEditorMode !== 'rich'">
                     <div
                       class="doc-content-layout"
                       data-doc-content-layout
@@ -4509,6 +4562,73 @@
                 <button type="button" class="btn-cancel" @click="$store.chat.closeDocShareModal()">Cancel</button>
                 <button type="button" class="btn-confirm" :disabled="!$store.chat.docEditorSharesDirty" @click="$store.chat.saveDocShareTarget()">Save sharing</button>
               </div>
+            </div>
+          </div>
+
+          <div class="doc-modal-backdrop" x-show="$store.chat.showInvocationModal" x-cloak @click.self="$store.chat.closeInvocationModal()">
+            <div class="doc-modal-card invocation-modal">
+              <button class="modal-close" type="button" @click="$store.chat.closeInvocationModal()">&times;</button>
+              <h3 x-text="`${$store.chat.getInvocationTargetTypeLabel($store.chat.invocationTargetType)} invocation`"></h3>
+              <p class="docs-browser-empty" x-text="$store.chat.invocationTargetTitle"></p>
+
+              <label class="docs-field-label">Recipient</label>
+              <select class="docs-share-input invocation-select" x-model="$store.chat.invocationRecipientNpub" :disabled="$store.chat.invocationSubmitting || $store.chat.invocablePersonalAgents.length === 0">
+                <option value="" x-show="$store.chat.invocablePersonalAgents.length === 0">No agents configured</option>
+                <template x-for="agent in $store.chat.invocablePersonalAgents" :key="agent.npub">
+                  <option :value="agent.npub" x-text="agent.title"></option>
+                </template>
+              </select>
+
+              <label class="docs-field-label">Prompt</label>
+              <textarea
+                class="docs-share-input invocation-prompt"
+                x-model="$store.chat.invocationPrompt"
+                :disabled="$store.chat.invocationSubmitting"
+                rows="7"
+              ></textarea>
+
+              <p class="doc-comment-modal-copy invocation-error" x-show="$store.chat.invocationError" x-text="$store.chat.invocationError"></p>
+              <p class="doc-comment-modal-copy invocation-success" x-show="$store.chat.invocationSuccess" x-text="$store.chat.invocationSuccess"></p>
+
+              <div class="new-doc-modal-actions">
+                <button type="button" class="btn-cancel" @click="$store.chat.closeInvocationModal()" :disabled="$store.chat.invocationSubmitting">Cancel</button>
+                <button
+                  type="button"
+                  class="btn-confirm"
+                  @click="$store.chat.submitInvocation()"
+                  :disabled="$store.chat.invocationSubmitting || !$store.chat.invocationPrompt.trim() || !$store.chat.invocationRecipientNpub"
+                  x-text="$store.chat.invocationSubmitting ? 'Sending...' : 'Send invocation'"
+                ></button>
+              </div>
+            </div>
+          </div>
+
+          <div class="doc-modal-backdrop" x-show="$store.chat.showInvocationHistoryModal" x-cloak @click.self="$store.chat.closeInvocationHistoryModal()">
+            <div class="doc-modal-card invocation-history-modal">
+              <button class="modal-close" type="button" @click="$store.chat.closeInvocationHistoryModal()">&times;</button>
+              <h3>Invocation history</h3>
+              <p class="docs-browser-empty">
+                <span x-text="$store.chat.getInvocationTargetTypeLabel($store.chat.invocationHistoryTargetType)"></span>
+                <span>&middot;</span>
+                <span x-text="$store.chat.invocationHistoryTargetTitle"></span>
+              </p>
+
+              <div class="doc-versioning-status" x-show="$store.chat.invocationHistoryLoading">Loading invocations...</div>
+              <div class="doc-versioning-status doc-versioning-error" x-show="$store.chat.invocationHistoryError" x-text="$store.chat.invocationHistoryError"></div>
+              <div class="doc-versioning-status" x-show="!$store.chat.invocationHistoryLoading && !$store.chat.invocationHistoryError && $store.chat.invocationHistoryRows.length === 0">No invocations yet.</div>
+
+              <ul class="invocation-history-list" x-show="$store.chat.invocationHistoryRows.length > 0">
+                <template x-for="row in $store.chat.invocationHistoryRows" :key="row.invocation_id">
+                  <li class="invocation-history-row">
+                    <div class="invocation-history-row-main">
+                      <span class="invocation-history-status" x-text="row.status || 'open'"></span>
+                      <span class="invocation-history-date" x-text="$store.chat.formatRelativeTime(row.created_at || row.updated_at)"></span>
+                    </div>
+                    <p x-text="row.prompt"></p>
+                    <small x-text="(row.recipients || []).map((recipient) => $store.chat.getInvocationRecipientLabel(recipient.npub)).join(', ')"></small>
+                  </li>
+                </template>
+              </ul>
             </div>
           </div>
 
