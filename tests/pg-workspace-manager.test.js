@@ -92,6 +92,7 @@ async function buildStore(overrides = {}) {
     pgContextSelectedThreadId: '',
     showBoardDescendantTasks: true,
     taskViewMode: 'list',
+    taskSortMode: 'modified',
     selectedDocType: null,
     selectedDocId: null,
     selectedDocCommentId: null,
@@ -336,6 +337,7 @@ describe('PG workspace manager mode', () => {
     expect(store.activeOpportunityId).toBeNull();
     expect(store.showBoardDescendantTasks).toBe(false);
     expect(store.taskViewMode).toBe('kanban');
+    expect(store.taskSortMode).toBe('manual');
     expect(store.closeThread).toHaveBeenCalledWith({ syncRoute: false });
     expect(store.closeTaskDetail).toHaveBeenCalledWith({ syncRoute: false });
     expect(store.syncRoute).toHaveBeenCalledWith(true);

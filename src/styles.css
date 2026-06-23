@@ -12882,6 +12882,35 @@ button:disabled {
   border-color: var(--accent);
 }
 
+.task-sort-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  height: 32px;
+  padding: 0 0.35rem 0 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 650;
+  flex: 0 0 auto;
+}
+
+.task-sort-select {
+  min-width: 6.7rem;
+  height: 26px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+}
+
+.task-sort-select:focus {
+  outline: none;
+}
+
 .task-tag-filter-shell {
   position: relative;
   flex: 0 1 min(50vw, 520px);

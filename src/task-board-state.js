@@ -264,6 +264,7 @@ export const UNSCOPED_TASK_BOARD_ID = '__unscoped__';
 export const RECENT_TASK_BOARD_ID = '__recent__';
 export const ALL_TASK_BOARD_ID = '__all__';
 export const WEEKDAY_OPTIONS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+export const TASK_BOARD_SORT_MODES = Object.freeze(['manual', 'created', 'modified', 'alpha']);
 
 const EMPTY_ARRAY = Object.freeze([]);
 const scopesMapCache = new WeakMap();
@@ -475,7 +476,8 @@ function getTaskBoardDerived(store) {
     && previous.showBoardDescendantTasks === store?.showBoardDescendantTasks
     && previous.taskFilter === store?.taskFilter
     && previous.taskFilterTags === taskFilterTags
-    && previous.taskFilterAssignee === store?.taskFilterAssignee) {
+    && previous.taskFilterAssignee === store?.taskFilterAssignee
+    && previous.taskSortMode === normalizeTaskSortMode(store?.taskSortMode)) {
     return previous.value;
   }
 
@@ -505,7 +507,9 @@ function getTaskBoardDerived(store) {
   const summaryTasks = filteredTasks.filter((task) =>
     task.state !== 'archive' && graph.parentIds.has(task.record_id)
   );
-  const boardColumns = computeBoardColumns(activeTasks, doneTasks, summaryTasks);
+  const boardColumns = computeBoardColumns(activeTasks, doneTasks, summaryTasks, {
+    sortMode: store?.taskSortMode,
+  });
   const listGroupedTasks = boardColumns.filter((column) => column.tasks.length > 0);
 
   let visibleBoardTasks = boardScopedTasks.filter((task) => task.state !== 'archive');
@@ -550,6 +554,7 @@ function getTaskBoardDerived(store) {
     taskFilter: store?.taskFilter,
     taskFilterTags,
     taskFilterAssignee: store?.taskFilterAssignee,
+    taskSortMode: normalizeTaskSortMode(store?.taskSortMode),
     value,
   });
 
@@ -873,6 +878,26 @@ export function getTaskBoardOrder(task) {
   return Number.isFinite(order) ? order : null;
 }
 
+export function normalizeTaskSortMode(mode) {
+  const normalized = String(mode || '').trim().toLowerCase();
+  return TASK_BOARD_SORT_MODES.includes(normalized) ? normalized : 'manual';
+}
+
+function parseTaskTime(task, key) {
+  const ts = Date.parse(task?.[key] || '');
+  return Number.isFinite(ts) ? ts : 0;
+}
+
+function compareTaskTitleNatural(left = {}, right = {}) {
+  const labelDelta = String(left?.title || '').localeCompare(
+    String(right?.title || ''),
+    undefined,
+    { numeric: true, sensitivity: 'base' },
+  );
+  if (labelDelta !== 0) return labelDelta;
+  return String(left?.record_id || '').localeCompare(String(right?.record_id || ''));
+}
+
 export function sortTasksByBoardOrder(tasks = []) {
   if (!Array.isArray(tasks) || tasks.length <= 1) return Array.isArray(tasks) ? tasks : [];
   return (tasks || [])
@@ -885,6 +910,23 @@ export function sortTasksByBoardOrder(tasks = []) {
       return left.index - right.index;
     })
     .map((entry) => entry.task);
+}
+
+export function sortTasksForBoard(tasks = [], sortMode = 'manual') {
+  const normalizedMode = normalizeTaskSortMode(sortMode);
+  if (normalizedMode === 'manual') return sortTasksByBoardOrder(tasks);
+  if (!Array.isArray(tasks) || tasks.length <= 1) return Array.isArray(tasks) ? tasks : [];
+
+  return [...tasks].sort((left, right) => {
+    if (normalizedMode === 'created') {
+      const delta = parseTaskTime(left, 'created_at') - parseTaskTime(right, 'created_at');
+      if (delta !== 0) return delta;
+    } else if (normalizedMode === 'modified') {
+      const delta = parseTaskTime(right, 'updated_at') - parseTaskTime(left, 'updated_at');
+      if (delta !== 0) return delta;
+    }
+    return compareTaskTitleNatural(left, right);
+  });
 }
 
 export function getTaskVirtualBoardOrder(task, index) {
@@ -971,10 +1013,11 @@ export function buildTaskBoardReorderPatches(tasks = [], options = {}) {
     .filter(Boolean);
 }
 
-export function computeBoardColumns(activeTasks, doneTasks, summaryTasks) {
-  const normalizedSummaryTasks = sortTasksByBoardOrder(dedupeTasksByRecordId(summaryTasks));
-  const normalizedActiveTasks = sortTasksByBoardOrder(dedupeTasksByRecordId(activeTasks));
-  const normalizedDoneTasks = sortTasksByBoardOrder(dedupeTasksByRecordId(doneTasks));
+export function computeBoardColumns(activeTasks, doneTasks, summaryTasks, options = {}) {
+  const sortMode = normalizeTaskSortMode(options.sortMode);
+  const normalizedSummaryTasks = sortTasksForBoard(dedupeTasksByRecordId(summaryTasks), sortMode);
+  const normalizedActiveTasks = sortTasksForBoard(dedupeTasksByRecordId(activeTasks), sortMode);
+  const normalizedDoneTasks = sortTasksForBoard(dedupeTasksByRecordId(doneTasks), sortMode);
   const cols = [];
   if (normalizedSummaryTasks.length > 0) {
     cols.push({ state: 'summary', label: 'Summary', tasks: normalizedSummaryTasks });
@@ -1564,6 +1607,15 @@ export const taskBoardStateMixin = {
   toggleTaskViewMode() {
     this.taskViewMode = this.taskViewMode === 'kanban' ? 'list' : 'kanban';
     this.syncRoute();
+  },
+
+  setTaskSortMode(mode) {
+    this.taskSortMode = normalizeTaskSortMode(mode);
+    this.syncRoute();
+  },
+
+  get taskSortIsManual() {
+    return normalizeTaskSortMode(this.taskSortMode) === 'manual';
   },
 
   get listGroupedTasks() {

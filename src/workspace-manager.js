@@ -1183,6 +1183,7 @@ export const workspaceManagerMixin = {
         this.persistSelectedBoardId?.(this.selectedBoardId);
         this.showBoardDescendantTasks = false;
         this.taskViewMode = 'kanban';
+        this.taskSortMode = 'manual';
         this.selectedChannelId = null;
         this.pgContextSelectedChannelId = '';
         this.pgContextSelectedThreadId = '';

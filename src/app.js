@@ -85,6 +85,7 @@ import {
   ALL_TASK_BOARD_ID,
   RECENT_TASK_BOARD_ID,
   UNSCOPED_TASK_BOARD_ID,
+  normalizeTaskSortMode,
   WEEKDAY_OPTIONS,
 } from './task-board-state.js';
 import { renderMarkdownToHtml } from './markdown.js';
@@ -791,6 +792,7 @@ export function initApp() {
     boardPickerQuery: '',
     showBoardDescendantTasks: false,
     taskViewMode: 'kanban',
+    taskSortMode: 'manual',
     collapsedSections: {},
     taskBoardScopeSetupInFlight: false,
     newTaskTitle: '',
@@ -2249,6 +2251,7 @@ export function initApp() {
         if (this.showBoardDescendantTasks) url.searchParams.set('descendants', '1');
         if (this.navSection === 'tasks' && this.activeTaskId) url.searchParams.set('taskid', this.activeTaskId);
         if (this.navSection === 'tasks' && this.taskViewMode === 'list') url.searchParams.set('view', 'list');
+        if (normalizeTaskSortMode(this.taskSortMode) !== 'manual') url.searchParams.set('sort', normalizeTaskSortMode(this.taskSortMode));
       }
 
       return `${url.pathname}${url.search}`;
@@ -2351,6 +2354,7 @@ export function initApp() {
           this.showBoardDescendantTasks = route.params.descendants === '1';
           if (route.params.view === 'list') this.taskViewMode = 'list';
           else this.taskViewMode = 'kanban';
+          this.taskSortMode = normalizeTaskSortMode(route.params.sort);
           this.normalizeTaskFilterTags();
           if (route.params.taskid) {
             this.openTaskDetail(route.params.taskid);

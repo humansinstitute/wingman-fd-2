@@ -24,6 +24,7 @@ import {
 } from './crypto/workspace-keys.js';
 import { parseRouteLocation } from './route-helpers.js';
 import { normalizeEnabledFlightDeckSection } from './disabled-surfaces.js';
+import { normalizeTaskSortMode } from './task-board-state.js';
 import {
   normalizeBackendUrl,
 } from './utils/state-helpers.js';
@@ -673,6 +674,7 @@ export function createShellState(options = {}) {
         if (this.showBoardDescendantTasks) url.searchParams.set('descendants', '1');
         if (this.navSection === 'tasks' && this.activeTaskId) url.searchParams.set('taskid', this.activeTaskId);
         if (this.navSection === 'tasks' && this.taskViewMode === 'list') url.searchParams.set('view', 'list');
+        if (normalizeTaskSortMode(this.taskSortMode) !== 'manual') url.searchParams.set('sort', normalizeTaskSortMode(this.taskSortMode));
       }
 
       return `${url.pathname}${url.search}`;
@@ -766,6 +768,7 @@ export function createShellState(options = {}) {
           this.showBoardDescendantTasks = route.params.descendants === '1';
           if (route.params.view === 'list') this.taskViewMode = 'list';
           else this.taskViewMode = 'kanban';
+          this.taskSortMode = normalizeTaskSortMode(route.params.sort);
           this.normalizeTaskFilterTags();
           if (route.params.taskid) {
             this.openTaskDetail(route.params.taskid);

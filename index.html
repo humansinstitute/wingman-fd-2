@@ -2143,6 +2143,21 @@
               </template>
             </button>
 
+            <label class="task-sort-control" title="Order tasks inside each board column">
+              <span>Sort</span>
+              <select
+                class="task-sort-select"
+                :value="$store.chat.taskSortMode"
+                @change="$store.chat.setTaskSortMode($event.target.value)"
+                aria-label="Order tasks inside each board column"
+              >
+                <option value="manual">Manual</option>
+                <option value="created">Created</option>
+                <option value="modified">Modified</option>
+                <option value="alpha">A-Z</option>
+              </select>
+            </label>
+
             <div class="doc-actions-menu task-section-actions-menu" x-data="{ open: false }" @click.outside="open = false">
               <button type="button" class="doc-actions-toggle" title="Task actions" aria-label="Task actions" @click="open = !open">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
@@ -2183,19 +2198,19 @@
                     <span class="kanban-column-count" @click.stop="$store.chat.selectColumnTasks(col.state)" x-text="col.tasks.length" title="Select all tasks in this column"></span>
                   </div>
                   <div class="kanban-column-body" x-show="!$store.chat.isSectionCollapsed(col.state)"
-                    @dragover.prevent="col.state !== 'summary' && $store.chat.handleTaskDragOver($event, col.state)"
+                    @dragover.prevent="col.state !== 'summary' && $store.chat.taskSortIsManual && $store.chat.handleTaskDragOver($event, col.state)"
                     @dragleave="$store.chat.handleTaskDragLeave($event)"
-                    @drop.prevent="$store.chat.handleTaskDrop($event, col.state)"
+                    @drop.prevent="$store.chat.taskSortIsManual && $store.chat.handleTaskDrop($event, col.state)"
                   >
                     <template x-for="task in col.tasks" :key="task.record_id">
                       <div
                         class="kanban-card"
                         :class="{ 'summary-card': col.state === 'summary', 'kanban-card-selected': $store.chat.isTaskSelected(task.record_id), 'task-unread': $store.chat.isTaskUnread(task.record_id) }"
-                        :draggable="col.state !== 'summary'"
-                        @dragstart="col.state !== 'summary' && $store.chat.handleTaskDragStart($event, task.record_id)"
-                        @dragover.prevent.stop="col.state !== 'summary' && $store.chat.handleTaskCardDragOver($event, col.state, task.record_id)"
+                        :draggable="col.state !== 'summary' && $store.chat.taskSortIsManual"
+                        @dragstart="col.state !== 'summary' && $store.chat.taskSortIsManual && $store.chat.handleTaskDragStart($event, task.record_id)"
+                        @dragover.prevent.stop="col.state !== 'summary' && $store.chat.taskSortIsManual && $store.chat.handleTaskCardDragOver($event, col.state, task.record_id)"
                         @dragleave.stop="$store.chat.handleTaskCardDragLeave($event)"
-                        @drop.prevent.stop="col.state !== 'summary' && $store.chat.handleTaskDrop($event, col.state, task.record_id, $store.chat.getTaskCardDropPosition($event))"
+                        @drop.prevent.stop="col.state !== 'summary' && $store.chat.taskSortIsManual && $store.chat.handleTaskDrop($event, col.state, task.record_id, $store.chat.getTaskCardDropPosition($event))"
                         @dragend="$store.chat.handleTaskDragEnd($event)"
                         @click="$store.chat.handleTaskCardClick(task.record_id)"
                       >

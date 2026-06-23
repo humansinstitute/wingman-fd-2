@@ -201,7 +201,7 @@ describe('shell state does NOT include domain keys', () => {
     'messageInput', 'threadInput', 'docEditorContent',
     'docEditorBlocks', 'docBlockBuffer', 'newTaskTitle',
     'showTaskDetail', 'showFlowEditor', 'showDocShareModal',
-    'taskViewMode', 'showBoardPicker', 'selectedBoardId',
+    'taskViewMode', 'taskSortMode', 'showBoardPicker', 'selectedBoardId',
   ];
 
   it('does not contain any domain data array keys', () => {

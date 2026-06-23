@@ -63,6 +63,18 @@ describe('Chat channel rendering hooks', () => {
     }
   });
 
+  it('renders task board sort controls with created, modified, and A-Z options', () => {
+    const taskSectionIndex = html.indexOf('class="tasks-section"');
+    const bulkBarIndex = html.indexOf('class="task-bulk-bar"', taskSectionIndex);
+    const taskToolbar = html.slice(taskSectionIndex, bulkBarIndex);
+
+    expect(taskToolbar).toContain('class="task-sort-control"');
+    expect(taskToolbar).toContain('@change="$store.chat.setTaskSortMode($event.target.value)"');
+    expect(taskToolbar).toContain('<option value="created">Created</option>');
+    expect(taskToolbar).toContain('<option value="modified">Modified</option>');
+    expect(taskToolbar).toContain('<option value="alpha">A-Z</option>');
+  });
+
   it('renders the fullscreen header toggle in the shared PG channel bar', () => {
     const globalBarIndex = html.indexOf('class="global-pg-channel-bar"');
     const globalBarEndIndex = html.indexOf('<template x-if="$store.chat.navSection === \'status\'">', globalBarIndex);

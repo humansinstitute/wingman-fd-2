@@ -14,6 +14,7 @@ import {
   computeParentDisplayState,
   computeBoardColumns,
   sortTasksByBoardOrder,
+  sortTasksForBoard,
   calculateTaskBoardOrderForInsertion,
   getTaskDropRecordId,
   buildTaskBoardReorderPatches,
@@ -24,6 +25,7 @@ import {
   sortTagsByPopularity,
   selectPreferredWritableGroupRef,
   taskBoardStateMixin,
+  TASK_BOARD_SORT_MODES,
   UNSCOPED_TASK_BOARD_ID,
   ALL_TASK_BOARD_ID,
   RECENT_TASK_BOARD_ID,
@@ -101,6 +103,10 @@ describe('task-board-state constants', () => {
 
   it('exports WEEKDAY_OPTIONS', () => {
     expect(WEEKDAY_OPTIONS).toEqual(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']);
+  });
+
+  it('exports supported task board sort modes', () => {
+    expect(TASK_BOARD_SORT_MODES).toEqual(['manual', 'created', 'modified', 'alpha']);
   });
 });
 
@@ -1251,6 +1257,56 @@ describe('computeBoardColumns', () => {
       'a4',
     ]);
   });
+
+  it('can order each column by created time oldest first', () => {
+    const active = [
+      { record_id: 'late', state: 'ready', title: 'Late', created_at: '2026-04-03T00:00:00Z' },
+      { record_id: 'early', state: 'ready', title: 'Early', created_at: '2026-04-01T00:00:00Z' },
+      { record_id: 'middle', state: 'ready', title: 'Middle', created_at: '2026-04-02T00:00:00Z' },
+    ];
+
+    const cols = computeBoardColumns(active, [], [], { sortMode: 'created' });
+
+    expect(cols.find((c) => c.state === 'ready').tasks.map((task) => task.record_id)).toEqual([
+      'early',
+      'middle',
+      'late',
+    ]);
+  });
+
+  it('can order each column by modified time newest first', () => {
+    const active = [
+      { record_id: 'old', state: 'review', title: 'Old', updated_at: '2026-04-01T00:00:00Z' },
+      { record_id: 'new', state: 'review', title: 'New', updated_at: '2026-04-03T00:00:00Z' },
+      { record_id: 'middle', state: 'review', title: 'Middle', updated_at: '2026-04-02T00:00:00Z' },
+    ];
+
+    const cols = computeBoardColumns(active, [], [], { sortMode: 'modified' });
+
+    expect(cols.find((c) => c.state === 'review').tasks.map((task) => task.record_id)).toEqual([
+      'new',
+      'middle',
+      'old',
+    ]);
+  });
+
+  it('can order each column by natural A-Z title order', () => {
+    const active = [
+      { record_id: 't10', state: 'new', title: '10 Check launch' },
+      { record_id: 't2', state: 'new', title: '2 Fix signup' },
+      { record_id: 't1', state: 'new', title: '1 Start here' },
+      { record_id: 'alpha', state: 'new', title: 'Alpha task' },
+    ];
+
+    const cols = computeBoardColumns(active, [], [], { sortMode: 'alpha' });
+
+    expect(cols.find((c) => c.state === 'new').tasks.map((task) => task.record_id)).toEqual([
+      't1',
+      't2',
+      't10',
+      'alpha',
+    ]);
+  });
 });
 
 describe('sortTasksByBoardOrder', () => {
@@ -1266,6 +1322,15 @@ describe('sortTasksByBoardOrder', () => {
       'first',
       'last',
     ]);
+  });
+});
+
+describe('sortTasksForBoard', () => {
+  it('falls back to manual board order for unknown modes', () => {
+    expect(sortTasksForBoard([
+      { record_id: 'manual-late', board_order: 2000 },
+      { record_id: 'manual-first', board_order: 1000 },
+    ], 'unknown').map((task) => task.record_id)).toEqual(['manual-first', 'manual-late']);
   });
 });
 
