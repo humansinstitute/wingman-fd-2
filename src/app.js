@@ -104,6 +104,7 @@ import { createChatGetItDoneState } from './chat-get-it-done.js';
 import { commandPaletteMixin, createCommandPaletteState } from './command-palette.js';
 import { buildAttentionFeed, buildTimingFeed, summarizeAttentionFeed } from './attention-feed.js';
 import { avatarStatusMixin } from './components/avatar-status.js';
+import { createDocumentEditorState } from './docs/editor/document-editor-store.js';
 import {
   toRaw,
   normalizeBackendUrl,
@@ -174,8 +175,10 @@ import {
   setBaseUrl,
   prepareStorageObject,
   prepareTowerPgStorageObject,
+  createTowerPgInvocation,
   createTowerPgPersonalWapp,
   deleteTowerPgPersonalWapp,
+  getTowerPgInvocations,
   getTowerPgDailyNoteVersions,
   getTowerPgDailyScopeAgentAccess,
   reorderTowerPgPersonalWapps,
@@ -896,6 +899,11 @@ export function initApp() {
     docEditorShares: [],
     docShareQuery: '',
     docEditorMode: 'preview',
+    docEditorRichFeatureEnabled: false,
+    docEditorProseMirrorState: null,
+    docEditorContentModel: null,
+    docRichEditorAdapter: null,
+    docRichEditorMountEl: null,
     docEditorSharesDirty: false,
     docShareTargetType: '',
     docShareTargetId: '',
@@ -929,6 +937,24 @@ export function initApp() {
     pgEditLeaseSessions: {},
     pgEditLeaseRenewalTimers: {},
     showDocShareModal: false,
+    showInvocationModal: false,
+    invocationTargetType: '',
+    invocationTargetId: '',
+    invocationTargetTitle: '',
+    invocationScopeId: '',
+    invocationChannelId: '',
+    invocationPrompt: '',
+    invocationRecipientNpub: '',
+    invocationSubmitting: false,
+    invocationError: '',
+    invocationSuccess: '',
+    showInvocationHistoryModal: false,
+    invocationHistoryTargetType: '',
+    invocationHistoryTargetId: '',
+    invocationHistoryTargetTitle: '',
+    invocationHistoryRows: [],
+    invocationHistoryLoading: false,
+    invocationHistoryError: '',
     docMoveScopePrompt: null,
     showDocMoveModal: false,
     docMoveRecordIds: [],
@@ -1356,8 +1382,12 @@ export function initApp() {
       return agents;
     },
 
+    get invocablePersonalAgents() {
+      return this.visiblePersonalAgents.filter((agent) => String(agent?.npub || '').trim());
+    },
+
     get previewPersonalAgents() {
-      return this.visiblePersonalAgents.slice(0, 3);
+      return this.invocablePersonalAgents.slice(0, 3);
     },
 
     // chat message getters applied via chatMessageManagerMixin (applyMixins)
@@ -3481,6 +3511,185 @@ export function initApp() {
       }
     },
 
+    getInvocationTargetRecord(type = '', record = null) {
+      const normalizedType = String(type || '').trim() || 'document';
+      if (record) return record;
+      if (normalizedType === 'task') return this.activeTaskDetail || this.editingTask || null;
+      if (normalizedType === 'document') return this.selectedDocument || null;
+      return null;
+    },
+
+    getInvocationTargetContext(type = '', record = null) {
+      const targetType = String(type || '').trim() || 'document';
+      const targetRecord = this.getInvocationTargetRecord(targetType, record);
+      const pgContext = resolveTowerPgWorkspaceContext(this);
+      const workspaceId = String(targetRecord?.pg_workspace_id || pgContext.workspaceId || '').trim();
+      const baseUrl = String(pgContext.baseUrl || '').trim();
+      const appNpub = String(pgContext.appNpub || '').trim();
+      const targetId = String(targetRecord?.record_id || targetRecord?.id || '').trim();
+      const scopeId = String(
+        targetRecord?.scope_id
+        || targetRecord?.pg_scope_id
+        || targetRecord?.scope_l5_id
+        || targetRecord?.scope_l4_id
+        || targetRecord?.scope_l3_id
+        || targetRecord?.scope_l2_id
+        || targetRecord?.scope_l1_id
+        || ''
+      ).trim();
+      const channelId = String(targetRecord?.pg_channel_id || targetRecord?.channel_id || '').trim();
+      const title = String(targetRecord?.title || targetRecord?.filename || '').trim()
+        || (targetType === 'task' ? 'Untitled task' : 'Untitled document');
+
+      return {
+        workspaceId,
+        baseUrl,
+        appNpub,
+        targetType,
+        targetId,
+        scopeId,
+        channelId,
+        title,
+        record: targetRecord,
+      };
+    },
+
+    getInvocationDefaultPrompt(type = '') {
+      if (String(type || '').trim() === 'task') {
+        return 'Please review this task, its description, links, comments, and current state. Suggest improvements or next steps directly in the task thread.';
+      }
+      return 'Please review this document and its comments. Suggest improvements, identify gaps, and add comments or proposed changes where useful.';
+    },
+
+    getInvocationTargetTypeLabel(type = '') {
+      const value = String(type || '').trim();
+      if (value === 'task') return 'Task';
+      if (value === 'file') return 'File';
+      return 'Document';
+    },
+
+    getInvocationRecipientLabel(npub = '') {
+      const clean = String(npub || '').trim();
+      if (!clean) return 'Unknown recipient';
+      const agent = (this.visiblePersonalAgents || []).find((item) => item.npub === clean);
+      return agent?.title || this.getSenderName(clean) || clean.slice(0, 12);
+    },
+
+    openInvocationModal(type = 'document', record = null) {
+      const context = this.getInvocationTargetContext(type, record);
+      this.invocationError = '';
+      this.invocationSuccess = '';
+      if (!isTowerPgBackendMode() || !context.workspaceId || !context.baseUrl) {
+        this.invocationError = 'Flight Deck PG workspace is not connected.';
+        this.showInvocationModal = true;
+        return;
+      }
+      if (!context.targetId || !context.scopeId || !context.channelId) {
+        this.invocationError = 'This item is missing PG scope or channel metadata.';
+        this.showInvocationModal = true;
+        return;
+      }
+      this.invocationTargetType = context.targetType;
+      this.invocationTargetId = context.targetId;
+      this.invocationTargetTitle = context.title;
+      this.invocationScopeId = context.scopeId;
+      this.invocationChannelId = context.channelId;
+      this.invocationPrompt = this.getInvocationDefaultPrompt(context.targetType);
+      this.invocationRecipientNpub = this.invocationRecipientNpub || this.invocablePersonalAgents[0]?.npub || '';
+      this.invocationSubmitting = false;
+      this.showInvocationModal = true;
+    },
+
+    closeInvocationModal() {
+      if (this.invocationSubmitting) return;
+      this.showInvocationModal = false;
+      this.invocationError = '';
+      this.invocationSuccess = '';
+    },
+
+    async submitInvocation() {
+      if (this.invocationSubmitting) return;
+      const context = this.getInvocationTargetContext(this.invocationTargetType);
+      const recipientNpub = String(this.invocationRecipientNpub || '').trim();
+      const prompt = String(this.invocationPrompt || '').trim();
+      this.invocationError = '';
+      this.invocationSuccess = '';
+      if (!context.workspaceId || !context.baseUrl) {
+        this.invocationError = 'Flight Deck PG workspace is not connected.';
+        return;
+      }
+      if (!context.targetId || !context.scopeId || !context.channelId) {
+        this.invocationError = 'This item is missing PG scope or channel metadata.';
+        return;
+      }
+      if (!recipientNpub) {
+        this.invocationError = 'Select an agent.';
+        return;
+      }
+      if (!prompt) {
+        this.invocationError = 'Add a prompt for the invocation.';
+        return;
+      }
+      this.invocationSubmitting = true;
+      try {
+        const response = await createTowerPgInvocation(context.workspaceId, {
+          scope_id: context.scopeId,
+          channel_id: context.channelId,
+          prompt,
+          recipients: [{ type: 'agent', npub: recipientNpub }],
+          targets: [{ type: context.targetType, id: context.targetId }],
+          metadata: {
+            source_surface: context.targetType === 'task' ? 'task_actions_invoke' : 'document_header_review',
+            target_title: context.title,
+          },
+        }, { baseUrl: context.baseUrl, appNpub: context.appNpub });
+        this.invocationSuccess = `Sent to ${this.getInvocationRecipientLabel(recipientNpub)}.`;
+        const saved = response?.invocation;
+        if (saved && this.showInvocationHistoryModal && this.invocationHistoryTargetId === context.targetId) {
+          this.invocationHistoryRows = [saved, ...(this.invocationHistoryRows || []).filter((row) => row.invocation_id !== saved.invocation_id)];
+        }
+      } catch (error) {
+        this.invocationError = error?.message || 'Failed to create invocation.';
+      } finally {
+        this.invocationSubmitting = false;
+      }
+    },
+
+    async openInvocationHistoryModal(type = 'document', record = null) {
+      const context = this.getInvocationTargetContext(type, record);
+      this.invocationHistoryTargetType = context.targetType;
+      this.invocationHistoryTargetId = context.targetId;
+      this.invocationHistoryTargetTitle = context.title;
+      this.invocationHistoryRows = [];
+      this.invocationHistoryError = '';
+      this.invocationHistoryLoading = true;
+      this.showInvocationHistoryModal = true;
+      try {
+        if (!context.workspaceId || !context.baseUrl || !context.targetId) {
+          throw new Error('Flight Deck PG workspace is not connected.');
+        }
+        const response = await getTowerPgInvocations(context.workspaceId, {
+          role: 'visible',
+          targetType: context.targetType,
+          targetId: context.targetId,
+          limit: 50,
+          baseUrl: context.baseUrl,
+          appNpub: context.appNpub,
+        });
+        this.invocationHistoryRows = Array.isArray(response?.invocations) ? response.invocations : [];
+      } catch (error) {
+        this.invocationHistoryError = error?.message || 'Failed to load invocations.';
+      } finally {
+        this.invocationHistoryLoading = false;
+      }
+    },
+
+    closeInvocationHistoryModal() {
+      this.showInvocationHistoryModal = false;
+      this.invocationHistoryError = '';
+      this.invocationHistoryLoading = false;
+    },
+
     applySelectedDocument(document = null) {
       applySelectedDocumentUpdate(this, document);
     },
@@ -3564,6 +3773,9 @@ export function initApp() {
       this.docEditorSharesDirty = false;
       this.docEditorBlocks = contentBlocks;
       this.docEditorContent = assembleMarkdownBlocks(contentBlocks);
+      const editorState = createDocumentEditorState(item);
+      this.docEditorProseMirrorState = editorState.editorState;
+      this.docEditorContentModel = editorState.contentModel;
       this.docEditingBlockIndex = -1;
       this.docSelectedBlockId = null;
       this.docBlockBuffer = '';

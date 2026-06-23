@@ -7518,6 +7518,66 @@ button:disabled {
   color: var(--text);
 }
 
+.doc-invocation-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  height: 32px;
+  padding: 0 0.65rem 0 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.doc-invocation-btn:hover {
+  background: var(--surface-hover);
+  border-color: var(--muted);
+}
+
+.doc-invocation-avatar-stack {
+  display: inline-flex;
+  align-items: center;
+  min-width: 22px;
+}
+
+.doc-invocation-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-left: -6px;
+  border: 2px solid var(--surface);
+  border-radius: 999px;
+  background: #e5e7eb;
+  color: #111827;
+  overflow: hidden;
+  font-size: 0.64rem;
+  font-weight: 800;
+}
+
+.doc-invocation-avatar:first-child {
+  margin-left: 0;
+}
+
+.doc-invocation-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.doc-invocation-avatar-empty {
+  margin-left: 0;
+}
+
 .doc-code-toggle {
   font-weight: 600;
   font-size: 0.74rem;
@@ -7872,6 +7932,91 @@ button:disabled {
 
 .doc-source-editor:focus {
   box-shadow: none;
+}
+
+.doc-rich-editor {
+  min-height: 420px;
+  color: var(--text);
+  line-height: 1.65;
+}
+
+.doc-rich-editor .ProseMirror {
+  min-height: 420px;
+  outline: none;
+}
+
+.doc-rich-editor .ProseMirror p {
+  margin: 0 0 0.75rem;
+}
+
+.doc-rich-editor .ProseMirror h1 {
+  font-size: 1.4rem;
+  margin: 1rem 0 0.4rem;
+}
+
+.doc-rich-editor .ProseMirror h2 {
+  font-size: 1.15rem;
+  margin: 0.85rem 0 0.35rem;
+}
+
+.doc-rich-editor .ProseMirror h3 {
+  font-size: 1rem;
+  margin: 0.75rem 0 0.3rem;
+}
+
+.doc-rich-editor .ProseMirror pre {
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+}
+
+.doc-rich-editor .ProseMirror code {
+  background: #f1f5f9;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  font-size: 0.92em;
+}
+
+.doc-rich-editor .ProseMirror pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.doc-rich-editor .ProseMirror ul,
+.doc-rich-editor .ProseMirror ol {
+  margin: 0 0 0.75rem 1.25rem;
+}
+
+.doc-rich-editor .ProseMirror blockquote {
+  margin: 0 0 0.75rem;
+  padding-left: 0.85rem;
+  border-left: 3px solid #cbd5e1;
+  color: #475569;
+}
+
+.doc-rich-editor .ProseMirror img {
+  max-width: min(100%, 38rem);
+  max-height: 28rem;
+}
+
+.doc-rich-editor .ProseMirror table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 0.75rem;
+}
+
+.doc-rich-editor .ProseMirror th,
+.doc-rich-editor .ProseMirror td {
+  border: 1px solid var(--border);
+  padding: 0.35rem 0.5rem;
+  vertical-align: top;
+}
+
+.doc-rich-editor .fd-mention {
+  color: #2563eb;
+  font-weight: 600;
 }
 
 .doc-block-rendered {
@@ -8522,6 +8667,79 @@ button:disabled {
 .doc-share-modal {
   width: min(92vw, 520px);
   padding: 1rem;
+}
+
+.invocation-modal,
+.invocation-history-modal {
+  width: min(92vw, 560px);
+  padding: 1rem;
+}
+
+.invocation-modal h3,
+.invocation-history-modal h3 {
+  margin: 0 0 0.9rem;
+}
+
+.invocation-select {
+  height: 38px;
+}
+
+.invocation-prompt {
+  min-height: 8rem;
+  margin-bottom: 0.75rem;
+  resize: vertical;
+}
+
+.invocation-error {
+  color: #b91c1c;
+}
+
+.invocation-success {
+  color: #047857;
+}
+
+.invocation-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.invocation-history-row {
+  padding: 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.invocation-history-row-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.35rem;
+}
+
+.invocation-history-status {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.invocation-history-date,
+.invocation-history-row small {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.invocation-history-row p {
+  margin: 0 0 0.35rem;
+  color: var(--text);
+  font-size: 0.88rem;
+  line-height: 1.4;
 }
 
 .doc-comment-modal {
