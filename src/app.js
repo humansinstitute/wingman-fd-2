@@ -6133,6 +6133,7 @@ export function initApp() {
       this.taskDetailSaving = false;
       this.taskDetailCheckoutPending = false;
       this.taskCommentsFullscreenOpen = false;
+      this.applyTaskComments([]);
       if (this.editingTask) {
         // Hydrate references from description for tasks that predate the feature
         const hasStoredRefs = Array.isArray(this.editingTask.references) && this.editingTask.references.length > 0;
@@ -6497,16 +6498,19 @@ export function initApp() {
     },
 
     async loadTaskComments(taskId) {
-      if (!taskId) {
+      const recordId = String(taskId || '').trim();
+      if (!recordId) {
         this.applyTaskComments([]);
         return;
       }
       if (isTowerPgBackendMode()) {
-        await hydrateTowerPgTaskComments(this, taskId);
+        await hydrateTowerPgTaskComments(this, recordId);
         return;
       }
       this.startTaskCommentsLiveQuery();
-      await this.applyTaskComments(await getCommentsByTarget(taskId));
+      const comments = await getCommentsByTarget(recordId);
+      if (String(this.activeTaskId || '').trim() !== recordId) return;
+      await this.applyTaskComments(comments);
     },
 
     isTaskCommentExpanded(recordId) {

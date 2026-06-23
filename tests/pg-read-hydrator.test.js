@@ -1327,6 +1327,35 @@ describe('PG read hydrator', () => {
     expect(applyTaskComments).toHaveBeenCalledWith(comments);
   });
 
+  it('does not apply hydrated PG task comments to the visible panel after the active task changes', async () => {
+    const applyTaskComments = vi.fn();
+    const getTowerPgTaskComments = vi.fn(async () => ({
+      comments: [{
+        id: 'comment-1',
+        workspace_id: 'workspace-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        task_id: 'task-1',
+        body: 'Comment body',
+        row_version: 1,
+      }],
+    }));
+    const replacePgCommentsForTarget = vi.fn(async () => 1);
+
+    await hydrateTowerPgTaskComments(store({
+      activeTaskId: 'task-2',
+      applyTaskComments,
+    }), 'task-1', {
+      getTowerPgTaskComments,
+      replacePgCommentsForTarget,
+    });
+
+    expect(replacePgCommentsForTarget).toHaveBeenCalledWith('task-1', expect.arrayContaining([
+      expect.objectContaining({ record_id: 'comment-1', target_record_id: 'task-1', pg_backend: true }),
+    ]));
+    expect(applyTaskComments).not.toHaveBeenCalled();
+  });
+
   it('hydrates PG task comments using actor-to-npub resolution', async () => {
     const applyTaskComments = vi.fn();
     const getTowerPgTaskComments = vi.fn(async () => ({

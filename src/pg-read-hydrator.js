@@ -1547,7 +1547,10 @@ export async function hydrateTowerPgTaskComments(store, taskId, deps = {}) {
     }))
     .filter((comment) => comment.record_id && comment.target_record_id);
   await replaceComments(recordId, comments);
-  if (typeof store.applyTaskComments === 'function') await store.applyTaskComments(comments);
+  const activeTaskId = trimText(store?.activeTaskId);
+  if (typeof store.applyTaskComments === 'function' && (!activeTaskId || activeTaskId === recordId)) {
+    await store.applyTaskComments(comments);
+  }
   return comments;
 }
 

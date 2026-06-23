@@ -285,6 +285,37 @@ describe('app PG task offline drafts', () => {
     expect(store.taskDetailMode).toBe('view');
   });
 
+  it('clears stale task comments immediately when switching task detail records', async () => {
+    const { initApp } = await import('../src/app.js');
+    initApp();
+    const store = alpineStoreMock.mock.calls.find(([name]) => name === 'chat')?.[1];
+    expect(store).toBeTruthy();
+
+    Object.assign(store, {
+      tasks: [
+        { record_id: 'task-1', title: 'First task', record_state: 'active' },
+        { record_id: 'task-2', title: 'Second task', record_state: 'active' },
+      ],
+      activeTaskId: 'task-1',
+      editingTask: { record_id: 'task-1', title: 'First task', record_state: 'active' },
+      taskComments: [{ record_id: 'comment-1', target_record_id: 'task-1', body: 'Old task comment' }],
+      taskDetailMode: 'view',
+      pgEditLeaseSessions: {},
+      pgEditLeaseRenewalTimers: {},
+      loadTaskComments: vi.fn(),
+      scheduleStorageImageHydration: vi.fn(),
+      markTaskRead: vi.fn(),
+      syncRoute: vi.fn(),
+    });
+
+    store.openTaskDetail('task-2');
+
+    expect(store.activeTaskId).toBe('task-2');
+    expect(store.editingTask.record_id).toBe('task-2');
+    expect(store.taskComments).toEqual([]);
+    expect(store.loadTaskComments).toHaveBeenCalledWith('task-2');
+  });
+
   it('does not use PG lease release when switching from an encrypted-record task detail edit', async () => {
     const { initApp } = await import('../src/app.js');
     initApp();
