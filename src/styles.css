@@ -11459,6 +11459,10 @@ button:disabled {
 }
 
 @media (max-width: 768px) {
+  :root {
+    --mobile-header-height: 64px;
+  }
+
   body {
     padding: 0.5rem 0;
   }
@@ -11470,22 +11474,25 @@ button:disabled {
   .mobile-sidebar-backdrop {
     display: block;
     position: fixed;
-    inset: 0;
+    top: var(--mobile-header-height);
+    right: 0;
+    bottom: 0;
+    left: 0;
     background: rgba(15, 23, 42, 0.28);
-    z-index: 148;
+    z-index: 150;
   }
 
   .sidebar {
     position: fixed;
-    top: 0;
+    top: var(--mobile-header-height);
     left: 0;
-    height: 100dvh;
+    height: calc(100dvh - var(--mobile-header-height));
     width: min(82vw, 320px);
     border-right: 1px solid var(--border);
     border-bottom: none;
     transform: translateX(-105%);
     transition: transform 0.2s ease;
-    z-index: 149;
+    z-index: 160;
     box-shadow: 0 24px 60px rgba(15, 23, 42, 0.2);
   }
 
@@ -11561,7 +11568,7 @@ button:disabled {
   .page-header {
     border-bottom: none;
     margin-bottom: 0;
-    z-index: 150;
+    z-index: 180;
   }
 
   .header-leading {
@@ -11601,7 +11608,7 @@ button:disabled {
     padding: 0.35rem 0.8rem;
     border-bottom: 1px solid var(--border);
     background: #ffffff;
-    z-index: 30;
+    z-index: 170;
   }
 
   .mobile-scope-workspace-avatar-btn,
@@ -11675,7 +11682,7 @@ button:disabled {
     top: calc(100% + 0.15rem);
     left: 0.5rem;
     right: 0.5rem;
-    z-index: 31;
+    z-index: 171;
     max-height: min(320px, 55dvh);
   }
 

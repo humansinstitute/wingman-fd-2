@@ -179,16 +179,16 @@ describe('Thread mobile responsive behavior', () => {
 
       expect(switcherDecl).toMatch(/display\s*:\s*grid/);
       expect(switcherDecl).toMatch(/grid-template-columns\s*:\s*38px minmax\(0,\s*1fr\) 38px/);
-      expect(switcherDecl).toMatch(/z-index\s*:\s*30/);
+      expect(backdropDecl).toMatch(/top\s*:\s*var\(--mobile-header-height\)/);
+      expect(sidebarDecl).toMatch(/top\s*:\s*var\(--mobile-header-height\)/);
+      expect(sidebarDecl).toMatch(/height\s*:\s*calc\(100dvh - var\(--mobile-header-height\)\)/);
       expect(triggerDecl).toMatch(/justify-content\s*:\s*center/);
       expect(triggerDecl).toMatch(/text-align\s*:\s*center/);
-      expect(resultsDecl).toMatch(/z-index\s*:\s*31/);
-      expect(backdropZ).toBeGreaterThan(resultsZ);
-      expect(sidebarZ).toBeGreaterThan(resultsZ);
       expect(headerZ).toBeGreaterThan(resultsZ);
+      expect(resultsZ).toBeGreaterThan(switcherZ);
+      expect(switcherZ).toBeGreaterThan(sidebarZ);
       expect(headerZ).toBeGreaterThan(sidebarZ);
       expect(sidebarZ).toBeGreaterThan(backdropZ);
-      expect(switcherZ).toBeLessThan(resultsZ);
     });
 
     it('mounts mobile composer actions beside the textarea without stretching the textarea', async () => {
