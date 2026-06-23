@@ -742,12 +742,20 @@ export const docsManagerMixin = {
   openDoc(recordId, options = {}) {
     const nextRecordId = String(recordId || '').trim();
     const previousRecord = this.selectedDocType === 'document' ? this.selectedDocument : null;
+    const previousRecordId = String(previousRecord?.record_id || this.selectedDocId || '').trim();
     if (previousRecord?.record_id && previousRecord.record_id !== nextRecordId) {
       if (isTowerPgBackendMode()) {
         void releasePgEditLeaseForRecord(this, previousRecord, 'document', { reportError: false });
       } else {
         void this.releaseLockManagedCheckout(previousRecord, recordFamilyHash('document'), { reportError: false });
       }
+    }
+    if (previousRecordId && previousRecordId !== nextRecordId) {
+      this.stopDocCommentsLiveQuery?.();
+      this.docComments = [];
+      this.docCommentAudioDrafts = [];
+      this.docCommentReplyAudioDrafts = [];
+      this.clearDocCommentConnector?.();
     }
     this.selectedDocType = 'document';
     this.selectedDocId = recordId;

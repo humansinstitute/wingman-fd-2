@@ -1541,7 +1541,13 @@ export async function hydrateTowerPgDocComments(store, docId, deps = {}) {
     }))
     .filter((comment) => comment.record_id && comment.target_record_id);
   await replaceComments(recordId, comments);
-  if (typeof store.applyDocComments === 'function') await store.applyDocComments(comments);
+  if (
+    typeof store.applyDocComments === 'function'
+    && store.selectedDocType === 'document'
+    && trimText(store.selectedDocId) === recordId
+  ) {
+    await store.applyDocComments(comments);
+  }
   return comments;
 }
 

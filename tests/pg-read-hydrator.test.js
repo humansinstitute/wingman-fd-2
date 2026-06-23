@@ -912,6 +912,8 @@ describe('PG read hydrator', () => {
       audioNotes: [],
       dailyNotes: [],
       reactionRows: [],
+      selectedDocType: 'document',
+      selectedDocId: 'doc-1',
       applyReactions: vi.fn(),
       applyDocComments: vi.fn(),
     });
@@ -1327,7 +1329,11 @@ describe('PG read hydrator', () => {
     }));
     const replacePgCommentsForTarget = vi.fn(async () => 1);
 
-    const comments = await hydrateTowerPgDocComments(store({ applyDocComments }), 'doc-1', {
+    const comments = await hydrateTowerPgDocComments(store({
+      selectedDocType: 'document',
+      selectedDocId: 'doc-1',
+      applyDocComments,
+    }), 'doc-1', {
       getTowerPgDocComments,
       replacePgCommentsForTarget,
     });
@@ -1346,6 +1352,35 @@ describe('PG read hydrator', () => {
       }),
     ]));
     expect(applyDocComments).toHaveBeenCalledWith(comments);
+  });
+
+  it('hydrates PG doc comments without replacing the open drawer for another doc', async () => {
+    const applyDocComments = vi.fn();
+    const getTowerPgDocComments = vi.fn(async () => ({
+      comments: [{
+        id: 'doc-comment-1',
+        workspace_id: 'workspace-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        doc_id: 'doc-1',
+        body: 'Doc comment',
+        row_version: 1,
+      }],
+    }));
+    const replacePgCommentsForTarget = vi.fn(async () => 1);
+
+    const comments = await hydrateTowerPgDocComments(store({
+      selectedDocType: 'document',
+      selectedDocId: 'doc-2',
+      applyDocComments,
+    }), 'doc-1', {
+      getTowerPgDocComments,
+      replacePgCommentsForTarget,
+    });
+
+    expect(comments).toHaveLength(1);
+    expect(replacePgCommentsForTarget).toHaveBeenCalledWith('doc-1', expect.any(Array));
+    expect(applyDocComments).not.toHaveBeenCalled();
   });
 
   it('hydrates PG docs and files from accessible channels', async () => {

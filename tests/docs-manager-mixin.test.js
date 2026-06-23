@@ -369,6 +369,39 @@ describe('docsManagerMixin comment drawer', () => {
     expect(store.selectedDocCommentId).toBeNull();
   });
 
+  it('clears previous document comments immediately when switching documents', () => {
+    const store = createStore({
+      documents: [
+        { record_id: 'doc-1', parent_directory_id: 'dir-1' },
+        { record_id: 'doc-2', parent_directory_id: 'dir-2' },
+      ],
+      selectedDocType: 'document',
+      selectedDocId: 'doc-1',
+      selectedDocCommentId: 'comment-1',
+      docComments: [{
+        record_id: 'comment-1',
+        target_record_id: 'doc-1',
+        target_record_family_hash: recordFamilyHash('document'),
+        body: 'Previous doc comment',
+        record_state: 'active',
+      }],
+      docCommentAudioDrafts: [{ draft_id: 'audio-1' }],
+      docCommentReplyAudioDrafts: [{ draft_id: 'audio-2' }],
+      stopDocCommentsLiveQuery: vi.fn(),
+      clearDocCommentConnector: vi.fn(),
+    });
+
+    store.openDoc('doc-2');
+
+    expect(store.docComments).toEqual([]);
+    expect(store.selectedDocCommentId).toBeNull();
+    expect(store.docCommentAudioDrafts).toEqual([]);
+    expect(store.docCommentReplyAudioDrafts).toEqual([]);
+    expect(store.stopDocCommentsLiveQuery).toHaveBeenCalled();
+    expect(store.clearDocCommentConnector).toHaveBeenCalled();
+    expect(store.loadDocComments).toHaveBeenCalledWith('doc-2', { allowBackfill: true });
+  });
+
   it('opens the doc comments drawer when routing directly to a comment', () => {
     const store = createStore({
       documents: [{ record_id: 'doc-1', parent_directory_id: 'dir-1' }],
