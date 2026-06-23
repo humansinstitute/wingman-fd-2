@@ -3648,6 +3648,7 @@ export function initApp() {
         if (saved && this.showInvocationHistoryModal && this.invocationHistoryTargetId === context.targetId) {
           this.invocationHistoryRows = [saved, ...(this.invocationHistoryRows || []).filter((row) => row.invocation_id !== saved.invocation_id)];
         }
+        this.showInvocationModal = false;
       } catch (error) {
         this.invocationError = error?.message || 'Failed to create invocation.';
       } finally {
