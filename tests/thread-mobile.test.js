@@ -179,9 +179,9 @@ describe('Thread mobile responsive behavior', () => {
 
       expect(switcherDecl).toMatch(/display\s*:\s*grid/);
       expect(switcherDecl).toMatch(/grid-template-columns\s*:\s*38px minmax\(0,\s*1fr\) 38px/);
-      expect(backdropDecl).toMatch(/top\s*:\s*var\(--mobile-header-height\)/);
-      expect(sidebarDecl).toMatch(/top\s*:\s*var\(--mobile-header-height\)/);
-      expect(sidebarDecl).toMatch(/height\s*:\s*calc\(100dvh - var\(--mobile-header-height\)\)/);
+      expect(backdropDecl).toMatch(/top\s*:\s*var\(--mobile-nav-drawer-top\)/);
+      expect(sidebarDecl).toMatch(/top\s*:\s*var\(--mobile-nav-drawer-top\)/);
+      expect(sidebarDecl).toMatch(/height\s*:\s*calc\(100dvh - var\(--mobile-nav-drawer-top\)\)/);
       expect(triggerDecl).toMatch(/justify-content\s*:\s*center/);
       expect(triggerDecl).toMatch(/text-align\s*:\s*center/);
       expect(headerZ).toBeGreaterThan(resultsZ);

@@ -11461,6 +11461,7 @@ button:disabled {
 @media (max-width: 768px) {
   :root {
     --mobile-header-height: 64px;
+    --mobile-nav-drawer-top: 116px;
   }
 
   body {
@@ -11474,7 +11475,7 @@ button:disabled {
   .mobile-sidebar-backdrop {
     display: block;
     position: fixed;
-    top: var(--mobile-header-height);
+    top: var(--mobile-nav-drawer-top);
     right: 0;
     bottom: 0;
     left: 0;
@@ -11484,9 +11485,9 @@ button:disabled {
 
   .sidebar {
     position: fixed;
-    top: var(--mobile-header-height);
+    top: var(--mobile-nav-drawer-top);
     left: 0;
-    height: calc(100dvh - var(--mobile-header-height));
+    height: calc(100dvh - var(--mobile-nav-drawer-top));
     width: min(82vw, 320px);
     border-right: 1px solid var(--border);
     border-bottom: none;
