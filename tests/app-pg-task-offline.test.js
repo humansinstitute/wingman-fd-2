@@ -4,12 +4,14 @@ import { getSyncState, getTaskById, openWorkspaceDb, setSyncState, upsertTask } 
 const {
   alpineStartMock,
   alpineStoreMock,
+  createTowerPgTaskCommentFromLocalMock,
   createTowerPgTaskFromLocalMock,
   releaseTowerPgEditLeaseMock,
   updateTowerPgTaskFromLocalMock,
 } = vi.hoisted(() => ({
   alpineStartMock: vi.fn(),
   alpineStoreMock: vi.fn(),
+  createTowerPgTaskCommentFromLocalMock: vi.fn(),
   createTowerPgTaskFromLocalMock: vi.fn(),
   releaseTowerPgEditLeaseMock: vi.fn(),
   updateTowerPgTaskFromLocalMock: vi.fn(),
@@ -27,7 +29,7 @@ vi.mock('../src/pg-write-adapter.js', () => ({
   createTowerPgDocFromLocal: vi.fn(),
   createTowerPgFileFromLocal: vi.fn(),
   createTowerPgMessageFromLocal: vi.fn(),
-  createTowerPgTaskCommentFromLocal: vi.fn(),
+  createTowerPgTaskCommentFromLocal: createTowerPgTaskCommentFromLocalMock,
   createTowerPgTaskFromLocal: createTowerPgTaskFromLocalMock,
   deleteTowerPgDocFromLocal: vi.fn(),
   resolveTowerPgTaskChannel: vi.fn(),
@@ -43,6 +45,7 @@ vi.mock('../src/api.js', async (importOriginal) => ({
 beforeEach(() => {
   alpineStartMock.mockClear();
   alpineStoreMock.mockClear();
+  createTowerPgTaskCommentFromLocalMock.mockReset();
   createTowerPgTaskFromLocalMock.mockReset();
   releaseTowerPgEditLeaseMock.mockReset();
   updateTowerPgTaskFromLocalMock.mockReset();
@@ -314,6 +317,94 @@ describe('app PG task offline drafts', () => {
     expect(store.editingTask.record_id).toBe('task-2');
     expect(store.taskComments).toEqual([]);
     expect(store.loadTaskComments).toHaveBeenCalledWith('task-2');
+  });
+
+  it('uses the original PG workspace context when a task comment save finishes after switching workspaces', async () => {
+    const wsDb = openWorkspaceDb('npub1pgworkspace-comment-race');
+    await wsDb.open();
+    await Promise.all(wsDb.tables.map((table) => table.clear()));
+    createTowerPgTaskCommentFromLocalMock.mockResolvedValueOnce({
+      record_id: 'comment-accepted',
+      target_record_id: 'task-1',
+      body: 'Race comment',
+      sender_npub: 'npub1owner',
+      sync_status: 'synced',
+      record_state: 'active',
+      pg_backend: true,
+      pg_record_type: 'task_comment',
+      updated_at: '2026-06-23T00:00:00.000Z',
+    });
+
+    const { initApp } = await import('../src/app.js');
+    initApp();
+    const store = alpineStoreMock.mock.calls.find(([name]) => name === 'chat')?.[1];
+    expect(store).toBeTruthy();
+
+    Object.assign(store, {
+      session: { npub: 'npub1owner' },
+      ownerNpub: 'npub1pgworkspace-comment-race',
+      currentWorkspaceOwnerNpub: 'npub1pgworkspace-comment-race',
+      selectedWorkspaceKey: 'workspace-original',
+      knownWorkspaces: [{
+        workspaceKey: 'workspace-original',
+        workspaceId: 'workspace-original',
+        workspaceOwnerNpub: 'npub1pgworkspace-comment-race',
+        directHttpsUrl: 'https://original.example',
+        appNpub: 'flightdeck_pg',
+        pgBackendMode: true,
+      }],
+      backendUrl: 'https://original.example',
+      tasks: [{
+        record_id: 'task-1',
+        title: 'Original task',
+        owner_npub: 'npub1pgworkspace-comment-race',
+        pg_backend: true,
+        pg_record_type: 'task',
+        pg_channel_id: 'channel-1',
+        sync_status: 'synced',
+        record_state: 'active',
+      }],
+      activeTaskId: 'task-1',
+      editingTask: { record_id: 'task-1', title: 'Original task', pg_backend: true },
+      taskComments: [],
+      taskCommentAudioDrafts: [],
+      newTaskCommentBody: 'Race comment',
+      scheduleStorageImageHydration: vi.fn(),
+      scheduleTaskCommentsRefresh: vi.fn(),
+      markTaskRead: vi.fn(),
+      syncRoute: vi.fn(),
+    });
+
+    const save = store.addTaskComment('task-1');
+    store.knownWorkspaces = [
+      ...store.knownWorkspaces,
+      {
+        workspaceKey: 'workspace-next',
+        workspaceId: 'workspace-next',
+        workspaceOwnerNpub: 'npub1other',
+        directHttpsUrl: 'https://next.example',
+        appNpub: 'flightdeck_pg',
+        pgBackendMode: true,
+      },
+    ];
+    store.selectedWorkspaceKey = 'workspace-next';
+    store.backendUrl = 'https://next.example';
+    store.activeTaskId = 'task-2';
+    await save;
+
+    expect(createTowerPgTaskCommentFromLocalMock).toHaveBeenCalledWith(
+      store,
+      expect.objectContaining({
+        target_record_id: 'task-1',
+        body: 'Race comment',
+        pg_workspace_id: 'workspace-original',
+      }),
+      expect.objectContaining({
+        workspaceId: 'workspace-original',
+        baseUrl: 'https://original.example',
+        appNpub: 'flightdeck_pg',
+      }),
+    );
   });
 
   it('does not use PG lease release when switching from an encrypted-record task detail edit', async () => {

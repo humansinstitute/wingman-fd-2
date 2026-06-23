@@ -384,8 +384,8 @@ export async function deleteTowerPgTaskFromLocal(store, task) {
   return mapPgTaskToLocal(result.task, { workspaceOwnerNpub: context.workspaceOwnerNpub });
 }
 
-export async function createTowerPgTaskCommentFromLocal(store, comment) {
-  const context = resolveTowerPgWorkspaceContext(store);
+export async function createTowerPgTaskCommentFromLocal(store, comment, contextOverride = null) {
+  const context = contextOverride || resolveTowerPgWorkspaceContext(store);
   if (!context.workspaceId || !comment?.target_record_id) throw new Error('Tower PG task comments are not ready');
   const result = await createTowerPgTaskComment(context.workspaceId, comment.target_record_id, {
     body: comment.body,
@@ -393,7 +393,7 @@ export async function createTowerPgTaskCommentFromLocal(store, comment) {
   }, pgRequestOptions(context));
   return mapPgTaskCommentToLocal(result.comment, {
     workspaceOwnerNpub: context.workspaceOwnerNpub,
-    senderNpub: store?.session?.npub,
+    senderNpub: context.sessionNpub || store?.session?.npub,
   });
 }
 

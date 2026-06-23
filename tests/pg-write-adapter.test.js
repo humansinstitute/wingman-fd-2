@@ -773,6 +773,44 @@ describe('PG write adapter', () => {
     });
   });
 
+  it('creates Tower PG task comments with a frozen workspace context', async () => {
+    const api = await import('../src/api.js');
+    api.createTowerPgTaskComment.mockResolvedValue({
+      comment: {
+        id: 'comment-1',
+        workspace_id: 'workspace-frozen',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        task_id: 'task-1',
+        body: 'Task comment',
+        row_version: 1,
+      },
+    });
+
+    await createTowerPgTaskCommentFromLocal(store({
+      currentWorkspace: {
+        workspaceId: 'workspace-current',
+        workspaceOwnerNpub: 'npub1current',
+        directHttpsUrl: 'https://current.example',
+        appNpub: 'flightdeck_pg',
+        pgBackendMode: true,
+      },
+    }), {
+      target_record_id: 'task-1',
+      body: 'Task comment',
+    }, {
+      workspaceId: 'workspace-frozen',
+      workspaceOwnerNpub: 'npub1frozen',
+      baseUrl: 'https://frozen.example',
+      appNpub: 'flightdeck_pg',
+      sessionNpub: 'npub1sender',
+    });
+
+    expect(api.createTowerPgTaskComment).toHaveBeenCalledWith('workspace-frozen', 'task-1', {
+      body: 'Task comment',
+    }, { baseUrl: 'https://frozen.example', appNpub: 'flightdeck_pg' });
+  });
+
   it('creates Tower PG document comments with anchor metadata', async () => {
     const api = await import('../src/api.js');
     api.createTowerPgDocComment.mockResolvedValue({

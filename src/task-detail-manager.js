@@ -1,6 +1,9 @@
 import { createTowerPgTaskCommentFromLocal } from './pg-write-adapter.js';
 import { addPendingWrite, getCommentsByTarget, replaceCommentRecord, upsertComment } from './db.js';
-import { hydrateTowerPgTaskComments } from './pg-read-hydrator.js';
+import {
+  hydrateTowerPgTaskComments,
+  resolveTowerPgWorkspaceContext,
+} from './pg-read-hydrator.js';
 import {
   getPgEditLeaseSession,
   isSyncedPgRecord,
@@ -204,8 +207,13 @@ export const taskDetailManagerMixin = {
     const recordId = crypto.randomUUID();
     const ownerNpub = this.workspaceOwnerNpub;
     const pgMode = isTowerPgBackendMode();
+    const pgContext = pgMode ? resolveTowerPgWorkspaceContext(this) : null;
     if (pgMode && drafts.length > 0) {
       this.error = 'Audio drafts are not available in Tower PG task comments yet.';
+      return;
+    }
+    if (pgMode && !pgContext?.workspaceId) {
+      this.error = 'Tower PG task comments are not ready.';
       return;
     }
     let taskWriteFields = null;
@@ -239,35 +247,43 @@ export const taskDetailManagerMixin = {
         sync_status: 'pending',
         pg_backend: true,
         pg_record_type: 'task_comment',
+        pg_workspace_id: pgContext.workspaceId,
         pg_channel_id: task?.pg_channel_id || null,
         pg_thread_id: task?.pg_thread_id || null,
       } : {}),
     };
 
     await upsertComment(localRow);
-    this.taskComments = normalizeTaskComments([localRow, ...this.taskComments]);
-    this.syncTaskCommentPreviewState();
-    this.newTaskCommentBody = '';
-    this.taskCommentAudioDrafts = [];
-    this.scheduleTaskCommentPreviewMeasurement();
-    this.scheduleStorageImageHydration();
+    const isStillActiveTask = () => String(this.activeTaskId || '').trim() === String(taskId || '').trim();
+    if (isStillActiveTask()) {
+      this.taskComments = normalizeTaskComments([localRow, ...this.taskComments]);
+      this.syncTaskCommentPreviewState();
+      this.newTaskCommentBody = '';
+      this.taskCommentAudioDrafts = [];
+      this.scheduleTaskCommentPreviewMeasurement();
+      this.scheduleStorageImageHydration();
+    }
 
     if (pgMode) {
       try {
-        const accepted = await createTowerPgTaskCommentFromLocal(this, localRow);
+        const accepted = await createTowerPgTaskCommentFromLocal(this, localRow, pgContext);
         await replaceCommentRecord(localRow.record_id, accepted);
-        this.taskComments = normalizeTaskComments([
-          accepted,
-          ...this.taskComments.filter((comment) => comment.record_id !== localRow.record_id),
-        ]);
+        if (isStillActiveTask()) {
+          this.taskComments = normalizeTaskComments([
+            accepted,
+            ...this.taskComments.filter((comment) => comment.record_id !== localRow.record_id),
+          ]);
+        }
         this.scheduleTaskCommentsRefresh(taskId, 'PG task comment create');
       } catch (error) {
         const failed = { ...localRow, sync_status: 'failed', updated_at: new Date().toISOString() };
         await upsertComment(failed);
-        this.taskComments = normalizeTaskComments([
-          failed,
-          ...this.taskComments.filter((comment) => comment.record_id !== localRow.record_id),
-        ]);
+        if (isStillActiveTask()) {
+          this.taskComments = normalizeTaskComments([
+            failed,
+            ...this.taskComments.filter((comment) => comment.record_id !== localRow.record_id),
+          ]);
+        }
         this.error = error?.message || 'Failed to sync PG task comment';
       }
       return;
