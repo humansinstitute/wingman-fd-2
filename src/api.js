@@ -15,6 +15,7 @@ let _baseUrl = '';
 const DEFAULT_FETCH_TIMEOUT_MS = 20_000;
 const UPLOAD_FETCH_TIMEOUT_MS = 60_000;
 const AUTH_HEADER_TIMEOUT_MS = 10_000;
+const MUTATION_AUTH_HEADER_TIMEOUT_MS = 45_000;
 
 function bytesToBase64(bytes) {
   let binary = '';
@@ -78,9 +79,17 @@ async function createApiAuthHeader(requestUrl, method, body = null, options = {}
     : createNip98AuthHeader(requestUrl, method, body ?? null);
   return withTimeout(
     authPromise,
-    AUTH_HEADER_TIMEOUT_MS,
+    getAuthHeaderTimeoutMs(method, options),
     `NIP-98 signing timed out for ${String(method || 'GET').toUpperCase()} ${requestUrl}`,
   );
+}
+
+function getAuthHeaderTimeoutMs(method, options = {}) {
+  const explicitTimeoutMs = Number(options.authTimeoutMs);
+  if (Number.isFinite(explicitTimeoutMs) && explicitTimeoutMs > 0) return explicitTimeoutMs;
+  const normalizedMethod = String(method || 'GET').toUpperCase();
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(normalizedMethod)) return MUTATION_AUTH_HEADER_TIMEOUT_MS;
+  return AUTH_HEADER_TIMEOUT_MS;
 }
 
 function withTimeout(promise, timeoutMs, message) {

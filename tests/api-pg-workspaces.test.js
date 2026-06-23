@@ -621,6 +621,45 @@ describe('Tower PG API helpers', () => {
     expect(createNip98AuthHeaderForSecret).not.toHaveBeenCalled();
   });
 
+  it('upserts Tower PG Daily Scope with the active workspace key signer', async () => {
+    const { createNip98AuthHeader, createNip98AuthHeaderForSecret } = await import('../src/auth/nostr.js');
+    const { getActiveWorkspaceKeySecretForAuth } = await import('../src/crypto/workspace-keys.js');
+    const api = await import('../src/api.js');
+    api.setBaseUrl('https://tower.example');
+    const workspaceSecret = new Uint8Array([4, 5, 6]);
+    getActiveWorkspaceKeySecretForAuth.mockReturnValueOnce(workspaceSecret);
+    const body = {
+      note_date: '2026-06-24',
+      title: 'Daily note',
+      body: 'Mobile note',
+      items: [],
+      status: 'active',
+    };
+
+    await api.upsertTowerPgDailyNote('workspace-1', body, {
+      appNpub: 'flightdeck_pg',
+    });
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/daily-notes',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'NIP98-SECRET POST https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/daily-notes',
+          'x-flightdeck-pg-app-npub': 'flightdeck_pg',
+        }),
+        body: JSON.stringify(body),
+      }),
+    );
+    expect(createNip98AuthHeaderForSecret).toHaveBeenCalledWith(
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/daily-notes',
+      'POST',
+      body,
+      workspaceSecret,
+    );
+    expect(createNip98AuthHeader).not.toHaveBeenCalled();
+  });
+
   it('deletes Tower PG messages and threads with browser NIP-98 auth', async () => {
     const { createNip98AuthHeader, createNip98AuthHeaderForSecret } = await import('../src/auth/nostr.js');
     const api = await import('../src/api.js');
@@ -686,7 +725,7 @@ describe('Tower PG API helpers', () => {
     expect(createNip98AuthHeader).not.toHaveBeenCalled();
   });
 
-  it('times out Tower PG deletes when NIP-98 signing does not settle', async () => {
+  it('uses the mutation auth timeout for Tower PG deletes when NIP-98 signing does not settle', async () => {
     vi.useFakeTimers();
     const { createNip98AuthHeader } = await import('../src/auth/nostr.js');
     const api = await import('../src/api.js');
@@ -702,7 +741,7 @@ describe('Tower PG API helpers', () => {
       message: expect.stringContaining('NIP-98 signing timed out for DELETE'),
     });
 
-    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(45_000);
 
     await assertion;
     expect(globalThis.fetch).not.toHaveBeenCalled();
