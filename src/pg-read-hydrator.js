@@ -177,6 +177,27 @@ function resolveSenderNpub(record = {}, actorNpubByActorId = new Map()) {
   return trimText(actorNpubByActorId.get(actorId));
 }
 
+function normalizePgTaskAssignmentNpubs(task = {}, actorNpubByActorId = new Map()) {
+  const assignments = Array.isArray(task?.assignments) ? task.assignments : [];
+  const npubs = [];
+  const seen = new Set();
+  for (const assignment of assignments) {
+    const actor = assignment?.actor && typeof assignment.actor === 'object' ? assignment.actor : {};
+    const actorId = trimText(assignment?.actor_id || assignment?.actorId || actor.actor_id || actor.id);
+    const npub = trimText(
+      assignment?.actor_npub
+      || assignment?.assignee_npub
+      || assignment?.npub
+      || actor.npub
+      || actorNpubByActorId.get(actorId),
+    );
+    if (!npub || seen.has(npub)) continue;
+    seen.add(npub);
+    npubs.push(npub);
+  }
+  return npubs;
+}
+
 function normalizeActorEntry(entry = {}) {
   const actor = entry?.actor && typeof entry.actor === 'object' ? entry.actor : entry;
   const actorId = trimText(actor?.actor_id || actor?.id || entry?.actor_id || entry?.id);
@@ -415,12 +436,13 @@ export function mapPgMessageToLocal(message, {
   };
 }
 
-export function mapPgTaskToLocal(task, { workspaceOwnerNpub } = {}) {
+export function mapPgTaskToLocal(task, { workspaceOwnerNpub, actorNpubByActorId = new Map() } = {}) {
   const scopeId = trimText(task?.scope_id);
   const updatedAt = isoTimestamp(task?.updated_at || task?.created_at);
   const metadata = task?.metadata && typeof task.metadata === 'object' && !Array.isArray(task.metadata)
     ? task.metadata
     : {};
+  const assignedToNpubs = normalizePgTaskAssignmentNpubs(task, actorNpubByActorId);
   return {
     record_id: trimText(task?.id || task?.record_id),
     owner_npub: trimText(workspaceOwnerNpub),
@@ -431,7 +453,8 @@ export function mapPgTaskToLocal(task, { workspaceOwnerNpub } = {}) {
     board_order: Number.isFinite(Number(metadata.board_order)) ? Number(metadata.board_order) : null,
     parent_task_id: null,
     board_group_id: null,
-    assigned_to_npub: trimText(metadata.assigned_to_npub) || null,
+    assigned_to_npubs: assignedToNpubs,
+    assigned_to_npub: assignedToNpubs[0] || null,
     scheduled_for: trimText(metadata.scheduled_for) || null,
     tags: typeof metadata.tags === 'string' ? metadata.tags : '',
     scope_id: scopeId || null,
@@ -1165,12 +1188,13 @@ export async function hydrateTowerPgChannelTasks(store, channelId, deps = {}) {
 
   const readChannelTasks = deps.getTowerPgChannelTasks || getTowerPgChannelTasks;
   const replaceTasks = deps.replacePgTasksForChannel || replacePgTasksForChannel;
+  const actorNpubByActorId = await resolveActorNpubByActorIdWithFallback(store, deps, context);
   const result = await readChannelTasks(context.workspaceId, targetChannelId, {
     baseUrl: context.baseUrl,
     appNpub: context.appNpub,
   });
   const tasks = (Array.isArray(result?.tasks) ? result.tasks : [])
-    .map((task) => mapPgTaskToLocal(task, { workspaceOwnerNpub: context.workspaceOwnerNpub }))
+    .map((task) => mapPgTaskToLocal(task, { workspaceOwnerNpub: context.workspaceOwnerNpub, actorNpubByActorId }))
     .filter((task) => task.record_id);
   await replaceTasks(targetChannelId, tasks);
   await mergeStoreChannelRows(store, 'tasks', 'applyTasks', targetChannelId, tasks);
@@ -1184,12 +1208,13 @@ export async function hydrateTowerPgTask(store, taskId, deps = {}) {
 
   const readTask = deps.getTowerPgTask || getTowerPgTask;
   const writeTask = deps.upsertTask || upsertTask;
+  const actorNpubByActorId = await resolveActorNpubByActorIdWithFallback(store, deps, context);
   const result = await readTask(context.workspaceId, recordId, {
     baseUrl: context.baseUrl,
     appNpub: context.appNpub,
   });
   const sourceTask = result?.task || result;
-  const task = mapPgTaskToLocal(sourceTask, { workspaceOwnerNpub: context.workspaceOwnerNpub });
+  const task = mapPgTaskToLocal(sourceTask, { workspaceOwnerNpub: context.workspaceOwnerNpub, actorNpubByActorId });
   if (!task.record_id) return null;
 
   await writeTask(task);
@@ -1470,6 +1495,7 @@ export async function hydrateTowerPgTasks(store, deps = {}) {
   const readChannelTasks = deps.getTowerPgChannelTasks || getTowerPgChannelTasks;
   const readScopeTasks = deps.getTowerPgScopeTasks || getTowerPgScopeTasks;
   const replaceTasks = deps.replaceTasksForOwner || replaceTasksForOwner;
+  const actorNpubByActorId = await resolveActorNpubByActorIdWithFallback(store, deps, context);
 
   let channels = Array.isArray(store.channels) ? store.channels : [];
   if (channels.length === 0 && typeof store.refreshChannels === 'function') {
@@ -1489,7 +1515,7 @@ export async function hydrateTowerPgTasks(store, deps = {}) {
       appNpub: context.appNpub,
     });
     for (const task of (Array.isArray(result?.tasks) ? result.tasks : [])) {
-      const row = mapPgTaskToLocal(task, { workspaceOwnerNpub: context.workspaceOwnerNpub });
+      const row = mapPgTaskToLocal(task, { workspaceOwnerNpub: context.workspaceOwnerNpub, actorNpubByActorId });
       if (row.record_id) taskById.set(row.record_id, row);
     }
   }
@@ -1499,7 +1525,7 @@ export async function hydrateTowerPgTasks(store, deps = {}) {
       appNpub: context.appNpub,
     });
     for (const task of (Array.isArray(result?.tasks) ? result.tasks : [])) {
-      const row = mapPgTaskToLocal(task, { workspaceOwnerNpub: context.workspaceOwnerNpub });
+      const row = mapPgTaskToLocal(task, { workspaceOwnerNpub: context.workspaceOwnerNpub, actorNpubByActorId });
       if (row.record_id) taskById.set(row.record_id, row);
     }
   }

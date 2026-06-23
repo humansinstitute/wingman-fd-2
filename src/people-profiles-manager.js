@@ -694,7 +694,10 @@ export const peopleProfilesManagerMixin = {
   },
 
   get taskAssigneeSuggestions() {
-    return this.findPeopleSuggestions(this.taskAssigneeQuery, [this.editingTask?.assigned_to_npub]);
+    const assigned = typeof this.getTaskAssigneeNpubs === 'function'
+      ? this.getTaskAssigneeNpubs(this.editingTask)
+      : [];
+    return this.findPeopleSuggestions(this.taskAssigneeQuery, assigned);
   },
 
   get defaultAgentSuggestions() {

@@ -130,11 +130,12 @@ describe('parseRouteLocation', () => {
   });
 
   it('extracts query params alongside slug', () => {
-    const route = parseRouteLocation(`${base}/be-free/tasks?scopeid=abc&taskid=xyz`);
+    const route = parseRouteLocation(`${base}/be-free/tasks?scopeid=abc&taskid=xyz&sort=modified_desc`);
     expect(route.workspaceSlug).toBe('be-free');
     expect(route.section).toBe('tasks');
     expect(route.params.scopeid).toBe('abc');
     expect(route.params.taskid).toBe('xyz');
+    expect(route.params.sort).toBe('modified_desc');
   });
 
   it('normalizes disabled opportunity route to status while keeping query params', () => {

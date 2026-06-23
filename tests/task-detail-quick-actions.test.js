@@ -22,8 +22,8 @@ describe('task detail quick actions', () => {
     expect(appContent).toContain('backgroundPg: isTowerPgBackendMode()');
     expect(appContent).toContain('if (!isTowerPgBackendMode())');
     expect(appContent).toContain('await this.flushAndBackgroundSync();');
-    expect(appContent).toContain("return { state: 'done', assigned_to_npub: null };");
-    expect(appContent).toContain("return { state: 'archive', assigned_to_npub: null };");
+    expect(appContent).toContain("return { state: 'done', assigned_to_npubs: [] };");
+    expect(appContent).toContain("return { state: 'archive', assigned_to_npubs: [] };");
     expect(appContent).toContain("return { scheduled_for: this.getTaskDueTodayDateKey() };");
   });
 

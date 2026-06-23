@@ -23,7 +23,7 @@ describe('buildAttentionFeed', () => {
         title: 'Review homepage copy',
         state: 'review',
         owner_npub: VIEWER,
-        assigned_to_npub: AGENT,
+        assigned_to_npubs: [AGENT],
         updated_at: '2026-05-05T07:00:00Z',
       }],
     });
@@ -67,7 +67,7 @@ describe('buildAttentionFeed', () => {
       title: 'Draft onboarding doc',
       state: 'ready',
       scope_id: 'scope-1',
-      assigned_to_npub: AGENT,
+      assigned_to_npubs: [AGENT],
       updated_at: '2026-05-05T06:00:00Z',
     };
     const groups = buildAttentionFeed({

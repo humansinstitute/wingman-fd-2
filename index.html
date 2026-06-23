@@ -2152,9 +2152,12 @@
                 aria-label="Order tasks inside each board column"
               >
                 <option value="manual">Manual</option>
-                <option value="created">Created</option>
-                <option value="modified">Modified</option>
-                <option value="alpha">A-Z</option>
+                <option value="created_asc">Created: oldest first</option>
+                <option value="created_desc">Created: newest first</option>
+                <option value="modified_desc">Modified: newest first</option>
+                <option value="modified_asc">Modified: oldest first</option>
+                <option value="alpha_asc">A-Z</option>
+                <option value="alpha_desc">Z-A</option>
               </select>
             </label>
 
@@ -2225,13 +2228,13 @@
                             </label>
                           </template>
                           <span class="kanban-card-title" x-text="task.title"></span>
-                          <template x-if="task.assigned_to_npub">
-                            <button type="button" class="kanban-card-assignee identity-avatar-button" :title="'Assigned to ' + $store.chat.getSenderName(task.assigned_to_npub)" @click.stop="$store.chat.openIdentityCard($event, task.assigned_to_npub)">
-                              <template x-if="$store.chat.getSenderAvatar(task.assigned_to_npub)">
-                                <img class="kanban-card-assignee-avatar" :src="$store.chat.getSenderAvatar(task.assigned_to_npub)" alt="" />
+                          <template x-if="$store.chat.getPrimaryTaskAssigneeNpub(task)">
+                            <button type="button" class="kanban-card-assignee identity-avatar-button" :title="'Assigned to ' + $store.chat.getSenderName($store.chat.getPrimaryTaskAssigneeNpub(task))" @click.stop="$store.chat.openIdentityCard($event, $store.chat.getPrimaryTaskAssigneeNpub(task))">
+                              <template x-if="$store.chat.getSenderAvatar($store.chat.getPrimaryTaskAssigneeNpub(task))">
+                                <img class="kanban-card-assignee-avatar" :src="$store.chat.getSenderAvatar($store.chat.getPrimaryTaskAssigneeNpub(task))" alt="" />
                               </template>
-                              <template x-if="!$store.chat.getSenderAvatar(task.assigned_to_npub)">
-                                <span class="kanban-card-assignee-avatar kanban-card-assignee-fallback avatar-fallback" x-text="$store.chat.getInitials($store.chat.getSenderName(task.assigned_to_npub))"></span>
+                              <template x-if="!$store.chat.getSenderAvatar($store.chat.getPrimaryTaskAssigneeNpub(task))">
+                                <span class="kanban-card-assignee-avatar kanban-card-assignee-fallback avatar-fallback" x-text="$store.chat.getInitials($store.chat.getSenderName($store.chat.getPrimaryTaskAssigneeNpub(task)))"></span>
                               </template>
                             </button>
                           </template>
@@ -2308,13 +2311,13 @@
                             </label>
                           </template>
                           <span class="task-list-title" x-text="task.title"></span>
-                          <template x-if="task.assigned_to_npub">
-                            <button type="button" class="kanban-card-assignee identity-avatar-button" :title="'Assigned to ' + $store.chat.getSenderName(task.assigned_to_npub)" @click.stop="$store.chat.openIdentityCard($event, task.assigned_to_npub)">
-                              <template x-if="$store.chat.getSenderAvatar(task.assigned_to_npub)">
-                                <img class="kanban-card-assignee-avatar" :src="$store.chat.getSenderAvatar(task.assigned_to_npub)" alt="" />
+                          <template x-if="$store.chat.getPrimaryTaskAssigneeNpub(task)">
+                            <button type="button" class="kanban-card-assignee identity-avatar-button" :title="'Assigned to ' + $store.chat.getSenderName($store.chat.getPrimaryTaskAssigneeNpub(task))" @click.stop="$store.chat.openIdentityCard($event, $store.chat.getPrimaryTaskAssigneeNpub(task))">
+                              <template x-if="$store.chat.getSenderAvatar($store.chat.getPrimaryTaskAssigneeNpub(task))">
+                                <img class="kanban-card-assignee-avatar" :src="$store.chat.getSenderAvatar($store.chat.getPrimaryTaskAssigneeNpub(task))" alt="" />
                               </template>
-                              <template x-if="!$store.chat.getSenderAvatar(task.assigned_to_npub)">
-                                <span class="kanban-card-assignee-avatar kanban-card-assignee-fallback avatar-fallback" x-text="$store.chat.getInitials($store.chat.getSenderName(task.assigned_to_npub))"></span>
+                              <template x-if="!$store.chat.getSenderAvatar($store.chat.getPrimaryTaskAssigneeNpub(task))">
+                                <span class="kanban-card-assignee-avatar kanban-card-assignee-fallback avatar-fallback" x-text="$store.chat.getInitials($store.chat.getSenderName($store.chat.getPrimaryTaskAssigneeNpub(task)))"></span>
                               </template>
                             </button>
                           </template>
@@ -2332,13 +2335,13 @@
                               <span class="task-list-indent"></span>
                               <span class="task-list-title" x-text="sub.title"></span>
                               <span class="badge" :class="`state-${sub.state}`" x-text="$store.chat.formatState(sub.state)"></span>
-                              <template x-if="sub.assigned_to_npub">
-                                <button type="button" class="kanban-card-assignee identity-avatar-button" :title="'Assigned to ' + $store.chat.getSenderName(sub.assigned_to_npub)" @click.stop="$store.chat.openIdentityCard($event, sub.assigned_to_npub)">
-                                  <template x-if="$store.chat.getSenderAvatar(sub.assigned_to_npub)">
-                                    <img class="kanban-card-assignee-avatar" :src="$store.chat.getSenderAvatar(sub.assigned_to_npub)" alt="" />
+                              <template x-if="$store.chat.getPrimaryTaskAssigneeNpub(sub)">
+                                <button type="button" class="kanban-card-assignee identity-avatar-button" :title="'Assigned to ' + $store.chat.getSenderName($store.chat.getPrimaryTaskAssigneeNpub(sub))" @click.stop="$store.chat.openIdentityCard($event, $store.chat.getPrimaryTaskAssigneeNpub(sub))">
+                                  <template x-if="$store.chat.getSenderAvatar($store.chat.getPrimaryTaskAssigneeNpub(sub))">
+                                    <img class="kanban-card-assignee-avatar" :src="$store.chat.getSenderAvatar($store.chat.getPrimaryTaskAssigneeNpub(sub))" alt="" />
                                   </template>
-                                  <template x-if="!$store.chat.getSenderAvatar(sub.assigned_to_npub)">
-                                    <span class="kanban-card-assignee-avatar kanban-card-assignee-fallback avatar-fallback" x-text="$store.chat.getInitials($store.chat.getSenderName(sub.assigned_to_npub))"></span>
+                                  <template x-if="!$store.chat.getSenderAvatar($store.chat.getPrimaryTaskAssigneeNpub(sub))">
+                                    <span class="kanban-card-assignee-avatar kanban-card-assignee-fallback avatar-fallback" x-text="$store.chat.getInitials($store.chat.getSenderName($store.chat.getPrimaryTaskAssigneeNpub(sub)))"></span>
                                   </template>
                                 </button>
                               </template>
@@ -2464,13 +2467,13 @@
                         class="task-detail-title-display"
                         x-text="$store.chat.editingTask.title || 'Untitled task'"
                       ></h1>
-                      <template x-if="$store.chat.editingTask.assigned_to_npub">
-                        <button type="button" class="task-detail-assignee-avatar identity-avatar-button" :title="$store.chat.getTaskAssigneeLabel($store.chat.editingTask)" @click.stop="$store.chat.openIdentityCard($event, $store.chat.editingTask.assigned_to_npub)">
-                          <template x-if="$store.chat.getSenderAvatar($store.chat.editingTask.assigned_to_npub)">
-                            <img :src="$store.chat.getSenderAvatar($store.chat.editingTask.assigned_to_npub)" alt="" />
+                      <template x-if="$store.chat.getPrimaryTaskAssigneeNpub($store.chat.editingTask)">
+                        <button type="button" class="task-detail-assignee-avatar identity-avatar-button" :title="$store.chat.getTaskAssigneeLabel($store.chat.editingTask)" @click.stop="$store.chat.openIdentityCard($event, $store.chat.getPrimaryTaskAssigneeNpub($store.chat.editingTask))">
+                          <template x-if="$store.chat.getSenderAvatar($store.chat.getPrimaryTaskAssigneeNpub($store.chat.editingTask))">
+                            <img :src="$store.chat.getSenderAvatar($store.chat.getPrimaryTaskAssigneeNpub($store.chat.editingTask))" alt="" />
                           </template>
-                          <template x-if="!$store.chat.getSenderAvatar($store.chat.editingTask.assigned_to_npub)">
-                            <span x-text="$store.chat.getInitials($store.chat.getSenderName($store.chat.editingTask.assigned_to_npub))"></span>
+                          <template x-if="!$store.chat.getSenderAvatar($store.chat.getPrimaryTaskAssigneeNpub($store.chat.editingTask))">
+                            <span x-text="$store.chat.getInitials($store.chat.getSenderName($store.chat.getPrimaryTaskAssigneeNpub($store.chat.editingTask)))"></span>
                           </template>
                         </button>
                       </template>
@@ -2482,7 +2485,7 @@
                       <span class="task-detail-meta-pill">
                         <span x-text="$store.chat.formatTaskDueDate($store.chat.editingTask.scheduled_for)"></span>
                       </span>
-                      <span class="task-detail-meta-pill" :class="{ 'task-detail-meta-muted': !$store.chat.editingTask.assigned_to_npub }">
+                      <span class="task-detail-meta-pill" :class="{ 'task-detail-meta-muted': $store.chat.getTaskAssigneeNpubs($store.chat.editingTask).length === 0 }">
                         <span x-text="$store.chat.getTaskAssigneeLabel($store.chat.editingTask)"></span>
                       </span>
                       <span class="task-detail-meta-pill">
@@ -2561,19 +2564,19 @@
 
                   <div class="task-field task-field-wide" x-show="$store.chat.isTaskDetailEditing()">
                     <label class="task-field-label">Assigned</label>
-                    <template x-if="$store.chat.editingTask.assigned_to_npub">
+                    <template x-if="$store.chat.getPrimaryTaskAssigneeNpub($store.chat.editingTask)">
                       <div class="new-channel-resolved-profile task-assignee-selected">
-                        <button type="button" class="identity-avatar-button" @click.stop="$store.chat.openIdentityCard($event, $store.chat.editingTask.assigned_to_npub)" :title="$store.chat.getSenderName($store.chat.editingTask.assigned_to_npub)">
-                          <template x-if="$store.chat.getSenderAvatar($store.chat.editingTask.assigned_to_npub)">
-                            <img class="new-channel-avatar" :src="$store.chat.getSenderAvatar($store.chat.editingTask.assigned_to_npub)" />
+                        <button type="button" class="identity-avatar-button" @click.stop="$store.chat.openIdentityCard($event, $store.chat.getPrimaryTaskAssigneeNpub($store.chat.editingTask))" :title="$store.chat.getSenderName($store.chat.getPrimaryTaskAssigneeNpub($store.chat.editingTask))">
+                          <template x-if="$store.chat.getSenderAvatar($store.chat.getPrimaryTaskAssigneeNpub($store.chat.editingTask))">
+                            <img class="new-channel-avatar" :src="$store.chat.getSenderAvatar($store.chat.getPrimaryTaskAssigneeNpub($store.chat.editingTask))" />
                           </template>
-                          <template x-if="!$store.chat.getSenderAvatar($store.chat.editingTask.assigned_to_npub)">
-                            <div class="new-channel-avatar new-channel-avatar-fallback" x-text="$store.chat.getInitials($store.chat.getSenderName($store.chat.editingTask.assigned_to_npub))"></div>
+                          <template x-if="!$store.chat.getSenderAvatar($store.chat.getPrimaryTaskAssigneeNpub($store.chat.editingTask))">
+                            <div class="new-channel-avatar new-channel-avatar-fallback" x-text="$store.chat.getInitials($store.chat.getSenderName($store.chat.getPrimaryTaskAssigneeNpub($store.chat.editingTask)))"></div>
                           </template>
                         </button>
                         <div class="docs-share-suggestion-copy">
-                          <span class="new-channel-profile-name" x-text="$store.chat.getSenderName($store.chat.editingTask.assigned_to_npub)"></span>
-                          <small x-text="$store.chat.getSenderSecondaryLabel($store.chat.editingTask.assigned_to_npub)"></small>
+                          <span class="new-channel-profile-name" x-text="$store.chat.getSenderName($store.chat.getPrimaryTaskAssigneeNpub($store.chat.editingTask))"></span>
+                          <small x-text="$store.chat.getSenderSecondaryLabel($store.chat.getPrimaryTaskAssigneeNpub($store.chat.editingTask))"></small>
                         </div>
                         <button type="button" class="task-inline-clear-btn" x-show="$store.chat.isTaskDetailEditing()" @click="$store.chat.clearEditingTaskAssignee()">Clear</button>
                       </div>

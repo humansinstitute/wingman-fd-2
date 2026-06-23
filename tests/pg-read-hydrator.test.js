@@ -335,14 +335,18 @@ describe('PG read hydrator', () => {
         tags: 'pg,migration',
         board_order: 4,
         scheduled_for: '2026-06-22',
-        assigned_to_npub: 'npub1agent',
+        assigned_to_npub: 'npub1stale',
         predecessor_task_ids: ['task-prev'],
         flow_id: 'flow-1',
         source_links: [{ type: 'message', id: 'msg-1' }],
       },
+      assignments: [{ actor_id: 'actor-agent' }],
       row_version: 6,
       updated_at: '2026-06-05T02:00:00.000Z',
-    }, { workspaceOwnerNpub: 'npub1owner' })).toMatchObject({
+    }, {
+      workspaceOwnerNpub: 'npub1owner',
+      actorNpubByActorId: new Map([['actor-agent', 'npub1agent']]),
+    })).toMatchObject({
       record_id: 'task-1',
       owner_npub: 'npub1owner',
       title: 'Wire task API',
@@ -351,6 +355,7 @@ describe('PG read hydrator', () => {
       board_order: 4,
       tags: 'pg,migration',
       scheduled_for: '2026-06-22',
+      assigned_to_npubs: ['npub1agent'],
       assigned_to_npub: 'npub1agent',
       predecessor_task_ids: ['task-prev'],
       flow_id: 'flow-1',

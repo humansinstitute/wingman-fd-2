@@ -1148,6 +1148,37 @@ export async function updateTowerPgTaskState(workspaceId, taskId, body, { baseUr
   return json(resp, { requestUrl, method: 'POST', prefix: 'Tower PG API' });
 }
 
+export async function assignTowerPgTask(workspaceId, taskId, actorId, { baseUrl = _baseUrl, appNpub = FLIGHT_DECK_PG_APP_NPUB } = {}) {
+  const encodedWorkspaceId = encodeURIComponent(String(workspaceId || '').trim());
+  const encodedTaskId = encodeURIComponent(String(taskId || '').trim());
+  const normalizedActorId = String(actorId || '').trim();
+  if (!encodedWorkspaceId) throw new Error('Tower PG workspace id is required');
+  if (!encodedTaskId) throw new Error('Tower PG task id is required');
+  if (!normalizedActorId) throw new Error('Tower PG assignment actor id is required');
+  const requestPath = `/api/v4/flightdeck-pg/workspaces/${encodedWorkspaceId}/tasks/${encodedTaskId}/assignments`;
+  const requestUrl = resolveTowerPgUrl(requestPath, baseUrl);
+  const resp = await signedTowerPgFetch(requestPath, {
+    method: 'POST',
+    body: { actor_id: normalizedActorId },
+    baseUrl,
+    appNpub,
+  });
+  return json(resp, { requestUrl, method: 'POST', prefix: 'Tower PG API' });
+}
+
+export async function unassignTowerPgTask(workspaceId, taskId, actorId, { baseUrl = _baseUrl, appNpub = FLIGHT_DECK_PG_APP_NPUB } = {}) {
+  const encodedWorkspaceId = encodeURIComponent(String(workspaceId || '').trim());
+  const encodedTaskId = encodeURIComponent(String(taskId || '').trim());
+  const encodedActorId = encodeURIComponent(String(actorId || '').trim());
+  if (!encodedWorkspaceId) throw new Error('Tower PG workspace id is required');
+  if (!encodedTaskId) throw new Error('Tower PG task id is required');
+  if (!encodedActorId) throw new Error('Tower PG assignment actor id is required');
+  const requestPath = `/api/v4/flightdeck-pg/workspaces/${encodedWorkspaceId}/tasks/${encodedTaskId}/assignments/${encodedActorId}`;
+  const requestUrl = resolveTowerPgUrl(requestPath, baseUrl);
+  const resp = await signedTowerPgFetch(requestPath, { method: 'DELETE', baseUrl, appNpub });
+  return json(resp, { requestUrl, method: 'DELETE', prefix: 'Tower PG API' });
+}
+
 export async function deleteTowerPgTask(workspaceId, taskId, { rowVersion = null, baseUrl = _baseUrl, appNpub = FLIGHT_DECK_PG_APP_NPUB } = {}) {
   const encodedWorkspaceId = encodeURIComponent(String(workspaceId || '').trim());
   const encodedTaskId = encodeURIComponent(String(taskId || '').trim());

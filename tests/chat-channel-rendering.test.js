@@ -63,16 +63,19 @@ describe('Chat channel rendering hooks', () => {
     }
   });
 
-  it('renders task board sort controls with created, modified, and A-Z options', () => {
+  it('renders task board sort controls with created, modified, and A-Z direction options', () => {
     const taskSectionIndex = html.indexOf('class="tasks-section"');
     const bulkBarIndex = html.indexOf('class="task-bulk-bar"', taskSectionIndex);
     const taskToolbar = html.slice(taskSectionIndex, bulkBarIndex);
 
     expect(taskToolbar).toContain('class="task-sort-control"');
     expect(taskToolbar).toContain('@change="$store.chat.setTaskSortMode($event.target.value)"');
-    expect(taskToolbar).toContain('<option value="created">Created</option>');
-    expect(taskToolbar).toContain('<option value="modified">Modified</option>');
-    expect(taskToolbar).toContain('<option value="alpha">A-Z</option>');
+    expect(taskToolbar).toContain('<option value="created_asc">Created: oldest first</option>');
+    expect(taskToolbar).toContain('<option value="created_desc">Created: newest first</option>');
+    expect(taskToolbar).toContain('<option value="modified_desc">Modified: newest first</option>');
+    expect(taskToolbar).toContain('<option value="modified_asc">Modified: oldest first</option>');
+    expect(taskToolbar).toContain('<option value="alpha_asc">A-Z</option>');
+    expect(taskToolbar).toContain('<option value="alpha_desc">Z-A</option>');
   });
 
   it('renders the fullscreen header toggle in the shared PG channel bar', () => {

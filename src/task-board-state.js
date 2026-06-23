@@ -264,7 +264,15 @@ export const UNSCOPED_TASK_BOARD_ID = '__unscoped__';
 export const RECENT_TASK_BOARD_ID = '__recent__';
 export const ALL_TASK_BOARD_ID = '__all__';
 export const WEEKDAY_OPTIONS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
-export const TASK_BOARD_SORT_MODES = Object.freeze(['manual', 'created', 'modified', 'alpha']);
+export const TASK_BOARD_SORT_MODES = Object.freeze([
+  'manual',
+  'created_asc',
+  'created_desc',
+  'modified_desc',
+  'modified_asc',
+  'alpha_asc',
+  'alpha_desc',
+]);
 
 const EMPTY_ARRAY = Object.freeze([]);
 const scopesMapCache = new WeakMap();
@@ -845,7 +853,7 @@ export function computeFilteredTasks(boardScopedTasks, query, filterTags, assign
     });
   }
   if (assigneeNpub) {
-    tasks = tasks.filter(t => t.assigned_to_npub === assigneeNpub);
+    tasks = tasks.filter(t => Array.isArray(t.assigned_to_npubs) && t.assigned_to_npubs.includes(assigneeNpub));
   }
   return tasks;
 }
@@ -880,6 +888,9 @@ export function getTaskBoardOrder(task) {
 
 export function normalizeTaskSortMode(mode) {
   const normalized = String(mode || '').trim().toLowerCase();
+  if (normalized === 'created') return 'created_asc';
+  if (normalized === 'modified') return 'modified_desc';
+  if (normalized === 'alpha') return 'alpha_asc';
   return TASK_BOARD_SORT_MODES.includes(normalized) ? normalized : 'manual';
 }
 
@@ -918,14 +929,15 @@ export function sortTasksForBoard(tasks = [], sortMode = 'manual') {
   if (!Array.isArray(tasks) || tasks.length <= 1) return Array.isArray(tasks) ? tasks : [];
 
   return [...tasks].sort((left, right) => {
-    if (normalizedMode === 'created') {
+    if (normalizedMode === 'created_asc' || normalizedMode === 'created_desc') {
       const delta = parseTaskTime(left, 'created_at') - parseTaskTime(right, 'created_at');
-      if (delta !== 0) return delta;
-    } else if (normalizedMode === 'modified') {
+      if (delta !== 0) return normalizedMode === 'created_desc' ? -delta : delta;
+    } else if (normalizedMode === 'modified_desc' || normalizedMode === 'modified_asc') {
       const delta = parseTaskTime(right, 'updated_at') - parseTaskTime(left, 'updated_at');
-      if (delta !== 0) return delta;
+      if (delta !== 0) return normalizedMode === 'modified_asc' ? -delta : delta;
     }
-    return compareTaskTitleNatural(left, right);
+    const titleDelta = compareTaskTitleNatural(left, right);
+    return normalizedMode === 'alpha_desc' ? -titleDelta : titleDelta;
   });
 }
 
@@ -1611,6 +1623,9 @@ export const taskBoardStateMixin = {
 
   setTaskSortMode(mode) {
     this.taskSortMode = normalizeTaskSortMode(mode);
+    if (typeof this.persistTaskSortMode === 'function') {
+      this.persistTaskSortMode(this.taskSortMode);
+    }
     this.syncRoute();
   },
 

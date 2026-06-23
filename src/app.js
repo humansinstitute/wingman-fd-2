@@ -794,6 +794,7 @@ export function initApp() {
     showBoardDescendantTasks: false,
     taskViewMode: 'kanban',
     taskSortMode: 'manual',
+    taskBoardSortPreferences: {},
     collapsedSections: {},
     taskBoardScopeSetupInFlight: false,
     newTaskTitle: '',
@@ -1865,6 +1866,9 @@ export function initApp() {
         this.currentWorkspaceOwnerNpub = settings.currentWorkspaceOwnerNpub ?? '';
         this.knownWorkspaces = mergeWorkspaceEntries([], settings.knownWorkspaces ?? []);
         this.knownHosts = Array.isArray(settings.knownHosts) ? settings.knownHosts : [];
+        this.taskBoardSortPreferences = settings.taskBoardSortPreferences && typeof settings.taskBoardSortPreferences === 'object'
+          ? settings.taskBoardSortPreferences
+          : {};
       }
       // Extract ?token= from URL (e.g. invite/share link) and bootstrap workspace
       if (typeof window !== 'undefined') {
@@ -2269,6 +2273,45 @@ export function initApp() {
       else window.history.pushState(state, '', nextUrl);
     },
 
+    getTaskSortPreferenceKey() {
+      return String(
+        this.currentWorkspaceKey
+        || this.selectedWorkspaceKey
+        || this.currentWorkspaceSlug
+        || this.workspaceOwnerNpub
+        || 'default',
+      ).trim() || 'default';
+    },
+
+    readPersistedTaskSortMode() {
+      const key = this.getTaskSortPreferenceKey();
+      const preferences = this.taskBoardSortPreferences && typeof this.taskBoardSortPreferences === 'object'
+        ? this.taskBoardSortPreferences
+        : {};
+      return normalizeTaskSortMode(preferences[key]);
+    },
+
+    async persistTaskSortMode(mode = this.taskSortMode) {
+      const normalizedMode = normalizeTaskSortMode(mode);
+      const key = this.getTaskSortPreferenceKey();
+      const nextPreferences = {
+        ...(this.taskBoardSortPreferences && typeof this.taskBoardSortPreferences === 'object'
+          ? this.taskBoardSortPreferences
+          : {}),
+        [key]: normalizedMode,
+      };
+      this.taskBoardSortPreferences = nextPreferences;
+      try {
+        const settings = await getSettings() || {};
+        await saveSettings({
+          ...settings,
+          taskBoardSortPreferences: nextPreferences,
+        });
+      } catch (error) {
+        console.warn('[flightdeck] failed to persist task board sort preference', error);
+      }
+    },
+
     async applyRouteFromLocation() {
       const route = parseRouteLocation();
       this.routeSyncPaused = true;
@@ -2355,7 +2398,12 @@ export function initApp() {
           this.showBoardDescendantTasks = route.params.descendants === '1';
           if (route.params.view === 'list') this.taskViewMode = 'list';
           else this.taskViewMode = 'kanban';
-          this.taskSortMode = normalizeTaskSortMode(route.params.sort);
+          if (route.params.sort) {
+            this.taskSortMode = normalizeTaskSortMode(route.params.sort);
+            this.persistTaskSortMode(this.taskSortMode);
+          } else {
+            this.taskSortMode = this.readPersistedTaskSortMode();
+          }
           this.normalizeTaskFilterTags();
           if (route.params.taskid) {
             this.openTaskDetail(route.params.taskid);
@@ -4457,7 +4505,7 @@ export function initApp() {
       // Resolve assignee profiles for display but do NOT write back to
       // Dexie (address book) from a liveQuery handler — that creates a
       // reactive cascade.  Profile resolution is fire-and-forget here.
-      const assignedNpubs = [...new Set(hydratedTasks.map((task) => task.assigned_to_npub).filter(Boolean))];
+      const assignedNpubs = [...new Set(hydratedTasks.flatMap((task) => this.getTaskAssigneeNpubs(task)))];
       for (const npub of assignedNpubs) {
         this.resolveChatProfile(npub);
       }
@@ -4536,8 +4584,8 @@ export function initApp() {
         }
         this.editingTask.predecessor_task_ids = normalizePredecessorTaskIds(this.editingTask.predecessor_task_ids || [], this.editingTask.record_id);
       }
-      if (this.editingTask?.assigned_to_npub) {
-        this.resolveChatProfile(this.editingTask.assigned_to_npub);
+      for (const npub of this.getTaskAssigneeNpubs(this.editingTask)) {
+        this.resolveChatProfile(npub);
       }
       this.predecessorTaskQuery = '';
       this.showPredecessorTaskPicker = false;
@@ -4690,6 +4738,10 @@ export function initApp() {
         return;
       }
       const now = new Date().toISOString();
+      const assignedToNpubs = [hasExplicitAssignee ? options.assignedToNpub : dispatchAssigneeNpub]
+        .map((npub) => String(npub || '').trim())
+        .filter(Boolean);
+
       const localRow = {
         record_id: crypto.randomUUID(),
         owner_npub: ownerNpub,
@@ -4919,6 +4971,9 @@ export function initApp() {
         botNpub: this.botNpub,
       });
       const hasExplicitAssignee = Object.prototype.hasOwnProperty.call(options, 'assignedToNpub');
+      const assignedToNpubs = [hasExplicitAssignee ? options.assignedToNpub : dispatchAssigneeNpub]
+        .map((npub) => String(npub || '').trim())
+        .filter(Boolean);
 
       const localRow = {
         record_id: recordId,
@@ -4932,7 +4987,8 @@ export function initApp() {
           : null,
         parent_task_id: null,
         ...assignment,
-        assigned_to_npub: hasExplicitAssignee ? (options.assignedToNpub || null) : dispatchAssigneeNpub,
+        assigned_to_npubs: assignedToNpubs,
+        assigned_to_npub: assignedToNpubs[0] || null,
         scheduled_for: null,
         tags: '',
         predecessor_task_ids: null,
@@ -5155,17 +5211,23 @@ export function initApp() {
       }
 
       const nextVersion = (task.version ?? 1) + 1;
-      const updated = toRaw({
+      const patchHasAssignees = Object.prototype.hasOwnProperty.call(patch, 'assigned_to_npubs')
+        || Object.prototype.hasOwnProperty.call(patch, 'assigned_to_npub');
+      const nextAssignees = patchHasAssignees
+        ? (Array.isArray(patch.assigned_to_npubs)
+          ? patch.assigned_to_npubs
+          : [patch.assigned_to_npub])
+        : this.getTaskAssigneeNpubs(task);
+      const updated = toRaw(this.withTaskAssigneeNpubs({
         ...task,
         ...patch,
-        assigned_to_npub: patch.assigned_to_npub === undefined ? (task.assigned_to_npub ?? null) : (patch.assigned_to_npub ?? null),
         version: nextVersion,
         sync_status: 'pending',
         updated_at: new Date().toISOString(),
-      });
+      }, nextAssignees));
 
       if (updated.state === 'done' || updated.state === 'archive') {
-        updated.assigned_to_npub = null;
+        Object.assign(updated, this.withTaskAssigneeNpubs(updated, []));
       }
 
       await upsertTask(updated);
@@ -5231,9 +5293,11 @@ export function initApp() {
       if (options.intent) queueOptions.intent = options.intent;
       await this.queueTaskWrite(updated, task, queueOptions);
 
-      const newAssignee = updated.assigned_to_npub;
-      if (newAssignee && newAssignee !== task.assigned_to_npub) {
-        await this.rememberPeople([newAssignee], 'task-assignee');
+      const newAssignees = this.getTaskAssigneeNpubs(updated);
+      const oldAssignees = this.getTaskAssigneeNpubs(task);
+      const addedAssignees = newAssignees.filter((npub) => !oldAssignees.includes(npub));
+      if (addedAssignees.length > 0) {
+        await this.rememberPeople(addedAssignees, 'task-assignee');
       }
 
       if (options.sync !== false) {
@@ -5502,6 +5566,7 @@ export function initApp() {
         priority: 'sand',
         parent_task_id: parentId,
         ...this.buildTaskBoardAssignment(parent?.scope_id ?? parent?.scope_l5_id ?? parent?.scope_l4_id ?? parent?.scope_l3_id ?? parent?.scope_l2_id ?? parent?.scope_l1_id ?? null, parent),
+        assigned_to_npubs: [],
         assigned_to_npub: null,
         scheduled_for: null,
         tags: '',
@@ -5561,9 +5626,9 @@ export function initApp() {
     buildTaskDetailQuickActionPatch(action) {
       switch (action) {
         case 'done':
-          return { state: 'done', assigned_to_npub: null };
+          return { state: 'done', assigned_to_npubs: [] };
         case 'archive':
-          return { state: 'archive', assigned_to_npub: null };
+          return { state: 'archive', assigned_to_npubs: [] };
         case 'today':
           return { scheduled_for: this.getTaskDueTodayDateKey() };
         case 'this_week':
@@ -5586,7 +5651,7 @@ export function initApp() {
     async quickSetTaskState(state) {
       if (!this.editingTask || !this.isTaskDetailEditing()) return;
       this.editingTask.state = state;
-      this.editingTask.assigned_to_npub = null;
+      this.editingTask = this.withTaskAssigneeNpubs(this.editingTask, []);
     },
 
     async applyTaskDetailQuickAction(action) {
@@ -5742,7 +5807,7 @@ export function initApp() {
         this.tasks = this.tasks.map(t => t.record_id === taskForSave.record_id ? taskForSave : t);
       }
       if (this.editingTask.state === 'done' || this.editingTask.state === 'archive') {
-        this.editingTask.assigned_to_npub = null;
+        this.editingTask = this.withTaskAssigneeNpubs(this.editingTask, []);
       }
 
       const nextVersion = pendingBaseVersion == null
@@ -5771,7 +5836,8 @@ export function initApp() {
         scheduled_for: this.editingTask.scheduled_for,
         tags: this.editingTask.tags,
         predecessor_task_ids: predecessorTaskIds.length > 0 ? predecessorTaskIds : null,
-        assigned_to_npub: this.editingTask.assigned_to_npub ?? null,
+        assigned_to_npubs: this.getTaskAssigneeNpubs(this.editingTask),
+        assigned_to_npub: this.getPrimaryTaskAssigneeNpub(this.editingTask),
         scope_id: this.editingTask.scope_id ?? null,
         scope_l1_id: this.editingTask.scope_l1_id ?? null,
         scope_l2_id: this.editingTask.scope_l2_id ?? null,
@@ -5862,7 +5928,9 @@ export function initApp() {
           if (updated.priority !== taskForSave.priority) scalarPatch.priority = updated.priority;
           if ((updated.scheduled_for || null) !== (taskForSave.scheduled_for || null)) scalarPatch.scheduled_for = updated.scheduled_for || null;
           if ((updated.tags || '') !== (taskForSave.tags || '')) scalarPatch.tags = updated.tags || '';
-          if ((updated.assigned_to_npub || null) !== (taskForSave.assigned_to_npub || null)) scalarPatch.assigned_to_npub = updated.assigned_to_npub || null;
+          if (JSON.stringify(this.getTaskAssigneeNpubs(updated)) !== JSON.stringify(this.getTaskAssigneeNpubs(taskForSave))) {
+            scalarPatch.assigned_to_npubs = this.getTaskAssigneeNpubs(updated);
+          }
           if (JSON.stringify(updated.predecessor_task_ids || null) !== JSON.stringify(taskForSave.predecessor_task_ids || null)) {
             scalarPatch.predecessor_task_ids = updated.predecessor_task_ids || null;
           }
@@ -6073,8 +6141,8 @@ export function initApp() {
         }
         this.editingTask.predecessor_task_ids = normalizePredecessorTaskIds(this.editingTask.predecessor_task_ids || [], this.editingTask.record_id);
       }
-      if (this.editingTask?.assigned_to_npub) {
-        this.resolveChatProfile(this.editingTask.assigned_to_npub);
+      for (const npub of this.getTaskAssigneeNpubs(this.editingTask)) {
+        this.resolveChatProfile(npub);
       }
       this.taskAssigneeQuery = '';
       this.predecessorTaskQuery = '';
@@ -6264,9 +6332,31 @@ export function initApp() {
     },
 
     getTaskAssigneeLabel(task) {
-      const npub = String(task?.assigned_to_npub || '').trim();
-      if (!npub) return 'Unassigned';
-      return this.getSenderName(npub) || npub;
+      const npubs = this.getTaskAssigneeNpubs(task);
+      if (npubs.length === 0) return 'Unassigned';
+      if (npubs.length === 1) return this.getSenderName(npubs[0]) || npubs[0];
+      return npubs.map((npub) => this.getSenderName(npub) || npub).join(', ');
+    },
+
+    getTaskAssigneeNpubs(task) {
+      return [...new Set((Array.isArray(task?.assigned_to_npubs) ? task.assigned_to_npubs : [])
+        .map((npub) => String(npub || '').trim())
+        .filter(Boolean))];
+    },
+
+    getPrimaryTaskAssigneeNpub(task) {
+      return this.getTaskAssigneeNpubs(task)[0] || null;
+    },
+
+    withTaskAssigneeNpubs(task, npubs = []) {
+      const assigned_to_npubs = [...new Set((Array.isArray(npubs) ? npubs : [])
+        .map((npub) => String(npub || '').trim())
+        .filter(Boolean))];
+      return {
+        ...task,
+        assigned_to_npubs,
+        assigned_to_npub: assigned_to_npubs[0] || null,
+      };
     },
 
     formatTaskPriority(priority) {
@@ -6340,7 +6430,7 @@ export function initApp() {
     async assignEditingTask(npub) {
       if (!this.editingTask || !this.session?.npub || !this.isTaskDetailEditing()) return;
       const nextNpub = String(npub || '').trim();
-      this.editingTask.assigned_to_npub = nextNpub || null;
+      this.editingTask = this.withTaskAssigneeNpubs(this.editingTask, nextNpub ? [nextNpub] : []);
       this.taskAssigneeQuery = '';
       if (nextNpub) {
         await this.rememberPeople([nextNpub], 'task-assignee');
@@ -6353,7 +6443,7 @@ export function initApp() {
 
     async doTaskWithDefaultAgent() {
       if (!this.editingTask || !this.defaultAgentNpub || !this.session?.npub || !this.isTaskDetailEditing()) return;
-      this.editingTask.assigned_to_npub = this.defaultAgentNpub;
+      this.editingTask = this.withTaskAssigneeNpubs(this.editingTask, [this.defaultAgentNpub]);
       this.editingTask.state = 'ready';
       this.taskAssigneeQuery = '';
       this.rememberPeople([this.defaultAgentNpub], 'task-assignee');
@@ -6723,11 +6813,11 @@ export function initApp() {
       const patchForAction = (taskId) => {
         switch (action) {
           case 'archive':
-            return { state: 'archive', assigned_to_npub: null };
+            return { state: 'archive', assigned_to_npubs: [] };
           case 'done':
-            return { state: 'done', assigned_to_npub: null };
+            return { state: 'done', assigned_to_npubs: [] };
           case 'ready':
-            return { state: 'ready', assigned_to_npub: this.defaultAgentNpub || null };
+            return { state: 'ready', assigned_to_npubs: this.defaultAgentNpub ? [this.defaultAgentNpub] : [] };
           case 'today':
             return { scheduled_for: today };
           default:

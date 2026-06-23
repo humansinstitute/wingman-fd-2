@@ -81,6 +81,7 @@ export function parseRouteLocation(href) {
       opportunityid: url.searchParams.get('opportunityid') || null,
       taskid: url.searchParams.get('taskid') || null,
       view: url.searchParams.get('view') || null,
+      sort: url.searchParams.get('sort') || null,
       workspacekey: url.searchParams.get('workspacekey') || null,
       token: url.searchParams.get('token') || null,
     },

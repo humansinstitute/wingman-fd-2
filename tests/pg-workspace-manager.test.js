@@ -92,7 +92,7 @@ async function buildStore(overrides = {}) {
     pgContextSelectedThreadId: '',
     showBoardDescendantTasks: true,
     taskViewMode: 'list',
-    taskSortMode: 'modified',
+    taskSortMode: 'modified_desc',
     selectedDocType: null,
     selectedDocId: null,
     selectedDocCommentId: null,

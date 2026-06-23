@@ -106,7 +106,15 @@ describe('task-board-state constants', () => {
   });
 
   it('exports supported task board sort modes', () => {
-    expect(TASK_BOARD_SORT_MODES).toEqual(['manual', 'created', 'modified', 'alpha']);
+    expect(TASK_BOARD_SORT_MODES).toEqual([
+      'manual',
+      'created_asc',
+      'created_desc',
+      'modified_desc',
+      'modified_asc',
+      'alpha_asc',
+      'alpha_desc',
+    ]);
   });
 });
 
@@ -1030,10 +1038,10 @@ describe('computeFilteredTasks', () => {
 
   // --- assignee filtering (filter-to-me) ---
   const tasksWithAssignee = [
-    { record_id: 't1', title: 'Fix login bug', description: '', tags: 'bug', assigned_to_npub: 'npub1me' },
-    { record_id: 't2', title: 'Add dashboard', description: '', tags: 'feature', assigned_to_npub: 'npub1other' },
-    { record_id: 't3', title: 'Refactor auth', description: '', tags: 'refactor', assigned_to_npub: null },
-    { record_id: 't4', title: 'Write docs', description: '', tags: 'docs', assigned_to_npub: 'npub1me' },
+    { record_id: 't1', title: 'Fix login bug', description: '', tags: 'bug', assigned_to_npubs: ['npub1me'] },
+    { record_id: 't2', title: 'Add dashboard', description: '', tags: 'feature', assigned_to_npubs: ['npub1other'] },
+    { record_id: 't3', title: 'Refactor auth', description: '', tags: 'refactor', assigned_to_npubs: [] },
+    { record_id: 't4', title: 'Write docs', description: '', tags: 'docs', assigned_to_npubs: ['npub1other', 'npub1me'] },
   ];
 
   it('filters by assignee npub when provided', () => {
@@ -1265,7 +1273,7 @@ describe('computeBoardColumns', () => {
       { record_id: 'middle', state: 'ready', title: 'Middle', created_at: '2026-04-02T00:00:00Z' },
     ];
 
-    const cols = computeBoardColumns(active, [], [], { sortMode: 'created' });
+    const cols = computeBoardColumns(active, [], [], { sortMode: 'created_asc' });
 
     expect(cols.find((c) => c.state === 'ready').tasks.map((task) => task.record_id)).toEqual([
       'early',
@@ -1281,7 +1289,7 @@ describe('computeBoardColumns', () => {
       { record_id: 'middle', state: 'review', title: 'Middle', updated_at: '2026-04-02T00:00:00Z' },
     ];
 
-    const cols = computeBoardColumns(active, [], [], { sortMode: 'modified' });
+    const cols = computeBoardColumns(active, [], [], { sortMode: 'modified_desc' });
 
     expect(cols.find((c) => c.state === 'review').tasks.map((task) => task.record_id)).toEqual([
       'new',
@@ -1298,7 +1306,7 @@ describe('computeBoardColumns', () => {
       { record_id: 'alpha', state: 'new', title: 'Alpha task' },
     ];
 
-    const cols = computeBoardColumns(active, [], [], { sortMode: 'alpha' });
+    const cols = computeBoardColumns(active, [], [], { sortMode: 'alpha_asc' });
 
     expect(cols.find((c) => c.state === 'new').tasks.map((task) => task.record_id)).toEqual([
       't1',
@@ -1306,6 +1314,21 @@ describe('computeBoardColumns', () => {
       't10',
       'alpha',
     ]);
+  });
+
+  it('can reverse created, modified, and title order', () => {
+    const active = [
+      { record_id: 'a', state: 'ready', title: '1 Alpha', created_at: '2026-04-01T00:00:00Z', updated_at: '2026-04-01T00:00:00Z' },
+      { record_id: 'b', state: 'ready', title: '2 Beta', created_at: '2026-04-02T00:00:00Z', updated_at: '2026-04-02T00:00:00Z' },
+      { record_id: 'c', state: 'ready', title: '10 Gamma', created_at: '2026-04-03T00:00:00Z', updated_at: '2026-04-03T00:00:00Z' },
+    ];
+
+    expect(computeBoardColumns(active, [], [], { sortMode: 'created_desc' }).find((c) => c.state === 'ready').tasks.map((task) => task.record_id))
+      .toEqual(['c', 'b', 'a']);
+    expect(computeBoardColumns(active, [], [], { sortMode: 'modified_asc' }).find((c) => c.state === 'ready').tasks.map((task) => task.record_id))
+      .toEqual(['a', 'b', 'c']);
+    expect(computeBoardColumns(active, [], [], { sortMode: 'alpha_desc' }).find((c) => c.state === 'ready').tasks.map((task) => task.record_id))
+      .toEqual(['c', 'b', 'a']);
   });
 });
 

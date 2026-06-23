@@ -244,6 +244,7 @@ function buildApprovalItem(approval = {}) {
 
 function buildTaskItem(task = {}, lane, options = {}) {
   const updatedAt = isoOf(task);
+  const assigneeNpubs = Array.isArray(task.assigned_to_npubs) ? task.assigned_to_npubs : [];
   return {
     id: `${lane}:task:${task.record_id}`,
     lane,
@@ -255,7 +256,7 @@ function buildTaskItem(task = {}, lane, options = {}) {
     reason: options.reason || taskLabel(task),
     updatedAt,
     updatedTs: timestampOf(task),
-    actorNpub: task.assigned_to_npub || null,
+    actorNpub: assigneeNpubs[0] || null,
     section: 'tasks',
     recordType: 'Task',
     recordTypeKey: 'task',
@@ -294,8 +295,9 @@ export function buildAttentionFeed(input = {}) {
 
   for (const task of tasks) {
     const state = String(task.state || '').trim();
+    const assigneeNpubs = Array.isArray(task.assigned_to_npubs) ? task.assigned_to_npubs : [];
     if (TERMINAL_TASK_STATES.has(state)) continue;
-    if (task.assigned_to_npub && task.assigned_to_npub === viewerNpub) {
+    if (viewerNpub && assigneeNpubs.includes(viewerNpub)) {
       pushUnique(groups, seen, buildTaskItem(task, 'needs_you', {
         reason: state === 'review' ? 'Ready for your review' : 'Assigned to you',
         severity: state === 'blocked' || state === 'review' ? 'high' : 'medium',
@@ -309,7 +311,7 @@ export function buildAttentionFeed(input = {}) {
       }));
       continue;
     }
-    if (agentNpub && task.assigned_to_npub === agentNpub && ACTIVE_TASK_STATES.has(state)) {
+    if (agentNpub && assigneeNpubs.includes(agentNpub) && ACTIVE_TASK_STATES.has(state)) {
       pushUnique(groups, seen, buildTaskItem(task, 'agent_updates', {
         reason: state === 'review' ? 'Agent work in review' : 'Agent work active',
         severity: state === 'blocked' ? 'high' : 'normal',

@@ -1,4 +1,5 @@
 import {
+  assignTowerPgTask,
   createTowerPgChannelAudioNote,
   createTowerPgChannelDoc,
   createTowerPgChannelFile,
@@ -17,6 +18,7 @@ import {
   updateTowerPgFile,
   updateTowerPgTask,
   updateTowerPgTaskState,
+  unassignTowerPgTask,
 } from './api.js';
 import {
   mapPgAudioNoteToLocal,
@@ -102,7 +104,8 @@ function pgTaskMetadata(task = {}) {
   base.board_order = task.board_order ?? null;
   base.tags = typeof task.tags === 'string' ? task.tags : '';
   base.scheduled_for = task.scheduled_for || null;
-  base.assigned_to_npub = task.assigned_to_npub || null;
+  delete base.assigned_to_npub;
+  delete base.assigned_to_npubs;
   base.predecessor_task_ids = Array.isArray(task.predecessor_task_ids)
     ? task.predecessor_task_ids
     : null;
@@ -120,7 +123,6 @@ function isMetadataTaskPatch(patch = {}) {
     'board_order',
     'tags',
     'scheduled_for',
-    'assigned_to_npub',
     'predecessor_task_ids',
     'flow_id',
     'flow_run_id',
@@ -129,6 +131,54 @@ function isMetadataTaskPatch(patch = {}) {
     'references',
     'deliverable_links',
   ].some((key) => Object.prototype.hasOwnProperty.call(patch, key));
+}
+
+function normalizeTaskAssigneeNpubs(task = {}) {
+  return [...new Set((Array.isArray(task?.assigned_to_npubs) ? task.assigned_to_npubs : [])
+    .map((npub) => trimText(npub))
+    .filter(Boolean))];
+}
+
+function resolvePgAssignmentActorId(store = {}, npub = '') {
+  const target = trimText(npub);
+  if (!target) return '';
+  const explicit = typeof store.getPgWorkspaceMemberActorId === 'function'
+    ? trimText(store.getPgWorkspaceMemberActorId(target))
+    : '';
+  if (explicit) return explicit;
+  const currentActor = store?.currentWorkspace?.pgMe?.actor || store?.currentWorkspace?.pg_me?.actor || {};
+  if (trimText(currentActor.npub) === target) return trimText(currentActor.actor_id || currentActor.id);
+  const member = (Array.isArray(store.pgWorkspaceMembers) ? store.pgWorkspaceMembers : [])
+    .find((entry) => trimText(entry?.npub) === target || trimText(entry?.actor?.npub) === target);
+  return trimText(member?.actor_id || member?.id || member?.actor?.actor_id || member?.actor?.id);
+}
+
+async function syncTowerPgTaskAssignmentsFromLocal(store, context, task, previousTask = null) {
+  const nextAssignees = normalizeTaskAssigneeNpubs(task);
+  const previousAssignees = normalizeTaskAssigneeNpubs(previousTask);
+  const added = nextAssignees.filter((npub) => !previousAssignees.includes(npub));
+  const removed = previousAssignees.filter((npub) => !nextAssignees.includes(npub));
+  for (const npub of removed) {
+    const actorId = resolvePgAssignmentActorId(store, npub);
+    if (!actorId) throw new Error(`Tower PG actor id not found for task assignee ${npub}`);
+    await unassignTowerPgTask(context.workspaceId, task.record_id, actorId, pgRequestOptions(context));
+  }
+  for (const npub of added) {
+    const actorId = resolvePgAssignmentActorId(store, npub);
+    if (!actorId) throw new Error(`Tower PG actor id not found for task assignee ${npub}`);
+    await assignTowerPgTask(context.workspaceId, task.record_id, actorId, pgRequestOptions(context));
+  }
+}
+
+function withAssignedNpubs(task = {}, npubs = []) {
+  const assigned_to_npubs = [...new Set((Array.isArray(npubs) ? npubs : [])
+    .map((npub) => trimText(npub))
+    .filter(Boolean))];
+  return {
+    ...task,
+    assigned_to_npubs,
+    assigned_to_npub: assigned_to_npubs[0] || null,
+  };
 }
 
 function pgAudioTargetType(familyHash) {
@@ -162,7 +212,16 @@ export async function createTowerPgTaskFromLocal(store, task) {
     thread_id: recordContext.threadId || null,
     metadata: pgTaskMetadata(task),
   }, pgRequestOptions(context));
-  return mapPgTaskToLocal(result.task, { workspaceOwnerNpub: context.workspaceOwnerNpub });
+  let acceptedTask = mapPgTaskToLocal(result.task, { workspaceOwnerNpub: context.workspaceOwnerNpub });
+  const desiredAssignees = normalizeTaskAssigneeNpubs(task);
+  if (desiredAssignees.length > 0) {
+    await syncTowerPgTaskAssignmentsFromLocal(store, context, {
+      ...acceptedTask,
+      assigned_to_npubs: desiredAssignees,
+    }, null);
+    acceptedTask = withAssignedNpubs(acceptedTask, desiredAssignees);
+  }
+  return acceptedTask;
 }
 
 export async function createTowerPgDocFromLocal(store, document) {
@@ -274,7 +333,11 @@ export async function updateTowerPgTaskFromLocal(store, task, previousTask = nul
     row_version: previousTask?.version || task.version || undefined,
   };
   const patchKeys = Object.keys(patch || {});
-  const onlyState = patchKeys.length === 1 && Object.prototype.hasOwnProperty.call(patch, 'state');
+  const assignmentPatch = Object.prototype.hasOwnProperty.call(patch, 'assigned_to_npubs')
+    || Object.prototype.hasOwnProperty.call(patch, 'assigned_to_npub');
+  const nonAssignmentPatchKeys = patchKeys.filter((key) => key !== 'assigned_to_npubs' && key !== 'assigned_to_npub');
+  const onlyState = nonAssignmentPatchKeys.length === 1 && Object.prototype.hasOwnProperty.call(patch, 'state');
+  const onlyAssignment = assignmentPatch && nonAssignmentPatchKeys.length === 0;
   let acceptedTask = null;
   if (Object.prototype.hasOwnProperty.call(patch, 'state')) {
     const result = await updateTowerPgTaskState(context.workspaceId, task.record_id, {
@@ -282,7 +345,14 @@ export async function updateTowerPgTaskFromLocal(store, task, previousTask = nul
       state: task.state,
     }, pgRequestOptions(context));
     acceptedTask = mapPgTaskToLocal(result.task, { workspaceOwnerNpub: context.workspaceOwnerNpub });
-    if (onlyState) return acceptedTask;
+    if (onlyState) {
+      await syncTowerPgTaskAssignmentsFromLocal(store, context, task, previousTask);
+      return withAssignedNpubs(acceptedTask, normalizeTaskAssigneeNpubs(task));
+    }
+  }
+  if (onlyAssignment) {
+    await syncTowerPgTaskAssignmentsFromLocal(store, context, task, previousTask);
+    return withAssignedNpubs(previousTask || task, normalizeTaskAssigneeNpubs(task));
   }
   const patchBody = {
     row_version: acceptedTask?.version || body.row_version,
@@ -292,14 +362,16 @@ export async function updateTowerPgTaskFromLocal(store, task, previousTask = nul
   if (Object.prototype.hasOwnProperty.call(patch, 'title')) patchBody.title = task.title;
   if (Object.prototype.hasOwnProperty.call(patch, 'description')) patchBody.description = task.description || null;
   if (Object.prototype.hasOwnProperty.call(patch, 'priority')) patchBody.priority = task.priority || 'sand';
-  if (patchKeys.length === 0 || isMetadataTaskPatch(patch)) patchBody.metadata = pgTaskMetadata(task);
+  if (nonAssignmentPatchKeys.length === 0 || isMetadataTaskPatch(patch)) patchBody.metadata = pgTaskMetadata(task);
   const result = await updateTowerPgTask(
     context.workspaceId,
     task.record_id,
     addPgEditLeaseToSaveBody(store, { ...patchTask, ...previousForPatch }, 'task', patchBody),
     pgRequestOptions(context),
   );
-  return mapPgTaskToLocal(result.task, { workspaceOwnerNpub: context.workspaceOwnerNpub });
+  acceptedTask = mapPgTaskToLocal(result.task, { workspaceOwnerNpub: context.workspaceOwnerNpub });
+  await syncTowerPgTaskAssignmentsFromLocal(store, context, task, previousTask);
+  return withAssignedNpubs(acceptedTask, normalizeTaskAssigneeNpubs(task));
 }
 
 export async function deleteTowerPgTaskFromLocal(store, task) {
