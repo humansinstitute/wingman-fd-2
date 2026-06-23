@@ -11,7 +11,6 @@ import {
   sameListBySignature,
   parseMarkdownBlocks,
   assembleMarkdownBlocks,
-  buildDocumentContentModel,
   createDocumentBlock,
   normalizeDocumentBlocks,
 } from './utils/state-helpers.js';
@@ -98,7 +97,6 @@ import {
   createDocumentEditorState,
   shouldUseRichDocumentEditor,
 } from './docs/editor/document-editor-store.js';
-import { prosemirrorToFlightDeckContentModel } from './docs/editor/prosemirror-to-flightdeck.js';
 import { FLIGHTDECK_PROSEMIRROR_CONTENT_FORMAT } from './docs/editor/prosemirror-flightdeck-schema.js';
 
 // ---------------------------------------------------------------------------
@@ -654,11 +652,17 @@ export const docsManagerMixin = {
   },
 
   async buildManagedDocumentEnvelope(payload, record = null, options = {}) {
-    const contentModel = buildDocumentContentModel(
-      payload?.content_blocks && Array.isArray(payload.content_blocks)
-        ? payload.content_blocks
-        : parseMarkdownBlocks(payload?.content || ''),
-    );
+    const payloadBlocks = payload?.content_blocks && Array.isArray(payload.content_blocks)
+      ? payload.content_blocks
+      : parseMarkdownBlocks(payload?.content || record?.content || '');
+    const payloadContent = payload?.content || record?.content || assembleMarkdownBlocks(payloadBlocks);
+    const editorState = createDocumentEditorState({
+      ...(record || {}),
+      content: payloadContent,
+      content_blocks: payloadBlocks,
+      editor_state: payload?.editor_state || record?.editor_state || null,
+    });
+    const contentModel = editorState.contentModel;
     const encryptableGroupIds = await getEncryptableRecordGroupRefsForStore(this, payload, {
       label: 'Document write',
       resolveGroupId: (value) => this._resolveDocGroupRef(value),
@@ -949,15 +953,22 @@ export const docsManagerMixin = {
       const synced = this.syncDocRichEditorContentModel();
       if (synced) return synced;
     }
-    if (
-      this.selectedDocument?.content_format === FLIGHTDECK_PROSEMIRROR_CONTENT_FORMAT
-      && this.docEditorProseMirrorState?.type === 'doc'
-    ) {
-      const model = prosemirrorToFlightDeckContentModel(this.docEditorProseMirrorState);
-      this.syncDocRichEditorContentModel(model);
-      return model;
-    }
-    return buildDocumentContentModel(this.docEditorBlocks);
+    const editorBlocks = this.docEditorBlocks?.length > 0
+      ? this.docEditorBlocks
+      : normalizeDocumentBlocks(this.selectedDocument?.content_blocks, this.selectedDocument?.content);
+    const blockContent = assembleMarkdownBlocks(editorBlocks);
+    const editorContent = this.docEditorMode === 'source'
+      ? (this.docEditorContent || blockContent)
+      : (blockContent || this.docEditorContent || this.selectedDocument?.content || '');
+    const editorState = createDocumentEditorState({
+      ...(this.selectedDocument || {}),
+      content: editorContent,
+      content_blocks: editorBlocks,
+      editor_state: null,
+    });
+    this.docEditorProseMirrorState = editorState.editorState;
+    this.docEditorContentModel = editorState.contentModel;
+    return editorState.contentModel;
   },
 
   refreshProseMirrorStateFromCompatibility() {
@@ -1722,7 +1733,7 @@ export const docsManagerMixin = {
     }
   },
 
-  async enterSelectedDocEditMode(mode = 'block') {
+  async enterSelectedDocEditMode(mode = 'rich') {
     const item = this.selectedDocument;
     if (!item) return false;
     const hasPgLease = isTowerPgBackendMode()
@@ -1732,7 +1743,12 @@ export const docsManagerMixin = {
       const acquired = await this.acquireSelectedDocCheckout();
       if (!acquired) return false;
     }
-    this.setDocEditorMode(mode === 'source' ? 'source' : mode === 'rich' ? 'rich' : 'block');
+    const requestedMode = mode === 'source'
+      ? 'source'
+      : mode === 'block'
+        ? 'block'
+        : 'rich';
+    this.setDocEditorMode(requestedMode);
     if (isTowerPgBackendMode() && isSyncedPgRecord(item)) {
       startPgEditLeaseRenewal(this, item, 'document');
     }
@@ -1809,7 +1825,7 @@ export const docsManagerMixin = {
 
   toggleDocEditorMode() {
     if (this.docEditorMode === 'preview') {
-      void this.enterSelectedDocEditMode('block');
+      void this.enterSelectedDocEditMode('rich');
       return;
     }
     if (this.docEditorMode === 'block') {
@@ -2678,7 +2694,7 @@ export const docsManagerMixin = {
     }
     const recordId = crypto.randomUUID();
     const now = new Date().toISOString();
-    const contentModel = buildDocumentContentModel([]);
+    const contentModel = createDocumentEditorState({ content: '', content_blocks: [] }).contentModel;
     if (pgContext) {
       try {
         const pgWorkspaceContext = resolveTowerPgWorkspaceContext(this);
@@ -2703,6 +2719,9 @@ export const docsManagerMixin = {
           content: contentModel.content,
           content_format: contentModel.content_format,
           content_blocks: contentModel.content_blocks,
+          editor_state: contentModel.editor_state,
+          editor_state_format: contentModel.editor_state_format,
+          editor_state_version: contentModel.editor_state_version,
           content_storage_object_id: contentPayload.content_storage_object_id,
           content_storage_format: contentPayload.content_storage_format,
           content_storage_content_type: contentPayload.content_storage_content_type,
@@ -2950,7 +2969,7 @@ export const docsManagerMixin = {
     const nextTitle = this.docEditorTitle.trim() || 'Untitled document';
     const currentSharesSerialized = this.serializeDocShares(this.getEffectiveDocShares(item));
     const editorSharesSerialized = this.serializeDocShares(this.docEditorShares || []);
-    const contentModel = buildDocumentContentModel(this.docEditorBlocks);
+    const contentModel = this.buildSelectedDocContentModel();
     const nextReferences = mergeDocumentSaveReferences(item, parseRecordReferencesFromText(contentModel.content));
     const nextLinksSerialized = JSON.stringify(buildRecordLinkPayload({
       ...item,

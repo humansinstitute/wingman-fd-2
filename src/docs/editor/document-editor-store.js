@@ -5,8 +5,7 @@ import { FLIGHTDECK_PROSEMIRROR_CONTENT_FORMAT } from './prosemirror-flightdeck-
 export function shouldUseRichDocumentEditor(document = {}, options = {}) {
   if (document?.content_format === FLIGHTDECK_PROSEMIRROR_CONTENT_FORMAT) return true;
   if (options.enabled === true) return true;
-  if (typeof localStorage === 'undefined') return false;
-  return localStorage.getItem('flightdeck.tiptapDocsEditor') === '1';
+  return true;
 }
 
 export function createDocumentEditorState(document = {}) {

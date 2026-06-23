@@ -89,6 +89,7 @@ import {
   DOCUMENT_CONTENT_STORAGE_FORMAT,
   DOCUMENT_CONTENT_STORAGE_MIME,
 } from '../src/translators/docs.js';
+import { FLIGHTDECK_PROSEMIRROR_CONTENT_FORMAT } from '../src/docs/editor/prosemirror-flightdeck-schema.js';
 import {
   cacheGroupKey,
   clearCryptoContext,
@@ -758,6 +759,29 @@ describe('docsManagerMixin checkout orchestration', () => {
     expect(store.setDocEditorMode).toHaveBeenCalledWith('block');
   });
 
+  it('uses the rich Tiptap editor as the default document edit mode', async () => {
+    acquireRecordCheckoutMock.mockResolvedValueOnce({
+      checkout: {
+        state: 'checked_out',
+        checkout_id: 'checkout-doc-rich-1',
+        lease_expires_at: new Date(Date.now() + 60_000).toISOString(),
+      },
+    });
+
+    const record = { record_id: 'doc-rich', sync_status: 'synced', version: 1 };
+    const store = createStore({
+      documents: [record],
+      selectedDocType: 'document',
+      selectedDocId: 'doc-rich',
+      setDocEditorMode: vi.fn(),
+    });
+
+    const entered = await store.enterSelectedDocEditMode();
+
+    expect(entered).toBe(true);
+    expect(store.setDocEditorMode).toHaveBeenCalledWith('rich');
+  });
+
   it('acquires a PG edit lease before entering synced PG document edit mode', async () => {
     isTowerPgBackendModeMock.mockReturnValue(true);
     const setIntervalSpy = vi.spyOn(globalThis, 'setInterval').mockReturnValue('doc-renew-timer');
@@ -1148,6 +1172,28 @@ describe('docsManagerMixin canonical row normalization', () => {
     expect(payload.content_storage_format).toBe(DOCUMENT_CONTENT_STORAGE_FORMAT);
     expect(payload.content).toBe('Short note');
     expect(payload.content_blocks).toEqual([]);
+  });
+
+  it('builds ProseMirror document content when saving legacy block edits', () => {
+    const store = createStore({
+      selectedDocType: 'document',
+      selectedDocId: 'doc-prose',
+      documents: [{
+        record_id: 'doc-prose',
+        title: 'Legacy block doc',
+        content: 'Old body',
+        content_blocks: [{ id: 'old-block', type: 'markdown', text: 'Old body', attrs: {} }],
+      }],
+      docEditorMode: 'block',
+      docEditorContent: 'Updated body',
+      docEditorBlocks: [{ id: 'block-1', type: 'markdown', text: 'Updated body', attrs: {} }],
+    });
+
+    const contentModel = store.buildSelectedDocContentModel();
+
+    expect(contentModel.content_format).toBe(FLIGHTDECK_PROSEMIRROR_CONTENT_FORMAT);
+    expect(contentModel.editor_state).toMatchObject({ type: 'doc' });
+    expect(contentModel.content).toContain('Updated body');
   });
 
   it('creates PG documents through Tower without encrypted pending writes', async () => {

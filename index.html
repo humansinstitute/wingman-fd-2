@@ -3902,7 +3902,7 @@
                           ? (!$store.chat.canCurrentActorEditSelectedLockManagedRecord || $store.chat.selectedDocCheckoutSessionState?.acquireState === 'acquiring')
                           : false"
                         @click="$store.chat.docEditorMode === 'preview'
-                          ? $store.chat.enterSelectedDocEditMode('block')
+                          ? $store.chat.enterSelectedDocEditMode('rich')
                           : $store.chat.saveAndExitSelectedDocEditMode()"
                         x-text="$store.chat.docEditorMode === 'preview'
                           ? ($store.chat.selectedDocCheckoutSessionState?.acquireState === 'acquiring' ? 'Checking out…' : 'Edit')

@@ -899,7 +899,7 @@ export function initApp() {
     docEditorShares: [],
     docShareQuery: '',
     docEditorMode: 'preview',
-    docEditorRichFeatureEnabled: false,
+    docEditorRichFeatureEnabled: true,
     docEditorProseMirrorState: null,
     docEditorContentModel: null,
     docRichEditorAdapter: null,
