@@ -1814,10 +1814,11 @@ export const taskBoardStateMixin = {
   },
 
   selectBoard(boardId) {
-    const requestedBoard = parsePgTaskBoardId(boardId);
     let nextBoardId = boardId;
+    const previousBoardId = this.selectedBoardId;
     const previousChannelId = this.selectedChannelId;
-    const openDocument = this.navSection === 'docs'
+    const openDocument = nextBoardId !== previousBoardId
+      && this.navSection === 'docs'
       && this.docsEditorOpen
       && this.selectedDocument?.record_id
       ? this.selectedDocument
@@ -1839,13 +1840,9 @@ export const taskBoardStateMixin = {
         void this.applyMessages?.([], { scrollToLatest: false });
       }
     }
-    const selectedBoard = requestedBoard.type === 'scope' ? requestedBoard : parsePgTaskBoardId(nextBoardId);
     if (openDocument
-      && selectedBoard.type === 'scope'
-      && selectedBoard.scopeId
-      && selectedBoard.scopeId !== openDocument.scope_id
-      && typeof this.moveOpenDocumentToScopeBoard === 'function') {
-      void this.moveOpenDocumentToScopeBoard(selectedBoard.scopeId, openDocument);
+      && typeof this.resetOpenDocumentForContextChange === 'function') {
+      void this.resetOpenDocumentForContextChange(openDocument, { syncRoute: false });
     }
     if (this.showTaskDetail) this.closeTaskDetail();
     else this.syncRoute();

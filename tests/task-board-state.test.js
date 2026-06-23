@@ -686,9 +686,9 @@ describe('computeBoardScopedTasks', () => {
     expect(store.focusScopeTitle).toBe('Ops');
   });
 
-  it('moves an open document to a newly selected docs scope board', () => {
+  it('resets an open document to the docs list when selecting a docs scope board', () => {
     const openDoc = { record_id: 'doc-1', scope_id: 'scope-marketing' };
-    const moveOpenDocumentToScopeBoard = vi.fn();
+    const resetOpenDocumentForContextChange = vi.fn();
     const store = Object.create(taskBoardStateMixin);
     Object.assign(store, {
       currentWorkspace: { pgBackendMode: false },
@@ -703,13 +703,13 @@ describe('computeBoardScopedTasks', () => {
       normalizeTaskFilterTags() {},
       closeBoardPicker() {},
       syncRoute() {},
-      moveOpenDocumentToScopeBoard,
+      resetOpenDocumentForContextChange,
     });
 
     store.selectBoard('scope-ops');
 
     expect(store.selectedBoardId).toBe('scope-ops');
-    expect(moveOpenDocumentToScopeBoard).toHaveBeenCalledWith('scope-ops', openDoc);
+    expect(resetOpenDocumentForContextChange).toHaveBeenCalledWith(openDoc, { syncRoute: false });
   });
 
   it('selects a channel context by jumping from All to the channel board', () => {

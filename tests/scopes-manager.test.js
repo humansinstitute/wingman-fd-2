@@ -314,6 +314,45 @@ describe('scopes-manager pure utilities', () => {
       expect(updateDocScope).toHaveBeenCalledWith(savedDoc, 'scope-new');
       expect(closeScopePicker).toHaveBeenCalled();
     });
+
+    it('flushes pending document edits and closes the editor for docs context changes', async () => {
+      const originalDoc = {
+        record_id: 'doc-1',
+        title: 'Draft',
+        content: 'before',
+        scope_id: 'scope-old',
+        version: 1,
+      };
+      const savedDoc = {
+        ...originalDoc,
+        content: 'after',
+        version: 2,
+      };
+      const saveSelectedDocItem = vi.fn(async function saveSelectedDocItem() {
+        this.selectedDocument = savedDoc;
+        this.documents = [savedDoc];
+        return savedDoc;
+      });
+      const closeDocEditor = vi.fn();
+      const syncRoute = vi.fn();
+      const store = createScopeStore({
+        selectedDocType: 'document',
+        selectedDocument: originalDoc,
+        documents: [originalDoc],
+        docsEditorOpen: true,
+        docAutosaveState: 'pending',
+        saveSelectedDocItem,
+        closeDocEditor,
+        syncRoute,
+      });
+
+      const result = await store.resetOpenDocumentForContextChange(originalDoc);
+
+      expect(result).toBe(savedDoc);
+      expect(saveSelectedDocItem).toHaveBeenCalledWith({ autosave: true });
+      expect(closeDocEditor).toHaveBeenCalledWith({ syncRoute: false });
+      expect(syncRoute).toHaveBeenCalled();
+    });
   });
 
   describe('Tower PG scope state', () => {

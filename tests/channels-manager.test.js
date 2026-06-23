@@ -304,6 +304,44 @@ describe('channels-manager pure utilities', () => {
     expect(persistSelectedBoardId).toHaveBeenCalledWith(buildPgChannelTaskBoardId('ch-b'));
   });
 
+  it('saves and closes an open docs editor before selecting another docs channel', async () => {
+    const openDoc = { record_id: 'doc-1', pg_channel_id: 'ch-a' };
+    const resetOpenDocumentForContextChange = vi.fn(async function resetOpenDocumentForContextChange() {
+      expect(this.selectedChannelId).toBe('ch-a');
+    });
+    const store = applyChannelMixin({
+      currentWorkspace: { pgBackendMode: true },
+      navSection: 'docs',
+      docsEditorOpen: true,
+      selectedDocument: openDoc,
+      channels: [
+        { record_id: 'ch-a', title: 'A', scope_id: 'scope-a', scope_l1_id: 'scope-a' },
+        { record_id: 'ch-b', title: 'B', scope_id: 'scope-b', scope_l1_id: 'scope-b' },
+      ],
+      selectedBoardId: buildPgChannelTaskBoardId('ch-a'),
+      selectedChannelId: 'ch-a',
+      MAIN_FEED_PAGE_SIZE: 50,
+      closeThread: vi.fn(),
+      applyMessages: vi.fn(),
+      startSelectedChannelLiveQuery: vi.fn(),
+      refreshMessages: vi.fn(),
+      refreshDailyNotes: vi.fn(),
+      syncRoute: vi.fn(),
+      ensureBackgroundSync: vi.fn(),
+      captureSelectedChannelUnreadSnapshot: vi.fn(),
+      markChannelRead: vi.fn(),
+      persistSelectedBoardId: vi.fn(),
+      normalizeTaskFilterTags: vi.fn(),
+      resetOpenDocumentForContextChange,
+    });
+
+    await store.selectChannel('ch-b', { syncRoute: false });
+
+    expect(resetOpenDocumentForContextChange).toHaveBeenCalledWith(openDoc, { syncRoute: false });
+    expect(store.selectedChannelId).toBe('ch-b');
+    expect(store.selectedBoardId).toBe(buildPgChannelTaskBoardId('ch-b'));
+  });
+
   it('reconciles the selected chat channel when channels hydrate for the active scope', async () => {
     const scopesMap = new Map([
       ['scope-a', { record_id: 'scope-a', level: 'l1', title: 'Scope A' }],

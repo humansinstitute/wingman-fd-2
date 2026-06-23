@@ -1851,6 +1851,15 @@ export const channelsManagerMixin = {
   },
 
   async selectChannel(recordId, options = {}) {
+    const openDocument = this.navSection === 'docs'
+      && this.docsEditorOpen
+      && this.selectedDocument?.record_id
+      && String(recordId || '').trim() !== String(this.selectedChannelId || '').trim()
+      ? this.selectedDocument
+      : null;
+    if (openDocument && typeof this.resetOpenDocumentForContextChange === 'function') {
+      await this.resetOpenDocumentForContextChange(openDocument, { syncRoute: false });
+    }
     this.selectedChannelId = recordId;
     const selectedChannel = (this.channels || []).find((channel) => channel?.record_id === recordId) || null;
     const selectedChannelScopeId = getChannelScopeId(selectedChannel);

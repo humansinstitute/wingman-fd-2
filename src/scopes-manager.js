@@ -596,6 +596,15 @@ export const scopesManagerMixin = {
     return this.documents?.find((item) => item?.record_id === targetId) || this.selectedDocument || doc;
   },
 
+  async resetOpenDocumentForContextChange(doc = null, options = {}) {
+    const target = doc || this.selectedDocument;
+    if (!target?.record_id || this.selectedDocType !== 'document') return null;
+    const savedDoc = await this.flushSelectedDocumentAutosaveBeforeScopeChange(target);
+    this.closeDocEditor?.({ syncRoute: false });
+    if (options.syncRoute !== false) this.syncRoute?.();
+    return savedDoc;
+  },
+
   async moveOpenDocumentToScopeBoard(scopeId, doc = null) {
     const targetScopeId = String(scopeId || '').trim();
     if (!targetScopeId || targetScopeId === '__all__' || targetScopeId === '__recent__' || targetScopeId === '__unscoped__') return;
