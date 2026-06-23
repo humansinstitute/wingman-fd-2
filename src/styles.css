@@ -13933,14 +13933,20 @@ button:disabled {
 }
 
 .task-field textarea {
-  padding: 0.65rem 0;
+  width: 100%;
+  padding: 0.65rem 0.75rem;
   border: 1px solid var(--border);
-  border-width: 1px 0;
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   font-size: 0.98rem;
   line-height: 1.62;
-  background: transparent;
+  background: var(--surface);
   resize: vertical;
+}
+
+.task-field textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
 }
 
 .task-field select:disabled,
