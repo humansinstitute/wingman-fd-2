@@ -915,6 +915,7 @@ export function initApp() {
     docCommentAnchorLine: null,
     docCommentAnchorBlockId: null,
     docCommentConnector: { visible: false, path: '' },
+    docHydrationInFlightById: {},
     newDocCommentBody: '',
     docCommentAudioDrafts: [],
     newDocCommentReplyBody: '',
@@ -2092,6 +2093,18 @@ export function initApp() {
         const type = link.dataset.mentionType;
         const id = link.dataset.mentionId;
         if (type && id) this.handleMentionNavigate(type, id);
+      });
+      document.addEventListener('pointerover', (e) => {
+        const link = e.target.closest('.mention-link[data-mention-type]');
+        if (!link) return;
+        if (normalizeRecordLinkType(link.dataset.mentionType) !== 'doc') return;
+        this.prefetchFlightDeckDoc(link.dataset.mentionId);
+      }, { passive: true });
+      document.addEventListener('focusin', (e) => {
+        const link = e.target.closest('.mention-link[data-mention-type]');
+        if (!link) return;
+        if (normalizeRecordLinkType(link.dataset.mentionType) !== 'doc') return;
+        this.prefetchFlightDeckDoc(link.dataset.mentionId);
       });
     },
 
@@ -7447,16 +7460,76 @@ export function initApp() {
       }
     },
 
+    createOptimisticChatDoc(recordId, title = '') {
+      const docId = String(recordId || '').trim();
+      if (!docId) return null;
+      const existing = this.documents.find((item) => item.record_id === docId);
+      if (existing) return existing;
+      const now = new Date().toISOString();
+      const placeholder = {
+        record_id: docId,
+        owner_npub: this.workspaceOwnerNpub || this.session?.npub || '',
+        title: String(title || '').trim() || 'Flight Deck document',
+        content: '',
+        content_format: null,
+        content_blocks: [],
+        content_storage_object_id: null,
+        content_storage_status: 'loading',
+        content_storage_error: null,
+        parent_directory_id: null,
+        scope_id: null,
+        scope_l1_id: null,
+        scope_l2_id: null,
+        scope_l3_id: null,
+        scope_l4_id: null,
+        scope_l5_id: null,
+        scope_policy_group_ids: null,
+        source_links: [],
+        references: [],
+        deliverable_links: [],
+        shares: [],
+        group_ids: [],
+        sync_status: 'pending',
+        record_state: 'active',
+        version: 0,
+        created_at: now,
+        updated_at: now,
+        pg_backend: true,
+        pg_record_type: 'doc',
+      };
+      this.patchDocumentLocal(placeholder);
+      return placeholder;
+    },
+
+    prefetchFlightDeckDoc(recordId) {
+      const docId = String(recordId || '').trim();
+      if (!docId || !isTowerPgBackendMode()) return Promise.resolve(null);
+      const existing = this.documents.find((item) => item.record_id === docId);
+      if (existing?.content_storage_status === 'loaded') return Promise.resolve(existing);
+      if (this.docHydrationInFlightById?.[docId]) return this.docHydrationInFlightById[docId];
+      const hydration = hydrateTowerPgDoc(this, docId)
+        .catch((error) => {
+          console.warn('[flightdeck] PG document prefetch failed', error);
+          return null;
+        })
+        .finally(() => {
+          if (this.docHydrationInFlightById?.[docId] === hydration) {
+            const next = { ...this.docHydrationInFlightById };
+            delete next[docId];
+            this.docHydrationInFlightById = next;
+          }
+        });
+      this.docHydrationInFlightById = {
+        ...this.docHydrationInFlightById,
+        [docId]: hydration,
+      };
+      return hydration;
+    },
+
     async openChatDocModal(recordId, options = {}) {
       const docId = String(recordId || '').trim();
       if (!docId) return;
-      if (isTowerPgBackendMode()) {
-        try {
-          await hydrateTowerPgDoc(this, docId);
-        } catch (error) {
-          console.warn('[flightdeck] PG document refresh failed before chat modal open', error);
-        }
-      }
+      if (isTowerPgBackendMode()) this.createOptimisticChatDoc(docId, options.title);
       let doc = this.documents.find((item) => item.record_id === docId);
       if (!doc) {
         doc = await getDocumentById(docId);

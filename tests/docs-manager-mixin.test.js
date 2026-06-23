@@ -369,6 +369,29 @@ describe('docsManagerMixin comment drawer', () => {
     expect(store.selectedDocCommentId).toBeNull();
   });
 
+  it('uses the shared PG doc prefetch when opening documents', async () => {
+    isTowerPgBackendModeMock.mockReturnValue(true);
+    const prefetchFlightDeckDoc = vi.fn(async () => ({
+      record_id: 'doc-1',
+      title: 'Fresh doc',
+      content: '# Fresh',
+      record_state: 'active',
+    }));
+    const refreshOpenDocFromLatestDocument = vi.fn();
+    const store = createStore({
+      documents: [{ record_id: 'doc-1', title: 'Cached doc', content: '', record_state: 'active' }],
+      prefetchFlightDeckDoc,
+      refreshOpenDocFromLatestDocument,
+    });
+
+    store.openDoc('doc-1');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(prefetchFlightDeckDoc).toHaveBeenCalledWith('doc-1');
+    expect(refreshOpenDocFromLatestDocument).toHaveBeenCalledWith({ force: true });
+  });
+
   it('clears previous document comments immediately when switching documents', () => {
     const store = createStore({
       documents: [

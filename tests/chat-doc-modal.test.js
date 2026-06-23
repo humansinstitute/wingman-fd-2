@@ -36,9 +36,21 @@ describe('chat document modal wiring', () => {
 
     expect(source).toMatch(/if \(this\.navSection === 'chat'\) \{\s*this\.openChatDocModal\(id\);/);
     expect(source).toContain('openChatDocModal(recordId');
+    expect(source).toContain("this.createOptimisticChatDoc(docId, options.title)");
+    expect(source).not.toContain("await hydrateTowerPgDoc(this, docId)");
     expect(source).toContain('navigate: false');
     expect(source).toContain('ensureSync: false');
     expect(source).toContain('allowCommentBackfill: false');
+  });
+
+  it('prefetches doc mention cards before click without blocking modal open', () => {
+    const source = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
+
+    expect(source).toContain("document.addEventListener('pointerover'");
+    expect(source).toContain("document.addEventListener('focusin'");
+    expect(source).toContain('this.prefetchFlightDeckDoc(link.dataset.mentionId)');
+    expect(source).toContain('docHydrationInFlightById');
+    expect(source).toContain("content_storage_status: 'loading'");
   });
 
   it('intercepts same-origin docs links in chat before they open a new window', () => {

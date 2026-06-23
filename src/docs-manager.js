@@ -778,7 +778,10 @@ export const docsManagerMixin = {
     };
     this.loadDocEditorFromSelection();
     if (isTowerPgBackendMode()) {
-      void hydrateTowerPgDoc(this, recordId)
+      const hydrateDoc = typeof this.prefetchFlightDeckDoc === 'function'
+        ? this.prefetchFlightDeckDoc(recordId)
+        : hydrateTowerPgDoc(this, recordId);
+      void hydrateDoc
         .then((fresh) => {
           if (!fresh || this.selectedDocType !== 'document' || this.selectedDocId !== recordId) return;
           this.refreshOpenDocFromLatestDocument({ force: true });
