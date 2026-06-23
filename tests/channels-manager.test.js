@@ -455,6 +455,7 @@ describe('channels-manager pure utilities', () => {
       { principal_type: 'group', principal_id: 'group-workspace', capacity: 'viewer' },
       { principal_type: 'actor', principal_id: 'actor-owner', capacity: 'manager' },
       { principal_type: 'actor', principal_id: 'actor-owner', capacity: 'contributor' },
+      { principal_type: 'group', principal_id: 'group-agents', capacity: 'agent' },
       { principal_type: 'scope', principal_id: 'scope-1', capacity: 'manager' },
     ])).toEqual([
       {
@@ -467,6 +468,11 @@ describe('channels-manager pure utilities', () => {
         principal_id: 'actor-owner',
         access_level: 'contribute',
       },
+      {
+        principal_type: 'group',
+        principal_id: 'group-agents',
+        permissions: expect.arrayContaining(['channel.read', 'task.create', 'doc.write']),
+      },
     ]);
   });
 
@@ -476,6 +482,7 @@ describe('channels-manager pure utilities', () => {
     expect(store.getPgChannelGrantCapacityDescription('viewer')).toBe('can view only');
     expect(store.getPgChannelGrantCapacityDescription('contributor')).toBe('can view and post');
     expect(store.getPgChannelGrantCapacityDescription('manager')).toBe('can view, post, and manage access');
+    expect(store.getPgChannelGrantCapacityDescription('agent')).toBe('can view and create channel work as an agent');
   });
 
   it('blocks duplicate channel access grants in the settings form', async () => {

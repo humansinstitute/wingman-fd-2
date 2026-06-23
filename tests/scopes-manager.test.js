@@ -473,6 +473,97 @@ describe('scopes-manager pure utilities', () => {
       expect(refreshScopes).toHaveBeenCalledTimes(1);
     });
 
+    it('creates a PG scope wizard with channels, default access, and per-channel access', async () => {
+      mocks.isTowerPgBackendMode.mockReturnValue(true);
+      const refreshScopes = vi.fn(async () => []);
+      const store = createScopeStore({
+        session: { npub: 'npub1pete' },
+        channels: [],
+        newScopeTitle: 'Projects',
+        newScopeDescription: 'Project work',
+        newScopeDefaultAccessRows: [
+          { principal_type: 'group', principal_id: 'group-workspace', capacity: 'viewer' },
+          { principal_type: 'actor', principal_id: 'actor-pete', capacity: 'manager' },
+        ],
+        newScopeChannelDrafts: [
+          {
+            id: 'draft-implementation',
+            name: 'Implementation',
+            description: 'Build work',
+            basePrompt: 'Implementation context',
+            accessRows: [
+              { principal_type: 'group', principal_id: 'group-workspace', capacity: 'viewer' },
+              { principal_type: 'actor', principal_id: 'actor-pete', capacity: 'manager' },
+              { principal_type: 'actor', principal_id: 'actor-rick', capacity: 'contributor' },
+            ],
+          },
+          {
+            id: 'draft-agents',
+            name: 'Agents',
+            description: '',
+            basePrompt: 'Agent work',
+            accessRows: [
+              { principal_type: 'group', principal_id: 'group-agents', capacity: 'agent' },
+            ],
+          },
+        ],
+        resolveGroupId(groupId) {
+          return groupId || null;
+        },
+        refreshScopes,
+      });
+
+      await store.addScope();
+
+      expect(mocks.createTowerPgWorkspaceScope).toHaveBeenCalledWith('workspace-1', {
+        name: 'Projects',
+        description: 'Project work',
+        kind: 'project',
+        owner_group_id: 'group-workspace',
+      }, {
+        baseUrl: 'https://tower.example',
+        appNpub: 'flightdeck_pg',
+      });
+      expect(mocks.createTowerPgScopeChannel).toHaveBeenCalledTimes(2);
+      expect(mocks.createTowerPgScopeChannel).toHaveBeenCalledWith('workspace-1', 'scope-1', {
+        name: 'Implementation',
+        description: 'Build work',
+        metadata: {
+          basePrompt: 'Implementation context',
+        },
+        kind: 'channel',
+        grants: [
+          { principal_type: 'group', principal_id: 'group-workspace', access_level: 'view' },
+          { principal_type: 'actor', principal_id: 'actor-pete', access_level: 'manage' },
+          { principal_type: 'actor', principal_id: 'actor-rick', access_level: 'contribute' },
+        ],
+      }, {
+        baseUrl: 'https://tower.example',
+        appNpub: 'flightdeck_pg',
+      });
+      expect(mocks.createTowerPgScopeChannel).toHaveBeenCalledWith('workspace-1', 'scope-1', {
+        name: 'Agents',
+        description: undefined,
+        metadata: {
+          basePrompt: 'Agent work',
+        },
+        kind: 'channel',
+        grants: [
+          {
+            principal_type: 'group',
+            principal_id: 'group-agents',
+            permissions: expect.arrayContaining(['channel.read', 'task.create', 'doc.write']),
+          },
+        ],
+      }, {
+        baseUrl: 'https://tower.example',
+        appNpub: 'flightdeck_pg',
+      });
+      expect(store.channels.map((channel) => channel.title)).toEqual(['Implementation', 'Agents']);
+      expect(refreshScopes).toHaveBeenCalledTimes(1);
+      expect(store.showNewScopeForm).toBe(false);
+    });
+
     it('keeps the PG scope owner group as a single group selection', () => {
       mocks.isTowerPgBackendMode.mockReturnValue(true);
       const store = createScopeStore({

@@ -128,6 +128,110 @@ const SCOPE_REPAIR_FAMILY_OPTIONS = Object.freeze([
   { id: 'reports', label: 'Reports' },
 ]);
 
+const PG_SCOPE_WIZARD_STEPS = Object.freeze([1, 2, 3]);
+const PG_CHANNEL_CAPACITIES = new Set(['viewer', 'contributor', 'manager', 'agent']);
+const PG_CHANNEL_CAPACITY_PERMISSIONS = Object.freeze({
+  agent: Object.freeze([
+    'channel.read',
+    'channel.write',
+    'task.read',
+    'task.create',
+    'comment.create',
+    'doc.read',
+    'doc.write',
+    'file.read',
+    'file.write',
+    'audio_note.read',
+    'audio_note.write',
+  ]),
+});
+
+function createScopeWizardId(prefix) {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function normalizePgChannelCapacity(capacity) {
+  const value = String(capacity || '').trim();
+  return PG_CHANNEL_CAPACITIES.has(value) ? value : 'viewer';
+}
+
+function accessLevelForPgChannelCapacity(capacity) {
+  const value = normalizePgChannelCapacity(capacity);
+  if (value === 'viewer') return 'view';
+  if (value === 'contributor') return 'contribute';
+  if (value === 'manager') return 'manage';
+  return '';
+}
+
+function normalizeScopeWizardAccessRow(row = {}) {
+  const principalType = String(row.principal_type || row.principalType || '').trim();
+  const principalId = String(row.principal_id || row.principalId || '').trim();
+  if (!['actor', 'group'].includes(principalType) || !principalId) return null;
+  return {
+    id: String(row.id || '').trim() || createScopeWizardId('scope-access-row'),
+    principal_type: principalType,
+    principal_id: principalId,
+    capacity: normalizePgChannelCapacity(row.capacity || row.access_level || row.accessLevel),
+  };
+}
+
+function cloneScopeWizardAccessRows(rows = []) {
+  return (Array.isArray(rows) ? rows : [])
+    .map(normalizeScopeWizardAccessRow)
+    .filter(Boolean)
+    .map((row) => ({ ...row, id: createScopeWizardId('scope-access-row') }));
+}
+
+function buildPgChannelGrantPayloads(rows = []) {
+  const byPrincipal = new Map();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const normalized = normalizeScopeWizardAccessRow(row);
+    if (!normalized) continue;
+    byPrincipal.set(`${normalized.principal_type}:${normalized.principal_id}`, normalized);
+  }
+  return [...byPrincipal.values()].map((row) => {
+    const accessLevel = accessLevelForPgChannelCapacity(row.capacity);
+    if (accessLevel) {
+      return {
+        principal_type: row.principal_type,
+        principal_id: row.principal_id,
+        access_level: accessLevel,
+      };
+    }
+    return {
+      principal_type: row.principal_type,
+      principal_id: row.principal_id,
+      permissions: [...(PG_CHANNEL_CAPACITY_PERMISSIONS[row.capacity] || PG_CHANNEL_CAPACITY_PERMISSIONS.agent)],
+    };
+  });
+}
+
+function createScopeWizardChannelDraft(input = {}, defaultAccessRows = []) {
+  const title = String(input.title || input.name || '').trim();
+  return {
+    id: String(input.id || '').trim() || createScopeWizardId('scope-channel'),
+    name: title,
+    description: String(input.description || '').trim(),
+    basePrompt: String(input.basePrompt || input.base_prompt || '').trim(),
+    accessPrincipalDraft: '',
+    accessRows: cloneScopeWizardAccessRows(
+      Array.isArray(input.accessRows) && input.accessRows.length > 0
+        ? input.accessRows
+        : defaultAccessRows,
+    ),
+  };
+}
+
+function splitChannelNames(text = '') {
+  return String(text || '')
+    .split(/[\n,]+/)
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
 // ---------------------------------------------------------------------------
 // Mixin — methods that reference `this` (the Alpine store)
 // ---------------------------------------------------------------------------
@@ -144,6 +248,99 @@ export const scopesManagerMixin = {
   get newScopeTemplateFields() {
     const template = this.selectedNewScopeTemplate;
     return (template?.variables || []).filter((variable) => variable?.name && variable.name !== 'title');
+  },
+
+  get newScopeWizardSteps() {
+    return PG_SCOPE_WIZARD_STEPS;
+  },
+
+  get newScopeNamedChannelDrafts() {
+    return (Array.isArray(this.newScopeChannelDrafts) ? this.newScopeChannelDrafts : [])
+      .filter((channel) => String(channel?.name || '').trim());
+  },
+
+  get activeNewScopeChannelDraft() {
+    const channels = this.newScopeNamedChannelDrafts;
+    if (channels.length === 0) return null;
+    const activeId = String(this.newScopeActiveChannelDraftId || '').trim();
+    return channels.find((channel) => channel.id === activeId) || channels[0];
+  },
+
+  get newScopeCanGoNext() {
+    const step = Number(this.newScopeWizardStep || 1);
+    if (step === 1) return Boolean(String(this.newScopeTitle || '').trim());
+    if (step === 2) return this.newScopeNamedChannelDrafts.length > 0;
+    return false;
+  },
+
+  get newScopeCanCreateWizard() {
+    return Boolean(
+      isTowerPgBackendMode()
+      && String(this.newScopeTitle || '').trim()
+      && this.newScopeNamedChannelDrafts.length > 0
+      && !this.newScopeSubmitting
+    );
+  },
+
+  get scopeWizardAccessPrincipalOptions() {
+    const groupOptions = Array.isArray(this.pgChannelGrantGroupOptions)
+      ? this.pgChannelGrantGroupOptions
+      : (Array.isArray(this.currentWorkspaceGroups) && this.currentWorkspaceGroups.length > 0
+        ? this.currentWorkspaceGroups
+        : this.groups || []).map((group) => ({
+          groupId: group.group_id || group.group_npub || group.id,
+          label: group.name || group.title || 'Untitled group',
+          subtitle: group.group_kind === 'workspace_admin'
+            ? 'Workspace admin group'
+            : `${(group.effective_member_npubs || group.member_npubs || []).length} effective members`,
+        }));
+    const actorOptions = Array.isArray(this.pgChannelGrantActorOptions)
+      ? this.pgChannelGrantActorOptions
+      : (this.pgWorkspaceMembers || []).map((member) => ({
+        actorId: member.actor_id || member.id,
+        npub: member.npub,
+        label: this.getPgWorkspaceMemberLabel?.(member) || this.getSenderName?.(member.npub) || member.display_name || member.npub || member.actor_id || member.id,
+      }));
+    const groups = groupOptions
+      .filter((group) => group?.groupId)
+      .map((group) => ({
+        value: `group:${group.groupId}`,
+        type: 'group',
+        id: group.groupId,
+        label: group.label || 'Untitled group',
+        subtitle: group.subtitle || '',
+      }));
+    const people = actorOptions
+      .filter((actor) => actor?.actorId)
+      .map((actor) => ({
+        value: `actor:${actor.actorId}`,
+        type: 'actor',
+        id: actor.actorId,
+        label: actor.label || actor.npub || actor.actorId,
+        subtitle: actor.npub || '',
+      }));
+    return [
+      { disabled: true, label: 'Groups' },
+      ...groups,
+      { disabled: true, label: 'People' },
+      ...people,
+    ];
+  },
+
+  get newScopeDefaultAccessAddOptions() {
+    return this.getScopeWizardAccessAddOptions(this.newScopeDefaultAccessRows);
+  },
+
+  get activeNewScopeChannelAccessAddOptions() {
+    return this.getScopeWizardAccessAddOptions(this.activeNewScopeChannelDraft?.accessRows || []);
+  },
+
+  get newScopeDefaultAccessDisabledReason() {
+    return this.getScopeWizardAccessDisabledReason(this.newScopeDefaultAccessRows);
+  },
+
+  get activeNewScopeChannelAccessDisabledReason() {
+    return this.getScopeWizardAccessDisabledReason(this.activeNewScopeChannelDraft?.accessRows || []);
   },
 
   buildScopeRepairProgressRows(counts = {}) {
@@ -239,6 +436,345 @@ export const scopesManagerMixin = {
     }
     const completedFamilies = Math.max(0, Number(session.completedFamilies || 0) || 0);
     return Math.round(((completedFamilies + activeFraction) / totalFamilies) * 100);
+  },
+
+  buildInitialScopeWizardAccessRows() {
+    const rows = [];
+    const workspaceGroup = this.scopeWizardAccessPrincipalOptions.find((option) =>
+      option?.type === 'group'
+      && (
+        String(option.label || '').trim().toLowerCase() === 'workspace'
+        || String(option.id || '').trim().toLowerCase() === 'workspace'
+      )
+    );
+    if (workspaceGroup?.id) {
+      rows.push({
+        id: createScopeWizardId('scope-access-row'),
+        principal_type: 'group',
+        principal_id: workspaceGroup.id,
+        capacity: 'viewer',
+      });
+    }
+    const actorId = String(
+      this.currentWorkspace?.pgMe?.actor?.actor_id
+      || this.currentWorkspace?.pgMe?.actor?.id
+      || this.currentWorkspace?.pgMe?.actor_id
+      || ''
+    ).trim();
+    if (actorId) {
+      rows.push({
+        id: createScopeWizardId('scope-access-row'),
+        principal_type: 'actor',
+        principal_id: actorId,
+        capacity: 'manager',
+      });
+    }
+    const fallbackGroups = normalizeGroupIds(this.newScopeAssignedGroupIds)
+      .map((groupId) => this.resolveGroupId?.(groupId) || groupId)
+      .filter(Boolean);
+    if (rows.length === 0 && fallbackGroups[0]) {
+      rows.push({
+        id: createScopeWizardId('scope-access-row'),
+        principal_type: 'group',
+        principal_id: fallbackGroups[0],
+        capacity: 'manager',
+      });
+    }
+    return rows;
+  },
+
+  resetNewScopeWizardDraft({ keepBasics = false } = {}) {
+    if (!keepBasics) {
+      this.newScopeTitle = '';
+      this.newScopeDescription = '';
+      this.newScopeTemplateId = '';
+      this.newScopeTemplateValues = {};
+      this.newScopeTemplateError = '';
+    }
+    this.newScopeWizardStep = 1;
+    this.newScopeWizardAccessLoading = false;
+    this.newScopeWizardAccessError = '';
+    this.newScopeDefaultAccessPrincipalDraft = '';
+    this.newScopeDefaultAccessRows = this.buildInitialScopeWizardAccessRows();
+    const firstChannel = createScopeWizardChannelDraft({}, this.newScopeDefaultAccessRows);
+    this.newScopeChannelDrafts = [firstChannel];
+    this.newScopeChannelNamesText = '';
+    this.newScopeActiveChannelDraftId = firstChannel.id;
+    this.newScopeActiveChannelAccessPrincipalDraft = '';
+  },
+
+  async prepareNewScopeWizardAccessOptions() {
+    if (!isTowerPgBackendMode()) return;
+    this.newScopeWizardAccessLoading = true;
+    this.newScopeWizardAccessError = '';
+    try {
+      await Promise.all([
+        this.refreshTowerPgWorkspaceMembers?.({ force: true, limit: 200 }) ?? Promise.resolve([]),
+        this.refreshGroups?.({ force: true, minIntervalMs: 0 }) ?? Promise.resolve([]),
+      ]);
+      if (!Array.isArray(this.newScopeDefaultAccessRows) || this.newScopeDefaultAccessRows.length === 0) {
+        this.newScopeDefaultAccessRows = this.buildInitialScopeWizardAccessRows();
+      }
+    } catch (error) {
+      this.newScopeWizardAccessError = error?.message || 'Failed to load users and groups.';
+    } finally {
+      this.newScopeWizardAccessLoading = false;
+    }
+  },
+
+  getScopeWizardAccessAddOptions(rows = []) {
+    const selectedPrincipals = new Set(
+      (Array.isArray(rows) ? rows : [])
+        .map((row) => this.getScopeWizardAccessPrincipalValue(row))
+        .filter(Boolean)
+    );
+    return this.scopeWizardAccessPrincipalOptions.filter((option) =>
+      !option.disabled && !selectedPrincipals.has(option.value)
+    );
+  },
+
+  getScopeWizardAccessDisabledReason(rows = []) {
+    if (!isTowerPgBackendMode()) return '';
+    if (this.getScopeWizardAccessAddOptions(rows).length > 0) return '';
+    if (this.newScopeWizardAccessLoading) return 'Loading users and groups...';
+    if (this.newScopeWizardAccessError) return this.newScopeWizardAccessError;
+    return 'All available users and groups already have a permission row.';
+  },
+
+  getScopeWizardAccessRowKey(row, index) {
+    return row?.id || `${row?.principal_type || 'row'}:${row?.principal_id || index}:${index}`;
+  },
+
+  getScopeWizardAccessPrincipalValue(row) {
+    return `${row?.principal_type || ''}:${row?.principal_id || ''}`;
+  },
+
+  getScopeWizardAccessPrincipalLabel(row) {
+    const principalType = String(row?.principal_type || '').trim();
+    const principalId = String(row?.principal_id || '').trim();
+    if (principalType === 'group') {
+      return this.getPgGroupLabel?.(principalId)
+        || this.getScopeAssignedGroupLabel?.(principalId)
+        || principalId;
+    }
+    const member = (this.pgWorkspaceMembers || []).find((entry) => entry.actor_id === principalId || entry.id === principalId);
+    return member?.npub ? (this.getSenderName?.(member.npub) || member.npub) : principalId;
+  },
+
+  getScopeWizardCapacityDescription(capacity) {
+    const value = String(capacity || '').trim();
+    if (value === 'manager') return 'can view, post, and manage access';
+    if (value === 'contributor') return 'can view and post';
+    if (value === 'agent') return 'can view and create channel work as an agent';
+    if (value === 'viewer') return 'can view only';
+    return 'uses custom permissions';
+  },
+
+  getScopeWizardCapacityOptions() {
+    if (Array.isArray(this.pgChannelGrantCapacityOptions) && this.pgChannelGrantCapacityOptions.length > 0) {
+      const hasAgent = this.pgChannelGrantCapacityOptions.some((option) => option.value === 'agent');
+      return hasAgent
+        ? this.pgChannelGrantCapacityOptions
+        : [...this.pgChannelGrantCapacityOptions, { value: 'agent', label: 'Agent' }];
+    }
+    return [
+      { value: 'viewer', label: 'View' },
+      { value: 'contributor', label: 'Contribute' },
+      { value: 'manager', label: 'Manage' },
+      { value: 'agent', label: 'Agent' },
+    ];
+  },
+
+  setScopeWizardAccessPrincipal(rowsKey, index, value, channelId = '') {
+    const [principalType, ...idParts] = String(value || '').split(':');
+    const principalId = idParts.join(':');
+    if (!['actor', 'group'].includes(principalType) || !principalId) return;
+    const rows = rowsKey === 'channel'
+      ? [...((this.newScopeChannelDrafts || []).find((channel) => channel.id === channelId)?.accessRows || [])]
+      : (Array.isArray(this[rowsKey]) ? [...this[rowsKey]] : []);
+    if (!rows[index]) return;
+    rows[index] = {
+      ...rows[index],
+      principal_type: principalType,
+      principal_id: principalId,
+    };
+    this.setScopeWizardAccessRows(rowsKey, rows, channelId);
+  },
+
+  setScopeWizardAccessCapacity(rowsKey, index, capacity, channelId = '') {
+    const rows = rowsKey === 'channel'
+      ? [...((this.newScopeChannelDrafts || []).find((channel) => channel.id === channelId)?.accessRows || [])]
+      : (Array.isArray(this[rowsKey]) ? [...this[rowsKey]] : []);
+    if (!rows[index]) return;
+    rows[index] = { ...rows[index], capacity: normalizePgChannelCapacity(capacity) };
+    this.setScopeWizardAccessRows(rowsKey, rows, channelId);
+  },
+
+  setScopeWizardAccessRows(rowsKey, rows, channelId = '') {
+    if (rowsKey === 'channel') {
+      this.newScopeChannelDrafts = (this.newScopeChannelDrafts || []).map((channel) =>
+        channel.id === channelId ? { ...channel, accessRows: rows } : channel
+      );
+      return;
+    }
+    this[rowsKey] = rows;
+  },
+
+  addScopeWizardAccessRow(rowsKey, value = '', channelId = '') {
+    const draftKey = rowsKey === 'channel' ? 'newScopeActiveChannelAccessPrincipalDraft' : 'newScopeDefaultAccessPrincipalDraft';
+    const currentRows = rowsKey === 'channel'
+      ? (this.newScopeChannelDrafts || []).find((channel) => channel.id === channelId)?.accessRows || []
+      : this[rowsKey] || [];
+    const requestedValue = String(value || this[draftKey] || '').trim();
+    const principal = requestedValue
+      ? this.getScopeWizardAccessAddOptions(currentRows).find((option) => option.value === requestedValue)
+      : this.getScopeWizardAccessAddOptions(currentRows)[0];
+    this[draftKey] = '';
+    if (!principal) return;
+    const nextRows = [
+      ...(Array.isArray(currentRows) ? currentRows : []),
+      {
+        id: createScopeWizardId('scope-access-row'),
+        principal_type: principal.type,
+        principal_id: principal.id,
+        capacity: 'viewer',
+      },
+    ];
+    this.setScopeWizardAccessRows(rowsKey, nextRows, channelId);
+  },
+
+  removeScopeWizardAccessRow(rowsKey, index, channelId = '') {
+    const currentRows = rowsKey === 'channel'
+      ? (this.newScopeChannelDrafts || []).find((channel) => channel.id === channelId)?.accessRows || []
+      : this[rowsKey] || [];
+    const nextRows = (Array.isArray(currentRows) ? currentRows : [])
+      .filter((_, rowIndex) => rowIndex !== index);
+    this.setScopeWizardAccessRows(rowsKey, nextRows, channelId);
+  },
+
+  addNewScopeDefaultAccessRow(value = '') {
+    this.addScopeWizardAccessRow('newScopeDefaultAccessRows', value);
+  },
+
+  removeNewScopeDefaultAccessRow(index) {
+    this.removeScopeWizardAccessRow('newScopeDefaultAccessRows', index);
+  },
+
+  setNewScopeDefaultAccessPrincipal(index, value) {
+    this.setScopeWizardAccessPrincipal('newScopeDefaultAccessRows', index, value);
+  },
+
+  setNewScopeDefaultAccessCapacity(index, capacity) {
+    this.setScopeWizardAccessCapacity('newScopeDefaultAccessRows', index, capacity);
+  },
+
+  addActiveNewScopeChannelAccessRow(value = '') {
+    const channel = this.activeNewScopeChannelDraft;
+    if (!channel) return;
+    this.addScopeWizardAccessRow('channel', value, channel.id);
+  },
+
+  removeActiveNewScopeChannelAccessRow(index) {
+    const channel = this.activeNewScopeChannelDraft;
+    if (!channel) return;
+    this.removeScopeWizardAccessRow('channel', index, channel.id);
+  },
+
+  setActiveNewScopeChannelAccessPrincipal(index, value) {
+    const channel = this.activeNewScopeChannelDraft;
+    if (!channel) return;
+    this.setScopeWizardAccessPrincipal('channel', index, value, channel.id);
+  },
+
+  setActiveNewScopeChannelAccessCapacity(index, capacity) {
+    const channel = this.activeNewScopeChannelDraft;
+    if (!channel) return;
+    this.setScopeWizardAccessCapacity('channel', index, capacity, channel.id);
+  },
+
+  syncNewScopeChannelDraftsFromNames(text = '') {
+    this.newScopeChannelNamesText = text;
+    const names = splitChannelNames(text);
+    const existingByName = new Map(
+      (this.newScopeChannelDrafts || [])
+        .filter((channel) => String(channel?.name || '').trim())
+        .map((channel) => [String(channel.name).trim().toLowerCase(), channel])
+    );
+    this.newScopeChannelDrafts = names.map((name) => {
+      const existing = existingByName.get(name.toLowerCase());
+      return existing ? { ...existing, name } : createScopeWizardChannelDraft({ name }, this.newScopeDefaultAccessRows);
+    });
+    if (this.newScopeChannelDrafts.length === 0) {
+      const empty = createScopeWizardChannelDraft({}, this.newScopeDefaultAccessRows);
+      this.newScopeChannelDrafts = [empty];
+      this.newScopeActiveChannelDraftId = empty.id;
+      return;
+    }
+    if (!this.newScopeChannelDrafts.some((channel) => channel.id === this.newScopeActiveChannelDraftId)) {
+      this.newScopeActiveChannelDraftId = this.newScopeChannelDrafts[0].id;
+    }
+  },
+
+  applyRenderedTemplateToScopeWizardChannels(renderedTemplate = null) {
+    const channels = Array.isArray(renderedTemplate?.channels) ? renderedTemplate.channels : [];
+    if (channels.length === 0) return;
+    this.newScopeChannelDrafts = channels.map((channel) => createScopeWizardChannelDraft(channel, this.newScopeDefaultAccessRows));
+    this.newScopeChannelNamesText = this.newScopeChannelDrafts.map((channel) => channel.name).join('\n');
+    this.newScopeActiveChannelDraftId = this.newScopeChannelDrafts[0]?.id || '';
+  },
+
+  updateActiveNewScopeChannelDraft(field, value) {
+    const key = String(field || '').trim();
+    const channel = this.activeNewScopeChannelDraft;
+    if (!channel || !['name', 'description', 'basePrompt'].includes(key)) return;
+    this.newScopeChannelDrafts = (this.newScopeChannelDrafts || []).map((candidate) =>
+      candidate.id === channel.id ? { ...candidate, [key]: value } : candidate
+    );
+    if (key === 'name') {
+      this.newScopeChannelNamesText = this.newScopeNamedChannelDrafts.map((candidate) => candidate.name).join('\n');
+    }
+  },
+
+  async nextNewScopeWizardStep() {
+    const step = Number(this.newScopeWizardStep || 1);
+    if (step === 1) {
+      const title = String(this.newScopeTitle || '').trim();
+      if (!title) return;
+      this.newScopeTemplateError = '';
+      if (this.newScopeTemplateId) {
+        try {
+          const renderedTemplate = renderScopeTemplate(this.selectedNewScopeTemplate, {
+            ...(this.newScopeTemplateValues || {}),
+            title,
+          });
+          if (!String(this.newScopeDescription || '').trim() && renderedTemplate?.scope?.description) {
+            this.newScopeDescription = String(renderedTemplate.scope.description || '').trim();
+          }
+          this.applyRenderedTemplateToScopeWizardChannels(renderedTemplate);
+        } catch (error) {
+          this.newScopeTemplateError = error?.message || 'Fill in the template fields before continuing.';
+          return;
+        }
+      }
+      this.newScopeWizardStep = 2;
+      return;
+    }
+    if (step === 2) {
+      if (this.newScopeNamedChannelDrafts.length === 0) return;
+      this.newScopeChannelDrafts = this.newScopeNamedChannelDrafts.map((channel) => ({
+        ...channel,
+        accessRows: Array.isArray(channel.accessRows) && channel.accessRows.length > 0
+          ? channel.accessRows
+          : cloneScopeWizardAccessRows(this.newScopeDefaultAccessRows),
+      }));
+      this.newScopeActiveChannelDraftId = this.newScopeChannelDrafts[0]?.id || '';
+      this.newScopeWizardStep = 3;
+    }
+  },
+
+  previousNewScopeWizardStep() {
+    const step = Number(this.newScopeWizardStep || 1);
+    this.newScopeWizardStep = Math.max(1, step - 1);
   },
 
   // --- scope apply / refresh ---
@@ -937,7 +1473,13 @@ export const scopesManagerMixin = {
     if (this.newScopeSubmitting) return;
 
     if (isTowerPgBackendMode()) {
-      const groupIds = normalizeGroupIds(this.newScopeAssignedGroupIds)
+      const wizardGroupIds = (Array.isArray(this.newScopeDefaultAccessRows) ? this.newScopeDefaultAccessRows : [])
+        .filter((row) => row?.principal_type === 'group')
+        .map((row) => row.principal_id);
+      const groupIds = normalizeGroupIds([
+        ...(this.newScopeAssignedGroupIds || []),
+        ...wizardGroupIds,
+      ])
         .map((groupId) => this.resolveGroupId(groupId))
         .filter(Boolean);
       const { workspaceId, baseUrl, appNpub } = resolveTowerPgWorkspaceContext(this);
@@ -969,10 +1511,23 @@ export const scopesManagerMixin = {
           owner_group_id: groupIds[0] || null,
         }, { baseUrl, appNpub });
         const scopeId = String(scopeResult?.scope?.id || scopeResult?.scope?.record_id || '').trim();
-        if (renderedTemplate?.channels?.length > 0) {
+        const wizardChannelDrafts = this.newScopeNamedChannelDrafts.map((channel) => ({
+          name: String(channel.name || '').trim(),
+          description: String(channel.description || '').trim(),
+          basePrompt: String(channel.basePrompt || '').trim(),
+          accessRows: Array.isArray(channel.accessRows) ? channel.accessRows : [],
+        }));
+        const templateChannelDrafts = (renderedTemplate?.channels || []).map((channel) => ({
+          name: String(channel.title || channel.name || '').trim(),
+          description: String(channel.description || '').trim(),
+          basePrompt: String(channel.basePrompt || '').trim(),
+          accessRows: [],
+        }));
+        const channelDrafts = wizardChannelDrafts.length > 0 ? wizardChannelDrafts : templateChannelDrafts;
+        if (channelDrafts.length > 0) {
           if (!scopeId) throw new Error('Tower did not return a scope id for template channel creation.');
           const { workspaceOwnerNpub } = resolveTowerPgWorkspaceContext(this);
-          const grants = groupIds[0]
+          const fallbackGrants = groupIds[0]
             ? [{
               principal_type: 'group',
               principal_id: groupIds[0],
@@ -980,15 +1535,18 @@ export const scopesManagerMixin = {
             }]
             : [];
           const createdChannels = [];
-          for (const channel of renderedTemplate.channels) {
+          for (const channel of channelDrafts) {
+            const grants = buildPgChannelGrantPayloads(
+              channel.accessRows?.length > 0 ? channel.accessRows : this.newScopeDefaultAccessRows,
+            );
             const result = await createTowerPgScopeChannel(workspaceId, scopeId, {
-              name: String(channel.title || channel.name || '').trim(),
+              name: channel.name,
               description: String(channel.description || '').trim() || undefined,
               metadata: {
                 basePrompt: String(channel.basePrompt || '').trim(),
               },
               kind: 'channel',
-              grants,
+              grants: grants.length > 0 ? grants : fallbackGrants,
             }, { baseUrl, appNpub });
             const channelRow = mapPgChannelToLocal(result.channel, { workspaceOwnerNpub });
             createdChannels.push(channelRow);
@@ -1019,6 +1577,7 @@ export const scopesManagerMixin = {
       this.newScopeTemplateValues = {};
       this.newScopeTemplateError = '';
       this.showNewScopeForm = false;
+      this.resetNewScopeWizardDraft();
       await this.refreshScopes();
       return;
     }
@@ -1109,6 +1668,10 @@ export const scopesManagerMixin = {
     this.newScopeTemplateValues = {};
     this.newScopeTemplateError = '';
     this.newScopeSubmitting = false;
+    if (isTowerPgBackendMode()) {
+      this.resetNewScopeWizardDraft();
+      void this.prepareNewScopeWizardAccessOptions();
+    }
     this.showNewScopeForm = true;
   },
 
@@ -1122,6 +1685,7 @@ export const scopesManagerMixin = {
     this.newScopeTemplateValues = {};
     this.newScopeTemplateError = '';
     this.newScopeSubmitting = false;
+    this.resetNewScopeWizardDraft();
   },
 
   selectNewScopeTemplate(templateId) {
@@ -1130,6 +1694,9 @@ export const scopesManagerMixin = {
     this.newScopeTemplateError = '';
     for (const field of this.newScopeTemplateFields) {
       this.newScopeTemplateValues[field.name] = '';
+    }
+    if (this.newScopeTemplateId) {
+      this.newScopeChannelNamesText = '';
     }
   },
 

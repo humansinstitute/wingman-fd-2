@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-SikX9BUg.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-DHNxmzGb.css">
+  <script type="module" crossorigin src="/assets/index-C_wqXb26.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-BbxPvoYG.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -6660,7 +6660,7 @@
           </div>
 
           <div class="doc-modal-backdrop" x-show="$store.chat.showNewScopeForm || $store.chat.editingScopeId" x-cloak @click.self="$store.chat.showNewScopeForm ? $store.chat.cancelNewScope() : $store.chat.cancelEditScope()">
-            <div class="doc-modal-card scope-edit-modal">
+            <div class="doc-modal-card scope-edit-modal" :class="{ 'scope-wizard-modal': $store.chat.showNewScopeForm && $store.chat.isTowerPgMode }">
               <button class="modal-close" type="button" @click="$store.chat.showNewScopeForm ? $store.chat.cancelNewScope() : $store.chat.cancelEditScope()">&times;</button>
               <h3>
                 <span x-text="$store.chat.showNewScopeForm ? 'New' : 'Edit'"></span>
@@ -6679,7 +6679,217 @@
               <p class="scope-edit-hint" x-show="$store.chat.scopePolicyRepairBusy">Re-encrypting scoped records…</p>
               <p class="settings-success" x-show="$store.chat.scopePolicyRepairSummary" x-text="$store.chat.scopePolicyRepairSummary"></p>
 
-              <div class="scope-modal-form" x-show="$store.chat.showNewScopeForm">
+              <template x-if="$store.chat.showNewScopeForm && $store.chat.isTowerPgMode">
+                <div class="scope-wizard">
+                  <div class="connect-wizard-steps scope-wizard-steps" aria-label="Scope setup progress">
+                    <template x-for="step in $store.chat.newScopeWizardSteps" :key="`scope-wizard-step-${step}`">
+                      <span :class="{ active: $store.chat.newScopeWizardStep === step }" x-text="step"></span>
+                    </template>
+                  </div>
+
+                  <section class="scope-wizard-panel" x-show="$store.chat.newScopeWizardStep === 1">
+                    <div class="scope-wizard-panel-heading">
+                      <h4>Scope details</h4>
+                      <p>Set the work area and default channel permissions.</p>
+                    </div>
+                    <div class="scope-modal-form">
+                      <div class="scope-field">
+                        <label class="scope-field-label">Template</label>
+                        <select
+                          x-model="$store.chat.newScopeTemplateId"
+                          @change="$store.chat.selectNewScopeTemplate($event.target.value)"
+                        >
+                          <option value="">Blank scope</option>
+                          <template x-for="template in $store.chat.scopeTemplateOptions" :key="template.id">
+                            <option :value="template.id" x-text="template.title"></option>
+                          </template>
+                        </select>
+                      </div>
+                      <div class="scope-field">
+                        <label class="scope-field-label">Title</label>
+                        <input
+                          type="text"
+                          x-model="$store.chat.newScopeTitle"
+                          placeholder="Scope name..."
+                          @keydown.enter.prevent="$store.chat.nextNewScopeWizardStep()"
+                          @keydown.escape="$store.chat.cancelNewScope()"
+                        />
+                      </div>
+                      <div class="scope-field">
+                        <label class="scope-field-label">Description</label>
+                        <input
+                          type="text"
+                          x-model="$store.chat.newScopeDescription"
+                          placeholder="Optional description..."
+                          @keydown.enter.prevent="$store.chat.nextNewScopeWizardStep()"
+                          @keydown.escape="$store.chat.cancelNewScope()"
+                        />
+                      </div>
+                      <template x-for="field in $store.chat.newScopeTemplateFields" :key="`scope-template-field-${field.name}`">
+                        <div class="scope-field">
+                          <label class="scope-field-label" x-text="field.label"></label>
+                          <input
+                            type="text"
+                            :value="$store.chat.newScopeTemplateValues[field.name] || ''"
+                            :placeholder="field.name === 'workingdir' ? '/Users/mini/code/project' : ''"
+                            @input="$store.chat.setNewScopeTemplateValue(field.name, $event.target.value)"
+                            @keydown.enter.prevent="$store.chat.nextNewScopeWizardStep()"
+                            @keydown.escape="$store.chat.cancelNewScope()"
+                          />
+                        </div>
+                      </template>
+                      <p class="files-upload-error scope-template-error" x-show="$store.chat.newScopeTemplateError" x-text="$store.chat.newScopeTemplateError"></p>
+
+                      <div class="new-channel-access-editor scope-wizard-access-editor">
+                        <div class="new-channel-access-header">
+                          <div>
+                            <label class="new-channel-label">Default channel permissions</label>
+                            <p class="new-channel-access-help">These permissions are copied onto every channel in this scope.</p>
+                          </div>
+                          <button type="button" class="new-channel-access-add" @click="$store.chat.addNewScopeDefaultAccessRow()" :disabled="Boolean($store.chat.newScopeDefaultAccessDisabledReason)">Add permission</button>
+                        </div>
+                        <label class="new-channel-access-picker-label" for="scope-default-access-picker">Select user or group</label>
+                        <select id="scope-default-access-picker" class="new-channel-select new-channel-access-picker" x-model="$store.chat.newScopeDefaultAccessPrincipalDraft" @change="$store.chat.addNewScopeDefaultAccessRow($event.target.value)" :disabled="Boolean($store.chat.newScopeDefaultAccessDisabledReason)">
+                          <option value="">Select user or group</option>
+                          <template x-for="option in $store.chat.newScopeDefaultAccessAddOptions" :key="option.value">
+                            <option :value="option.value" x-text="`${option.label} (${option.type === 'group' ? 'Group' : 'Person'})`"></option>
+                          </template>
+                        </select>
+                        <p class="new-channel-access-empty" x-show="$store.chat.newScopeDefaultAccessDisabledReason" x-text="$store.chat.newScopeDefaultAccessDisabledReason"></p>
+                        <div class="new-channel-access-columns" x-show="$store.chat.newScopeDefaultAccessRows.length > 0">
+                          <span>Who</span>
+                          <span>Permission</span>
+                        </div>
+                        <div class="new-channel-access-list">
+                          <template x-for="(row, index) in $store.chat.newScopeDefaultAccessRows" :key="$store.chat.getScopeWizardAccessRowKey(row, index)">
+                            <div class="new-channel-access-row">
+                              <div class="new-channel-access-principal">
+                                <select class="new-channel-select" :value="$store.chat.getScopeWizardAccessPrincipalValue(row)" @change="$store.chat.setNewScopeDefaultAccessPrincipal(index, $event.target.value)">
+                                  <template x-for="option in $store.chat.scopeWizardAccessPrincipalOptions" :key="option.disabled ? `scope-default-label-${option.label}` : option.value">
+                                    <option :value="option.value || ''" :disabled="option.disabled" x-text="option.disabled ? option.label : `${option.label} (${option.type === 'group' ? 'Group' : 'Person'})`"></option>
+                                  </template>
+                                </select>
+                                <small x-text="$store.chat.getScopeWizardAccessPrincipalLabel(row)"></small>
+                              </div>
+                              <div class="new-channel-access-capacity">
+                                <select class="new-channel-select" :value="row.capacity" @change="$store.chat.setNewScopeDefaultAccessCapacity(index, $event.target.value)">
+                                  <template x-for="capacity in $store.chat.getScopeWizardCapacityOptions()" :key="capacity.value">
+                                    <option :value="capacity.value" x-text="capacity.label"></option>
+                                  </template>
+                                </select>
+                                <small x-text="$store.chat.getScopeWizardCapacityDescription(row.capacity)"></small>
+                              </div>
+                              <button type="button" class="new-channel-access-remove" title="Remove access row" @click="$store.chat.removeNewScopeDefaultAccessRow(index)">×</button>
+                            </div>
+                          </template>
+                        </div>
+                        <p class="new-channel-access-empty" x-show="$store.chat.newScopeDefaultAccessRows.length === 0">Add at least one permission before creating channels.</p>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section class="scope-wizard-panel" x-show="$store.chat.newScopeWizardStep === 2">
+                    <div class="scope-wizard-panel-heading">
+                      <h4>Channels</h4>
+                      <p>Name the channels to create under this scope.</p>
+                    </div>
+                    <label class="scope-field-label" for="scope-wizard-channel-names">Channel names</label>
+                    <textarea
+                      id="scope-wizard-channel-names"
+                      class="scope-wizard-channel-textarea"
+                      rows="9"
+                      placeholder="general&#10;implementation&#10;bugs"
+                      x-model="$store.chat.newScopeChannelNamesText"
+                      @input="$store.chat.syncNewScopeChannelDraftsFromNames($event.target.value)"
+                    ></textarea>
+                    <div class="scope-wizard-channel-preview" x-show="$store.chat.newScopeNamedChannelDrafts.length > 0">
+                      <template x-for="channel in $store.chat.newScopeNamedChannelDrafts" :key="`scope-channel-preview-${channel.id}`">
+                        <span x-text="channel.name"></span>
+                      </template>
+                    </div>
+                    <p class="new-channel-access-empty" x-show="$store.chat.newScopeNamedChannelDrafts.length === 0">Add at least one channel name.</p>
+                  </section>
+
+                  <section class="scope-wizard-panel" x-show="$store.chat.newScopeWizardStep === 3">
+                    <div class="scope-wizard-panel-heading">
+                      <h4>Channel settings</h4>
+                      <p>Review each channel, add prompts, and adjust access before creating everything.</p>
+                    </div>
+                    <div class="scope-wizard-channel-settings">
+                      <nav class="scope-wizard-channel-list" aria-label="Channels to configure">
+                        <template x-for="channel in $store.chat.newScopeNamedChannelDrafts" :key="`scope-channel-tab-${channel.id}`">
+                          <button type="button" :class="{ active: $store.chat.activeNewScopeChannelDraft?.id === channel.id }" @click="$store.chat.newScopeActiveChannelDraftId = channel.id">
+                            <span x-text="channel.name"></span>
+                            <small x-text="`${(channel.accessRows || []).length} permission${(channel.accessRows || []).length === 1 ? '' : 's'}`"></small>
+                          </button>
+                        </template>
+                      </nav>
+                      <div class="scope-wizard-channel-detail" x-show="$store.chat.activeNewScopeChannelDraft">
+                        <div class="scope-field">
+                          <label class="scope-field-label">Channel name</label>
+                          <input type="text" :value="$store.chat.activeNewScopeChannelDraft?.name || ''" @input="$store.chat.updateActiveNewScopeChannelDraft('name', $event.target.value)" />
+                        </div>
+                        <div class="scope-field">
+                          <label class="scope-field-label">Description</label>
+                          <input type="text" :value="$store.chat.activeNewScopeChannelDraft?.description || ''" placeholder="Optional description..." @input="$store.chat.updateActiveNewScopeChannelDraft('description', $event.target.value)" />
+                        </div>
+                        <div class="scope-field">
+                          <label class="scope-field-label">Base prompt</label>
+                          <textarea class="scope-wizard-channel-prompt" rows="7" :value="$store.chat.activeNewScopeChannelDraft?.basePrompt || ''" placeholder="Describe how Autopilot should use this channel." @input="$store.chat.updateActiveNewScopeChannelDraft('basePrompt', $event.target.value)"></textarea>
+                        </div>
+
+                        <div class="new-channel-access-editor scope-wizard-access-editor">
+                          <div class="new-channel-access-header">
+                            <div>
+                              <label class="new-channel-label">Channel permissions</label>
+                              <p class="new-channel-access-help">Start from the scope defaults, then tune this channel.</p>
+                            </div>
+                            <button type="button" class="new-channel-access-add" @click="$store.chat.addActiveNewScopeChannelAccessRow()" :disabled="Boolean($store.chat.activeNewScopeChannelAccessDisabledReason)">Add permission</button>
+                          </div>
+                          <label class="new-channel-access-picker-label" for="scope-channel-access-picker">Select user or group</label>
+                          <select id="scope-channel-access-picker" class="new-channel-select new-channel-access-picker" x-model="$store.chat.newScopeActiveChannelAccessPrincipalDraft" @change="$store.chat.addActiveNewScopeChannelAccessRow($event.target.value)" :disabled="Boolean($store.chat.activeNewScopeChannelAccessDisabledReason)">
+                            <option value="">Select user or group</option>
+                            <template x-for="option in $store.chat.activeNewScopeChannelAccessAddOptions" :key="option.value">
+                              <option :value="option.value" x-text="`${option.label} (${option.type === 'group' ? 'Group' : 'Person'})`"></option>
+                            </template>
+                          </select>
+                          <p class="new-channel-access-empty" x-show="$store.chat.activeNewScopeChannelAccessDisabledReason" x-text="$store.chat.activeNewScopeChannelAccessDisabledReason"></p>
+                          <div class="new-channel-access-columns" x-show="($store.chat.activeNewScopeChannelDraft?.accessRows || []).length > 0">
+                            <span>Who</span>
+                            <span>Permission</span>
+                          </div>
+                          <div class="new-channel-access-list">
+                            <template x-for="(row, index) in ($store.chat.activeNewScopeChannelDraft?.accessRows || [])" :key="$store.chat.getScopeWizardAccessRowKey(row, index)">
+                              <div class="new-channel-access-row">
+                                <div class="new-channel-access-principal">
+                                  <select class="new-channel-select" :value="$store.chat.getScopeWizardAccessPrincipalValue(row)" @change="$store.chat.setActiveNewScopeChannelAccessPrincipal(index, $event.target.value)">
+                                    <template x-for="option in $store.chat.scopeWizardAccessPrincipalOptions" :key="option.disabled ? `scope-channel-label-${option.label}` : option.value">
+                                      <option :value="option.value || ''" :disabled="option.disabled" x-text="option.disabled ? option.label : `${option.label} (${option.type === 'group' ? 'Group' : 'Person'})`"></option>
+                                    </template>
+                                  </select>
+                                  <small x-text="$store.chat.getScopeWizardAccessPrincipalLabel(row)"></small>
+                                </div>
+                                <div class="new-channel-access-capacity">
+                                  <select class="new-channel-select" :value="row.capacity" @change="$store.chat.setActiveNewScopeChannelAccessCapacity(index, $event.target.value)">
+                                    <template x-for="capacity in $store.chat.getScopeWizardCapacityOptions()" :key="capacity.value">
+                                      <option :value="capacity.value" x-text="capacity.label"></option>
+                                    </template>
+                                  </select>
+                                  <small x-text="$store.chat.getScopeWizardCapacityDescription(row.capacity)"></small>
+                                </div>
+                                <button type="button" class="new-channel-access-remove" title="Remove access row" @click="$store.chat.removeActiveNewScopeChannelAccessRow(index)">×</button>
+                              </div>
+                            </template>
+                          </div>
+                          <p class="new-channel-access-empty" x-show="($store.chat.activeNewScopeChannelDraft?.accessRows || []).length === 0">Add at least one permission for this channel.</p>
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+                </div>
+              </template>
+
+              <div class="scope-modal-form" x-show="$store.chat.showNewScopeForm && !$store.chat.isTowerPgMode">
                 <div class="scope-field" x-show="!$store.chat.isTowerPgMode">
                   <label class="scope-field-label">Level</label>
                   <select x-model="$store.chat.newScopeLevel" @change="$store.chat.handleNewScopeLevelChange($event.target.value)">
@@ -6838,10 +7048,18 @@
                 </div>
               </div>
 
-              <template x-if="$store.chat.showNewScopeForm">
+              <template x-if="$store.chat.showNewScopeForm && !$store.chat.isTowerPgMode">
                 <div class="scope-modal-actions">
                   <button type="button" class="scope-cancel-btn" @click="$store.chat.cancelNewScope()" :disabled="$store.chat.newScopeSubmitting">Cancel</button>
                   <button type="button" class="scope-save-btn" @click="$store.chat.addScope()" :disabled="$store.chat.newScopeSubmitting" x-text="$store.chat.newScopeSubmitting ? 'Creating...' : 'Create'"></button>
+                </div>
+              </template>
+              <template x-if="$store.chat.showNewScopeForm && $store.chat.isTowerPgMode">
+                <div class="scope-modal-actions">
+                  <button type="button" class="scope-cancel-btn" @click="$store.chat.cancelNewScope()" :disabled="$store.chat.newScopeSubmitting">Cancel</button>
+                  <button type="button" class="scope-cancel-btn" x-show="$store.chat.newScopeWizardStep > 1" @click="$store.chat.previousNewScopeWizardStep()" :disabled="$store.chat.newScopeSubmitting">Back</button>
+                  <button type="button" class="scope-save-btn" x-show="$store.chat.newScopeWizardStep < 3" @click="$store.chat.nextNewScopeWizardStep()" :disabled="!$store.chat.newScopeCanGoNext || $store.chat.newScopeSubmitting">Next</button>
+                  <button type="button" class="scope-save-btn" x-show="$store.chat.newScopeWizardStep === 3" @click="$store.chat.addScope()" :disabled="!$store.chat.newScopeCanCreateWizard" x-text="$store.chat.newScopeSubmitting ? 'Creating...' : 'Create scope and channels'"></button>
                 </div>
               </template>
               <template x-if="!$store.chat.showNewScopeForm">

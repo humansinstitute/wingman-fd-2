@@ -695,7 +695,7 @@ function normalizeNewChannelAccessRow(row = {}) {
   const principalId = String(row.principal_id || row.principalId || '').trim();
   const capacity = String(row.capacity || row.access_level || row.accessLevel || '').trim();
   if (!['actor', 'group'].includes(principalType) || !principalId) return null;
-  const normalizedCapacity = ['viewer', 'contributor', 'manager'].includes(capacity) ? capacity : 'viewer';
+  const normalizedCapacity = ['viewer', 'contributor', 'manager', 'agent'].includes(capacity) ? capacity : 'viewer';
   return {
     principal_type: principalType,
     principal_id: principalId,
@@ -713,7 +713,9 @@ export function buildChannelAccessGrantPayloads(rows = []) {
   return [...byPrincipal.values()].map((row) => ({
     principal_type: row.principal_type,
     principal_id: row.principal_id,
-    access_level: accessLevelForPgChannelCapacity(row.capacity),
+    ...(accessLevelForPgChannelCapacity(row.capacity)
+      ? { access_level: accessLevelForPgChannelCapacity(row.capacity) }
+      : { permissions: permissionsForPgChannelCapacity(row.capacity) }),
   }));
 }
 
@@ -896,6 +898,7 @@ export const channelsManagerMixin = {
       { value: 'viewer', label: 'View' },
       { value: 'contributor', label: 'Contribute' },
       { value: 'manager', label: 'Manage' },
+      { value: 'agent', label: 'Agent' },
     ];
   },
 
@@ -1018,7 +1021,7 @@ export const channelsManagerMixin = {
   },
 
   setNewChannelAccessCapacity(index, capacity) {
-    const nextCapacity = ['viewer', 'contributor', 'manager'].includes(capacity) ? capacity : 'viewer';
+    const nextCapacity = ['viewer', 'contributor', 'manager', 'agent'].includes(capacity) ? capacity : 'viewer';
     const rows = Array.isArray(this.newChannelAccessRows) ? [...this.newChannelAccessRows] : [];
     if (!rows[index]) return;
     rows[index] = { ...rows[index], capacity: nextCapacity };
@@ -1286,6 +1289,7 @@ export const channelsManagerMixin = {
     const value = String(capacity || '').trim();
     if (value === 'manager') return 'can view, post, and manage access';
     if (value === 'contributor') return 'can view and post';
+    if (value === 'agent') return 'can view and create channel work as an agent';
     if (value === 'viewer') return 'can view only';
     return 'uses custom permissions';
   },
