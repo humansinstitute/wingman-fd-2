@@ -24,6 +24,11 @@ import {
 import { downloadStorageObject } from '../src/api.js';
 import { recordFamilyHash } from '../src/translators/chat.js';
 import { APP_NPUB } from '../src/app-identity.js';
+import {
+  FLIGHTDECK_PROSEMIRROR_CONTENT_FORMAT,
+  PROSEMIRROR_JSON_FORMAT,
+  PROSEMIRROR_JSON_VERSION,
+} from '../src/docs/editor/prosemirror-flightdeck-schema.js';
 
 describe('docs translator', () => {
   it('materializes a document record into a local row', async () => {
@@ -151,12 +156,23 @@ describe('docs translator', () => {
   });
 
   it('materializes storage-backed document content', async () => {
+    const editorState = {
+      type: 'doc',
+      content: [{
+        type: 'paragraph',
+        attrs: { fdBlockId: 'blk-transcript' },
+        content: [{ type: 'text', text: 'Long body' }],
+      }],
+    };
     downloadStorageObject.mockResolvedValue(new TextEncoder().encode(JSON.stringify({
       format: DOCUMENT_CONTENT_STORAGE_FORMAT,
       content_model: {
         content: '# Transcript\n\nLong body',
-        content_format: 'block_document_v1',
+        content_format: FLIGHTDECK_PROSEMIRROR_CONTENT_FORMAT,
         content_blocks: [{ id: 'blk-transcript', type: 'markdown', text: '# Transcript\n\nLong body', attrs: {} }],
+        editor_state: editorState,
+        editor_state_format: PROSEMIRROR_JSON_FORMAT,
+        editor_state_version: PROSEMIRROR_JSON_VERSION,
       },
     })));
 
@@ -191,7 +207,11 @@ describe('docs translator', () => {
 
     expect(downloadStorageObject).toHaveBeenCalledWith('storage-doc-1');
     expect(row.content).toBe('# Transcript\n\nLong body');
+    expect(row.content_format).toBe(FLIGHTDECK_PROSEMIRROR_CONTENT_FORMAT);
     expect(row.content_blocks[0].id).toBe('blk-transcript');
+    expect(row.editor_state).toEqual(editorState);
+    expect(row.editor_state_format).toBe(PROSEMIRROR_JSON_FORMAT);
+    expect(row.editor_state_version).toBe(PROSEMIRROR_JSON_VERSION);
     expect(row.content_storage_status).toBe('loaded');
     expect(row.content_storage_object_id).toBe('storage-doc-1');
   });
@@ -239,6 +259,7 @@ describe('docs translator', () => {
       owner_npub: 'npub_owner',
       title: 'Transcript',
       content: '# Transcript',
+      content_format: FLIGHTDECK_PROSEMIRROR_CONTENT_FORMAT,
       content_blocks: [],
       content_storage_object_id: 'storage-doc-1',
       content_storage_format: DOCUMENT_CONTENT_STORAGE_FORMAT,
@@ -251,7 +272,11 @@ describe('docs translator', () => {
 
     const inner = JSON.parse(envelope.owner_payload.ciphertext);
     expect(inner.data.content).toBe('# Transcript');
+    expect(inner.data.content_format).toBe(FLIGHTDECK_PROSEMIRROR_CONTENT_FORMAT);
     expect(inner.data.content_blocks).toEqual([]);
+    expect(inner.data).not.toHaveProperty('editor_state');
+    expect(inner.data).not.toHaveProperty('editor_state_format');
+    expect(inner.data).not.toHaveProperty('editor_state_version');
     expect(inner.data.content_storage_object_id).toBe('storage-doc-1');
     expect(inner.data.content_storage_content_type).toBe(DOCUMENT_CONTENT_STORAGE_MIME);
   });

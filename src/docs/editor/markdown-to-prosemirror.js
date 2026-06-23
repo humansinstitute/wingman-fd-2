@@ -24,6 +24,15 @@ function marksForToken(token = {}) {
   return marks;
 }
 
+function mentionPartsFromHref(href = '') {
+  const match = String(href || '').match(/^mention:([^:()]+):(.+)$/);
+  if (!match) return null;
+  return {
+    mentionType: match[1],
+    mentionId: match[2],
+  };
+}
+
 function mentionMarkFromText(text) {
   const match = String(text || '').match(/^@\[([^\]]+)]\(mention:([^:()]+):([^)]+)\)$/);
   if (!match) return null;
@@ -37,14 +46,36 @@ function mentionMarkFromText(text) {
   };
 }
 
+function textFromInlineToken(token = {}) {
+  if (typeof token.text === 'string') return token.text;
+  if (Array.isArray(token.tokens)) return token.tokens.map(textFromInlineToken).join('');
+  return String(token.raw || '');
+}
+
+function pushTextNode(out, text, marks = []) {
+  const node = textNode(text, marks);
+  if (node) out.push(node);
+}
+
+function consumeMentionMarker(out = []) {
+  const last = out[out.length - 1];
+  if (!last || last.type !== 'text' || typeof last.text !== 'string' || !last.text.endsWith('@')) return false;
+  const nextText = last.text.slice(0, -1);
+  if (nextText) {
+    last.text = nextText;
+  } else {
+    out.pop();
+  }
+  return true;
+}
+
 function inlineContent(tokens = [], inheritedMarks = []) {
   const out = [];
   for (const token of tokens || []) {
     if (!token) continue;
     if (token.type === 'text' || token.type === 'escape') {
       const mention = mentionMarkFromText(token.text);
-      const node = textNode(token.text, mention ? [...inheritedMarks, mention] : inheritedMarks);
-      if (node) out.push(node);
+      pushTextNode(out, token.text, mention ? [...inheritedMarks, mention] : inheritedMarks);
       continue;
     }
     if (token.type === 'br') {
@@ -63,12 +94,29 @@ function inlineContent(tokens = [], inheritedMarks = []) {
       });
       continue;
     }
+    if (token.type === 'link') {
+      const mentionParts = mentionPartsFromHref(token.href);
+      if (mentionParts && consumeMentionMarker(out)) {
+        const label = textFromInlineToken(token) || token.text || mentionParts.mentionId;
+        pushTextNode(out, label, [
+          ...inheritedMarks,
+          {
+            type: 'fdMention',
+            attrs: {
+              label,
+              mentionType: mentionParts.mentionType,
+              mentionId: mentionParts.mentionId,
+            },
+          },
+        ]);
+        continue;
+      }
+    }
     const nextMarks = [...inheritedMarks, ...marksForToken(token)];
     if (Array.isArray(token.tokens)) {
       out.push(...inlineContent(token.tokens, nextMarks));
     } else {
-      const node = textNode(token.text || token.raw || '', nextMarks);
-      if (node) out.push(node);
+      pushTextNode(out, token.text || token.raw || '', nextMarks);
     }
   }
   return out;

@@ -33,6 +33,9 @@ async function resolveDocumentContent(data = {}) {
       content: data.content ?? '',
       content_format: data.content_format,
       content_blocks: data.content_blocks,
+      editor_state: data.editor_state,
+      editor_state_format: data.editor_state_format,
+      editor_state_version: data.editor_state_version,
       content_storage_status: null,
     };
   }
@@ -54,6 +57,9 @@ async function resolveDocumentContent(data = {}) {
           content: raw,
           content_format: data.content_format,
           content_blocks: data.content_blocks,
+          editor_state: data.editor_state,
+          editor_state_format: data.editor_state_format,
+          editor_state_version: data.editor_state_version,
           content_storage_status: 'loaded',
         };
       }
@@ -63,6 +69,9 @@ async function resolveDocumentContent(data = {}) {
       content: model.content ?? data.content ?? '',
       content_format: model.content_format ?? data.content_format,
       content_blocks: model.content_blocks ?? data.content_blocks,
+      editor_state: model.editor_state ?? data.editor_state,
+      editor_state_format: model.editor_state_format ?? data.editor_state_format,
+      editor_state_version: model.editor_state_version ?? data.editor_state_version,
       content_storage_status: 'loaded',
     };
   } catch (error) {
@@ -70,6 +79,9 @@ async function resolveDocumentContent(data = {}) {
       content: data.content ?? '',
       content_format: data.content_format,
       content_blocks: data.content_blocks,
+      editor_state: data.editor_state,
+      editor_state_format: data.editor_state_format,
+      editor_state_version: data.editor_state_version,
       content_storage_status: 'error',
       content_storage_error: error instanceof Error ? error.message : String(error),
     };
@@ -182,8 +194,13 @@ export async function inboundDocument(record) {
     owner_npub: record.owner_npub,
     title: data.title ?? 'Untitled document',
     content: resolvedContent.content ?? '',
-    content_format: resolvedContent.content_format === BLOCK_DOCUMENT_FORMAT ? BLOCK_DOCUMENT_FORMAT : null,
+    content_format: resolvedContent.content_format ?? null,
     content_blocks: normalizeDocumentBlocks(resolvedContent.content_blocks, resolvedContent.content ?? ''),
+    editor_state: resolvedContent.editor_state && typeof resolvedContent.editor_state === 'object'
+      ? resolvedContent.editor_state
+      : null,
+    editor_state_format: resolvedContent.editor_state_format ?? null,
+    editor_state_version: resolvedContent.editor_state_version ?? null,
     ...storage,
     content_storage_status: resolvedContent.content_storage_status,
     content_storage_error: resolvedContent.content_storage_error ?? null,

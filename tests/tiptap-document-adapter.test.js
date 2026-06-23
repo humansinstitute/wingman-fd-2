@@ -32,8 +32,23 @@ describe('Tiptap document adapter', () => {
     expect(model.editor_state_format).toBe(PROSEMIRROR_JSON_FORMAT);
     expect(model.editor_state).toEqual(doc);
     expect(model.content).toContain('# Spec');
-    expect(model.content).toContain('mention:person:npub1pete');
+    expect(model.content).toContain('Hello @[Pete](mention:person:npub1pete) with');
+    expect(model.content).not.toContain('@@[Pete]');
     expect(model.content).toContain('storage://object-123');
+    const paragraph = doc.content.find((node) => node.attrs?.fdBlockId === 'paragraph-a');
+    const mentionNode = paragraph.content.find((node) => node.marks?.some((mark) => mark.type === 'fdMention'));
+    expect(mentionNode).toMatchObject({
+      type: 'text',
+      text: 'Pete',
+      marks: [{
+        type: 'fdMention',
+        attrs: {
+          label: 'Pete',
+          mentionType: 'person',
+          mentionId: 'npub1pete',
+        },
+      }],
+    });
     expect(model.content_blocks.map((block) => block.id)).toEqual([
       'heading-a',
       'paragraph-a',
