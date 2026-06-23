@@ -414,6 +414,53 @@ describe('app PG task offline drafts', () => {
     });
   });
 
+  it('persists PG task background patches as plain cloneable data', async () => {
+    const wsDb = openWorkspaceDb('npub1pgworkspace-plain-task-queue');
+    await wsDb.open();
+    await Promise.all(wsDb.tables.map((table) => table.clear()));
+
+    const { initApp } = await import('../src/app.js');
+    initApp();
+    const store = alpineStoreMock.mock.calls.find(([name]) => name === 'chat')?.[1];
+    expect(store).toBeTruthy();
+
+    const previousTask = {
+      record_id: 'task-proxy-patch',
+      title: 'Proxy patch task',
+      state: 'ready',
+      version: 1,
+      sync_status: 'synced',
+      record_state: 'active',
+      pg_backend: true,
+    };
+    const updatedTask = {
+      ...previousTask,
+      state: 'done',
+      version: 2,
+      sync_status: 'pending',
+    };
+    const proxiedAssignees = new Proxy([], {});
+    expect(() => structuredClone(proxiedAssignees)).toThrow();
+
+    Object.assign(store, {
+      session: { npub: 'npub1owner' },
+      tasks: [previousTask],
+      pgTaskWriteQueue: [],
+    });
+
+    await expect(store.enqueuePgTaskPatch(
+      updatedTask,
+      previousTask,
+      { state: 'done', assigned_to_npubs: proxiedAssignees },
+      { deferPgProcessing: true },
+    )).resolves.toBeUndefined();
+
+    const persisted = await getSyncState('pg_task_write_queue:v1');
+    expect(persisted).toHaveLength(1);
+    expect(persisted[0].patch).toEqual({ state: 'done', assigned_to_npubs: [] });
+    expect(() => structuredClone(persisted)).not.toThrow();
+  });
+
   it('resumes persisted PG task background updates after page reload', async () => {
     const wsDb = openWorkspaceDb('npub1pgworkspace-resume-task-writes');
     await wsDb.open();

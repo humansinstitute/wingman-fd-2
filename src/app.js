@@ -388,8 +388,8 @@ function normalizePgTaskWriteQueue(items = []) {
         recordId,
         updatedTask: toRaw(item.updatedTask),
         previousTask: toRaw(item.previousTask),
-        patch: { ...(item.patch || {}) },
-        options: { ...(item.options || {}) },
+        patch: toRaw(item.patch || {}),
+        options: toRaw(item.options || {}),
         createdAt: item.createdAt || new Date().toISOString(),
       };
     })
