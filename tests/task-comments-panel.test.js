@@ -50,7 +50,7 @@ describe('task comments panel fullscreen affordance', () => {
     expect(source).not.toContain('toggleTaskCommentsPanelExpanded');
     expect(source).toContain('openTaskCommentsFullscreen()');
     expect(source).toContain('closeTaskCommentsFullscreen()');
-    expect(source).toContain('sortCommentsNewestFirst(comments)');
+    expect(source).toContain('normalizeTaskComments(comments)');
 
     const openTaskDetail = source.slice(source.indexOf('openTaskDetail(taskId'), source.indexOf('async closeTaskDetail'));
     expect(openTaskDetail).toContain('this.taskCommentsFullscreenOpen = false;');

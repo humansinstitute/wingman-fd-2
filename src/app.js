@@ -190,7 +190,13 @@ import {
   clearRuntimeData,
   isWorkspaceDbOpenForKey,
 } from './db.js';
-import { sortCommentsNewestFirst } from './comment-ordering.js';
+import {
+  isTaskCommentExpanded as hasExpandedTaskComment,
+  isTaskCommentTruncated as hasTruncatedTaskComment,
+  normalizeTaskComments,
+  syncTaskCommentPreviewState as deriveTaskCommentPreviewState,
+  toggleTaskCommentExpandedId,
+} from './task-comments.js';
 import {
   registerWorkspaceKey,
   setBaseUrl,
@@ -286,12 +292,7 @@ import {
   buildStoragePrepareBody,
 } from './storage-payloads.js';
 import { flightDeckLog } from './logging.js';
-import {
-  hasPreviewId,
-  prunePreviewState,
-  schedulePreviewMeasurement,
-  togglePreviewId,
-} from './preview-truncation.js';
+import { schedulePreviewMeasurement } from './preview-truncation.js';
 import { isTowerPgBackendMode } from './backend-mode.js';
 import {
   buildPgChannelTaskBoardId,
@@ -312,18 +313,6 @@ function applyMixins(target, ...mixins) {
     Object.defineProperties(target, descriptors);
   }
   return target;
-}
-
-function dedupeRowsByRecordId(rows = []) {
-  const seen = new Set();
-  const result = [];
-  for (const row of Array.isArray(rows) ? rows : []) {
-    const recordId = String(row?.record_id || '').trim();
-    if (!recordId || seen.has(recordId)) continue;
-    seen.add(recordId);
-    result.push(row);
-  }
-  return result;
 }
 
 function documentRecordSignature(document = {}) {
@@ -6533,25 +6522,24 @@ export function initApp() {
     },
 
     isTaskCommentExpanded(recordId) {
-      return hasPreviewId(this.expandedTaskCommentIds, recordId);
+      return hasExpandedTaskComment(this.expandedTaskCommentIds, recordId);
     },
 
     isTaskCommentTruncated(recordId) {
-      return hasPreviewId(this.truncatedTaskCommentIds, recordId);
+      return hasTruncatedTaskComment(this.truncatedTaskCommentIds, recordId);
     },
 
     toggleTaskCommentExpanded(recordId) {
       if (!recordId) return;
-      this.expandedTaskCommentIds = togglePreviewId(this.expandedTaskCommentIds, recordId);
+      this.expandedTaskCommentIds = toggleTaskCommentExpandedId(this.expandedTaskCommentIds, recordId);
       this.scheduleTaskCommentPreviewMeasurement();
     },
 
     syncTaskCommentPreviewState(comments = this.taskComments) {
-      const validIds = new Set((Array.isArray(comments) ? comments : []).map((comment) => comment.record_id));
-      const nextState = prunePreviewState({
+      const nextState = deriveTaskCommentPreviewState({
+        comments,
         expandedIds: this.expandedTaskCommentIds,
         truncatedIds: this.truncatedTaskCommentIds,
-        validIds,
       });
       this.expandedTaskCommentIds = nextState.expandedIds;
       this.truncatedTaskCommentIds = nextState.truncatedIds;
@@ -6570,7 +6558,7 @@ export function initApp() {
     },
 
     async applyTaskComments(comments = []) {
-      const nextComments = dedupeRowsByRecordId(sortCommentsNewestFirst(comments));
+      const nextComments = normalizeTaskComments(comments);
       if (!sameListBySignature(this.taskComments, nextComments, (comment) => [
         String(comment?.record_id || ''),
         String(comment?.updated_at || ''),
@@ -6646,7 +6634,7 @@ export function initApp() {
       };
 
       await upsertComment(localRow);
-      this.taskComments = dedupeRowsByRecordId(sortCommentsNewestFirst([localRow, ...this.taskComments]));
+      this.taskComments = normalizeTaskComments([localRow, ...this.taskComments]);
       this.syncTaskCommentPreviewState();
       this.newTaskCommentBody = '';
       this.taskCommentAudioDrafts = [];
@@ -6657,18 +6645,18 @@ export function initApp() {
         try {
           const accepted = await createTowerPgTaskCommentFromLocal(this, localRow);
           await replaceCommentRecord(localRow.record_id, accepted);
-          this.taskComments = dedupeRowsByRecordId(sortCommentsNewestFirst([
+          this.taskComments = normalizeTaskComments([
             accepted,
             ...this.taskComments.filter((comment) => comment.record_id !== localRow.record_id),
-          ]));
+          ]);
           this.scheduleTaskCommentsRefresh(taskId, 'PG task comment create');
         } catch (error) {
           const failed = { ...localRow, sync_status: 'failed', updated_at: new Date().toISOString() };
           await upsertComment(failed);
-          this.taskComments = dedupeRowsByRecordId(sortCommentsNewestFirst([
+          this.taskComments = normalizeTaskComments([
             failed,
             ...this.taskComments.filter((comment) => comment.record_id !== localRow.record_id),
-          ]));
+          ]);
           this.error = error?.message || 'Failed to sync PG task comment';
         }
         return;
