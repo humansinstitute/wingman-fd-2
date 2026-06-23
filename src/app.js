@@ -171,6 +171,7 @@ import {
   clearRuntimeData,
   isWorkspaceDbOpenForKey,
 } from './db.js';
+import { sortCommentsNewestFirst } from './comment-ordering.js';
 import {
   registerWorkspaceKey,
   setBaseUrl,
@@ -6451,7 +6452,7 @@ export function initApp() {
     },
 
     async applyTaskComments(comments = []) {
-      const nextComments = dedupeRowsByRecordId(comments);
+      const nextComments = dedupeRowsByRecordId(sortCommentsNewestFirst(comments));
       if (!sameListBySignature(this.taskComments, nextComments, (comment) => [
         String(comment?.record_id || ''),
         String(comment?.updated_at || ''),
@@ -6527,7 +6528,7 @@ export function initApp() {
       };
 
       await upsertComment(localRow);
-      this.taskComments = dedupeRowsByRecordId([localRow, ...this.taskComments]);
+      this.taskComments = dedupeRowsByRecordId(sortCommentsNewestFirst([localRow, ...this.taskComments]));
       this.syncTaskCommentPreviewState();
       this.newTaskCommentBody = '';
       this.taskCommentAudioDrafts = [];
@@ -6538,18 +6539,18 @@ export function initApp() {
         try {
           const accepted = await createTowerPgTaskCommentFromLocal(this, localRow);
           await replaceCommentRecord(localRow.record_id, accepted);
-          this.taskComments = dedupeRowsByRecordId([
+          this.taskComments = dedupeRowsByRecordId(sortCommentsNewestFirst([
             accepted,
             ...this.taskComments.filter((comment) => comment.record_id !== localRow.record_id),
-          ]);
+          ]));
           this.scheduleTaskCommentsRefresh(taskId, 'PG task comment create');
         } catch (error) {
           const failed = { ...localRow, sync_status: 'failed', updated_at: new Date().toISOString() };
           await upsertComment(failed);
-          this.taskComments = dedupeRowsByRecordId([
+          this.taskComments = dedupeRowsByRecordId(sortCommentsNewestFirst([
             failed,
             ...this.taskComments.filter((comment) => comment.record_id !== localRow.record_id),
-          ]);
+          ]));
           this.error = error?.message || 'Failed to sync PG task comment';
         }
         return;

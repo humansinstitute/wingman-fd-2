@@ -46,6 +46,7 @@ describe('task comments panel resize affordance', () => {
     expect(source).toMatch(/taskCommentsPanelExpanded:\s*false/);
     expect(source).toContain('toggleTaskCommentsPanelExpanded()');
     expect(source).toContain('this.taskCommentsPanelExpanded = !this.taskCommentsPanelExpanded;');
+    expect(source).toContain('sortCommentsNewestFirst(comments)');
 
     const openTaskDetail = source.slice(source.indexOf('openTaskDetail(taskId'), source.indexOf('async closeTaskDetail'));
     expect(openTaskDetail).toContain('this.taskCommentsPanelExpanded = false;');
