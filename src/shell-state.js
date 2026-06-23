@@ -856,7 +856,7 @@ export function createShellState(options = {}) {
       if (activeSection !== 'tasks') {
         this.tasks = [];
         this.taskComments = [];
-        this.taskCommentsPanelExpanded = false;
+        this.taskCommentsFullscreenOpen = false;
         this.showTaskDetail = false;
         this.editingTask = null;
       }

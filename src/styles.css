@@ -13699,11 +13699,6 @@ button:disabled {
   grid-template-columns: minmax(0, 1fr) minmax(20rem, 25rem);
   gap: 1rem;
   align-items: start;
-  transition: grid-template-columns 0.2s ease;
-}
-
-.task-detail-body-comments-expanded {
-  grid-template-columns: minmax(16rem, 2fr) minmax(24rem, 3fr);
 }
 
 .task-detail-main {
@@ -13712,10 +13707,6 @@ button:disabled {
   flex-direction: column;
   gap: 1.15rem;
   max-width: 60rem;
-}
-
-.task-detail-body-comments-expanded .task-detail-main {
-  max-width: none;
 }
 
 .task-detail-title {
@@ -14281,11 +14272,6 @@ button:disabled {
   flex: 0 0 auto;
 }
 
-.task-comments-resize-btn {
-  flex: 0 0 auto;
-  margin-top: -0.25rem;
-}
-
 .task-comments-fullscreen-btn {
   flex: 0 0 auto;
   margin-top: -0.25rem;
@@ -14771,10 +14757,6 @@ button:disabled {
   .tasks-section.chat-task-inline-section .task-comments-section {
     max-height: none;
     overflow: visible;
-  }
-
-  .task-detail-body-comments-expanded {
-    grid-template-columns: 1fr;
   }
 
   .task-comments-section {

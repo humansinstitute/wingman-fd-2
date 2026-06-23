@@ -772,7 +772,6 @@ export function initApp() {
     tasks: [],
     schedules: [],
     taskComments: [],
-    taskCommentsPanelExpanded: false,
     taskCommentsFullscreenOpen: false,
     taskCommentAudioDrafts: [],
     expandedTaskCommentIds: [],
@@ -2708,7 +2707,7 @@ export function initApp() {
       if (activeSection !== 'tasks') {
         this.tasks = [];
         this.taskComments = [];
-        this.taskCommentsPanelExpanded = false;
+        this.taskCommentsFullscreenOpen = false;
         this.showTaskDetail = false;
         this.editingTask = null;
       }
@@ -6133,7 +6132,6 @@ export function initApp() {
       this.taskDetailMode = 'view';
       this.taskDetailSaving = false;
       this.taskDetailCheckoutPending = false;
-      this.taskCommentsPanelExpanded = false;
       this.taskCommentsFullscreenOpen = false;
       if (this.editingTask) {
         // Hydrate references from description for tasks that predate the feature
@@ -6179,7 +6177,6 @@ export function initApp() {
       this.taskComments = [];
       this.expandedTaskCommentIds = [];
       this.truncatedTaskCommentIds = [];
-      this.taskCommentsPanelExpanded = false;
       this.taskCommentsFullscreenOpen = false;
       this.showFlowPicker = false;
       if (options.syncRoute !== false) this.syncRoute();
@@ -6247,10 +6244,6 @@ export function initApp() {
       this.mobileNavOpen = false;
       this.startWorkspaceLiveQueries();
       this.openTaskDetail(taskId);
-    },
-
-    toggleTaskCommentsPanelExpanded() {
-      this.taskCommentsPanelExpanded = !this.taskCommentsPanelExpanded;
     },
 
     openTaskCommentsFullscreen() {

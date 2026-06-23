@@ -33,7 +33,7 @@ function taskPanelFixture() {
                     <label class="task-field-label">Activity</label>
                     <span>7 comments</span>
                   </div>
-                  <button class="thread-resize-btn task-comments-resize-btn" type="button" aria-pressed="false">Resize</button>
+                  <button class="thread-resize-btn task-comments-fullscreen-btn" type="button" aria-label="Open activity fullscreen">Open</button>
                 </div>
                 <div class="task-comments-list">
                   <div class="task-comment-row">
@@ -49,15 +49,39 @@ function taskPanelFixture() {
                 </div>
               </div>
             </div>
+            <div class="task-comments-fullscreen-backdrop" style="display: none;">
+              <section class="task-comments-fullscreen-modal" role="dialog" aria-modal="true">
+                <header class="task-comments-fullscreen-header">
+                  <div>
+                    <h2>Activity</h2>
+                    <span>7 comments</span>
+                  </div>
+                  <button type="button" class="task-comments-fullscreen-close" aria-label="Close activity fullscreen">&times;</button>
+                </header>
+                <div class="task-comments-fullscreen-list">
+                  <article class="task-comment-row task-comment-fullscreen-row">
+                    <div class="task-comment-header">
+                      <span class="task-comment-sender">Implementation worker with a long display name</span>
+                      <span class="task-comment-time">just now</span>
+                    </div>
+                    <div class="task-comment-body task-comment-fullscreen-body">
+                      <p>${'A long task comment body '.repeat(56)}</p>
+                      <pre><code>${'unbroken-code-fragment'.repeat(18)}</code></pre>
+                    </div>
+                  </article>
+                </div>
+              </section>
+            </div>
           </div>
           </section>
         </main>
         <script>
-          const body = document.querySelector('.task-detail-body');
-          const resizeButton = document.querySelector('.task-comments-resize-btn');
-          resizeButton.addEventListener('click', () => {
-            body.classList.toggle('task-detail-body-comments-expanded');
-            resizeButton.setAttribute('aria-pressed', body.classList.contains('task-detail-body-comments-expanded') ? 'true' : 'false');
+          const backdrop = document.querySelector('.task-comments-fullscreen-backdrop');
+          document.querySelector('.task-comments-fullscreen-btn').addEventListener('click', () => {
+            backdrop.style.display = 'flex';
+          });
+          document.querySelector('.task-comments-fullscreen-close').addEventListener('click', () => {
+            backdrop.style.display = 'none';
           });
         </script>
       </body>
@@ -78,34 +102,27 @@ async function panelMetrics(page) {
   });
 }
 
-test('task activity resize control expands comments to about sixty percent on desktop', async ({ page }) => {
+test('task activity header exposes only the fullscreen comment reader control', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 820 });
   await page.setContent(taskPanelFixture());
 
   const normal = await panelMetrics(page);
   expect(normal.commentsWidth).toBeLessThanOrEqual(410);
   await expect(page.locator('.task-comments-panel-rail')).toHaveCount(0);
+  await expect(page.locator('.task-comments-resize-btn')).toHaveCount(0);
+  await expect(page.locator('.task-comments-fullscreen-btn')).toHaveCount(1);
 
-  await page.locator('.task-comments-resize-btn').click();
-  await page.waitForTimeout(250);
+  await page.locator('.task-comments-fullscreen-btn').click();
+  await expect(page.locator('.task-comments-fullscreen-backdrop')).toBeVisible();
+  await expect(page.locator('.task-comment-fullscreen-body')).toBeVisible();
 
-  const expanded = await panelMetrics(page);
-  await expect(page.locator('.task-comments-resize-btn')).toHaveAttribute('aria-pressed', 'true');
-  expect(expanded.commentsWidth).toBeGreaterThan(normal.commentsWidth);
-  expect(expanded.commentsShare).toBeGreaterThan(0.58);
-  expect(expanded.commentsShare).toBeLessThan(0.62);
-
-  await page.locator('.task-comments-resize-btn').click();
-  await page.waitForTimeout(250);
-  await expect(page.locator('.task-comments-resize-btn')).toHaveAttribute('aria-pressed', 'false');
-  const collapsed = await panelMetrics(page);
-  expect(collapsed.commentsWidth).toBeCloseTo(normal.commentsWidth, 1);
+  await page.locator('.task-comments-fullscreen-close').click();
+  await expect(page.locator('.task-comments-fullscreen-backdrop')).toBeHidden();
 });
 
 test('task comments layout stays single column on mobile', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 820 });
   await page.setContent(taskPanelFixture());
-  await page.locator('.task-comments-resize-btn').click();
 
   const gridColumns = await page.locator('.task-detail-body').evaluate((node) => getComputedStyle(node).gridTemplateColumns);
 

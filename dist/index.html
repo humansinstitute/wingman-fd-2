@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-DjHj38Wr.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-Db5aLNfT.css">
+  <script type="module" crossorigin src="/assets/index-BE_mEQRy.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-DHNxmzGb.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -2460,7 +2460,7 @@
                 </div>
               </div>
 
-              <div class="task-detail-body" :class="{ 'task-detail-body-comments-expanded': $store.chat.taskCommentsPanelExpanded }">
+              <div class="task-detail-body">
                 <div class="task-detail-main">
                   <!-- Title -->
                   <div class="task-detail-record-header">
@@ -2897,7 +2897,7 @@
                 </div>
 
                 <!-- Comments section -->
-                <div id="task-comments-panel" class="task-comments-section" :class="{ 'task-comments-section-expanded': $store.chat.taskCommentsPanelExpanded }">
+                <div id="task-comments-panel" class="task-comments-section">
                   <div class="task-comments-header">
                     <div class="task-comments-header-copy">
                       <label class="task-field-label">Activity</label>
@@ -2909,13 +2909,6 @@
                         aria-label="Open activity fullscreen"
                         :disabled="$store.chat.taskComments.length === 0">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
-                      </button>
-                      <button class="thread-resize-btn task-comments-resize-btn" @click="$store.chat.toggleTaskCommentsPanelExpanded()" type="button"
-                        :title="$store.chat.taskCommentsPanelExpanded ? 'Collapse activity panel' : 'Expand activity panel'"
-                        :aria-label="$store.chat.taskCommentsPanelExpanded ? 'Collapse activity panel' : 'Expand activity panel'"
-                        :aria-pressed="$store.chat.taskCommentsPanelExpanded.toString()">
-                        <svg x-show="!$store.chat.taskCommentsPanelExpanded" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
-                        <svg x-show="$store.chat.taskCommentsPanelExpanded" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
                       </button>
                     </div>
                   </div>

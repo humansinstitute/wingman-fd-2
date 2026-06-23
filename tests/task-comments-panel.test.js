@@ -20,22 +20,21 @@ function extractRule(css, selector) {
   return css.slice(blockStart + 1, index - 1);
 }
 
-describe('task comments panel resize affordance', () => {
-  it('renders the task activity resize button without the vertical rail', () => {
+describe('task comments panel fullscreen affordance', () => {
+  it('renders one task activity fullscreen button without the old resize affordance', () => {
     const html = readProjectFile('index.html');
 
-    expect(html).toContain("'task-detail-body-comments-expanded': $store.chat.taskCommentsPanelExpanded");
-    expect(html).toContain('task-comments-resize-btn');
     expect(html).toContain('task-comments-fullscreen-btn');
     expect(html).toContain('$store.chat.openTaskCommentsFullscreen()');
     expect(html).toContain('aria-label="Open activity fullscreen"');
+    expect(html).not.toContain('task-comments-resize-btn');
+    expect(html).not.toContain('taskCommentsPanelExpanded');
+    expect(html).not.toContain('toggleTaskCommentsPanelExpanded');
+    expect(html).not.toContain('task-detail-body-comments-expanded');
+    expect(html).not.toContain('task-comments-section-expanded');
     expect(html).not.toContain('task-detail-activity-sidebar');
     expect(html).not.toContain('task-comments-panel-rail');
     expect(html).toContain('id="task-comments-panel"');
-    expect(html).toContain("'task-comments-section-expanded': $store.chat.taskCommentsPanelExpanded");
-    expect(html).toContain('$store.chat.toggleTaskCommentsPanelExpanded()');
-    expect(html).toContain("aria-label=\"$store.chat.taskCommentsPanelExpanded ? 'Collapse activity panel' : 'Expand activity panel'\"");
-    expect(html).toContain("aria-pressed=\"$store.chat.taskCommentsPanelExpanded.toString()\"");
 
     const mainIndex = html.indexOf('class="task-detail-main"');
     const commentsIndex = html.indexOf('id="task-comments-panel"');
@@ -43,23 +42,20 @@ describe('task comments panel resize affordance', () => {
     expect(commentsIndex).toBeGreaterThan(mainIndex);
   });
 
-  it('defines store state, toggle behavior, and detail lifecycle reset', () => {
+  it('defines fullscreen store state and detail lifecycle reset', () => {
     const source = readProjectFile('src/app.js');
 
-    expect(source).toMatch(/taskCommentsPanelExpanded:\s*false/);
     expect(source).toMatch(/taskCommentsFullscreenOpen:\s*false/);
-    expect(source).toContain('toggleTaskCommentsPanelExpanded()');
-    expect(source).toContain('this.taskCommentsPanelExpanded = !this.taskCommentsPanelExpanded;');
+    expect(source).not.toContain('taskCommentsPanelExpanded');
+    expect(source).not.toContain('toggleTaskCommentsPanelExpanded');
     expect(source).toContain('openTaskCommentsFullscreen()');
     expect(source).toContain('closeTaskCommentsFullscreen()');
     expect(source).toContain('sortCommentsNewestFirst(comments)');
 
     const openTaskDetail = source.slice(source.indexOf('openTaskDetail(taskId'), source.indexOf('async closeTaskDetail'));
-    expect(openTaskDetail).toContain('this.taskCommentsPanelExpanded = false;');
     expect(openTaskDetail).toContain('this.taskCommentsFullscreenOpen = false;');
 
     const closeTaskDetail = source.slice(source.indexOf('async closeTaskDetail'), source.indexOf('// --- task ↔ flow linkage helpers ---'));
-    expect(closeTaskDetail).toContain('this.taskCommentsPanelExpanded = false;');
     expect(closeTaskDetail).toContain('this.taskCommentsFullscreenOpen = false;');
   });
 
@@ -75,22 +71,19 @@ describe('task comments panel resize affordance', () => {
     expect(html).toContain('x-html="$store.chat.renderMarkdown(comment.body)"');
   });
 
-  it('expands desktop task comments to roughly sixty percent while mobile stays single column', () => {
+  it('keeps the baseline task comments layout and mobile fullscreen modal', () => {
     const css = readProjectFile('src/styles.css');
 
     const bodyRule = extractRule(css, '\n.task-detail-body');
     expect(bodyRule).toMatch(/grid-template-columns\s*:\s*minmax\(0,\s*1fr\)\s*minmax\(20rem,\s*25rem\)/);
-
-    const expandedRule = extractRule(css, '.task-detail-body-comments-expanded');
-    expect(expandedRule).toMatch(/grid-template-columns\s*:\s*minmax\(16rem,\s*2fr\)\s*minmax\(24rem,\s*3fr\)/);
+    expect(css).not.toContain('task-detail-body-comments-expanded');
+    expect(css).not.toContain('task-comments-resize-btn');
     expect(css).not.toContain('task-detail-activity-sidebar');
     expect(css).not.toContain('task-comments-panel-rail');
 
     const mobileStart = css.lastIndexOf('@media (max-width: 768px)');
     expect(mobileStart).toBeGreaterThanOrEqual(0);
     const mobileCss = css.slice(mobileStart);
-    const mobileExpandedRule = extractRule(mobileCss, '.task-detail-body-comments-expanded');
-    expect(mobileExpandedRule).toMatch(/grid-template-columns\s*:\s*1fr/);
     const mobileFullscreenRule = extractRule(mobileCss, '.task-comments-fullscreen-modal');
     expect(mobileFullscreenRule).toMatch(/height\s*:\s*100%/);
     expect(mobileFullscreenRule).toMatch(/border-radius\s*:\s*0/);
