@@ -11737,7 +11737,7 @@ button:disabled {
   :root {
     --mobile-header-height: 64px;
     --mobile-nav-drawer-top: 116px;
-    --mobile-section-switcher-height: 34px;
+    --mobile-section-switcher-height: 68px;
   }
 
   body {

@@ -152,7 +152,7 @@ describe('Chat channel rendering hooks', () => {
     expect(globalBar).toContain('mobile-section-switcher-btn-active');
     expect(styles).toMatch(/\.mobile-section-switcher\s*\{[\s\S]*display:\s*none;/);
     expect(styles).toMatch(/\.mobile-section-switcher\s*\{[\s\S]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/);
-    expect(styles).toMatch(/--mobile-section-switcher-height:\s*34px;/);
+    expect(styles).toMatch(/--mobile-section-switcher-height:\s*68px;/);
     expect(styles).toMatch(/\.mobile-section-switcher\s*\{[\s\S]*position:\s*fixed;[\s\S]*bottom:\s*0;/);
     expect(styles).toMatch(/\.mobile-section-switcher-btn\s*\{[\s\S]*min-height:\s*var\(--mobile-section-switcher-height\);[\s\S]*font-size:\s*0\.72rem;/);
     expect(styles).toMatch(/\.content-scroll-area\s*\{[\s\S]*padding-bottom:\s*calc\(var\(--mobile-section-switcher-height\) \+ env\(safe-area-inset-bottom\) \+ 0\.75rem\);/);
