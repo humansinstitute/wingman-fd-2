@@ -1203,6 +1203,32 @@
                 </button>
               </div>
             </div>
+            <nav class="mobile-section-switcher" aria-label="Scope section navigation">
+              <button
+                type="button"
+                class="mobile-section-switcher-btn"
+                :class="{ 'mobile-section-switcher-btn-active': $store.chat.navSection === 'status' }"
+                @click="$store.chat.navigateTo('status')"
+              >Deck</button>
+              <button
+                type="button"
+                class="mobile-section-switcher-btn"
+                :class="{ 'mobile-section-switcher-btn-active': $store.chat.navSection === 'chat' }"
+                @click="$store.chat.navigateTo('chat')"
+              >Chat</button>
+              <button
+                type="button"
+                class="mobile-section-switcher-btn"
+                :class="{ 'mobile-section-switcher-btn-active': $store.chat.navSection === 'tasks' }"
+                @click="$store.chat.navigateTo('tasks')"
+              >Tasks</button>
+              <button
+                type="button"
+                class="mobile-section-switcher-btn"
+                :class="{ 'mobile-section-switcher-btn-active': $store.chat.navSection === 'docs' }"
+                @click="$store.chat.navigateTo('docs')"
+              >Docs</button>
+            </nav>
           </div>
 
         <div class="content-scroll-area">

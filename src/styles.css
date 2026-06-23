@@ -6602,6 +6602,10 @@ button:disabled {
   z-index: 35;
 }
 
+.mobile-section-switcher {
+  display: none;
+}
+
 .pg-work-context-bar .pg-context-thread-strip,
 .global-pg-channel-bar .pg-context-thread-strip {
   padding: 0.65rem 0 0.15rem;
@@ -11685,6 +11689,39 @@ button:disabled {
     right: 0.5rem;
     z-index: 171;
     max-height: min(320px, 55dvh);
+  }
+
+  .mobile-section-switcher {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    flex: 0 0 auto;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    background: #ffffff;
+  }
+
+  .mobile-section-switcher-btn {
+    min-width: 0;
+    min-height: 42px;
+    padding: 0 0.35rem;
+    border: 0;
+    border-right: 1px solid var(--border);
+    border-radius: 0;
+    background: transparent;
+    color: var(--muted);
+    font-size: 0.9rem;
+    font-weight: 550;
+    text-align: center;
+  }
+
+  .mobile-section-switcher-btn:last-child {
+    border-right: 0;
+  }
+
+  .mobile-section-switcher-btn-active {
+    color: var(--text);
+    font-weight: 800;
+    background: #f8fafc;
   }
 
   .chat-section {

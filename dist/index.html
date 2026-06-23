@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-1L9o_GRx.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-D5jHZSuu.css">
+  <script type="module" crossorigin src="/assets/index-BnE0qAIR.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-53N4G9nq.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -1205,6 +1205,32 @@
                 </button>
               </div>
             </div>
+            <nav class="mobile-section-switcher" aria-label="Scope section navigation">
+              <button
+                type="button"
+                class="mobile-section-switcher-btn"
+                :class="{ 'mobile-section-switcher-btn-active': $store.chat.navSection === 'status' }"
+                @click="$store.chat.navigateTo('status')"
+              >Deck</button>
+              <button
+                type="button"
+                class="mobile-section-switcher-btn"
+                :class="{ 'mobile-section-switcher-btn-active': $store.chat.navSection === 'chat' }"
+                @click="$store.chat.navigateTo('chat')"
+              >Chat</button>
+              <button
+                type="button"
+                class="mobile-section-switcher-btn"
+                :class="{ 'mobile-section-switcher-btn-active': $store.chat.navSection === 'tasks' }"
+                @click="$store.chat.navigateTo('tasks')"
+              >Tasks</button>
+              <button
+                type="button"
+                class="mobile-section-switcher-btn"
+                :class="{ 'mobile-section-switcher-btn-active': $store.chat.navSection === 'docs' }"
+                @click="$store.chat.navigateTo('docs')"
+              >Docs</button>
+            </nav>
           </div>
 
         <div class="content-scroll-area">

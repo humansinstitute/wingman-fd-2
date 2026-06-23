@@ -136,6 +136,24 @@ describe('Chat channel rendering hooks', () => {
     expect(globalBar).not.toContain('scopeFilteredChannels');
   });
 
+  it('renders mobile quick section navigation under the channel bar', () => {
+    const globalBarIndex = html.indexOf('class="global-pg-channel-bar"');
+    const globalBarEndIndex = html.indexOf('<div class="content-scroll-area"', globalBarIndex);
+    const globalBar = html.slice(globalBarIndex, globalBarEndIndex);
+    const channelHeaderIndex = globalBar.indexOf('class="chat-channel-header"');
+    const switcherIndex = globalBar.indexOf('class="mobile-section-switcher"');
+
+    expect(channelHeaderIndex).toBeGreaterThan(-1);
+    expect(switcherIndex).toBeGreaterThan(channelHeaderIndex);
+    expect(globalBar).toContain("navigateTo('status')");
+    expect(globalBar).toContain("navigateTo('chat')");
+    expect(globalBar).toContain("navigateTo('tasks')");
+    expect(globalBar).toContain("navigateTo('docs')");
+    expect(globalBar).toContain('mobile-section-switcher-btn-active');
+    expect(styles).toMatch(/\.mobile-section-switcher\s*\{[\s\S]*display:\s*none;/);
+    expect(styles).toMatch(/\.mobile-section-switcher\s*\{[\s\S]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/);
+  });
+
   it('keeps logged-in chrome fixed above one content scroll area', () => {
     const mainContentIndex = html.indexOf('class="main-content"');
     const globalBarIndex = html.indexOf('class="global-pg-channel-bar"', mainContentIndex);
