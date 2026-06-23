@@ -13,11 +13,14 @@ describe('task comment preview rendering', () => {
     expect(indexHtml).toContain('toggleTaskCommentExpanded(comment.record_id)');
     expect(indexHtml).toContain('Show more...');
     expect(indexHtml).toContain('Show less');
+    expect(indexHtml).toContain('task-comment-fullscreen-body');
   });
 
   it('styles collapsed task comments independently from audio attachments and reactions', () => {
     expect(stylesCss).toContain('.task-comment-body-collapsed');
     expect(stylesCss).toContain('max-height: calc(12 * 1.45em)');
     expect(stylesCss).toContain('.task-comment-expand-btn');
+    expect(stylesCss).toContain('.task-comment-fullscreen-body');
+    expect(stylesCss).toContain('max-height: none');
   });
 });

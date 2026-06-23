@@ -26,6 +26,9 @@ describe('task comments panel resize affordance', () => {
 
     expect(html).toContain("'task-detail-body-comments-expanded': $store.chat.taskCommentsPanelExpanded");
     expect(html).toContain('task-comments-resize-btn');
+    expect(html).toContain('task-comments-fullscreen-btn');
+    expect(html).toContain('$store.chat.openTaskCommentsFullscreen()');
+    expect(html).toContain('aria-label="Open activity fullscreen"');
     expect(html).not.toContain('task-detail-activity-sidebar');
     expect(html).not.toContain('task-comments-panel-rail');
     expect(html).toContain('id="task-comments-panel"');
@@ -44,15 +47,32 @@ describe('task comments panel resize affordance', () => {
     const source = readProjectFile('src/app.js');
 
     expect(source).toMatch(/taskCommentsPanelExpanded:\s*false/);
+    expect(source).toMatch(/taskCommentsFullscreenOpen:\s*false/);
     expect(source).toContain('toggleTaskCommentsPanelExpanded()');
     expect(source).toContain('this.taskCommentsPanelExpanded = !this.taskCommentsPanelExpanded;');
+    expect(source).toContain('openTaskCommentsFullscreen()');
+    expect(source).toContain('closeTaskCommentsFullscreen()');
     expect(source).toContain('sortCommentsNewestFirst(comments)');
 
     const openTaskDetail = source.slice(source.indexOf('openTaskDetail(taskId'), source.indexOf('async closeTaskDetail'));
     expect(openTaskDetail).toContain('this.taskCommentsPanelExpanded = false;');
+    expect(openTaskDetail).toContain('this.taskCommentsFullscreenOpen = false;');
 
     const closeTaskDetail = source.slice(source.indexOf('async closeTaskDetail'), source.indexOf('// --- task ↔ flow linkage helpers ---'));
     expect(closeTaskDetail).toContain('this.taskCommentsPanelExpanded = false;');
+    expect(closeTaskDetail).toContain('this.taskCommentsFullscreenOpen = false;');
+  });
+
+  it('renders a fullscreen activity reader for long comments', () => {
+    const html = readProjectFile('index.html');
+
+    expect(html).toContain('task-comments-fullscreen-backdrop');
+    expect(html).toContain('task-comments-fullscreen-modal');
+    expect(html).toContain('role="dialog"');
+    expect(html).toContain('aria-modal="true"');
+    expect(html).toContain('@keydown.escape.window="$store.chat.closeTaskCommentsFullscreen()"');
+    expect(html).toContain('task-comment-fullscreen-body');
+    expect(html).toContain('x-html="$store.chat.renderMarkdown(comment.body)"');
   });
 
   it('expands desktop task comments to roughly sixty percent while mobile stays single column', () => {
@@ -71,5 +91,8 @@ describe('task comments panel resize affordance', () => {
     const mobileCss = css.slice(mobileStart);
     const mobileExpandedRule = extractRule(mobileCss, '.task-detail-body-comments-expanded');
     expect(mobileExpandedRule).toMatch(/grid-template-columns\s*:\s*1fr/);
+    const mobileFullscreenRule = extractRule(mobileCss, '.task-comments-fullscreen-modal');
+    expect(mobileFullscreenRule).toMatch(/height\s*:\s*100%/);
+    expect(mobileFullscreenRule).toMatch(/border-radius\s*:\s*0/);
   });
 });

@@ -2901,13 +2901,21 @@
                       <label class="task-field-label">Activity</label>
                       <span x-text="$store.chat.taskComments.length === 1 ? '1 comment' : `${$store.chat.taskComments.length} comments`"></span>
                     </div>
-                    <button class="thread-resize-btn task-comments-resize-btn" @click="$store.chat.toggleTaskCommentsPanelExpanded()" type="button"
-                      :title="$store.chat.taskCommentsPanelExpanded ? 'Collapse activity panel' : 'Expand activity panel'"
-                      :aria-label="$store.chat.taskCommentsPanelExpanded ? 'Collapse activity panel' : 'Expand activity panel'"
-                      :aria-pressed="$store.chat.taskCommentsPanelExpanded.toString()">
-                      <svg x-show="!$store.chat.taskCommentsPanelExpanded" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
-                      <svg x-show="$store.chat.taskCommentsPanelExpanded" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
-                    </button>
+                    <div class="task-comments-header-actions">
+                      <button class="thread-resize-btn task-comments-fullscreen-btn" @click="$store.chat.openTaskCommentsFullscreen()" type="button"
+                        title="Open activity fullscreen"
+                        aria-label="Open activity fullscreen"
+                        :disabled="$store.chat.taskComments.length === 0">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+                      </button>
+                      <button class="thread-resize-btn task-comments-resize-btn" @click="$store.chat.toggleTaskCommentsPanelExpanded()" type="button"
+                        :title="$store.chat.taskCommentsPanelExpanded ? 'Collapse activity panel' : 'Expand activity panel'"
+                        :aria-label="$store.chat.taskCommentsPanelExpanded ? 'Collapse activity panel' : 'Expand activity panel'"
+                        :aria-pressed="$store.chat.taskCommentsPanelExpanded.toString()">
+                        <svg x-show="!$store.chat.taskCommentsPanelExpanded" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+                        <svg x-show="$store.chat.taskCommentsPanelExpanded" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+                      </button>
+                    </div>
                   </div>
                   <div class="task-comment-add">
                     <textarea
@@ -3005,6 +3013,58 @@
                       <div class="task-comments-empty">No comments yet.</div>
                     </template>
                   </div>
+                </div>
+                <div
+                  class="task-comments-fullscreen-backdrop"
+                  x-show="$store.chat.taskCommentsFullscreenOpen"
+                  x-cloak
+                  @click.self="$store.chat.closeTaskCommentsFullscreen()"
+                  @keydown.escape.window="$store.chat.closeTaskCommentsFullscreen()"
+                >
+                  <section class="task-comments-fullscreen-modal" role="dialog" aria-modal="true" aria-labelledby="task-comments-fullscreen-title">
+                    <header class="task-comments-fullscreen-header">
+                      <div>
+                        <h2 id="task-comments-fullscreen-title">Activity</h2>
+                        <span x-text="$store.chat.taskComments.length === 1 ? '1 comment' : `${$store.chat.taskComments.length} comments`"></span>
+                      </div>
+                      <button type="button" class="task-comments-fullscreen-close" @click="$store.chat.closeTaskCommentsFullscreen()" aria-label="Close activity fullscreen">&times;</button>
+                    </header>
+                    <div class="task-comments-fullscreen-list">
+                      <template x-for="(comment, index) in $store.chat.taskComments" :key="`${comment.record_id || 'comment-fullscreen'}:${index}`">
+                        <article class="task-comment-row task-comment-fullscreen-row">
+                          <div class="task-comment-header">
+                            <button type="button" class="identity-avatar-button" @click.stop="$store.chat.openIdentityCard($event, comment.sender_npub)" :title="$store.chat.getSenderName(comment.sender_npub)">
+                              <template x-if="$store.chat.getSenderAvatar(comment.sender_npub)">
+                                <img class="task-comment-avatar" :src="$store.chat.getSenderAvatar(comment.sender_npub)" alt="Profile picture" />
+                              </template>
+                              <template x-if="!$store.chat.getSenderAvatar(comment.sender_npub)">
+                                <span class="task-comment-avatar task-comment-avatar-fallback" x-text="$store.chat.getInitials($store.chat.getSenderName(comment.sender_npub))"></span>
+                              </template>
+                            </button>
+                            <span class="task-comment-sender" x-text="$store.chat.getSenderName(comment.sender_npub)"></span>
+                            <span class="task-comment-time" x-text="$store.chat.formatRelativeTime(comment.updated_at)"></span>
+                          </div>
+                          <div class="task-comment-body task-comment-fullscreen-body" x-html="$store.chat.renderMarkdown(comment.body)"></div>
+                          <div class="audio-attachment-list" x-show="$store.chat.getAudioAttachmentsForRecord(comment).length > 0">
+                            <template x-for="attachment in $store.chat.getAudioAttachmentsForRecord(comment)" :key="attachment.audio_note_record_id">
+                              <button type="button" class="audio-card" @click="$store.chat.playAudioAttachment(attachment)">
+                                <div class="audio-card-main">
+                                  <div class="audio-card-title" x-text="$store.chat.getAudioAttachmentPreview(attachment)"></div>
+                                  <div class="audio-card-meta">
+                                    <span>Voice note</span>
+                                    <span x-text="$store.chat.getAudioAttachmentNote(attachment)?.duration_seconds ? $store.chat.formatAudioDuration($store.chat.getAudioAttachmentNote(attachment).duration_seconds) : ''"></span>
+                                  </div>
+                                </div>
+                              </button>
+                            </template>
+                          </div>
+                        </article>
+                      </template>
+                      <template x-if="$store.chat.taskComments.length === 0">
+                        <div class="task-comments-empty">No comments yet.</div>
+                      </template>
+                    </div>
+                  </section>
                 </div>
               </div>
             </div>

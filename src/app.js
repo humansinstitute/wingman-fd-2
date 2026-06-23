@@ -773,6 +773,7 @@ export function initApp() {
     schedules: [],
     taskComments: [],
     taskCommentsPanelExpanded: false,
+    taskCommentsFullscreenOpen: false,
     taskCommentAudioDrafts: [],
     expandedTaskCommentIds: [],
     truncatedTaskCommentIds: [],
@@ -6133,6 +6134,7 @@ export function initApp() {
       this.taskDetailSaving = false;
       this.taskDetailCheckoutPending = false;
       this.taskCommentsPanelExpanded = false;
+      this.taskCommentsFullscreenOpen = false;
       if (this.editingTask) {
         // Hydrate references from description for tasks that predate the feature
         const hasStoredRefs = Array.isArray(this.editingTask.references) && this.editingTask.references.length > 0;
@@ -6178,6 +6180,7 @@ export function initApp() {
       this.expandedTaskCommentIds = [];
       this.truncatedTaskCommentIds = [];
       this.taskCommentsPanelExpanded = false;
+      this.taskCommentsFullscreenOpen = false;
       this.showFlowPicker = false;
       if (options.syncRoute !== false) this.syncRoute();
     },
@@ -6248,6 +6251,15 @@ export function initApp() {
 
     toggleTaskCommentsPanelExpanded() {
       this.taskCommentsPanelExpanded = !this.taskCommentsPanelExpanded;
+    },
+
+    openTaskCommentsFullscreen() {
+      if (!this.editingTask?.record_id) return;
+      this.taskCommentsFullscreenOpen = true;
+    },
+
+    closeTaskCommentsFullscreen() {
+      this.taskCommentsFullscreenOpen = false;
     },
 
     // --- task ↔ flow linkage helpers ---
