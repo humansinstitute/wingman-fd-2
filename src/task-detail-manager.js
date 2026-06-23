@@ -125,14 +125,13 @@ export const taskDetailManagerMixin = {
       this.applyTaskComments([]);
       return;
     }
-    if (isTowerPgBackendMode()) {
-      await hydrateTowerPgTaskComments(this, recordId);
-      return;
-    }
     this.startTaskCommentsLiveQuery();
     const comments = await getCommentsByTarget(recordId);
     if (String(this.activeTaskId || '').trim() !== recordId) return;
     await this.applyTaskComments(comments);
+    if (isTowerPgBackendMode()) {
+      await hydrateTowerPgTaskComments(this, recordId);
+    }
   },
 
   isTaskCommentExpanded(recordId) {
@@ -267,18 +266,26 @@ export const taskDetailManagerMixin = {
     if (pgMode) {
       try {
         const accepted = await createTowerPgTaskCommentFromLocal(this, localRow, pgContext);
-        await replaceCommentRecord(localRow.record_id, accepted);
-        if (isStillActiveTask()) {
+        const currentPgContext = resolveTowerPgWorkspaceContext(this);
+        const isSameWorkspaceContext = currentPgContext.workspaceId === pgContext.workspaceId
+          && currentPgContext.workspaceOwnerNpub === pgContext.workspaceOwnerNpub
+          && currentPgContext.baseUrl === pgContext.baseUrl;
+        if (isSameWorkspaceContext) await replaceCommentRecord(localRow.record_id, accepted);
+        if (isSameWorkspaceContext && isStillActiveTask()) {
           this.taskComments = normalizeTaskComments([
             accepted,
             ...this.taskComments.filter((comment) => comment.record_id !== localRow.record_id),
           ]);
         }
-        this.scheduleTaskCommentsRefresh(taskId, 'PG task comment create');
+        if (isSameWorkspaceContext) this.scheduleTaskCommentsRefresh(taskId, 'PG task comment create');
       } catch (error) {
         const failed = { ...localRow, sync_status: 'failed', updated_at: new Date().toISOString() };
-        await upsertComment(failed);
-        if (isStillActiveTask()) {
+        const currentPgContext = resolveTowerPgWorkspaceContext(this);
+        const isSameWorkspaceContext = currentPgContext.workspaceId === pgContext.workspaceId
+          && currentPgContext.workspaceOwnerNpub === pgContext.workspaceOwnerNpub
+          && currentPgContext.baseUrl === pgContext.baseUrl;
+        if (isSameWorkspaceContext) await upsertComment(failed);
+        if (isSameWorkspaceContext && isStillActiveTask()) {
           this.taskComments = normalizeTaskComments([
             failed,
             ...this.taskComments.filter((comment) => comment.record_id !== localRow.record_id),

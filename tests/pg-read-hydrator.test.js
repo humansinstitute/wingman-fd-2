@@ -994,6 +994,7 @@ describe('PG read hydrator', () => {
     const replacePgDocumentsForChannel = vi.fn(async () => 2);
     const replacePgAudioNotesForChannel = vi.fn(async () => 1);
     const replacePgCommentsForTarget = vi.fn(async () => 1);
+    const getCommentsByTarget = vi.fn(async (targetId) => [{ record_id: `local-comment-${targetId}`, target_record_id: targetId }]);
     const replacePgDailyNotesForOwnerAndDate = vi.fn(async () => 1);
     const replacePgReactionsForTarget = vi.fn(async () => 1);
 
@@ -1017,6 +1018,7 @@ describe('PG read hydrator', () => {
       replacePgDocumentsForChannel,
       replacePgAudioNotesForChannel,
       replacePgCommentsForTarget,
+      getCommentsByTarget,
       replacePgDailyNotesForOwnerAndDate,
       replacePgReactionsForTarget,
     });
@@ -1311,10 +1313,14 @@ describe('PG read hydrator', () => {
       }],
     }));
     const replacePgCommentsForTarget = vi.fn(async () => 1);
+    const getCommentsByTarget = vi.fn(async () => [
+      { record_id: 'comment-1', target_record_id: 'task-1', pg_backend: true },
+    ]);
 
     const comments = await hydrateTowerPgTaskComments(store({ applyTaskComments }), 'task-1', {
       getTowerPgTaskComments,
       replacePgCommentsForTarget,
+      getCommentsByTarget,
     });
 
     expect(getTowerPgTaskComments).toHaveBeenCalledWith('workspace-1', 'task-1', {
@@ -1324,7 +1330,10 @@ describe('PG read hydrator', () => {
     expect(replacePgCommentsForTarget).toHaveBeenCalledWith('task-1', expect.arrayContaining([
       expect.objectContaining({ record_id: 'comment-1', target_record_id: 'task-1', pg_backend: true }),
     ]));
-    expect(applyTaskComments).toHaveBeenCalledWith(comments);
+    expect(getCommentsByTarget).toHaveBeenCalledWith('task-1');
+    expect(applyTaskComments).toHaveBeenCalledWith([
+      expect.objectContaining({ record_id: 'comment-1', target_record_id: 'task-1' }),
+    ]);
   });
 
   it('does not apply hydrated PG task comments to the visible panel after the active task changes', async () => {
@@ -1341,6 +1350,7 @@ describe('PG read hydrator', () => {
       }],
     }));
     const replacePgCommentsForTarget = vi.fn(async () => 1);
+    const getCommentsByTarget = vi.fn(async () => []);
 
     await hydrateTowerPgTaskComments(store({
       activeTaskId: 'task-2',
@@ -1348,6 +1358,7 @@ describe('PG read hydrator', () => {
     }), 'task-1', {
       getTowerPgTaskComments,
       replacePgCommentsForTarget,
+      getCommentsByTarget,
     });
 
     expect(replacePgCommentsForTarget).toHaveBeenCalledWith('task-1', expect.arrayContaining([
@@ -1370,6 +1381,9 @@ describe('PG read hydrator', () => {
       }],
     }));
     const replacePgCommentsForTarget = vi.fn(async () => 1);
+    const getCommentsByTarget = vi.fn(async () => [
+      { record_id: 'comment-1', target_record_id: 'task-1', sender_npub: 'npub1alice' },
+    ]);
 
     const comments = await hydrateTowerPgTaskComments(store({
       applyTaskComments,
@@ -1377,6 +1391,7 @@ describe('PG read hydrator', () => {
     }), 'task-1', {
       getTowerPgTaskComments,
       replacePgCommentsForTarget,
+      getCommentsByTarget,
     });
 
     expect(comments[0]).toMatchObject({
@@ -1389,7 +1404,53 @@ describe('PG read hydrator', () => {
         sender_npub: 'npub1alice',
       }),
     ]));
-    expect(applyTaskComments).toHaveBeenCalledWith(comments);
+    expect(applyTaskComments).toHaveBeenCalledWith([
+      expect.objectContaining({ record_id: 'comment-1', sender_npub: 'npub1alice' }),
+    ]);
+  });
+
+  it('does not replace local PG task comments after the workspace context changes mid-hydration', async () => {
+    const applyTaskComments = vi.fn();
+    const getTowerPgTaskComments = vi.fn(async () => ({
+      comments: [{
+        id: 'comment-1',
+        workspace_id: 'workspace-1',
+        task_id: 'task-1',
+        body: 'Comment body',
+      }],
+    }));
+    const replacePgCommentsForTarget = vi.fn(async () => 1);
+    const getCommentsByTarget = vi.fn(async () => []);
+    const target = store({ applyTaskComments });
+    getTowerPgTaskComments.mockImplementationOnce(async () => {
+      target.currentWorkspace = {
+        ...target.currentWorkspace,
+        workspaceId: 'workspace-2',
+        workspaceOwnerNpub: 'npub1other',
+        directHttpsUrl: 'https://other.example',
+      };
+      return {
+        comments: [{
+          id: 'comment-1',
+          workspace_id: 'workspace-1',
+          task_id: 'task-1',
+          body: 'Comment body',
+        }],
+      };
+    });
+
+    const comments = await hydrateTowerPgTaskComments(target, 'task-1', {
+      getTowerPgTaskComments,
+      replacePgCommentsForTarget,
+      getCommentsByTarget,
+    });
+
+    expect(comments).toEqual([
+      expect.objectContaining({ record_id: 'comment-1', target_record_id: 'task-1' }),
+    ]);
+    expect(replacePgCommentsForTarget).not.toHaveBeenCalled();
+    expect(getCommentsByTarget).not.toHaveBeenCalled();
+    expect(applyTaskComments).not.toHaveBeenCalled();
   });
 
   it('hydrates PG doc comments and replaces the local PG set for the doc', async () => {

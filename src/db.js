@@ -1133,6 +1133,7 @@ export async function replacePgCommentsForTarget(targetRecordId, comments = []) 
     const existing = await db.comments.where('target_record_id').equals(targetId).toArray();
     const pgCommentIds = existing
       .filter((comment) => comment?.pg_backend === true)
+      .filter((comment) => !['pending', 'failed'].includes(String(comment?.sync_status || '').trim()))
       .map((comment) => comment.record_id)
       .filter(Boolean);
     if (pgCommentIds.length > 0) await db.comments.bulkDelete(pgCommentIds);

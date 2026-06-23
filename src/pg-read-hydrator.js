@@ -29,6 +29,7 @@ import {
   replaceDocumentsForOwner,
   replacePgAudioNotesForChannel,
   replacePgCommentsForTarget,
+  getCommentsByTarget,
   replacePgDailyNotesForOwnerAndDate,
   replacePgPersonalWappsForOwner,
   replacePgDocumentsForChannel,
@@ -1534,6 +1535,7 @@ export async function hydrateTowerPgTaskComments(store, taskId, deps = {}) {
   if (!context.workspaceId || !context.workspaceOwnerNpub || !context.baseUrl || !recordId) return [];
   const readTaskComments = deps.getTowerPgTaskComments || getTowerPgTaskComments;
   const replaceComments = deps.replacePgCommentsForTarget || replacePgCommentsForTarget;
+  const readLocalComments = deps.getCommentsByTarget || getCommentsByTarget;
   const actorNpubByActorId = await resolveActorNpubByActorIdWithFallback(store, deps, context);
   const result = await readTaskComments(context.workspaceId, recordId, {
     baseUrl: context.baseUrl,
@@ -1546,10 +1548,19 @@ export async function hydrateTowerPgTaskComments(store, taskId, deps = {}) {
       actorNpubByActorId,
     }))
     .filter((comment) => comment.record_id && comment.target_record_id);
+  const currentContext = resolveTowerPgWorkspaceContext(store);
+  if (
+    currentContext.workspaceId !== context.workspaceId
+    || currentContext.workspaceOwnerNpub !== context.workspaceOwnerNpub
+    || currentContext.baseUrl !== context.baseUrl
+  ) {
+    return comments;
+  }
   await replaceComments(recordId, comments);
+  const visibleComments = await readLocalComments(recordId);
   const activeTaskId = trimText(store?.activeTaskId);
   if (typeof store.applyTaskComments === 'function' && (!activeTaskId || activeTaskId === recordId)) {
-    await store.applyTaskComments(comments);
+    await store.applyTaskComments(visibleComments);
   }
   return comments;
 }
