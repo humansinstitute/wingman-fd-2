@@ -1007,6 +1007,7 @@ export const docsManagerMixin = {
       },
     });
     this.syncDocRichEditorContentModel();
+    this.scheduleStorageImageHydration?.();
   },
 
   async loadDocComments(docId, options = {}) {

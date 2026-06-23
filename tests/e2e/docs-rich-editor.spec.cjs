@@ -1,7 +1,7 @@
 const { test, expect } = require('playwright/test');
 
-async function seedSelectedDocument(page) {
-  await page.evaluate(async () => {
+async function seedSelectedDocument(page, options = {}) {
+  await page.evaluate(async (seedOptions) => {
     const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     for (let index = 0; index < 100; index += 1) {
       if (window.Alpine?.store?.('chat')) break;
@@ -16,7 +16,9 @@ async function seedSelectedDocument(page) {
       record_id: 'doc-rich-default',
       owner_npub: 'npub1docsrichtest',
       title: 'Tip Tap Test',
-      content: 'This should open in Tiptap by default.',
+      content: seedOptions.withStorageImage
+        ? 'This should open in Tiptap by default.\n\n![Plant list](storage://image-object-123)'
+        : 'This should open in Tiptap by default.',
       content_blocks: [{
         id: 'block-1',
         type: 'markdown',
@@ -24,7 +26,14 @@ async function seedSelectedDocument(page) {
         text: 'This should open in Tiptap by default.',
         attrs: {},
         start_line: 1,
-      }],
+      }, ...(seedOptions.withStorageImage ? [{
+        id: 'block-2',
+        type: 'image',
+        raw: '![Plant list](storage://image-object-123)',
+        text: '![Plant list](storage://image-object-123)',
+        attrs: {},
+        start_line: 3,
+      }] : [])],
       content_model: null,
       version: 1,
       sync_status: 'synced',
@@ -36,6 +45,9 @@ async function seedSelectedDocument(page) {
     };
 
     store.session = { ...(store.session || {}), npub: 'npub1docsrichtest' };
+    store.storageImageUrlCache = seedOptions.withStorageImage
+      ? { 'image-object-123': 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==' }
+      : {};
     store.navSection = 'docs';
     store.documents = [document];
     store.directories = [];
@@ -56,7 +68,7 @@ async function seedSelectedDocument(page) {
 
     const entered = await store.enterSelectedDocEditMode();
     if (!entered) throw new Error('Document edit mode did not open.');
-  });
+  }, options);
 }
 
 test('default document edit mode mounts the native Tiptap editor', async ({ page }) => {
@@ -82,4 +94,16 @@ test('default document edit mode mounts the native Tiptap editor', async ({ page
   expect(editorMetrics.width).toBeGreaterThan(300);
   expect(editorMetrics.height).toBeGreaterThan(120);
   expect(editorMetrics.text).toContain('This should open in Tiptap by default.');
+});
+
+test('rich document edit mode displays stored images while editing', async ({ page }) => {
+  await page.goto('/');
+
+  await seedSelectedDocument(page, { withStorageImage: true });
+
+  const image = page.locator('.doc-rich-editor .ProseMirror img[data-storage-object-id="image-object-123"]');
+  await expect(image).toBeVisible();
+  await expect(image).toHaveAttribute('src', /^data:image\/gif;base64,/);
+  await expect(image).toHaveClass(/md-storage-image/);
+  await expect(image).not.toHaveClass(/md-storage-image-pending/);
 });

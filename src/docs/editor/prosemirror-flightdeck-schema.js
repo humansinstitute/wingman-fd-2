@@ -127,8 +127,13 @@ export const FlightDeckStorageImage = Image.extend({
     };
   },
   renderHTML({ HTMLAttributes }) {
+    const objectId = String(HTMLAttributes.objectId || '').trim();
+    const isStorageImage = Boolean(objectId) || String(HTMLAttributes.src || '').startsWith('storage://');
     return ['img', mergeAttributes(HTMLAttributes, {
-      'data-fd-storage-object-id': HTMLAttributes.objectId,
+      src: isStorageImage ? null : HTMLAttributes.src,
+      'data-fd-storage-object-id': objectId || null,
+      'data-storage-object-id': objectId || null,
+      class: isStorageImage ? 'md-storage-image md-storage-image-pending' : 'md-storage-image',
     })];
   },
 });
