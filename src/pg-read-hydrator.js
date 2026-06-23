@@ -177,20 +177,12 @@ function resolveSenderNpub(record = {}, actorNpubByActorId = new Map()) {
   return trimText(actorNpubByActorId.get(actorId));
 }
 
-function normalizePgTaskAssignmentNpubs(task = {}, actorNpubByActorId = new Map()) {
+function normalizePgTaskAssignmentNpubs(task = {}) {
   const assignments = Array.isArray(task?.assignments) ? task.assignments : [];
   const npubs = [];
   const seen = new Set();
   for (const assignment of assignments) {
-    const actor = assignment?.actor && typeof assignment.actor === 'object' ? assignment.actor : {};
-    const actorId = trimText(assignment?.actor_id || assignment?.actorId || actor.actor_id || actor.id);
-    const npub = trimText(
-      assignment?.actor_npub
-      || assignment?.assignee_npub
-      || assignment?.npub
-      || actor.npub
-      || actorNpubByActorId.get(actorId),
-    );
+    const npub = trimText(assignment?.actor_npub);
     if (!npub || seen.has(npub)) continue;
     seen.add(npub);
     npubs.push(npub);
@@ -436,13 +428,13 @@ export function mapPgMessageToLocal(message, {
   };
 }
 
-export function mapPgTaskToLocal(task, { workspaceOwnerNpub, actorNpubByActorId = new Map() } = {}) {
+export function mapPgTaskToLocal(task, { workspaceOwnerNpub } = {}) {
   const scopeId = trimText(task?.scope_id);
   const updatedAt = isoTimestamp(task?.updated_at || task?.created_at);
   const metadata = task?.metadata && typeof task.metadata === 'object' && !Array.isArray(task.metadata)
     ? task.metadata
     : {};
-  const assignedToNpubs = normalizePgTaskAssignmentNpubs(task, actorNpubByActorId);
+  const assignedToNpubs = normalizePgTaskAssignmentNpubs(task);
   return {
     record_id: trimText(task?.id || task?.record_id),
     owner_npub: trimText(workspaceOwnerNpub),

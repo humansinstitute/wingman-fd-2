@@ -340,12 +340,11 @@ describe('PG read hydrator', () => {
         flow_id: 'flow-1',
         source_links: [{ type: 'message', id: 'msg-1' }],
       },
-      assignments: [{ actor_id: 'actor-agent' }],
+      assignments: [{ actor_id: 'actor-agent', actor_npub: 'npub1agent' }],
       row_version: 6,
       updated_at: '2026-06-05T02:00:00.000Z',
     }, {
       workspaceOwnerNpub: 'npub1owner',
-      actorNpubByActorId: new Map([['actor-agent', 'npub1agent']]),
     })).toMatchObject({
       record_id: 'task-1',
       owner_npub: 'npub1owner',
@@ -367,6 +366,55 @@ describe('PG read hydrator', () => {
       pg_backend: true,
       pg_record_type: 'task',
       pg_metadata: expect.objectContaining({ scheduled_for: '2026-06-22' }),
+    });
+  });
+
+  it('maps PG task assignments from Tower assignment actor npubs without metadata fallback', () => {
+    expect(mapPgTaskToLocal({
+      id: 'task-assigned',
+      workspace_id: 'workspace-1',
+      scope_id: 'scope-1',
+      channel_id: 'channel-1',
+      title: 'Assigned from Tower',
+      metadata: {
+        assigned_to_npub: 'npub1stale',
+      },
+      assignments: [{
+        actor_id: 'actor-agent',
+        actor_npub: 'npub1agent',
+      }],
+      row_version: 2,
+      updated_at: '2026-06-05T02:00:00.000Z',
+    }, {
+      workspaceOwnerNpub: 'npub1owner',
+    })).toMatchObject({
+      record_id: 'task-assigned',
+      assigned_to_npubs: ['npub1agent'],
+      assigned_to_npub: 'npub1agent',
+    });
+  });
+
+  it('leaves PG task unassigned when Tower assignment rows omit actor npubs', () => {
+    expect(mapPgTaskToLocal({
+      id: 'task-missing-assignee-npub',
+      workspace_id: 'workspace-1',
+      scope_id: 'scope-1',
+      channel_id: 'channel-1',
+      title: 'Missing assignment identity',
+      metadata: {
+        assigned_to_npub: 'npub1stale',
+      },
+      assignments: [{
+        actor_id: 'actor-agent',
+      }],
+      row_version: 2,
+      updated_at: '2026-06-05T02:00:00.000Z',
+    }, {
+      workspaceOwnerNpub: 'npub1owner',
+    })).toMatchObject({
+      record_id: 'task-missing-assignee-npub',
+      assigned_to_npubs: [],
+      assigned_to_npub: null,
     });
   });
 

@@ -59,6 +59,15 @@ function addNpubFields(target, item, fields) {
   for (const field of fields) addFullNpub(target, item[field]);
 }
 
+function addNpubArrayFields(target, item, fields) {
+  if (!item || typeof item !== 'object') return;
+  for (const field of fields) {
+    const values = item[field];
+    if (!Array.isArray(values)) continue;
+    for (const value of values) addFullNpub(target, value);
+  }
+}
+
 function addGroupMemberNpubs(target, group) {
   if (!group || typeof group !== 'object') return;
   for (const field of ['member_npubs', 'memberNpubs', 'members']) {
@@ -81,7 +90,10 @@ function collectKnownProfileNpubs(store) {
   for (const member of store?.pgWorkspaceMembers || []) addNpubFields(npubs, member, ['npub', 'user_npub', 'member_npub']);
   for (const group of [...(store?.groups || []), ...(store?.currentWorkspaceGroups || [])]) addGroupMemberNpubs(npubs, group);
   for (const message of store?.messages || []) addNpubFields(npubs, message, ['author_npub', 'sender_npub', 'created_by_npub', 'owner_npub']);
-  for (const task of store?.tasks || []) addNpubFields(npubs, task, ['assignee_npub', 'created_by_npub', 'owner_npub']);
+  for (const task of store?.tasks || []) {
+    addNpubFields(npubs, task, ['created_by_npub', 'owner_npub']);
+    addNpubArrayFields(npubs, task, ['assigned_to_npubs']);
+  }
   for (const comment of store?.docComments || []) addNpubFields(npubs, comment, ['author_npub', 'created_by_npub', 'owner_npub']);
   return [...npubs];
 }
