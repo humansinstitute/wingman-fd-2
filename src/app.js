@@ -1,6 +1,25 @@
 /**
  * Alpine.js app store — the single source of reactive UI state.
  * All data comes from Dexie; network goes through the sync worker.
+ *
+ * Responsibility inventory:
+ * - App bootstrap, route sync, auth/session setup, and top-level shell state.
+ * - Section navigation and release of inactive section data.
+ * - Remaining document/report/status/task orchestration that has not yet moved
+ *   to a feature manager.
+ * - Daily Scope, personal WApps, invocation modals, task detail, task comments,
+ *   schedules, and cross-section glue.
+ *
+ * Extracted ownership notes:
+ * - Chat messages/threads belong in chat-message-manager.js.
+ * - Channels/settings belong in channels-manager.js.
+ * - Docs editor and doc lifecycle belong in docs-manager.js and docs/editor/*.
+ * - Files, storage image hydration, audio recording, reactions, people profiles,
+ *   reports, notifications, workspace switching, sync, unread state, command
+ *   palette, task board state, and section live queries each have matching
+ *   manager/helper modules imported below.
+ * - New feature code should go into the relevant manager/helper first. Add to
+ *   this file only when the behavior is truly cross-cutting app glue.
  */
 
 import Alpine from 'alpinejs';
