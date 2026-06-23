@@ -92,6 +92,7 @@ function blockMarkdown(node = {}) {
   if (node.type === 'table') return tableMarkdown(node);
   if (node.type === 'fdStorageImage' || node.type === 'image') return inlineMarkdown([node]);
   if (node.type === 'fdStorageFile') return inlineMarkdown([node]);
+  if (node.type === 'fdUploadPlaceholder') return '';
   return inlineMarkdown(node.content || []);
 }
 

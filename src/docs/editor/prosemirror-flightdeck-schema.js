@@ -138,6 +138,25 @@ export const FlightDeckStorageImage = Image.extend({
   },
 });
 
+export const FlightDeckUploadPlaceholder = Node.create({
+  name: 'fdUploadPlaceholder',
+  group: 'block',
+  atom: true,
+  selectable: false,
+  addAttributes() {
+    return {
+      uploadId: { default: null },
+      label: { default: 'Uploading image...' },
+    };
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ['div', mergeAttributes(HTMLAttributes, {
+      'data-doc-rich-upload-id': HTMLAttributes.uploadId,
+      class: 'doc-rich-upload-placeholder',
+    }), HTMLAttributes.label || 'Uploading image...'];
+  },
+});
+
 export function createFlightDeckTiptapExtensions(options = {}) {
   return [
     StarterKit.configure({
@@ -159,6 +178,7 @@ export function createFlightDeckTiptapExtensions(options = {}) {
     TaskItem.configure({ nested: true }),
     FlightDeckStorageImage,
     FlightDeckStorageFile,
+    FlightDeckUploadPlaceholder,
     FlightDeckMention,
     FlightDeckBlockIdExtension,
   ];

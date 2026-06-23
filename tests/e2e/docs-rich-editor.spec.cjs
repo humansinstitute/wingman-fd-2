@@ -107,3 +107,46 @@ test('rich document edit mode displays stored images while editing', async ({ pa
   await expect(image).toHaveClass(/md-storage-image/);
   await expect(image).not.toHaveClass(/md-storage-image-pending/);
 });
+
+test('rich document paste shows an upload placeholder before the image appears', async ({ page }) => {
+  await page.goto('/');
+
+  await seedSelectedDocument(page);
+
+  await page.evaluate(() => {
+    const store = window.Alpine.store('chat');
+    store.uploadInlineImageFile = () => new Promise((resolve) => {
+      window.__resolveDocRichUpload = () => {
+        store.storageImageUrlCache = {
+          ...(store.storageImageUrlCache || {}),
+          'uploaded-image-1': 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==',
+        };
+        resolve({
+          objectId: 'uploaded-image-1',
+          fileName: 'uploaded-image.png',
+          markdown: '![uploaded-image.png](storage://uploaded-image-1)',
+        });
+      };
+    });
+
+    const file = new File([new Uint8Array([137, 80, 78, 71])], 'uploaded-image.png', { type: 'image/png' });
+    const clipboardData = new DataTransfer();
+    clipboardData.items.add(file);
+    const pasteEvent = new ClipboardEvent('paste', {
+      clipboardData,
+      bubbles: true,
+      cancelable: true,
+    });
+    document.querySelector('.doc-rich-editor .ProseMirror').dispatchEvent(pasteEvent);
+  });
+
+  await expect(page.locator('.doc-rich-upload-placeholder')).toBeVisible();
+  await expect(page.locator('.doc-rich-upload-placeholder')).toHaveText('Uploading image...');
+
+  await page.evaluate(() => window.__resolveDocRichUpload());
+
+  await expect(page.locator('.doc-rich-upload-placeholder')).toHaveCount(0);
+  const image = page.locator('.doc-rich-editor .ProseMirror img[data-storage-object-id="uploaded-image-1"]');
+  await expect(image).toBeVisible();
+  await expect(image).toHaveAttribute('src', /^data:image\/gif;base64,/);
+});

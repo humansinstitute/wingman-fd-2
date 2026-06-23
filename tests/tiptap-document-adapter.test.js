@@ -73,4 +73,20 @@ describe('Tiptap document adapter', () => {
     expect(model.content).toBe('![Pasted image](storage://pasted-image-123)');
     expect(model.content).not.toContain('blob:http://localhost');
   });
+
+  it('does not export transient rich upload placeholders', () => {
+    const model = prosemirrorToFlightDeckContentModel({
+      type: 'doc',
+      content: [{
+        type: 'fdUploadPlaceholder',
+        attrs: {
+          uploadId: 'upload-1',
+          label: 'Uploading image...',
+        },
+      }],
+    });
+
+    expect(model.content).toBe('');
+    expect(model.content_blocks).toEqual([]);
+  });
 });

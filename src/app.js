@@ -8330,6 +8330,20 @@ export function initApp() {
         return true;
       }
 
+      const uploadId = globalThis.crypto?.randomUUID
+        ? `doc-rich-upload-${globalThis.crypto.randomUUID()}`
+        : `doc-rich-upload-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      editor?.chain?.()
+        .focus()
+        .insertContent({
+          type: 'fdUploadPlaceholder',
+          attrs: {
+            uploadId,
+            label: 'Uploading image...',
+          },
+        })
+        .run();
+
       void (async () => {
         try {
           const uploaded = await this.uploadInlineImageFile(file, {
@@ -8337,8 +8351,7 @@ export function initApp() {
             accessGroupIds: doc.group_ids ?? [],
             fileLabel: 'doc-rich',
           });
-          editor?.commands?.focus?.();
-          editor?.commands?.insertContent?.({
+          this.replaceDocRichUploadPlaceholder(editor, uploadId, {
             type: 'fdStorageImage',
             attrs: {
               src: `storage://${uploaded.objectId}`,
@@ -8351,9 +8364,32 @@ export function initApp() {
           this.scheduleDocAutosave();
           this.scheduleStorageImageHydration();
         } catch (error) {
+          this.replaceDocRichUploadPlaceholder(editor, uploadId, {
+            type: 'paragraph',
+            content: [{ type: 'text', text: 'Image upload failed.' }],
+          });
           this.error = error?.message || 'Could not upload pasted image.';
         }
       })();
+      return true;
+    },
+
+    replaceDocRichUploadPlaceholder(editor, uploadId, nextContent) {
+      if (!editor || !uploadId) return false;
+      let match = null;
+      editor.state?.doc?.descendants?.((node, pos) => {
+        if (node.type?.name !== 'fdUploadPlaceholder' || node.attrs?.uploadId !== uploadId) return true;
+        match = { node, pos };
+        return false;
+      });
+      if (!match) {
+        editor.commands?.insertContent?.(nextContent);
+        return false;
+      }
+      editor.chain?.()
+        .focus()
+        .insertContentAt({ from: match.pos, to: match.pos + match.node.nodeSize }, nextContent)
+        .run();
       return true;
     },
 
