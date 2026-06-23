@@ -2088,6 +2088,8 @@ button:disabled {
   font-weight: 500;
   background: transparent;
   border: none;
+  position: relative;
+  transition: background-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
 }
 
 .sidebar-icon {
@@ -2106,7 +2108,18 @@ button:disabled {
 }
 
 .sidebar-nav li.active {
-  font-weight: 600;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-weight: 700;
+  box-shadow: inset 3px 0 0 #2563eb, 0 0 0 1px #bfdbfe;
+}
+
+.sidebar-nav li.active .sidebar-icon {
+  color: #1d4ed8;
+}
+
+.sidebar-nav li.active svg {
+  stroke-width: 2.2;
 }
 
 .files-section {
@@ -3061,6 +3074,16 @@ button:disabled {
   justify-content: center;
   padding-left: 0.5rem;
   padding-right: 0.5rem;
+}
+
+.sidebar-collapsed .sidebar-nav li.active {
+  background: #2563eb;
+  color: #ffffff;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.28);
+}
+
+.sidebar-collapsed .sidebar-nav li.active .sidebar-icon {
+  color: #ffffff;
 }
 
 .sidebar-collapsed .sidebar-workspace-footer {
