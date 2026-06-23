@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-E2KMDZj2.js"></script>
+  <script type="module" crossorigin src="/assets/index-BWpm7fB5.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-nWCfdSox.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
@@ -1326,6 +1326,7 @@
                           </svg>
                         </button>
                         <div class="doc-actions-popover report-actions-popover" x-show="$store.chat.isReportActionsMenuOpen(report.record_id)" x-cloak x-transition>
+                          <button type="button" @click.stop="$store.chat.copyFlightDeckReference('report', report.record_id, report.title || 'Untitled report'); $store.chat.closeReportActionsMenu()">FD Ref</button>
                           <button type="button" class="doc-actions-delete" @click.stop="$store.chat.openReportDeleteConfirm(report)">Delete report</button>
                         </div>
                       </div>
@@ -1797,6 +1798,7 @@
                             </svg>
                           </button>
                           <div class="doc-actions-popover report-actions-popover" x-show="$store.chat.isReportActionsMenuOpen(report.record_id)" x-cloak x-transition>
+                            <button type="button" @click.stop="$store.chat.copyFlightDeckReference('report', report.record_id, report.title || 'Untitled report'); $store.chat.closeReportActionsMenu()">FD Ref</button>
                             <button type="button" class="doc-actions-delete" @click.stop="$store.chat.openReportDeleteConfirm(report)">Delete report</button>
                           </div>
                         </div>
@@ -1831,6 +1833,7 @@
                             </svg>
                           </button>
                           <div class="doc-actions-popover report-actions-popover" x-show="$store.chat.isReportActionsMenuOpen($store.chat.selectedReport.record_id)" x-cloak x-transition>
+                            <button type="button" @click.stop="$store.chat.copyFlightDeckReference('report', $store.chat.selectedReport.record_id, $store.chat.selectedReport.title || 'Untitled report'); $store.chat.closeReportActionsMenu()">FD Ref</button>
                             <button type="button" class="doc-actions-delete" @click.stop="$store.chat.openReportDeleteConfirm($store.chat.selectedReport)">Delete report</button>
                           </div>
                         </div>
@@ -2414,6 +2417,10 @@
                       </svg>
                     </button>
                     <div class="doc-actions-popover" x-show="open" x-cloak x-transition>
+	                      <button
+	                        type="button"
+	                        @click="if ($store.chat.editingTask?.record_id) $store.chat.copyFlightDeckReference('task', $store.chat.editingTask.record_id, $store.chat.editingTask.title || 'Untitled task'); open = false"
+	                      >FD Ref</button>
 	                      <button
 	                        type="button"
 	                        x-show="!$store.chat.isTowerPgMode"
@@ -3168,6 +3175,7 @@
                       <div class="chat-msg-actions-popover" x-show="$store.chat.isMessageActionsMenuOpen(msg.record_id)" x-cloak x-transition>
                         <button type="button" :data-record-id="msg.record_id" data-source-surface="main_feed" data-chat-get-it-done="true">Get it done</button>
                         <button type="button" @click.stop.prevent="$store.chat.copyMessageRawText(msg.record_id)">Copy message</button>
+                        <button type="button" @click.stop.prevent="$store.chat.copyFlightDeckReference('chat', $store.chat.buildChatMessageFlightDeckReferenceId(msg.record_id), 'Chat message'); $store.chat.closeMessageActionsMenu()">FD Ref</button>
                         <button type="button" x-show="$store.chat.isTowerPgMode && !$store.chat.isChatThreadArchived(msg.record_id)" :disabled="$store.chat.isChatThreadArchiveSubmitting(msg.record_id)" @click.stop.prevent="$store.chat.archiveChatThreadByParentId(msg.record_id, true)" x-text="$store.chat.isChatThreadArchiveSubmitting(msg.record_id, 'archive') ? 'Archiving...' : 'Archive thread'"></button>
                         <button type="button" x-show="$store.chat.isTowerPgMode && $store.chat.isChatThreadArchived(msg.record_id)" :disabled="$store.chat.isChatThreadArchiveSubmitting(msg.record_id)" @click.stop.prevent="$store.chat.archiveChatThreadByParentId(msg.record_id, false)" x-text="$store.chat.isChatThreadArchiveSubmitting(msg.record_id, 'unarchive') ? 'Unarchiving...' : 'Unarchive thread'"></button>
                         <button type="button" class="chat-msg-actions-danger" @click.stop.prevent="$store.chat.openChatDeleteConfirm('message', msg.record_id)">Delete message</button>
@@ -3357,6 +3365,7 @@
                         <button type="button" :data-record-id="$store.chat.getThreadParentMessage()?.record_id || ''" data-source-surface="thread_parent" data-chat-get-it-done="true">Get it done</button>
                         <button type="button" @click.stop.prevent="$store.chat.copyMessageRawText($store.chat.getThreadParentMessage()?.record_id)">Copy message</button>
                         <button type="button" @click.stop.prevent="$store.chat.copyThreadRawText($store.chat.getThreadParentMessage()?.record_id)">Copy thread</button>
+                        <button type="button" @click.stop.prevent="$store.chat.copyFlightDeckReference('chat', $store.chat.buildChatMessageFlightDeckReferenceId($store.chat.getThreadParentMessage()?.record_id), 'Chat thread'); $store.chat.closeMessageActionsMenu()">FD Ref</button>
                         <button type="button" x-show="$store.chat.isTowerPgMode && !$store.chat.isChatThreadArchived($store.chat.getThreadParentMessage()?.record_id)" :disabled="$store.chat.isChatThreadArchiveSubmitting($store.chat.getThreadParentMessage()?.record_id)" @click.stop.prevent="$store.chat.archiveChatThreadByParentId($store.chat.getThreadParentMessage()?.record_id, true)" x-text="$store.chat.isChatThreadArchiveSubmitting($store.chat.getThreadParentMessage()?.record_id, 'archive') ? 'Archiving...' : 'Archive thread'"></button>
                         <button type="button" x-show="$store.chat.isTowerPgMode && $store.chat.isChatThreadArchived($store.chat.getThreadParentMessage()?.record_id)" :disabled="$store.chat.isChatThreadArchiveSubmitting($store.chat.getThreadParentMessage()?.record_id)" @click.stop.prevent="$store.chat.archiveChatThreadByParentId($store.chat.getThreadParentMessage()?.record_id, false)" x-text="$store.chat.isChatThreadArchiveSubmitting($store.chat.getThreadParentMessage()?.record_id, 'unarchive') ? 'Unarchiving...' : 'Unarchive thread'"></button>
                         <button type="button" class="chat-msg-actions-danger" @click.stop.prevent="$store.chat.openChatDeleteConfirm('message', $store.chat.getThreadParentMessage()?.record_id)">Delete message</button>
@@ -3434,6 +3443,7 @@
                       <div class="chat-msg-actions-popover" x-show="$store.chat.isMessageActionsMenuOpen(reply.record_id)" x-cloak x-transition>
                         <button type="button" :data-record-id="reply.record_id" data-source-surface="thread_reply" data-chat-get-it-done="true">Get it done</button>
                         <button type="button" @click.stop.prevent="$store.chat.copyMessageRawText(reply.record_id)">Copy message</button>
+                        <button type="button" @click.stop.prevent="$store.chat.copyFlightDeckReference('chat', $store.chat.buildChatMessageFlightDeckReferenceId(reply.record_id), 'Chat reply'); $store.chat.closeMessageActionsMenu()">FD Ref</button>
                         <button type="button" class="chat-msg-actions-danger" @click.stop.prevent="$store.chat.openChatDeleteConfirm('message', reply.record_id)">Delete message</button>
                         <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop.prevent="$store.chat.inspectMessageSyncStatus(reply.record_id)">Check sync status</button>
                       </div>
@@ -3679,6 +3689,7 @@
                   </button>
                   <div class="doc-actions-popover" x-show="open" x-cloak x-transition>
                     <button type="button" @click="$store.chat.openDocScopeModal('current-folder'); open = false">Scope</button>
+	                    <button type="button" @click="$store.chat.copyFlightDeckReference('directory', $store.chat.currentFolder.record_id, $store.chat.currentFolder.title || 'Untitled folder'); open = false">FD Ref</button>
 	                    <button
 	                      type="button"
 	                      x-show="!$store.chat.isTowerPgMode"
@@ -3915,6 +3926,7 @@
                       </button>
                       <div class="doc-actions-popover" x-show="open" x-cloak x-transition>
                         <button type="button" @click="$store.chat.openDocScopeModal(); open = false">Scope</button>
+                        <button type="button" @click="$store.chat.copyFlightDeckReference('doc', $store.chat.selectedDocId, $store.chat.docEditorTitle || 'Untitled document'); open = false">FD Ref</button>
                         <button type="button" @click="$store.chat.openDocMoveModal([$store.chat.selectedDocId]); open = false">Move doc</button>
                         <button
                           type="button"
@@ -6196,6 +6208,7 @@
                         <div class="doc-actions-popover" x-show="actionsOpen" x-cloak x-transition>
 	                          <button x-show="!$store.chat.isTowerPgMode && parseInt(s1.level.slice(1)) < 5" type="button" @click.stop="$store.chat.startNewScope('l' + (parseInt(s1.level.slice(1)) + 1), s1.record_id); actionsOpen = false">Add child scope</button>
 	                          <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop="$store.chat.startEditScope(s1.record_id); actionsOpen = false">Edit scope</button>
+	                          <button type="button" @click.stop="$store.chat.copyFlightDeckReference('scope', s1.record_id, s1.title || 'Untitled scope'); actionsOpen = false">FD Ref</button>
 	                          <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop="$store.chat.openRecordStatusModal({ familyId: 'scope', recordId: s1.record_id, label: s1.title || 'Untitled scope' }); actionsOpen = false">Check status</button>
 	                          <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop="$store.chat.reapplyScopeGroupCrypto(s1.record_id); actionsOpen = false" :disabled="$store.chat.scopePolicyRepairBusy">Reapply group crypto</button>
                           <button type="button" class="doc-actions-delete" @click.stop="if(confirm('Delete this scope and its children?')) $store.chat.deleteScope(s1.record_id); actionsOpen = false">Delete scope</button>
@@ -6230,6 +6243,7 @@
                               <div class="doc-actions-popover" x-show="actionsOpen" x-cloak x-transition>
 	                                <button x-show="!$store.chat.isTowerPgMode && parseInt(s2.level.slice(1)) < 5" type="button" @click.stop="$store.chat.startNewScope('l' + (parseInt(s2.level.slice(1)) + 1), s2.record_id); actionsOpen = false">Add child scope</button>
 	                                <button type="button" @click.stop="$store.chat.startEditScope(s2.record_id); actionsOpen = false">Edit scope</button>
+	                                <button type="button" @click.stop="$store.chat.copyFlightDeckReference('scope', s2.record_id, s2.title || 'Untitled scope'); actionsOpen = false">FD Ref</button>
 	                                <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop="$store.chat.openRecordStatusModal({ familyId: 'scope', recordId: s2.record_id, label: s2.title || 'Untitled scope' }); actionsOpen = false">Check status</button>
 	                                <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop="$store.chat.reapplyScopeGroupCrypto(s2.record_id); actionsOpen = false" :disabled="$store.chat.scopePolicyRepairBusy">Reapply group crypto</button>
                                 <button type="button" class="doc-actions-delete" @click.stop="if(confirm('Delete this scope and its children?')) $store.chat.deleteScope(s2.record_id); actionsOpen = false">Delete scope</button>
@@ -6264,6 +6278,7 @@
                                     <div class="doc-actions-popover" x-show="actionsOpen" x-cloak x-transition>
 	                                      <button x-show="!$store.chat.isTowerPgMode && parseInt(s3.level.slice(1)) < 5" type="button" @click.stop="$store.chat.startNewScope('l' + (parseInt(s3.level.slice(1)) + 1), s3.record_id); actionsOpen = false">Add child scope</button>
 	                                      <button type="button" @click.stop="$store.chat.startEditScope(s3.record_id); actionsOpen = false">Edit scope</button>
+	                                      <button type="button" @click.stop="$store.chat.copyFlightDeckReference('scope', s3.record_id, s3.title || 'Untitled scope'); actionsOpen = false">FD Ref</button>
 	                                      <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop="$store.chat.openRecordStatusModal({ familyId: 'scope', recordId: s3.record_id, label: s3.title || 'Untitled scope' }); actionsOpen = false">Check status</button>
 	                                      <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop="$store.chat.reapplyScopeGroupCrypto(s3.record_id); actionsOpen = false" :disabled="$store.chat.scopePolicyRepairBusy">Reapply group crypto</button>
                                       <button type="button" class="doc-actions-delete" @click.stop="if(confirm('Delete this scope and its children?')) $store.chat.deleteScope(s3.record_id); actionsOpen = false">Delete scope</button>
@@ -6298,6 +6313,7 @@
                                           <div class="doc-actions-popover" x-show="actionsOpen" x-cloak x-transition>
 	                                            <button x-show="!$store.chat.isTowerPgMode && parseInt(s4.level.slice(1)) < 5" type="button" @click.stop="$store.chat.startNewScope('l' + (parseInt(s4.level.slice(1)) + 1), s4.record_id); actionsOpen = false">Add child scope</button>
 	                                            <button type="button" @click.stop="$store.chat.startEditScope(s4.record_id); actionsOpen = false">Edit scope</button>
+	                                            <button type="button" @click.stop="$store.chat.copyFlightDeckReference('scope', s4.record_id, s4.title || 'Untitled scope'); actionsOpen = false">FD Ref</button>
 	                                            <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop="$store.chat.openRecordStatusModal({ familyId: 'scope', recordId: s4.record_id, label: s4.title || 'Untitled scope' }); actionsOpen = false">Check status</button>
 	                                            <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop="$store.chat.reapplyScopeGroupCrypto(s4.record_id); actionsOpen = false" :disabled="$store.chat.scopePolicyRepairBusy">Reapply group crypto</button>
                                             <button type="button" class="doc-actions-delete" @click.stop="if(confirm('Delete this scope and its children?')) $store.chat.deleteScope(s4.record_id); actionsOpen = false">Delete scope</button>
@@ -6331,6 +6347,7 @@
                                                 </button>
                                                 <div class="doc-actions-popover" x-show="actionsOpen" x-cloak x-transition>
 	                                                  <button type="button" @click.stop="$store.chat.startEditScope(s5.record_id); actionsOpen = false">Edit scope</button>
+	                                                  <button type="button" @click.stop="$store.chat.copyFlightDeckReference('scope', s5.record_id, s5.title || 'Untitled scope'); actionsOpen = false">FD Ref</button>
 	                                                  <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop="$store.chat.openRecordStatusModal({ familyId: 'scope', recordId: s5.record_id, label: s5.title || 'Untitled scope' }); actionsOpen = false">Check status</button>
 	                                                  <button type="button" x-show="!$store.chat.isTowerPgMode" @click.stop="$store.chat.reapplyScopeGroupCrypto(s5.record_id); actionsOpen = false" :disabled="$store.chat.scopePolicyRepairBusy">Reapply group crypto</button>
                                                   <button type="button" class="doc-actions-delete" @click.stop="if(confirm('Delete this scope?')) $store.chat.deleteScope(s5.record_id); actionsOpen = false">Delete scope</button>
@@ -7530,6 +7547,11 @@
               <button
                 type="button"
                 class="btn-secondary"
+                @click="$store.chat.copyFlightDeckReference('channel', $store.chat.selectedChannelId, $store.chat.getChannelLabel($store.chat.selectedChannel) || 'Channel')"
+              >FD Ref</button>
+              <button
+                type="button"
+                class="btn-secondary"
                 x-show="!$store.chat.isTowerPgMode"
                 @click="$store.chat.openRecordStatusModal({ familyId: 'channel', recordId: $store.chat.selectedChannelId, label: $store.chat.getChannelLabel($store.chat.selectedChannel) || 'Channel' })"
               >Check sync status</button>
@@ -7603,6 +7625,7 @@
                           </svg>
                         </button>
                         <div class="doc-actions-popover report-actions-popover" x-show="$store.chat.isReportActionsMenuOpen($store.chat.reportModalReport.record_id)" x-cloak x-transition>
+                          <button type="button" @click.stop="$store.chat.copyFlightDeckReference('report', $store.chat.reportModalReport.record_id, $store.chat.reportModalReport.title || 'Untitled report'); $store.chat.closeReportActionsMenu()">FD Ref</button>
                           <button type="button" class="doc-actions-delete" @click.stop="$store.chat.openReportDeleteConfirm($store.chat.reportModalReport)">Delete report</button>
                         </div>
                       </div>

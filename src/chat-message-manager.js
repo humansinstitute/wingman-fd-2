@@ -57,6 +57,10 @@ import { resolveTowerPgWorkspaceContext } from './pg-read-hydrator.js';
 import { resolvePgThreadId } from './pg-record-context.js';
 import { buildSectionUrl, parseRouteLocation } from './route-helpers.js';
 import {
+  buildFlightDeckReference,
+  normalizeRecordLinkType,
+} from './record-links.js';
+import {
   hasPreviewId,
   prunePreviewState,
   schedulePreviewMeasurement,
@@ -1404,6 +1408,96 @@ export const chatMessageManagerMixin = {
     const id = String(recordId || '').trim();
     if (!id) return null;
     return this.messages.find((message) => message.record_id === id) || null;
+  },
+
+  resolveFlightDeckReferenceLabel(type, recordId, fallback = '') {
+    const linkType = normalizeRecordLinkType(type);
+    const id = String(recordId || '').trim();
+    const directLabel = String(fallback || '').trim();
+    if (directLabel) return directLabel;
+    if (!id) return 'Record';
+    if (linkType === 'doc') {
+      const doc = (this.documents || []).find((item) => item?.record_id === id);
+      return doc?.title || this.docEditorTitle || 'Untitled document';
+    }
+    if (linkType === 'directory') {
+      const directory = (this.directories || []).find((item) => item?.record_id === id);
+      return directory?.title || 'Untitled folder';
+    }
+    if (linkType === 'task') {
+      const task = (this.tasks || []).find((item) => item?.record_id === id);
+      return task?.title || this.editingTask?.title || 'Untitled task';
+    }
+    if (linkType === 'scope') {
+      const scope = this.scopesMap?.get?.(id) || (this.scopes || []).find((item) => item?.record_id === id);
+      return scope?.title || 'Untitled scope';
+    }
+    if (linkType === 'channel') {
+      const channel = (this.channels || []).find((item) => item?.record_id === id);
+      return (channel && this.getChannelLabel?.(channel)) || channel?.title || channel?.name || 'Channel';
+    }
+    if (linkType === 'report') {
+      const report = (this.reports || []).find((item) => item?.record_id === id)
+        || (this.reportModalReport?.record_id === id ? this.reportModalReport : null)
+        || (this.selectedReport?.record_id === id ? this.selectedReport : null);
+      return report?.title || 'Untitled report';
+    }
+    if (linkType === 'flow') {
+      const flow = (this.flows || []).find((item) => item?.record_id === id);
+      return flow?.title || 'Untitled flow';
+    }
+    if (linkType === 'opportunity') {
+      const opportunity = (this.opportunities || []).find((item) => item?.record_id === id);
+      return opportunity?.title || 'Untitled opportunity';
+    }
+    if (linkType === 'person') return this.getSenderName?.(id) || id;
+    if (linkType === 'chat') {
+      const messageId = id.includes('#') ? id.slice(id.indexOf('#') + 1) : id;
+      const message = this.getChatMessageById?.(messageId);
+      const firstLine = String(message?.body || '').split(/\r?\n/).map((line) => line.trim()).find(Boolean);
+      if (firstLine) return firstLine.slice(0, 80);
+      const channelId = id.includes('#') ? id.slice(0, id.indexOf('#')) : message?.channel_id;
+      const channel = (this.channels || []).find((item) => item?.record_id === channelId);
+      const channelLabel = channel ? this.getChannelLabel?.(channel) || channel.title || channel.name : '';
+      return channelLabel ? `${channelLabel} message` : 'Chat message';
+    }
+    return id.slice(0, 8);
+  },
+
+  buildFlightDeckReference(type, recordId, label = '') {
+    return buildFlightDeckReference({
+      type,
+      id: recordId,
+      label: this.resolveFlightDeckReferenceLabel(type, recordId, label),
+    });
+  },
+
+  async copyFlightDeckReference(type, recordId, label = '') {
+    this.error = null;
+    const reference = this.buildFlightDeckReference(type, recordId, label);
+    if (!reference) {
+      this.error = 'Could not build Flight Deck reference.';
+      return;
+    }
+    try {
+      await this.copyTextToClipboard(reference);
+      const key = `${normalizeRecordLinkType(type)}:${String(recordId || '').trim()}`;
+      this.copiedFlightDeckRefKey = key;
+      if (typeof window !== 'undefined') {
+        window.setTimeout(() => {
+          if (this.copiedFlightDeckRefKey === key) this.copiedFlightDeckRefKey = null;
+        }, 1800);
+      }
+    } catch (error) {
+      this.error = error?.message || 'Failed to copy Flight Deck reference.';
+    }
+  },
+
+  buildChatMessageFlightDeckReferenceId(recordId) {
+    const message = this.getChatMessageById(recordId);
+    const messageId = String(message?.record_id || recordId || '').trim();
+    const channelId = String(message?.channel_id || this.selectedChannelId || '').trim();
+    return channelId && messageId ? `${channelId}#${messageId}` : messageId;
   },
 
   async copyTextToClipboard(text) {

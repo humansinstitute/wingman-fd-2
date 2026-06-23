@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildFlightDeckReference,
   buildRecordLinkPayload,
   buildVisibleRecordLinkSections,
   normalizeRecordLinkFields,
@@ -29,6 +30,20 @@ describe('record link helpers', () => {
       { type: 'task', id: 't-1' },
       { type: 'doc', id: 'd-1' },
     ]);
+  });
+
+  it('builds copyable Flight Deck references with normalized types and escaped labels', () => {
+    expect(buildFlightDeckReference({
+      type: 'document',
+      id: '60feddf7-5b96-4e12-9184-0f36dc2ced4f',
+      label: 'New Doc Editor',
+    })).toBe('@[New Doc Editor](mention:doc:60feddf7-5b96-4e12-9184-0f36dc2ced4f)');
+
+    expect(buildFlightDeckReference({
+      type: 'task',
+      id: 'task-1',
+      label: 'Fix [mobile] menu',
+    })).toBe('@[Fix \\[mobile\\] menu](mention:task:task-1)');
   });
 
   it('builds UI sections with source and deliverables before references', () => {

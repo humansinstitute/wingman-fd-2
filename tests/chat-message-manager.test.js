@@ -1693,6 +1693,29 @@ describe('chat message actions menu', () => {
     expect(copyTextToClipboard.mock.calls[0][0]).toContain('Reply ![x](storage://img)');
   });
 
+  it('copyFlightDeckReference writes a mention token for records', async () => {
+    const copyTextToClipboard = vi.fn();
+    const { fn, store } = bindMethod('copyFlightDeckReference', {
+      documents: [{ record_id: 'doc-1', title: 'New Doc Editor' }],
+      copyTextToClipboard,
+    });
+
+    await fn('document', 'doc-1');
+
+    expect(copyTextToClipboard).toHaveBeenCalledWith('@[New Doc Editor](mention:doc:doc-1)');
+    expect(store.copiedFlightDeckRefKey).toBe('doc:doc-1');
+  });
+
+  it('builds channel-aware chat message Flight Deck reference ids', () => {
+    const { fn } = bindMethod('buildChatMessageFlightDeckReferenceId', {
+      selectedChannelId: 'channel-fallback',
+      messages: [{ record_id: 'msg-1', channel_id: 'channel-1', body: 'Hello' }],
+    });
+
+    expect(fn('msg-1')).toBe('channel-1#msg-1');
+    expect(fn('msg-2')).toBe('channel-fallback#msg-2');
+  });
+
   it('openChatDeleteConfirm prepares a delete modal for messages', () => {
     const { fn, store } = bindMethod('openChatDeleteConfirm', {
       messageActionsMenuId: 'msg-1',

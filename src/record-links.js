@@ -17,7 +17,23 @@ export function normalizeRecordLinkType(value) {
   const normalized = String(value || '').trim().toLowerCase();
   if (['document', 'documents', 'docs', 'doc_ref'].includes(normalized)) return 'doc';
   if (normalized === 'task_ref') return 'task';
+  if (['chat_message', 'chat-message', 'message', 'thread'].includes(normalized)) return 'chat';
   return normalized;
+}
+
+function escapeFlightDeckReferenceLabel(value) {
+  return String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .replace(/([\\\[\]])/g, '\\$1');
+}
+
+export function buildFlightDeckReference({ type, id, label } = {}) {
+  const recordType = normalizeRecordLinkType(type);
+  const recordId = String(id || '').trim();
+  const displayLabel = escapeFlightDeckReferenceLabel(label) || recordId.slice(0, 8) || 'Record';
+  if (!recordType || !recordId) return '';
+  return `@[${displayLabel}](mention:${recordType}:${recordId})`;
 }
 
 export function normalizeRecordLink(link, fallbackKind = RECORD_LINK_KINDS.reference) {

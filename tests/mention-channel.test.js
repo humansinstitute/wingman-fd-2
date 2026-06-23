@@ -81,4 +81,43 @@ describe('channel mention lookup', () => {
     expect(store.startWorkspaceLiveQueries).toHaveBeenCalledTimes(1);
     expect(store.selectChannel).toHaveBeenCalledWith('channel-ops');
   });
+
+  it('navigates copied chat references to the source channel and thread', async () => {
+    const store = await createStore();
+    store.navSection = 'docs';
+    store.mobileNavOpen = true;
+    store.startWorkspaceLiveQueries = vi.fn();
+    store.selectChannel = vi.fn().mockResolvedValue(undefined);
+    store.openThread = vi.fn();
+    store.syncRoute = vi.fn();
+
+    store.handleMentionNavigate('chat', 'channel-ops#msg-1');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(store.navSection).toBe('chat');
+    expect(store.mobileNavOpen).toBe(false);
+    expect(store.selectChannel).toHaveBeenCalledWith('channel-ops', { syncRoute: false });
+    expect(store.openThread).toHaveBeenCalledWith('msg-1', { scrollToLatest: false, syncRoute: false });
+    expect(store.syncRoute).toHaveBeenCalledTimes(1);
+  });
+
+  it('navigates copied folder and report references', async () => {
+    const store = await createStore();
+    store.navigateToFolder = vi.fn();
+    store.startWorkspaceLiveQueries = vi.fn();
+    store.openReportModalById = vi.fn();
+    store.syncRoute = vi.fn();
+    store.mobileNavOpen = true;
+
+    store.handleMentionNavigate('directory', 'folder-1');
+    store.handleMentionNavigate('report', 'report-1');
+
+    expect(store.navigateToFolder).toHaveBeenCalledWith('folder-1');
+    expect(store.navSection).toBe('reports');
+    expect(store.mobileNavOpen).toBe(false);
+    expect(store.startWorkspaceLiveQueries).toHaveBeenCalledTimes(1);
+    expect(store.openReportModalById).toHaveBeenCalledWith('report-1');
+    expect(store.syncRoute).toHaveBeenCalledTimes(1);
+  });
 });

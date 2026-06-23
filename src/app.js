@@ -800,6 +800,7 @@ export function initApp() {
     newSubtaskTitle: '',
     newTaskCommentBody: '',
     copiedTaskLinkId: null,
+    copiedFlightDeckRefKey: null,
     editingTask: null,
     taskDetailMode: 'view',
     taskEditOriginal: null,
@@ -7421,6 +7422,28 @@ export function initApp() {
         this.mobileNavOpen = false;
         this.startWorkspaceLiveQueries();
         this.selectChannel?.(id);
+      } else if (linkType === 'chat') {
+        const raw = String(id || '').trim();
+        const hashIndex = raw.indexOf('#');
+        const channelId = hashIndex > 0
+          ? raw.slice(0, hashIndex)
+          : (this.messages || []).find((message) => message.record_id === raw)?.channel_id;
+        const threadId = hashIndex > 0 ? raw.slice(hashIndex + 1) : raw;
+        if (!channelId || !threadId) return;
+        this.navSection = 'chat';
+        this.mobileNavOpen = false;
+        this.startWorkspaceLiveQueries();
+        Promise.resolve(this.selectChannel?.(channelId, { syncRoute: false }))
+          .then(() => this.openThread?.(threadId, { scrollToLatest: false, syncRoute: false }))
+          .then(() => this.syncRoute?.());
+      } else if (linkType === 'directory') {
+        this.navigateToFolder?.(id);
+      } else if (linkType === 'report') {
+        this.navSection = 'reports';
+        this.mobileNavOpen = false;
+        this.startWorkspaceLiveQueries();
+        this.openReportModalById?.(id);
+        this.syncRoute?.();
       }
     },
 

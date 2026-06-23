@@ -158,6 +158,20 @@ describe('Chat channel rendering hooks', () => {
     expect(styles).toMatch(/\.content-scroll-area\s*\{[\s\S]*padding-bottom:\s*calc\(var\(--mobile-section-switcher-height\) \+ env\(safe-area-inset-bottom\) \+ 0\.75rem\);/);
   });
 
+  it('exposes Flight Deck reference copy actions in record menus', () => {
+    expect(html).toContain("copyFlightDeckReference('doc', $store.chat.selectedDocId");
+    expect(html).toContain("copyFlightDeckReference('task', $store.chat.editingTask.record_id");
+    expect(html).toContain("copyFlightDeckReference('chat', $store.chat.buildChatMessageFlightDeckReferenceId(msg.record_id)");
+    expect(html).toContain("copyFlightDeckReference('chat', $store.chat.buildChatMessageFlightDeckReferenceId($store.chat.getThreadParentMessage()?.record_id)");
+    expect(html).toContain("copyFlightDeckReference('chat', $store.chat.buildChatMessageFlightDeckReferenceId(reply.record_id)");
+    expect(html).toContain("copyFlightDeckReference('scope', s1.record_id");
+    expect(html).toContain("copyFlightDeckReference('scope', s5.record_id");
+    expect(html).toContain("copyFlightDeckReference('directory', $store.chat.currentFolder.record_id");
+    expect(html).toContain("copyFlightDeckReference('channel', $store.chat.selectedChannelId");
+    expect(html).toContain("copyFlightDeckReference('report'");
+    expect((html.match(/>FD Ref<\/button>/g) || []).length).toBeGreaterThanOrEqual(16);
+  });
+
   it('keeps logged-in chrome fixed above one content scroll area', () => {
     const mainContentIndex = html.indexOf('class="main-content"');
     const globalBarIndex = html.indexOf('class="global-pg-channel-bar"', mainContentIndex);
