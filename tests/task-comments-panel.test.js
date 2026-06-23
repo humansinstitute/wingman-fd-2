@@ -43,19 +43,21 @@ describe('task comments panel fullscreen affordance', () => {
   });
 
   it('defines fullscreen store state and detail lifecycle reset', () => {
-    const source = readProjectFile('src/app.js');
+    const appSource = readProjectFile('src/app.js');
+    const taskDetailSource = readProjectFile('src/task-detail-manager.js');
 
-    expect(source).toMatch(/taskCommentsFullscreenOpen:\s*false/);
-    expect(source).not.toContain('taskCommentsPanelExpanded');
-    expect(source).not.toContain('toggleTaskCommentsPanelExpanded');
-    expect(source).toContain('openTaskCommentsFullscreen()');
-    expect(source).toContain('closeTaskCommentsFullscreen()');
-    expect(source).toContain('normalizeTaskComments(comments)');
+    expect(appSource).toMatch(/taskCommentsFullscreenOpen:\s*false/);
+    expect(appSource).toContain('taskDetailManagerMixin');
+    expect(taskDetailSource).not.toContain('taskCommentsPanelExpanded');
+    expect(taskDetailSource).not.toContain('toggleTaskCommentsPanelExpanded');
+    expect(taskDetailSource).toContain('openTaskCommentsFullscreen()');
+    expect(taskDetailSource).toContain('closeTaskCommentsFullscreen()');
+    expect(taskDetailSource).toContain('normalizeTaskComments(comments)');
 
-    const openTaskDetail = source.slice(source.indexOf('openTaskDetail(taskId'), source.indexOf('async closeTaskDetail'));
+    const openTaskDetail = taskDetailSource.slice(taskDetailSource.indexOf('openTaskDetail(taskId'), taskDetailSource.indexOf('async closeTaskDetail'));
     expect(openTaskDetail).toContain('this.taskCommentsFullscreenOpen = false;');
 
-    const closeTaskDetail = source.slice(source.indexOf('async closeTaskDetail'), source.indexOf('// --- task ↔ flow linkage helpers ---'));
+    const closeTaskDetail = taskDetailSource.slice(taskDetailSource.indexOf('async closeTaskDetail'), taskDetailSource.indexOf('openTaskCommentsFullscreen()'));
     expect(closeTaskDetail).toContain('this.taskCommentsFullscreenOpen = false;');
   });
 
