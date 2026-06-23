@@ -881,6 +881,8 @@ export function initApp() {
     mentionQuery: '',
     mentionResults: [],
     mentionSelectedIndex: 0,
+    mentionDocumentIndex: [],
+    _mentionDocumentIndexRefreshPromise: null,
     _mentionTargetEl: null,
     _mentionStartPos: -1,
 
@@ -3531,6 +3533,7 @@ export function initApp() {
       const normalizedDocument = this.normalizeDocumentRowGroupRefs
         ? this.normalizeDocumentRowGroupRefs(nextDocument)
         : nextDocument;
+      this.patchMentionDocumentIndex(normalizedDocument);
       const index = this.documents.findIndex((item) => item.record_id === nextDocument.record_id);
       if (index >= 0) {
         this.documents.splice(index, 1, { ...this.documents[index], ...normalizedDocument });
@@ -7136,6 +7139,71 @@ export function initApp() {
 
     // --- @mentions ---
 
+    getMentionDocuments() {
+      const byId = new Map();
+      const add = (doc) => {
+        const recordId = String(doc?.record_id || '').trim();
+        if (!recordId || doc?.record_state === 'deleted') return;
+        byId.set(recordId, doc);
+      };
+      for (const doc of (this.mentionDocumentIndex || [])) add(doc);
+      for (const doc of (this.documents || [])) add(doc);
+      return Array.from(byId.values());
+    },
+
+    patchMentionDocumentIndex(nextDocument) {
+      const recordId = String(nextDocument?.record_id || '').trim();
+      if (!recordId) return;
+      const current = Array.isArray(this.mentionDocumentIndex) ? this.mentionDocumentIndex : [];
+      if (nextDocument?.record_state === 'deleted') {
+        this.mentionDocumentIndex = current.filter((doc) => doc?.record_id !== recordId);
+        return;
+      }
+      const index = current.findIndex((doc) => doc?.record_id === recordId);
+      if (index >= 0) {
+        this.mentionDocumentIndex = current.map((doc, itemIndex) => (
+          itemIndex === index ? { ...doc, ...nextDocument } : doc
+        ));
+        return;
+      }
+      this.mentionDocumentIndex = [...current, nextDocument];
+    },
+
+    async refreshMentionDocumentIndex() {
+      const ownerNpub = this.workspaceOwnerNpub;
+      if (!ownerNpub) return [];
+      if (this._mentionDocumentIndexRefreshPromise) return this._mentionDocumentIndexRefreshPromise;
+      this._mentionDocumentIndexRefreshPromise = getDocumentsByOwner(ownerNpub)
+        .then((documents = []) => {
+          this.mentionDocumentIndex = Array.isArray(documents)
+            ? documents
+                .map((item) => this.normalizeDocumentRowGroupRefs ? this.normalizeDocumentRowGroupRefs(item) : item)
+                .filter((doc) => doc?.record_id && doc?.record_state !== 'deleted')
+            : [];
+          return this.mentionDocumentIndex;
+        })
+        .catch((error) => {
+          console.warn('[mentions] failed to refresh local document index', error);
+          return this.mentionDocumentIndex || [];
+        })
+        .finally(() => {
+          this._mentionDocumentIndexRefreshPromise = null;
+        });
+      return this._mentionDocumentIndexRefreshPromise;
+    },
+
+    refreshMentionResultsFromLocalIndex(query, targetEl) {
+      const normalizedQuery = String(query || '');
+      this.refreshMentionDocumentIndex()
+        .then(() => {
+          if (!this.mentionActive || this._mentionTargetEl !== targetEl || this.mentionQuery !== normalizedQuery) return;
+          this.mentionResults = normalizedQuery.length === 0
+            ? this.getDefaultMentionResults(8)
+            : this.searchMentions(normalizedQuery);
+          this.mentionSelectedIndex = 0;
+        });
+    },
+
     searchMentions(rawQuery) {
       if (!rawQuery) return [];
 
@@ -7169,7 +7237,7 @@ export function initApp() {
 
       // Documents
       if (!typeFilter || typeFilter === 'doc') {
-        for (const doc of this.documents) {
+        for (const doc of this.getMentionDocuments()) {
           if (doc.record_state === 'deleted') continue;
           if (!needle || (doc.title || '').toLowerCase().includes(needle)) {
             results.push({ type: 'doc', id: doc.record_id, label: doc.title || 'Untitled', sublabel: 'Doc' });
@@ -7263,7 +7331,7 @@ export function initApp() {
         if (results.length >= 2) break;
       }
 
-      const recentDocs = [...(this.documents || [])]
+      const recentDocs = [...this.getMentionDocuments()]
         .filter((doc) => doc.record_state !== 'deleted')
         .sort((left, right) => (Date.parse(right.updated_at || '') || 0) - (Date.parse(left.updated_at || '') || 0));
       for (const doc of recentDocs.slice(0, 3)) {
@@ -7335,6 +7403,7 @@ export function initApp() {
         this.mentionQuery = '';
         this.mentionResults = this.getDefaultMentionResults(8);
         this.mentionSelectedIndex = 0;
+        this.refreshMentionResultsFromLocalIndex('', el);
         return;
       }
 
@@ -7344,6 +7413,7 @@ export function initApp() {
       this.mentionQuery = query;
       this.mentionResults = this.searchMentions(query);
       this.mentionSelectedIndex = 0;
+      this.refreshMentionResultsFromLocalIndex(query, el);
     },
 
     handleMentionKeydown(event) {

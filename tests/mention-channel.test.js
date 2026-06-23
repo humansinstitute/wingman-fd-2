@@ -67,6 +67,54 @@ describe('channel mention lookup', () => {
     }]);
   });
 
+  it('finds locally indexed docs that are not in the visible docs list yet', async () => {
+    const store = await createStore();
+    store.documents = [];
+    store.mentionDocumentIndex = [
+      {
+        record_id: 'doc-new',
+        title: 'New Local Spec',
+        record_state: 'active',
+        updated_at: '2026-06-23T01:00:00.000Z',
+      },
+      {
+        record_id: 'doc-deleted',
+        title: 'Deleted Spec',
+        record_state: 'deleted',
+        updated_at: '2026-06-23T02:00:00.000Z',
+      },
+    ];
+
+    expect(store.searchMentions('doc:new local')).toEqual([{
+      type: 'doc',
+      id: 'doc-new',
+      label: 'New Local Spec',
+      sublabel: 'Doc',
+    }]);
+  });
+
+  it('keeps a newly patched doc available for mentions after visible docs are refreshed', async () => {
+    const store = await createStore();
+    store.documents = [];
+    store.mentionDocumentIndex = [];
+    store.refreshOpenDocFromLatestDocument = vi.fn();
+
+    store.patchDocumentLocal({
+      record_id: 'doc-new',
+      title: 'New Local Spec',
+      record_state: 'active',
+      updated_at: '2026-06-23T01:00:00.000Z',
+    });
+    store.applyDocuments([]);
+
+    expect(store.searchMentions('doc:new local')).toEqual([{
+      type: 'doc',
+      id: 'doc-new',
+      label: 'New Local Spec',
+      sublabel: 'Doc',
+    }]);
+  });
+
   it('navigates channel mentions to the selected chat channel', async () => {
     const store = await createStore();
     store.navSection = 'tasks';
