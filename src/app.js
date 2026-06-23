@@ -8121,22 +8121,8 @@ export function initApp() {
       if (options.uploadCounterContext) this.incrementInlineUploadCount(options.uploadCounterContext);
 
       try {
-        const bytes = new Uint8Array(await file.arrayBuffer());
-        const fileName = this.defaultPastedImageName(file, options.fileLabel || 'inline');
-        const prepared = await this.prepareStorageObjectForCurrentWorkspace(buildStoragePrepareBody({
-          ownerNpub,
-          ownerGroupId: options.ownerGroupId,
-          accessGroupIds: options.accessGroupIds ?? options.accessGroupNpubs ?? [],
-          contentType: file.type || 'image/png',
-          sizeBytes: file.size || bytes.byteLength,
-          fileName,
-        }));
-        await uploadStorageObject(prepared, bytes, file.type || 'image/png');
-        await completeStorageObject(prepared.object_id, {
-          size_bytes: bytes.byteLength,
-          sha256_hex: await this.sha256HexForBytes(bytes),
-        });
-        this.replaceTokenInModel(modelKey, token, this.createStorageMarkdown(prepared.object_id, fileName), event.target);
+        const uploaded = await this.uploadInlineImageFile(file, options);
+        this.replaceTokenInModel(modelKey, token, uploaded.markdown, event.target);
         this.scheduleStorageImageHydration();
       } catch (error) {
         this.replaceTokenInModel(modelKey, token, '[ Upload failed ]', event.target);
@@ -8145,6 +8131,32 @@ export function initApp() {
         if (options.uploadCounterContext) this.decrementInlineUploadCount(options.uploadCounterContext);
       }
       return true;
+    },
+
+    async uploadInlineImageFile(file, options = {}) {
+      if (!file) throw new Error('Could not read pasted image.');
+      const ownerNpub = String(options.ownerNpub || '').trim();
+      if (!ownerNpub) throw new Error('Missing storage owner for pasted image.');
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const fileName = this.defaultPastedImageName(file, options.fileLabel || 'inline');
+      const prepared = await this.prepareStorageObjectForCurrentWorkspace(buildStoragePrepareBody({
+        ownerNpub,
+        ownerGroupId: options.ownerGroupId,
+        accessGroupIds: options.accessGroupIds ?? options.accessGroupNpubs ?? [],
+        contentType: file.type || 'image/png',
+        sizeBytes: file.size || bytes.byteLength,
+        fileName,
+      }));
+      await uploadStorageObject(prepared, bytes, file.type || 'image/png');
+      await completeStorageObject(prepared.object_id, {
+        size_bytes: bytes.byteLength,
+        sha256_hex: await this.sha256HexForBytes(bytes),
+      });
+      return {
+        objectId: prepared.object_id,
+        fileName,
+        markdown: this.createStorageMarkdown(prepared.object_id, fileName),
+      };
     },
 
     async uploadFileIntoModel(file, event, options = {}) {
@@ -8302,6 +8314,47 @@ export function initApp() {
         fileLabel: 'doc-block',
       });
       if (handled) this.updateDocBlockBuffer(this.docBlockBuffer);
+    },
+
+    handleDocRichPaste(event, editor) {
+      const clipboardItems = [...(event?.clipboardData?.items || [])];
+      const imageItem = clipboardItems.find((item) => String(item?.type || '').startsWith('image/'));
+      if (!imageItem) return false;
+      event.preventDefault();
+
+      const doc = this.selectedDocument;
+      if (!doc) return true;
+      const file = imageItem.getAsFile?.();
+      if (!file) {
+        this.error = 'Could not read pasted image.';
+        return true;
+      }
+
+      void (async () => {
+        try {
+          const uploaded = await this.uploadInlineImageFile(file, {
+            ownerNpub: doc.owner_npub || this.workspaceOwnerNpub || this.session?.npub,
+            accessGroupIds: doc.group_ids ?? [],
+            fileLabel: 'doc-rich',
+          });
+          editor?.commands?.focus?.();
+          editor?.commands?.insertContent?.({
+            type: 'fdStorageImage',
+            attrs: {
+              src: `storage://${uploaded.objectId}`,
+              objectId: uploaded.objectId,
+              alt: uploaded.fileName,
+              title: uploaded.fileName,
+            },
+          });
+          this.syncDocRichEditorContentModel();
+          this.scheduleDocAutosave();
+          this.scheduleStorageImageHydration();
+        } catch (error) {
+          this.error = error?.message || 'Could not upload pasted image.';
+        }
+      })();
+      return true;
     },
 
     async handleDocCommentPaste(event) {

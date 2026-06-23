@@ -9,6 +9,7 @@ export function createTiptapEditorAdapter({
   editorState,
   editable = true,
   onUpdate = () => {},
+  onPaste = () => false,
   placeholder = 'Start writing...',
 } = {}) {
   if (!element) throw new Error('Tiptap editor adapter requires a mount element.');
@@ -17,6 +18,9 @@ export function createTiptapEditorAdapter({
     editable,
     extensions: createFlightDeckTiptapExtensions({ placeholder }),
     content: editorState || resolveDocumentProseMirrorState(document || {}),
+    editorProps: {
+      handlePaste: (_view, event) => onPaste(event, editor) === true,
+    },
     onUpdate: ({ editor: activeEditor }) => {
       onUpdate(prosemirrorToFlightDeckContentModel(activeEditor.getJSON()), activeEditor);
     },

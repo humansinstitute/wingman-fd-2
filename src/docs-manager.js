@@ -1000,6 +1000,7 @@ export const docsManagerMixin = {
       document: sourceDoc,
       editorState: this.docEditorProseMirrorState,
       editable: true,
+      onPaste: (event, editor) => this.handleDocRichPaste?.(event, editor) === true,
       onUpdate: (contentModel) => {
         this.syncDocRichEditorContentModel(contentModel);
         this.scheduleDocAutosave();

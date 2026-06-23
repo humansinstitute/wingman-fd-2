@@ -29,7 +29,9 @@ function inlineMarkdown(nodes = []) {
     if (node.type === 'text') return markText(node.text || '', node.marks || []);
     if (node.type === 'hardBreak') return '  \n';
     if (node.type === 'fdStorageImage' || node.type === 'image') {
-      const src = node.attrs?.src || (node.attrs?.objectId ? `storage://${node.attrs.objectId}` : '');
+      const src = node.type === 'fdStorageImage' && node.attrs?.objectId
+        ? `storage://${node.attrs.objectId}`
+        : node.attrs?.src || (node.attrs?.objectId ? `storage://${node.attrs.objectId}` : '');
       return `![${escapeText(node.attrs?.alt || '')}](${src})`;
     }
     if (node.type === 'fdStorageFile') {
@@ -88,6 +90,7 @@ function blockMarkdown(node = {}) {
   if (node.type === 'bulletList' || node.type === 'taskList') return listMarkdown(node, false);
   if (node.type === 'orderedList') return listMarkdown(node, true);
   if (node.type === 'table') return tableMarkdown(node);
+  if (node.type === 'fdStorageImage' || node.type === 'image') return inlineMarkdown([node]);
   if (node.type === 'fdStorageFile') return inlineMarkdown([node]);
   return inlineMarkdown(node.content || []);
 }

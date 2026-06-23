@@ -56,4 +56,21 @@ describe('Tiptap document adapter', () => {
       'image-a',
     ]);
   });
+
+  it('exports rich pasted storage image nodes with the storage object id', () => {
+    const model = prosemirrorToFlightDeckContentModel({
+      type: 'doc',
+      content: [{
+        type: 'fdStorageImage',
+        attrs: {
+          src: 'blob:http://localhost/transient-preview',
+          objectId: 'pasted-image-123',
+          alt: 'Pasted image',
+        },
+      }],
+    });
+
+    expect(model.content).toBe('![Pasted image](storage://pasted-image-123)');
+    expect(model.content).not.toContain('blob:http://localhost');
+  });
 });
