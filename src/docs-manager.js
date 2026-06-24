@@ -781,6 +781,7 @@ export const docsManagerMixin = {
       this.selectedDocCommentId = null;
     }
     this.docCommentsVisible = Boolean(this.selectedDocCommentId || options.showComments);
+    this.docMobilePane = this.docCommentsVisible ? 'comments' : 'document';
     if (options.navigate !== false) this.navSection = 'docs';
     this.mobileNavOpen = false;
     const document = this.documents.find((item) => item.record_id === recordId);
@@ -829,6 +830,7 @@ export const docsManagerMixin = {
     this.selectedDocCommentId = null;
     this.docComments = [];
     this.docCommentsVisible = false;
+    this.docMobilePane = 'document';
     this.showDocCommentModal = false;
     this.docSelectedBlockId = null;
     this.docCommentAnchorLine = null;
@@ -1251,6 +1253,7 @@ export const docsManagerMixin = {
     const rootId = this.getDocCommentThreadId(commentId);
     if (!rootId) return;
     this.docCommentsVisible = true;
+    this.docMobilePane = 'comments';
     this.selectedDocCommentId = rootId;
     this.docSelectedBlockId = null;
     this.showDocCommentModal = false;
@@ -1272,6 +1275,7 @@ export const docsManagerMixin = {
   openDocCommentModal(block) {
     if (!this.selectedDocId || !block) return;
     this.docCommentsVisible = true;
+    this.docMobilePane = 'comments';
     const blockIndex = Array.isArray(this.docEditorBlocks) ? this.docEditorBlocks.indexOf(block) : -1;
     this.docSelectedBlockId = this.getDocBlockIdentity(block, blockIndex);
     this.docCommentAnchorLine = Number(block.start_line) || 1;
@@ -1290,6 +1294,7 @@ export const docsManagerMixin = {
 
   startDocCommentPlacement() {
     this.docCommentsVisible = true;
+    this.docMobilePane = 'comments';
     this.closeDocCommentThread({ syncRoute: false });
     this.newDocCommentBody = '';
     this.showDocCommentModal = false;
@@ -1313,6 +1318,7 @@ export const docsManagerMixin = {
 
   toggleDocCommentsVisible() {
     this.docCommentsVisible = !this.docCommentsVisible;
+    this.docMobilePane = this.docCommentsVisible ? 'comments' : 'document';
     if (!this.docCommentsVisible) {
       this.showDocCommentModal = false;
       this.closeDocCommentThread({ syncRoute: false });

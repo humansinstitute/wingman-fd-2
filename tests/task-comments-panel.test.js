@@ -26,6 +26,10 @@ describe('task comments panel fullscreen affordance', () => {
 
     expect(html).toContain('task-comments-fullscreen-btn');
     expect(html).toContain('$store.chat.openTaskCommentsFullscreen()');
+    expect(html).toContain('class="mobile-detail-switcher task-detail-mobile-switcher"');
+    expect(html).toContain("$store.chat.taskDetailMobilePane = 'details'");
+    expect(html).toContain("$store.chat.taskDetailMobilePane = 'comments'");
+    expect(html).toContain('task-detail-body-mobile-comments');
     expect(html).toContain('aria-label="Open activity fullscreen"');
     expect(html).not.toContain('task-comments-resize-btn');
     expect(html).not.toContain('taskCommentsPanelExpanded');
@@ -47,6 +51,7 @@ describe('task comments panel fullscreen affordance', () => {
     const taskDetailSource = readProjectFile('src/task-detail-manager.js');
 
     expect(appSource).toMatch(/taskCommentsFullscreenOpen:\s*false/);
+    expect(appSource).toMatch(/taskDetailMobilePane:\s*'details'/);
     expect(appSource).toContain('taskDetailManagerMixin');
     expect(taskDetailSource).not.toContain('taskCommentsPanelExpanded');
     expect(taskDetailSource).not.toContain('toggleTaskCommentsPanelExpanded');
@@ -56,9 +61,11 @@ describe('task comments panel fullscreen affordance', () => {
 
     const openTaskDetail = taskDetailSource.slice(taskDetailSource.indexOf('openTaskDetail(taskId'), taskDetailSource.indexOf('async closeTaskDetail'));
     expect(openTaskDetail).toContain('this.taskCommentsFullscreenOpen = false;');
+    expect(openTaskDetail).toContain("this.taskDetailMobilePane = 'details';");
 
     const closeTaskDetail = taskDetailSource.slice(taskDetailSource.indexOf('async closeTaskDetail'), taskDetailSource.indexOf('openTaskCommentsFullscreen()'));
     expect(closeTaskDetail).toContain('this.taskCommentsFullscreenOpen = false;');
+    expect(closeTaskDetail).toContain("this.taskDetailMobilePane = 'details';");
   });
 
   it('renders a fullscreen activity reader for long comments', () => {
@@ -86,6 +93,10 @@ describe('task comments panel fullscreen affordance', () => {
     const mobileStart = css.lastIndexOf('@media (max-width: 768px)');
     expect(mobileStart).toBeGreaterThanOrEqual(0);
     const mobileCss = css.slice(mobileStart);
+    expect(mobileCss).toContain('.mobile-detail-switcher');
+    expect(mobileCss).toContain('bottom: calc(var(--mobile-section-switcher-height, 68px) + env(safe-area-inset-bottom))');
+    expect(mobileCss).toContain('.task-detail-body:not(.task-detail-body-mobile-comments) .task-comments-section');
+    expect(mobileCss).toContain('.task-detail-body-mobile-comments .task-detail-main');
     const mobileFullscreenRule = extractRule(mobileCss, '.task-comments-fullscreen-modal');
     expect(mobileFullscreenRule).toMatch(/height\s*:\s*100%/);
     expect(mobileFullscreenRule).toMatch(/border-radius\s*:\s*0/);

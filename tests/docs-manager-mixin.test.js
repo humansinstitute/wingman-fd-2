@@ -367,6 +367,7 @@ describe('docsManagerMixin comment drawer', () => {
     store.openDoc('doc-1');
 
     expect(store.docCommentsVisible).toBe(false);
+    expect(store.docMobilePane).toBe('document');
     expect(store.selectedDocCommentId).toBeNull();
   });
 
@@ -435,6 +436,7 @@ describe('docsManagerMixin comment drawer', () => {
     store.openDoc('doc-1', { commentId: 'comment-1' });
 
     expect(store.docCommentsVisible).toBe(true);
+    expect(store.docMobilePane).toBe('comments');
     expect(store.selectedDocCommentId).toBe('comment-1');
   });
 
@@ -455,6 +457,7 @@ describe('docsManagerMixin comment drawer', () => {
 
     expect(store.navSection).toBe('chat');
     expect(store.docCommentsVisible).toBe(true);
+    expect(store.docMobilePane).toBe('comments');
     expect(store.syncRoute).not.toHaveBeenCalled();
     expect(store.ensureBackgroundSync).not.toHaveBeenCalled();
     expect(store.loadDocComments).toHaveBeenCalledWith('doc-1', { allowBackfill: false });

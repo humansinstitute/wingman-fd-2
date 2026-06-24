@@ -27,6 +27,10 @@ It does not own:
 
 - Before changing behavior, scan `docs/` for design docs relevant to the task;
   do not rely only on code shape when a design reference exists.
+- When working on this project, read the local Codex skill
+  `flight-deck-project`; it explains how to work with Flight Deck through
+  Autopilot and how to update Flight Deck chats, tasks, documents, and comments
+  in the appropriate scope/channel.
 - repo purpose: `README.md`
 - shared workspace framing: `../README.md`
 - current architecture: `../ARCHITECTURE.md`

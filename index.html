@@ -2458,7 +2458,27 @@
                 </div>
               </div>
 
-              <div class="task-detail-body">
+              <nav class="mobile-detail-switcher task-detail-mobile-switcher" aria-label="Task detail sections">
+                <button
+                  type="button"
+                  class="mobile-detail-switcher-btn"
+                  :class="{ 'mobile-detail-switcher-btn-active': $store.chat.taskDetailMobilePane !== 'comments' }"
+                  :aria-selected="$store.chat.taskDetailMobilePane !== 'comments'"
+                  @click="$store.chat.taskDetailMobilePane = 'details'"
+                >Details</button>
+                <button
+                  type="button"
+                  class="mobile-detail-switcher-btn"
+                  :class="{ 'mobile-detail-switcher-btn-active': $store.chat.taskDetailMobilePane === 'comments' }"
+                  :aria-selected="$store.chat.taskDetailMobilePane === 'comments'"
+                  @click="$store.chat.taskDetailMobilePane = 'comments'"
+                >Comments</button>
+              </nav>
+
+              <div
+                class="task-detail-body"
+                :class="{ 'task-detail-body-mobile-comments': $store.chat.taskDetailMobilePane === 'comments' }"
+              >
                 <div class="task-detail-main">
                   <!-- Title -->
                   <div class="task-detail-record-header">
@@ -4115,11 +4135,30 @@
                 </template>
 
                 <div class="doc-content-block">
+                  <nav class="mobile-detail-switcher doc-mobile-switcher" aria-label="Document sections">
+                    <button
+                      type="button"
+                      class="mobile-detail-switcher-btn"
+                      :class="{ 'mobile-detail-switcher-btn-active': $store.chat.docMobilePane !== 'comments' }"
+                      :aria-selected="$store.chat.docMobilePane !== 'comments'"
+                      @click="$store.chat.docMobilePane = 'document'"
+                    >Docs</button>
+                    <button
+                      type="button"
+                      class="mobile-detail-switcher-btn"
+                      :class="{ 'mobile-detail-switcher-btn-active': $store.chat.docMobilePane === 'comments' }"
+                      :aria-selected="$store.chat.docMobilePane === 'comments'"
+                      @click="$store.chat.docCommentsVisible = true; $store.chat.docMobilePane = 'comments'"
+                    >Comments</button>
+                  </nav>
                   <template x-if="$store.chat.docEditorMode === 'rich'">
                     <div
                       class="doc-content-layout"
                       data-doc-content-layout
-                      :class="{ 'doc-content-layout-with-thread': $store.chat.docCommentsVisible }"
+                      :class="{
+                        'doc-content-layout-with-thread': $store.chat.docCommentsVisible,
+                        'doc-content-layout-mobile-comments': $store.chat.docMobilePane === 'comments'
+                      }"
                     >
                       <div class="doc-preview-surface">
                         <div
@@ -4134,7 +4173,10 @@
                     <div
                       class="doc-content-layout"
                       data-doc-content-layout
-                      :class="{ 'doc-content-layout-with-thread': $store.chat.docCommentsVisible }"
+                      :class="{
+                        'doc-content-layout-with-thread': $store.chat.docCommentsVisible,
+                        'doc-content-layout-mobile-comments': $store.chat.docMobilePane === 'comments'
+                      }"
                     >
                       <svg class="doc-comment-connector" x-show="$store.chat.hasDocCommentConnector" x-cloak>
                         <path
