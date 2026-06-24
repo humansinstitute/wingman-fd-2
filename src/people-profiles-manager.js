@@ -22,6 +22,53 @@ const PROFILE_CARD_MARGIN = 12;
 const FULL_NPUB_PATTERN = /^npub1[0-9a-z]{50,}$/i;
 const PROFILE_LOOKUP_RETRY_MS = 60 * 1000;
 
+function firstNonEmptyString(...values) {
+  for (const value of values) {
+    const text = String(value || '').trim();
+    if (text) return text;
+  }
+  return null;
+}
+
+function resolveProfileName(profile = {}) {
+  const source = profile && typeof profile === 'object' ? profile : {};
+  return firstNonEmptyString(source.display_name, source.displayName, source.name, source.username);
+}
+
+function resolveProfilePicture(profile = {}) {
+  const source = profile && typeof profile === 'object' ? profile : {};
+  return firstNonEmptyString(
+    source.picture,
+    source.image,
+    source.avatar_url,
+    source.avatarUrl,
+    source.avatar,
+  );
+}
+
+function mergeAddressBookPersonLocal(store, entry = {}) {
+  const npub = String(entry.npub || '').trim();
+  if (!npub || !Array.isArray(store.addressBookPeople)) return;
+  const index = store.addressBookPeople.findIndex((person) => person?.npub === npub);
+  const existing = index >= 0 ? store.addressBookPeople[index] : null;
+  const merged = {
+    npub,
+    label: entry.label ?? existing?.label ?? null,
+    avatar_url: entry.avatar_url ?? existing?.avatar_url ?? null,
+    bio: entry.bio ?? existing?.bio ?? null,
+    nip05: entry.nip05 ?? existing?.nip05 ?? null,
+    source: entry.source ?? existing?.source ?? 'profile',
+    last_used_at: entry.last_used_at ?? existing?.last_used_at ?? new Date().toISOString(),
+  };
+  store.addressBookPeople = index >= 0
+    ? [
+      ...store.addressBookPeople.slice(0, index),
+      merged,
+      ...store.addressBookPeople.slice(index + 1),
+    ]
+    : [merged, ...store.addressBookPeople];
+}
+
 function uniqueNpubCandidates(...candidates) {
   const seen = new Set();
   return candidates
@@ -182,10 +229,11 @@ export const peopleProfilesManagerMixin = {
 
     fetchProfileByNpub(npub, { force })
       .then((profile) => {
-        const profileName = profile?.display_name || profile?.name || null;
-        const profilePicture = profile?.picture || null;
-        const profileNip05 = profile?.nip05 || null;
-        const profileBio = profile?.about || profile?.bio || null;
+        const existingProfile = this.chatProfiles[npub] || current || {};
+        const profileName = resolveProfileName(profile) || existingProfile?.name || cached?.label || null;
+        const profilePicture = resolveProfilePicture(profile) || existingProfile?.picture || cached?.avatar_url || null;
+        const profileNip05 = firstNonEmptyString(profile?.nip05) || existingProfile?.nip05 || cached?.nip05 || null;
+        const profileBio = firstNonEmptyString(profile?.about, profile?.bio) || existingProfile?.about || existingProfile?.bio || cached?.bio || null;
         this.chatProfiles = {
           ...this.chatProfiles,
           [npub]: {
@@ -198,7 +246,7 @@ export const peopleProfilesManagerMixin = {
           },
         };
         if (profileName || profilePicture || profileNip05 || profileBio) {
-          upsertAddressBookPerson({
+          const addressBookEntry = {
             npub,
             label: profileName,
             avatar_url: profilePicture,
@@ -206,6 +254,10 @@ export const peopleProfilesManagerMixin = {
             nip05: profileNip05,
             source: 'profile',
             last_used_at: new Date().toISOString(),
+          };
+          mergeAddressBookPersonLocal(this, addressBookEntry);
+          upsertAddressBookPerson({
+            ...addressBookEntry,
           }).catch(() => {});
         }
       })
@@ -299,7 +351,17 @@ export const peopleProfilesManagerMixin = {
     if (!rawNpub) return null;
     const cached = this.getCachedPersonForSender(rawNpub);
     const profile = this.getProfileForSender(rawNpub);
-    return profile?.picture || cached?.avatar_url || null;
+    const avatarUrl = profile?.picture || cached?.avatar_url || null;
+    if (avatarUrl) return avatarUrl;
+    const npub = this.resolveDisplayNpub(rawNpub);
+    const rawNpubCandidate = String(rawNpub || '').trim();
+    if (isFullNpubCandidate(rawNpubCandidate) && rawNpubCandidate !== npub) {
+      this.resolveChatProfile(rawNpubCandidate);
+    }
+    if (isFullNpubCandidate(npub)) {
+      this.resolveChatProfile(npub);
+    }
+    return null;
   },
 
   getSenderBio(rawNpub) {

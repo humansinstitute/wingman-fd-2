@@ -140,6 +140,28 @@ describe('profile resolution', () => {
     expect(fn('npub1a')).toBe('https://cached.example.com/a.png');
   });
 
+  it('getSenderAvatar queues profile resolution for full npub avatar misses', () => {
+    const resolveChatProfile = vi.fn();
+    const { fn } = bindMethod('getSenderAvatar', { resolveChatProfile });
+    const npub = 'npub1alice0000000000000000000000000000000000000000000000000000000';
+    expect(fn(npub)).toBeNull();
+    expect(resolveChatProfile).toHaveBeenCalledWith(npub);
+  });
+
+  it('getSenderAvatar does not queue profile resolution when cached avatar exists', () => {
+    const resolveChatProfile = vi.fn();
+    const { fn } = bindMethod('getSenderAvatar', {
+      resolveChatProfile,
+      addressBookPeople: [{
+        npub: 'npub1alice0000000000000000000000000000000000000000000000000000000',
+        avatar_url: 'https://cached.example.com/alice.png',
+      }],
+    });
+    const npub = 'npub1alice0000000000000000000000000000000000000000000000000000000';
+    expect(fn(npub)).toBe('https://cached.example.com/alice.png');
+    expect(resolveChatProfile).not.toHaveBeenCalled();
+  });
+
   it('getSenderAvatar resolves workspace key npubs to real profile avatars', () => {
     const { fn } = bindMethod('getSenderAvatar', {
       _wsKeyDisplayMap: { npub1workspacekey: 'npub1user' },
