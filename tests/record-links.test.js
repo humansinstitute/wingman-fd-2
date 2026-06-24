@@ -8,6 +8,15 @@ import {
 } from '../src/record-links.js';
 
 describe('record link helpers', () => {
+  it('treats null records as having no links', () => {
+    expect(normalizeRecordLinkFields(null)).toEqual({
+      source_links: [],
+      references: [],
+      deliverable_links: [],
+    });
+    expect(buildVisibleRecordLinkSections(null)).toEqual([]);
+  });
+
   it('classifies source, reference, and deliverable links with normalized ids', () => {
     const links = normalizeRecordLinkFields({
       source: { type: 'document', id: 'doc-1' },

@@ -2,6 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { taskBoardStateMixin } from '../src/task-board-state.js';
 
 describe('record link UI/context helpers', () => {
+  it('returns no visible sections for null records during navigation teardown', () => {
+    expect(taskBoardStateMixin.getVisibleRecordLinkSections.call({}, null)).toEqual([]);
+  });
+
   it('surfaces source and deliverables ahead of generic references', () => {
     const sections = taskBoardStateMixin.getVisibleRecordLinkSections.call({}, {
       source_links: [{ type: 'task', id: 'task-source' }],

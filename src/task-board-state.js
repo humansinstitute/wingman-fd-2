@@ -1127,6 +1127,7 @@ export const taskBoardStateMixin = {
   },
 
   getVisibleRecordLinkSections(record) {
+    if (!record || typeof record !== 'object') return [];
     const reverseDeliverables = getReverseSourceDeliverables(record, this);
     const sections = buildVisibleRecordLinkSections(reverseDeliverables.length === 0 ? record : {
       ...record,

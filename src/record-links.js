@@ -90,16 +90,17 @@ export function mergeRecordLinkLists(...lists) {
 }
 
 export function normalizeRecordLinkFields(data = {}) {
+  const source = data && typeof data === 'object' ? data : {};
   const sourceLinks = normalizeRecordLinkList(
-    data.source_links ?? data.sources ?? data.source ?? [],
+    source.source_links ?? source.sources ?? source.source ?? [],
     RECORD_LINK_KINDS.source,
   );
   const deliverableLinks = normalizeRecordLinkList(
-    data.deliverable_links ?? data.deliverables ?? [],
+    source.deliverable_links ?? source.deliverables ?? [],
     RECORD_LINK_KINDS.deliverable,
   );
   const references = normalizeRecordLinkList(
-    data.references ?? [],
+    source.references ?? [],
     RECORD_LINK_KINDS.reference,
   );
   return {
