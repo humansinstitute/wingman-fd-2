@@ -356,8 +356,8 @@ describe('PG read hydrator', () => {
       parent_task_id: 'task-parent',
       tags: 'pg,migration',
       scheduled_for: '2026-06-22',
-      assigned_to_npubs: ['npub1agent'],
-      assigned_to_npub: 'npub1agent',
+      assigned_to_npubs: ['npub1stale'],
+      assigned_to_npub: 'npub1stale',
       predecessor_task_ids: ['task-prev'],
       flow_id: 'flow-1',
       source_links: [{ type: 'message', id: 'msg-1' }],
@@ -371,7 +371,7 @@ describe('PG read hydrator', () => {
     });
   });
 
-  it('maps PG task assignments from Tower assignment actor npubs without metadata fallback', () => {
+  it('prefers the persisted PG task metadata assignee npub over relation rows', () => {
     expect(mapPgTaskToLocal({
       id: 'task-assigned',
       workspace_id: 'workspace-1',
@@ -379,7 +379,7 @@ describe('PG read hydrator', () => {
       channel_id: 'channel-1',
       title: 'Assigned from Tower',
       metadata: {
-        assigned_to_npub: 'npub1stale',
+        assigned_to_npub: 'npub1stored',
       },
       assignments: [{
         actor_id: 'actor-agent',
@@ -391,8 +391,8 @@ describe('PG read hydrator', () => {
       workspaceOwnerNpub: 'npub1owner',
     })).toMatchObject({
       record_id: 'task-assigned',
-      assigned_to_npubs: ['npub1agent'],
-      assigned_to_npub: 'npub1agent',
+      assigned_to_npubs: ['npub1stored'],
+      assigned_to_npub: 'npub1stored',
     });
   });
 
@@ -445,7 +445,7 @@ describe('PG read hydrator', () => {
     });
   });
 
-  it('leaves PG task unassigned when Tower assignment rows omit actor npubs', () => {
+  it('maps PG task metadata assignment even when relation rows omit actor npubs', () => {
     expect(mapPgTaskToLocal({
       id: 'task-missing-assignee-npub',
       workspace_id: 'workspace-1',
@@ -453,7 +453,7 @@ describe('PG read hydrator', () => {
       channel_id: 'channel-1',
       title: 'Missing assignment identity',
       metadata: {
-        assigned_to_npub: 'npub1stale',
+        assigned_to_npub: 'npub1stored',
       },
       assignments: [{
         actor_id: 'actor-agent',
@@ -464,8 +464,8 @@ describe('PG read hydrator', () => {
       workspaceOwnerNpub: 'npub1owner',
     })).toMatchObject({
       record_id: 'task-missing-assignee-npub',
-      assigned_to_npubs: [],
-      assigned_to_npub: null,
+      assigned_to_npubs: ['npub1stored'],
+      assigned_to_npub: 'npub1stored',
     });
   });
 

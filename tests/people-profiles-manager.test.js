@@ -14,9 +14,6 @@ function createStore(overrides = {}) {
     editGroupMembers: [],
     taskAssigneeQuery: '',
     editingTask: null,
-    pgWorkspaceMembers: [],
-    currentWorkspace: null,
-    isTowerPgMode: false,
     defaultAgentQuery: '',
     defaultAgentNpub: '',
     identityCard: { open: false, npub: '', x: 0, y: 0, copied: false },
@@ -319,44 +316,6 @@ describe('findPeopleSuggestions', () => {
     }));
     const { fn } = bindMethod('findPeopleSuggestions', { addressBookPeople: people });
     expect(fn('person').length).toBeLessThanOrEqual(8);
-  });
-});
-
-describe('taskAssigneeSuggestions', () => {
-  it('uses cached people suggestions outside PG mode', () => {
-    const store = createStore({
-      taskAssigneeQuery: 'alice',
-      editingTask: { assigned_to_npubs: [] },
-      addressBookPeople: [{ npub: 'npub1alice', label: 'Alice' }],
-    });
-    expect(store.taskAssigneeSuggestions).toMatchObject([{ npub: 'npub1alice' }]);
-  });
-
-  it('limits PG task assignee suggestions to workspace actors', () => {
-    const store = createStore({
-      isTowerPgMode: true,
-      taskAssigneeQuery: 'pete',
-      editingTask: { assigned_to_npubs: [] },
-      addressBookPeople: [
-        { npub: 'npub1pete', label: 'Pete Member' },
-        { npub: 'npub1profileonly', label: 'Pete Profile Only' },
-      ],
-      pgWorkspaceMembers: [{ actor_id: 'actor-pete', npub: 'npub1pete', role: 'member' }],
-    });
-    expect(store.taskAssigneeSuggestions).toEqual([
-      expect.objectContaining({ npub: 'npub1pete', subtitle: 'member' }),
-    ]);
-  });
-
-  it('includes the current PG actor in task assignee suggestions', () => {
-    const store = createStore({
-      isTowerPgMode: true,
-      taskAssigneeQuery: 'me',
-      editingTask: { assigned_to_npubs: [] },
-      addressBookPeople: [{ npub: 'npub1me', label: 'Me' }],
-      currentWorkspace: { pgMe: { actor: { actor_id: 'actor-me', npub: 'npub1me' } } },
-    });
-    expect(store.taskAssigneeSuggestions).toMatchObject([{ npub: 'npub1me' }]);
   });
 });
 

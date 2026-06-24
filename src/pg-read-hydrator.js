@@ -219,6 +219,11 @@ function normalizePgTaskAssignmentRows(task = {}) {
 }
 
 function normalizePgTaskAssignmentNpubs(task = {}, actorNpubByActorId = new Map()) {
+  const metadata = task?.metadata && typeof task.metadata === 'object' && !Array.isArray(task.metadata)
+    ? task.metadata
+    : {};
+  const directAssignee = trimText(task?.assigned_to_npub || metadata.assigned_to_npub);
+  if (directAssignee) return [directAssignee];
   const assignments = normalizePgTaskAssignmentRows(task);
   const npubs = [];
   const seen = new Set();

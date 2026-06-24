@@ -537,39 +537,6 @@ export const peopleProfilesManagerMixin = {
       }));
   },
 
-  findPgWorkspaceMemberSuggestions(query, excludeNpubs = []) {
-    const needle = String(query || '').trim().toLowerCase();
-    if (!needle) return [];
-    const existing = new Set((excludeNpubs || []).map((value) => String(value || '').trim()).filter(Boolean));
-    const byNpub = new Map();
-    const addMember = (member = {}) => {
-      const actor = member?.actor && typeof member.actor === 'object' ? member.actor : member;
-      const npub = String(actor?.npub || member?.npub || '').trim();
-      const actorId = String(actor?.actor_id || actor?.id || member?.actor_id || member?.id || '').trim();
-      if (!npub || !actorId || existing.has(npub)) return;
-      byNpub.set(npub, {
-        npub,
-        actorId,
-        role: String(member?.role || member?.membership?.role || '').trim(),
-      });
-    };
-    for (const member of (this.pgWorkspaceMembers || [])) addMember(member);
-    const currentActor = this.currentWorkspace?.pgMe?.actor || this.currentWorkspace?.pg_me?.actor || {};
-    addMember(currentActor);
-    return [...byNpub.values()]
-      .filter((member) =>
-        String(member.npub || '').toLowerCase().includes(needle)
-        || String(this.getSenderName(member.npub) || '').toLowerCase().includes(needle)
-      )
-      .slice(0, 8)
-      .map((member) => ({
-        npub: member.npub,
-        label: this.getSenderName(member.npub),
-        subtitle: member.role || this.getSenderSecondaryLabel(member.npub),
-        avatarUrl: this.getSenderAvatar(member.npub),
-      }));
-  },
-
   findGroupMemberSuggestions(query, selectedMembers = []) {
     const needle = String(query || '').trim().toLowerCase();
     if (!needle) return [];
@@ -804,9 +771,6 @@ export const peopleProfilesManagerMixin = {
     const assigned = typeof this.getTaskAssigneeNpubs === 'function'
       ? this.getTaskAssigneeNpubs(this.editingTask)
       : [];
-    if (this.isTowerPgMode) {
-      return this.findPgWorkspaceMemberSuggestions(this.taskAssigneeQuery, assigned);
-    }
     return this.findPeopleSuggestions(this.taskAssigneeQuery, assigned);
   },
 
