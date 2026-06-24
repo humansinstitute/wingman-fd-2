@@ -5766,6 +5766,7 @@ export function initApp() {
       this.taskDetailCheckoutPending = true;
       try {
         if (isTowerPgBackendMode()) {
+          await this.refreshTowerPgWorkspaceMembers?.({ force: true, limit: 200 }).catch(() => []);
           if (isSyncedPgRecord(taskForEdit)) {
             await acquirePgEditLeaseForRecord(this, taskForEdit, 'task');
           }
