@@ -104,6 +104,7 @@ import {
   ALL_TASK_BOARD_ID,
   RECENT_TASK_BOARD_ID,
   UNSCOPED_TASK_BOARD_ID,
+  normalizeTaskAssigneeNpubs,
   normalizeTaskSortMode,
   WEEKDAY_OPTIONS,
 } from './task-board-state.js';
@@ -3109,6 +3110,18 @@ export function initApp() {
         || this.currentWorkspace?.pg_me?.actor?.id
         || ''
       ).trim();
+    },
+
+    get currentPgActorNpub() {
+      return String(
+        this.currentWorkspace?.pgMe?.actor?.npub
+        || this.currentWorkspace?.pg_me?.actor?.npub
+        || ''
+      ).trim();
+    },
+
+    get currentViewerNpub() {
+      return this.currentPgActorNpub || String(this.session?.npub || '').trim();
     },
 
     get visiblePersonalWapps() {
@@ -6294,9 +6307,7 @@ export function initApp() {
     },
 
     getTaskAssigneeNpubs(task) {
-      return [...new Set((Array.isArray(task?.assigned_to_npubs) ? task.assigned_to_npubs : [])
-        .map((npub) => String(npub || '').trim())
-        .filter(Boolean))];
+      return normalizeTaskAssigneeNpubs(task);
     },
 
     getPrimaryTaskAssigneeNpub(task) {
@@ -6304,9 +6315,7 @@ export function initApp() {
     },
 
     withTaskAssigneeNpubs(task, npubs = []) {
-      const assigned_to_npubs = [...new Set((Array.isArray(npubs) ? npubs : [])
-        .map((npub) => String(npub || '').trim())
-        .filter(Boolean))];
+      const assigned_to_npubs = normalizeTaskAssigneeNpubs(npubs);
       return {
         ...task,
         assigned_to_npubs,
@@ -6921,7 +6930,7 @@ export function initApp() {
       if (this.taskFilterAssignee) {
         this.taskFilterAssignee = null;
       } else {
-        this.taskFilterAssignee = this.session?.npub || null;
+        this.taskFilterAssignee = this.currentViewerNpub || null;
       }
     },
 

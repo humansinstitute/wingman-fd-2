@@ -396,6 +396,55 @@ describe('PG read hydrator', () => {
     });
   });
 
+  it('maps PG task assignments from nested actor and direct assignee npub shapes', () => {
+    expect(mapPgTaskToLocal({
+      id: 'task-assigned-shapes',
+      workspace_id: 'workspace-1',
+      scope_id: 'scope-1',
+      channel_id: 'channel-1',
+      title: 'Assigned from Tower shapes',
+      assignments: [
+        { actor: { id: 'actor-agent', npub: 'npub1agent' } },
+        { assignee_npub: 'npub1other' },
+        { member: { actor_id: 'actor-agent', npub: 'npub1agent' } },
+      ],
+      row_version: 2,
+      updated_at: '2026-06-05T02:00:00.000Z',
+    }, {
+      workspaceOwnerNpub: 'npub1owner',
+    })).toMatchObject({
+      record_id: 'task-assigned-shapes',
+      assigned_to_npubs: ['npub1agent', 'npub1other'],
+      assigned_to_npub: 'npub1agent',
+    });
+  });
+
+  it('maps PG task assignments from actor ids when workspace member npubs are available', () => {
+    expect(mapPgTaskToLocal({
+      id: 'task-assigned-by-actor-id',
+      workspace_id: 'workspace-1',
+      scope_id: 'scope-1',
+      channel_id: 'channel-1',
+      title: 'Assigned by actor id',
+      assignments: [
+        { actor_id: 'actor-agent' },
+        { assignee: { id: 'actor-other' } },
+      ],
+      row_version: 2,
+      updated_at: '2026-06-05T02:00:00.000Z',
+    }, {
+      workspaceOwnerNpub: 'npub1owner',
+      actorNpubByActorId: new Map([
+        ['actor-agent', 'npub1agent'],
+        ['actor-other', 'npub1other'],
+      ]),
+    })).toMatchObject({
+      record_id: 'task-assigned-by-actor-id',
+      assigned_to_npubs: ['npub1agent', 'npub1other'],
+      assigned_to_npub: 'npub1agent',
+    });
+  });
+
   it('leaves PG task unassigned when Tower assignment rows omit actor npubs', () => {
     expect(mapPgTaskToLocal({
       id: 'task-missing-assignee-npub',
@@ -1164,13 +1213,27 @@ describe('PG read hydrator', () => {
     const target = store({
       scopes: [{ record_id: 'scope-1', record_state: 'active' }],
       channels: [{ record_id: 'channel-1', record_state: 'active' }],
+      pgWorkspaceMembers: [{ actor_id: 'actor-agent', npub: 'npub1agent' }],
     });
     const getTowerPgChannelTasks = vi.fn(async () => ({
-      tasks: [{ id: 'task-1', scope_id: 'scope-1', channel_id: 'channel-1', title: 'Channel task' }],
+      tasks: [{
+        id: 'task-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        title: 'Channel task',
+        assignments: [{ actor_id: 'actor-agent' }],
+      }],
     }));
     const getTowerPgScopeTasks = vi.fn(async () => ({
       tasks: [
-        { id: 'task-1', scope_id: 'scope-1', channel_id: 'channel-1', title: 'Channel task updated', row_version: 2 },
+        {
+          id: 'task-1',
+          scope_id: 'scope-1',
+          channel_id: 'channel-1',
+          title: 'Channel task updated',
+          assignments: [{ actor_id: 'actor-agent' }],
+          row_version: 2,
+        },
         { id: 'task-2', scope_id: 'scope-1', channel_id: 'channel-1', title: 'Scope task' },
       ],
     }));
@@ -1194,6 +1257,8 @@ describe('PG read hydrator', () => {
     expect(tasks.find((task) => task.record_id === 'task-1')).toMatchObject({
       title: 'Channel task updated',
       version: 2,
+      assigned_to_npubs: ['npub1agent'],
+      assigned_to_npub: 'npub1agent',
     });
     expect(replaceTasksForOwner).toHaveBeenCalledWith('npub1owner', tasks);
     expect(target.applyTasks).toHaveBeenCalledWith(tasks);

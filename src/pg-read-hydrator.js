@@ -178,12 +178,53 @@ function resolveSenderNpub(record = {}, actorNpubByActorId = new Map()) {
   return trimText(actorNpubByActorId.get(actorId));
 }
 
-function normalizePgTaskAssignmentNpubs(task = {}) {
-  const assignments = Array.isArray(task?.assignments) ? task.assignments : [];
+function getPgAssignmentActorId(assignment = {}) {
+  return trimText(
+    assignment?.actor_id
+    || assignment?.actorId
+    || assignment?.assignee_actor_id
+    || assignment?.assigneeActorId
+    || assignment?.actor?.actor_id
+    || assignment?.actor?.id
+    || assignment?.assignee?.actor_id
+    || assignment?.assignee?.id
+    || assignment?.member?.actor_id
+    || assignment?.member?.id,
+  );
+}
+
+function getPgAssignmentDirectNpub(assignment = {}) {
+  return trimText(
+    assignment?.actor_npub
+    || assignment?.actorNpub
+    || assignment?.assignee_npub
+    || assignment?.assigneeNpub
+    || assignment?.member_npub
+    || assignment?.memberNpub
+    || assignment?.npub
+    || assignment?.actor?.npub
+    || assignment?.assignee?.npub
+    || assignment?.member?.npub
+    || assignment?.user?.npub
+    || assignment?.profile?.npub,
+  );
+}
+
+function normalizePgTaskAssignmentRows(task = {}) {
+  if (Array.isArray(task?.assignments)) return task.assignments;
+  if (Array.isArray(task?.task_assignments)) return task.task_assignments;
+  if (Array.isArray(task?.assigned_actors)) return task.assigned_actors;
+  if (Array.isArray(task?.assignees)) return task.assignees;
+  return [];
+}
+
+function normalizePgTaskAssignmentNpubs(task = {}, actorNpubByActorId = new Map()) {
+  const assignments = normalizePgTaskAssignmentRows(task);
   const npubs = [];
   const seen = new Set();
   for (const assignment of assignments) {
-    const npub = trimText(assignment?.actor_npub);
+    const npub = getPgAssignmentDirectNpub(assignment)
+      || trimText(actorNpubByActorId?.get?.(getPgAssignmentActorId(assignment)));
     if (!npub || seen.has(npub)) continue;
     seen.add(npub);
     npubs.push(npub);
@@ -202,12 +243,8 @@ function normalizeActorEntry(entry = {}) {
 function resolveActorNpubByActorId(store = {}) {
   return new Map(
     (Array.isArray(store?.pgWorkspaceMembers) ? store.pgWorkspaceMembers : [])
-      .filter((member) => trimText(member?.npub))
-      .map((member) => [
-        trimText(member?.actor_id || member?.id),
-        trimText(member?.npub),
-      ])
-      .filter(([actorId, npub]) => actorId && npub),
+      .map((member) => normalizeActorEntry(member))
+      .filter(Boolean),
   );
 }
 
@@ -429,13 +466,16 @@ export function mapPgMessageToLocal(message, {
   };
 }
 
-export function mapPgTaskToLocal(task, { workspaceOwnerNpub } = {}) {
+export function mapPgTaskToLocal(task, {
+  workspaceOwnerNpub,
+  actorNpubByActorId = new Map(),
+} = {}) {
   const scopeId = trimText(task?.scope_id);
   const updatedAt = isoTimestamp(task?.updated_at || task?.created_at);
   const metadata = task?.metadata && typeof task.metadata === 'object' && !Array.isArray(task.metadata)
     ? task.metadata
     : {};
-  const assignedToNpubs = normalizePgTaskAssignmentNpubs(task);
+  const assignedToNpubs = normalizePgTaskAssignmentNpubs(task, actorNpubByActorId);
   return {
     record_id: trimText(task?.id || task?.record_id),
     owner_npub: trimText(workspaceOwnerNpub),

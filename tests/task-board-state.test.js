@@ -1050,6 +1050,15 @@ describe('computeFilteredTasks', () => {
     expect(result.map(t => t.record_id)).toEqual(['t1', 't4']);
   });
 
+  it('filters legacy scalar assigned_to_npub rows by assignee npub', () => {
+    const result = computeFilteredTasks([
+      { record_id: 'legacy-1', title: 'Legacy assigned', description: '', tags: '', assigned_to_npub: 'npub1me' },
+      { record_id: 'legacy-2', title: 'Legacy other', description: '', tags: '', assigned_to_npub: 'npub1other' },
+    ], '', [], 'npub1me');
+
+    expect(result.map(t => t.record_id)).toEqual(['legacy-1']);
+  });
+
   it('returns all tasks when assigneeNpub is null', () => {
     const result = computeFilteredTasks(tasksWithAssignee, '', [], null);
     expect(result).toHaveLength(4);

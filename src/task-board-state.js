@@ -69,6 +69,17 @@ const MENTION_NAVIGABLE_RECORD_LINK_TYPES = new Set(['doc', 'task', 'scope', 'fl
 const TASK_FILTER_TAG_LIMIT = 5;
 const TASK_CARD_TAG_LIMIT = 3;
 
+export function normalizeTaskAssigneeNpubs(value = null) {
+  const raw = Array.isArray(value)
+    ? value
+    : Array.isArray(value?.assigned_to_npubs)
+      ? value.assigned_to_npubs
+      : [value?.assigned_to_npub ?? value];
+  return [...new Set(raw
+    .map((npub) => String(npub || '').trim())
+    .filter(Boolean))];
+}
+
 function parseChatRecordLinkId(id, messages = []) {
   const raw = String(id || '').trim();
   if (!raw) return { channelId: null, threadId: null };
@@ -853,7 +864,7 @@ export function computeFilteredTasks(boardScopedTasks, query, filterTags, assign
     });
   }
   if (assigneeNpub) {
-    tasks = tasks.filter(t => Array.isArray(t.assigned_to_npubs) && t.assigned_to_npubs.includes(assigneeNpub));
+    tasks = tasks.filter(t => normalizeTaskAssigneeNpubs(t).includes(assigneeNpub));
   }
   return tasks;
 }
