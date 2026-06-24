@@ -473,6 +473,61 @@ describe('PG write adapter', () => {
     expect(task).toMatchObject({ record_id: 'task-1', state: 'archive', version: 3, scheduled_for: '2026-06-22' });
   });
 
+  it('assigns a PG task when the saved task carries the legacy scalar assignee field', async () => {
+    const api = await import('../src/api.js');
+
+    const task = await updateTowerPgTaskFromLocal(store(), {
+      record_id: 'task-1',
+      pg_backend: true,
+      sync_status: 'synced',
+      assigned_to_npub: 'npub1agent',
+      version: 2,
+    }, {
+      record_id: 'task-1',
+      version: 1,
+      pg_backend: true,
+      sync_status: 'synced',
+    }, { assigned_to_npub: 'npub1agent' });
+
+    expect(api.assignTowerPgTask).toHaveBeenCalledWith('workspace-1', 'task-1', 'actor-agent', {
+      baseUrl: 'https://tower.example',
+      appNpub: 'flightdeck_pg',
+    });
+    expect(task).toMatchObject({
+      assigned_to_npub: 'npub1agent',
+      assigned_to_npubs: ['npub1agent'],
+    });
+  });
+
+  it('refreshes PG workspace members before saving a newly selected assignee', async () => {
+    const api = await import('../src/api.js');
+    const testStore = store({ pgWorkspaceMembers: [] });
+    testStore.refreshTowerPgWorkspaceMembers = vi.fn(async () => {
+      testStore.pgWorkspaceMembers = [{ actor_id: 'actor-agent', npub: 'npub1agent' }];
+      return testStore.pgWorkspaceMembers;
+    });
+
+    await updateTowerPgTaskFromLocal(testStore, {
+      record_id: 'task-1',
+      pg_backend: true,
+      sync_status: 'synced',
+      assigned_to_npubs: ['npub1agent'],
+      version: 2,
+    }, {
+      record_id: 'task-1',
+      version: 1,
+      pg_backend: true,
+      sync_status: 'synced',
+      assigned_to_npubs: [],
+    }, { assigned_to_npubs: ['npub1agent'] });
+
+    expect(testStore.refreshTowerPgWorkspaceMembers).toHaveBeenCalledWith({ force: true, limit: 200 });
+    expect(api.assignTowerPgTask).toHaveBeenCalledWith('workspace-1', 'task-1', 'actor-agent', {
+      baseUrl: 'https://tower.example',
+      appNpub: 'flightdeck_pg',
+    });
+  });
+
   it('adds PG edit lease token and row version to synced task save payloads', async () => {
     const api = await import('../src/api.js');
     api.updateTowerPgTask.mockResolvedValue({

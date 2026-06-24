@@ -135,12 +135,21 @@ function isMetadataTaskPatch(patch = {}) {
 }
 
 function normalizeTaskAssigneeNpubs(task = {}) {
-  return [...new Set((Array.isArray(task?.assigned_to_npubs) ? task.assigned_to_npubs : [])
+  const raw = Array.isArray(task)
+    ? task
+    : Array.isArray(task?.assigned_to_npubs)
+      ? task.assigned_to_npubs
+      : trimText(task?.assigned_to_npub)
+        ? [task.assigned_to_npub]
+        : typeof task === 'string'
+          ? [task]
+          : [];
+  return [...new Set(raw
     .map((npub) => trimText(npub))
     .filter(Boolean))];
 }
 
-function resolvePgAssignmentActorId(store = {}, npub = '') {
+function findPgAssignmentActorId(store = {}, npub = '') {
   const target = trimText(npub);
   if (!target) return '';
   const explicit = typeof store.getPgWorkspaceMemberActorId === 'function'
@@ -154,18 +163,28 @@ function resolvePgAssignmentActorId(store = {}, npub = '') {
   return trimText(member?.actor_id || member?.id || member?.actor?.actor_id || member?.actor?.id);
 }
 
+async function resolvePgAssignmentActorId(store = {}, npub = '') {
+  let actorId = findPgAssignmentActorId(store, npub);
+  if (actorId) return actorId;
+  if (typeof store.refreshTowerPgWorkspaceMembers === 'function') {
+    await store.refreshTowerPgWorkspaceMembers({ force: true, limit: 200 }).catch(() => []);
+    actorId = findPgAssignmentActorId(store, npub);
+  }
+  return actorId;
+}
+
 async function syncTowerPgTaskAssignmentsFromLocal(store, context, task, previousTask = null) {
   const nextAssignees = normalizeTaskAssigneeNpubs(task);
   const previousAssignees = normalizeTaskAssigneeNpubs(previousTask);
   const added = nextAssignees.filter((npub) => !previousAssignees.includes(npub));
   const removed = previousAssignees.filter((npub) => !nextAssignees.includes(npub));
   for (const npub of removed) {
-    const actorId = resolvePgAssignmentActorId(store, npub);
+    const actorId = await resolvePgAssignmentActorId(store, npub);
     if (!actorId) throw new Error(`Tower PG actor id not found for task assignee ${npub}`);
     await unassignTowerPgTask(context.workspaceId, task.record_id, actorId, pgRequestOptions(context));
   }
   for (const npub of added) {
-    const actorId = resolvePgAssignmentActorId(store, npub);
+    const actorId = await resolvePgAssignmentActorId(store, npub);
     if (!actorId) throw new Error(`Tower PG actor id not found for task assignee ${npub}`);
     await assignTowerPgTask(context.workspaceId, task.record_id, actorId, pgRequestOptions(context));
   }
