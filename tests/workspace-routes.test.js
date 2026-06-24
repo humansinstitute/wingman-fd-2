@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { slugify, findWorkspaceBySlug, normalizeWorkspaceEntry } from '../src/workspaces.js';
+import { slugify, findWorkspaceById, findWorkspaceBySlug, normalizeWorkspaceEntry } from '../src/workspaces.js';
 import { parseRouteLocation } from '../src/route-helpers.js';
 
 describe('slugify', () => {
@@ -90,6 +90,24 @@ describe('findWorkspaceBySlug', () => {
   });
 });
 
+describe('findWorkspaceById', () => {
+  const workspaces = [
+    normalizeWorkspaceEntry({ workspace_owner_npub: 'npub1a', name: 'Be Free', workspace_id: 'workspace-a' }),
+    normalizeWorkspaceEntry({ workspace_owner_npub: 'npub1b', name: 'Other Stuff', workspaceId: 'workspace-b' }),
+  ];
+
+  it('finds a workspace by Tower PG workspace id', () => {
+    const found = findWorkspaceById(workspaces, 'workspace-b');
+    expect(found).not.toBeNull();
+    expect(found.workspaceOwnerNpub).toBe('npub1b');
+  });
+
+  it('returns null for missing workspace ids', () => {
+    expect(findWorkspaceById(workspaces, 'missing')).toBeNull();
+    expect(findWorkspaceById(workspaces, '')).toBeNull();
+  });
+});
+
 describe('parseRouteLocation', () => {
   const base = 'http://localhost:5173';
 
@@ -147,11 +165,12 @@ describe('parseRouteLocation', () => {
 
   it('extracts workspace identity hints alongside slug', () => {
     const route = parseRouteLocation(
-      `${base}/be-free/chat?workspacekey=${encodeURIComponent('service:npub1ai::workspace:npub1ws')}&channelid=chan-1`,
+      `${base}/be-free/chat?workspacekey=${encodeURIComponent('service:npub1ai::workspace:npub1ws')}&workspaceid=workspace-1&channelid=chan-1`,
     );
     expect(route.workspaceSlug).toBe('be-free');
     expect(route.section).toBe('chat');
     expect(route.params.workspacekey).toBe('service:npub1ai::workspace:npub1ws');
+    expect(route.params.workspaceid).toBe('workspace-1');
     expect(route.params.channelid).toBe('chan-1');
   });
 

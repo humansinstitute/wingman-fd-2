@@ -274,7 +274,7 @@ import {
   markCachedWorkspaceKeyRegistered,
   markWorkspaceKeyRegistered,
 } from './crypto/workspace-keys.js';
-import { findWorkspaceByKey, mergeWorkspaceEntries, workspaceFromToken, findWorkspaceBySlug } from './workspaces.js';
+import { findWorkspaceById, findWorkspaceByKey, mergeWorkspaceEntries, workspaceFromToken, findWorkspaceBySlug } from './workspaces.js';
 import { buildSectionUrl, parseRouteLocation } from './route-helpers.js';
 import { extractInviteToken } from './invite-link.js';
 import {
@@ -2328,6 +2328,15 @@ export function initApp() {
           if (targetByKey && targetByKey.workspaceKey !== this.currentWorkspaceKey) {
             this.routeSyncPaused = false;
             await this.handleWorkspaceSwitcherSelect(targetByKey.workspaceKey);
+            return;
+          }
+        }
+
+        if (route.params.workspaceid) {
+          const targetById = findWorkspaceById(this.knownWorkspaces, route.params.workspaceid);
+          if (targetById && targetById.workspaceKey !== this.currentWorkspaceKey) {
+            this.routeSyncPaused = false;
+            await this.handleWorkspaceSwitcherSelect(targetById.workspaceKey || targetById.workspaceOwnerNpub);
             return;
           }
         }

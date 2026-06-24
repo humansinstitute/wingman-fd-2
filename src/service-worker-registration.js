@@ -1,5 +1,6 @@
 const RUNNING_BUILD_ID = typeof __APP_BUILD_ID__ !== 'undefined' ? __APP_BUILD_ID__ : 'dev';
 const IS_DEV = import.meta.env.DEV;
+export const NOTIFICATION_CLICK_MESSAGE_TYPE = 'flightdeck:notification-click';
 
 let registrationPromise = null;
 let reloadOnControllerChange = false;
@@ -63,6 +64,32 @@ export async function registerBuildServiceWorker() {
   ).catch(() => null);
 
   return registrationPromise;
+}
+
+export function installNotificationClickRouteHandler(getStore = () => window.Alpine?.store?.('chat')) {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return null;
+  const handler = (event) => {
+    const message = event?.data;
+    if (!message || message.type !== NOTIFICATION_CLICK_MESSAGE_TYPE) return;
+    const rawUrl = String(message.url || '').trim();
+    if (!rawUrl) return;
+    let target;
+    try {
+      target = new URL(rawUrl, window.location.origin);
+    } catch {
+      return;
+    }
+    if (target.origin !== window.location.origin) return;
+    const nextUrl = `${target.pathname}${target.search}${target.hash}`;
+    const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (nextUrl !== currentUrl) window.history.pushState({ source: 'notification-click' }, '', nextUrl);
+    const store = getStore?.();
+    Promise.resolve(store?.applyRouteFromLocation?.()).catch((error) => {
+      console.warn('[flightdeck] notification click route failed', error);
+    });
+  };
+  navigator.serviceWorker.addEventListener('message', handler);
+  return () => navigator.serviceWorker.removeEventListener('message', handler);
 }
 
 export async function forceRefreshToLatestBuild() {

@@ -100,25 +100,35 @@ function parsePushPayload(event) {
 }
 
 function pushTargetUrl(payload = {}) {
-  const directUrl = String(payload.url || payload.click_url || payload.clickUrl || '').trim();
+  const target = payload.target && typeof payload.target === 'object' ? payload.target : payload;
+  const directUrl = String(
+    payload.url || payload.click_url || payload.clickUrl || target.url || target.click_url || target.clickUrl || ''
+  ).trim();
   if (directUrl) return new URL(directUrl, self.location.origin).toString();
 
-  const target = payload.target && typeof payload.target === 'object' ? payload.target : payload;
   const workspaceSlug = String(payload.workspace_slug || target.workspace_slug || target.workspaceSlug || '').trim();
   const workspaceKey = String(payload.workspace_key || target.workspace_key || target.workspaceKey || '').trim();
-  const section = String(target.section || target.surface || target.type || '').trim().toLowerCase();
+  const workspaceId = String(payload.workspace_id || payload.workspaceId || target.workspace_id || target.workspaceId || '').trim();
+  const route = String(payload.route || target.route || '').trim().toLowerCase();
+  const category = String(payload.category || target.category || '').trim().toLowerCase();
+  const section = String(target.section || target.surface || target.type || payload.section || payload.surface || payload.type || category).trim().toLowerCase();
   const hasTaskTarget = Boolean(target.task_id || target.taskId);
   const hasDocumentTarget = Boolean(target.doc_id || target.document_id || target.docId || target.documentId);
+  const hasChatTarget = Boolean(target.channel_id || target.channelId || target.thread_id || target.threadId || target.message_id || target.messageId);
   const routeSection = section === 'dm' || section === 'thread' || section === 'message' || section === 'chat'
+    || section === 'chat_thread' || section === 'mention'
+    || route.includes('/channels/')
+    || (hasChatTarget && !hasTaskTarget && !hasDocumentTarget)
     ? 'chat'
-    : section === 'task' || section === 'task_assignment' || section === 'task_comment' || (section === 'comment' && hasTaskTarget)
+    : section === 'task' || section === 'task_assignment' || section === 'task_comment' || route.includes('/tasks/') || (section === 'comment' && hasTaskTarget)
       ? 'tasks'
-      : section === 'document' || section === 'doc' || section === 'doc_comment' || section === 'document_comment' || (section === 'comment' && hasDocumentTarget)
+      : section === 'document' || section === 'doc' || section === 'doc_comment' || section === 'document_comment' || route.includes('/docs/') || (section === 'comment' && hasDocumentTarget)
         ? 'docs'
         : 'flight-deck';
   const path = workspaceSlug ? \`/\${encodeURIComponent(workspaceSlug)}/\${routeSection}\` : \`/\${routeSection}\`;
   const url = new URL(path, self.location.origin);
   if (workspaceKey) url.searchParams.set('workspacekey', workspaceKey);
+  if (workspaceId) url.searchParams.set('workspaceid', workspaceId);
   const scopeId = String(target.scope_id || target.scopeId || '').trim();
   if (scopeId) url.searchParams.set('scopeid', scopeId);
   const channelId = String(target.channel_id || target.channelId || '').trim();
@@ -165,8 +175,9 @@ self.addEventListener('notificationclick', (event) => {
     for (const client of windows) {
       const clientUrl = new URL(client.url);
       if (clientUrl.origin !== target.origin) continue;
-      await client.focus();
-      client.navigate?.(target.toString());
+      client.postMessage?.({ type: ${JSON.stringify('flightdeck:notification-click')}, url: target.toString() });
+      const navigated = await client.navigate?.(target.toString()).catch(() => null);
+      await (navigated || client).focus?.();
       return;
     }
     await self.clients.openWindow(target.toString());

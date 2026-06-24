@@ -386,6 +386,12 @@ export function findWorkspaceBySlug(workspaces, slug) {
   return workspaces.find((w) => w.slug === slug) || null;
 }
 
+export function findWorkspaceById(workspaces, workspaceId) {
+  const id = String(workspaceId || '').trim();
+  if (!id || !Array.isArray(workspaces)) return null;
+  return workspaces.find((w) => String(w?.workspaceId || '').trim() === id) || null;
+}
+
 export function workspaceFromToken(token, extras = {}) {
   const parsed = parseSuperBasedToken(token);
   if (!parsed?.isValid || !parsed?.directHttpsUrl) return null;

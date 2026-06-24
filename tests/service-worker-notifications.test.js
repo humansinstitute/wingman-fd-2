@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import { buildServiceWorkerSource } from '../vite.config.js';
 
-function loadServiceWorkerHarness() {
+function loadServiceWorkerHarness({ clients } = {}) {
   const handlers = new Map();
   const shownNotifications = [];
   const context = {
@@ -30,7 +30,7 @@ function loadServiceWorkerHarness() {
         },
       },
       clients: {
-        async matchAll() { return []; },
+        async matchAll() { return clients || []; },
         async openWindow() {},
       },
       skipWaiting() {},
@@ -78,6 +78,26 @@ describe('generated notification service worker', () => {
     expect(url.searchParams.get('threadid')).toBe('thread-1');
   });
 
+  it('routes Tower chat notification payloads without target type metadata', async () => {
+    const notification = await dispatchPush({
+      title: 'Flight Deck: Pete',
+      body: 'Thread Update in Implementation',
+      route: '/workspaces/workspace-1/channels/channel-1/threads/thread-1',
+      category: 'chat_thread',
+      workspace_id: 'workspace-1',
+      target: {
+        channel_id: 'channel-1',
+        thread_id: 'thread-1',
+      },
+    });
+
+    const url = new URL(notification.options.data.url);
+    expect(url.pathname).toBe('/chat');
+    expect(url.searchParams.get('workspaceid')).toBe('workspace-1');
+    expect(url.searchParams.get('channelid')).toBe('channel-1');
+    expect(url.searchParams.get('threadid')).toBe('thread-1');
+  });
+
   it('routes document comments to doc and comment params', async () => {
     const notification = await dispatchPush({
       target: {
@@ -120,5 +140,44 @@ describe('generated notification service worker', () => {
     expect(assignmentUrl.pathname).toBe('/pete/tasks');
     expect(assignmentUrl.searchParams.get('scopeid')).toBe('scope-1');
     expect(assignmentUrl.searchParams.get('taskid')).toBe('task-2');
+  });
+
+  it('posts notification click routes into an already open app window', async () => {
+    const messages = [];
+    const navigations = [];
+    let focused = false;
+    const client = {
+      url: 'https://flightdeck.example/pete/flight-deck',
+      postMessage(message) {
+        messages.push(message);
+      },
+      async navigate(url) {
+        navigations.push(url);
+        return null;
+      },
+      async focus() {
+        focused = true;
+      },
+    };
+    const { handlers } = loadServiceWorkerHarness({ clients: [client] });
+    const waits = [];
+
+    handlers.get('notificationclick')({
+      notification: {
+        close() {},
+        data: { url: 'https://flightdeck.example/chat?workspaceid=workspace-1&channelid=channel-1&threadid=thread-1' },
+      },
+      waitUntil(promise) {
+        waits.push(promise);
+      },
+    });
+    await Promise.all(waits);
+
+    expect(messages).toEqual([{
+      type: 'flightdeck:notification-click',
+      url: 'https://flightdeck.example/chat?workspaceid=workspace-1&channelid=channel-1&threadid=thread-1',
+    }]);
+    expect(navigations).toEqual(['https://flightdeck.example/chat?workspaceid=workspace-1&channelid=channel-1&threadid=thread-1']);
+    expect(focused).toBe(true);
   });
 });

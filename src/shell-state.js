@@ -50,7 +50,7 @@ import {
   clearCryptoContext,
 } from './crypto/group-keys.js';
 import { buildFlightDeckDocumentTitle } from './page-title.js';
-import { mergeWorkspaceEntries, workspaceFromToken, findWorkspaceByKey, findWorkspaceBySlug } from './workspaces.js';
+import { mergeWorkspaceEntries, workspaceFromToken, findWorkspaceById, findWorkspaceByKey, findWorkspaceBySlug } from './workspaces.js';
 import { guessDefaultBackendUrl } from './workspace-manager.js';
 import { parseSuperBasedToken } from './superbased-token.js';
 import { extractInviteToken } from './invite-link.js';
@@ -700,6 +700,14 @@ export function createShellState(options = {}) {
           if (targetByKey && targetByKey.workspaceKey !== this.currentWorkspaceKey) {
             this.routeSyncPaused = false;
             await this.handleWorkspaceSwitcherSelect(targetByKey.workspaceKey);
+            return;
+          }
+        }
+        if (route.params.workspaceid) {
+          const targetById = findWorkspaceById(this.knownWorkspaces, route.params.workspaceid);
+          if (targetById && targetById.workspaceKey !== this.currentWorkspaceKey) {
+            this.routeSyncPaused = false;
+            await this.handleWorkspaceSwitcherSelect(targetById.workspaceKey || targetById.workspaceOwnerNpub);
             return;
           }
         }

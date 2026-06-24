@@ -83,6 +83,7 @@ export function parseRouteLocation(href) {
       view: url.searchParams.get('view') || null,
       sort: url.searchParams.get('sort') || null,
       workspacekey: url.searchParams.get('workspacekey') || null,
+      workspaceid: url.searchParams.get('workspaceid') || url.searchParams.get('workspace_id') || null,
       token: url.searchParams.get('token') || null,
     },
   };
