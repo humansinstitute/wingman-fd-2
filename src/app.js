@@ -6531,6 +6531,18 @@ export function initApp() {
       if (this.isParentTask(taskId)) return;
       if (taskId === targetTaskId && task.state === targetState) return;
 
+      if (!this.taskSortIsManual) {
+        if (task.state === targetState) return;
+        await this.applyTaskPatch(taskId, { state: targetState }, {
+          silent: true,
+          sync: true,
+          backgroundPg: isTowerPgBackendMode(),
+          intent: 'move',
+          refresh: isTowerPgBackendMode(),
+        });
+        return;
+      }
+
       const reorderPatches = buildTaskBoardReorderPatches(this.getTaskColumnTasksForReorder(targetState), {
         taskId,
         targetTaskId,
