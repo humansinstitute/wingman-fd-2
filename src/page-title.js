@@ -1,7 +1,17 @@
-export const FLIGHT_DECK_APP_TITLE = 'Wingman: Flight Deck';
+export const FLIGHT_DECK_APP_TITLE = 'Wingman: Deck';
 
-function buildSectionTitle(label) {
-  return `${label} - ${FLIGHT_DECK_APP_TITLE}`;
+function cleanTitlePart(value) {
+  return String(value || '').trim();
+}
+
+function buildSectionTitle(label, { workspaceLabel = '', detailLabel = '' } = {}) {
+  const titleParts = [
+    cleanTitlePart(label),
+    cleanTitlePart(workspaceLabel),
+    cleanTitlePart(detailLabel),
+  ].filter(Boolean);
+
+  return `${titleParts.join(' | ')} - ${FLIGHT_DECK_APP_TITLE}`;
 }
 
 export function buildFlightDeckDocumentTitle({
@@ -9,32 +19,34 @@ export function buildFlightDeckDocumentTitle({
   channelLabel = '',
   folderLabel = '',
   docTitle = '',
+  workspaceLabel = '',
 } = {}) {
   const nextSection = String(section || 'chat').trim().toLowerCase();
   const nextChannelLabel = String(channelLabel || '').trim();
   const nextFolderLabel = String(folderLabel || '').trim();
   const nextDocTitle = String(docTitle || '').trim();
+  const nextWorkspaceLabel = String(workspaceLabel || '').trim();
 
   switch (nextSection) {
     case 'status':
-      return buildSectionTitle('Flight Deck');
+      return buildSectionTitle('Deck', { workspaceLabel: nextWorkspaceLabel });
     case 'tasks':
-      return buildSectionTitle('Tasks');
+      return buildSectionTitle('Tasks', { workspaceLabel: nextWorkspaceLabel });
     case 'docs':
-      if (nextDocTitle) return buildSectionTitle(`Docs | ${nextDocTitle}`);
-      if (nextFolderLabel) return buildSectionTitle(`Docs | ${nextFolderLabel}`);
-      return buildSectionTitle('Docs');
+      if (nextDocTitle) return buildSectionTitle('Docs', { workspaceLabel: nextWorkspaceLabel, detailLabel: nextDocTitle });
+      if (nextFolderLabel) return buildSectionTitle('Docs', { workspaceLabel: nextWorkspaceLabel, detailLabel: nextFolderLabel });
+      return buildSectionTitle('Docs', { workspaceLabel: nextWorkspaceLabel });
     case 'files':
-      return buildSectionTitle('Files');
+      return buildSectionTitle('Files', { workspaceLabel: nextWorkspaceLabel });
     case 'opportunities':
-      return buildSectionTitle('Opportunities');
+      return buildSectionTitle('Opportunities', { workspaceLabel: nextWorkspaceLabel });
     case 'people':
-      return buildSectionTitle('People');
+      return buildSectionTitle('People', { workspaceLabel: nextWorkspaceLabel });
     case 'settings':
-      return buildSectionTitle('Setup');
+      return buildSectionTitle('Setup', { workspaceLabel: nextWorkspaceLabel });
     case 'chat':
     default:
-      if (nextChannelLabel) return buildSectionTitle(`Chat | ${nextChannelLabel}`);
-      return buildSectionTitle('Chat');
+      if (nextChannelLabel) return buildSectionTitle('Chat', { workspaceLabel: nextWorkspaceLabel, detailLabel: nextChannelLabel });
+      return buildSectionTitle('Chat', { workspaceLabel: nextWorkspaceLabel });
   }
 }

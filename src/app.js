@@ -1504,6 +1504,7 @@ export function initApp() {
         docTitle: this.navSection === 'docs'
           ? (this.selectedDocument?.title || this.selectedDirectory?.title || '')
           : '',
+        workspaceLabel: this.activeWorkspaceOwnerNpub ? this.currentWorkspaceName : '',
       });
     },
 
