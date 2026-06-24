@@ -13662,12 +13662,16 @@ button:disabled {
 }
 
 .task-detail-header {
+  position: sticky;
+  top: 0;
+  z-index: 31;
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 1.15rem;
   padding: 0.15rem 0 0.8rem;
   border-bottom: 1px solid var(--border);
+  background: #ffffff;
 }
 
 .task-detail-actions {

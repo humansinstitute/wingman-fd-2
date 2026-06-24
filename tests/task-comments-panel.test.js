@@ -83,6 +83,11 @@ describe('task comments panel fullscreen affordance', () => {
   it('keeps the baseline task comments layout and mobile fullscreen modal', () => {
     const css = readProjectFile('src/styles.css');
 
+    const headerRule = extractRule(css, '\n.task-detail-header');
+    expect(headerRule).toMatch(/position\s*:\s*sticky/);
+    expect(headerRule).toMatch(/top\s*:\s*0/);
+    expect(headerRule).toMatch(/z-index\s*:\s*31/);
+
     const bodyRule = extractRule(css, '\n.task-detail-body');
     expect(bodyRule).toMatch(/grid-template-columns\s*:\s*minmax\(0,\s*1fr\)\s*minmax\(20rem,\s*25rem\)/);
     expect(css).not.toContain('task-detail-body-comments-expanded');
