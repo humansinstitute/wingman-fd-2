@@ -32,6 +32,12 @@ describe('docs mobile layout', () => {
     expect(mobileCss).not.toMatch(/\.doc-editor-actions\s*\{[\s\S]*width:\s*100%;[\s\S]*justify-content:\s*flex-start;/);
   });
 
+  it('keeps the document editor toolbar sticky while the document body scrolls', () => {
+    const css = readProjectFile('src/styles.css');
+
+    expect(css).toMatch(/\.doc-editor-header\s*\{[\s\S]*position:\s*sticky;[\s\S]*top:\s*0;[\s\S]*z-index:\s*31;/);
+  });
+
   it('uses mobile-only CSS to show either document content or document comments', () => {
     const css = readProjectFile('src/styles.css');
     const mobileStart = css.lastIndexOf('@media (max-width: 768px)');

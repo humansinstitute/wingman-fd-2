@@ -7443,6 +7443,9 @@ button:disabled {
 }
 
 .doc-editor-header {
+  position: sticky;
+  top: 0;
+  z-index: 31;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -7450,6 +7453,7 @@ button:disabled {
   margin-bottom: 0.75rem;
   padding: 0 0.9rem 0.6rem 0;
   border-bottom: 1px solid var(--border);
+  background: #ffffff;
 }
 
 .doc-editor-primary {
