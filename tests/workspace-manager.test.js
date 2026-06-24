@@ -650,24 +650,13 @@ describe('workspace profile editing', () => {
 });
 
 describe('PG workspace settings guard', () => {
-  it('saves harness settings through the Tower PG workspace route in PG mode', async () => {
-    const updateTowerPgWorkspaceSpy = vi.spyOn(api, 'updateTowerPgWorkspace').mockResolvedValue({
-      metadata: {
-        wingman_harness_url: 'https://harness.example',
-        wingman_harness_agent_npub: 'npub1agent',
-      },
-      workspace: {
-        metadata: {
-          wingman_harness_url: 'https://harness.example',
-          wingman_harness_agent_npub: 'npub1agent',
-        },
-      },
-    });
+  it('saves harness settings as a personal workspace preference in PG mode', async () => {
+    const updateTowerPgWorkspaceSpy = vi.spyOn(api, 'updateTowerPgWorkspace').mockResolvedValue({});
     const flushAndBackgroundSync = vi.fn();
     const mergeKnownWorkspaces = vi.fn();
     const { fn, store } = bindMethod('saveHarnessSettings', {
-      canAdminWorkspace: true,
-      session: { npub: 'npub1admin' },
+      canAdminWorkspace: false,
+      session: { npub: 'npub1member' },
       currentWorkspaceOwnerNpub: 'npub1workspace',
       backendUrl: 'https://tower.example',
       workspaceHarnessAgentNpub: 'npub1agent',
@@ -691,17 +680,11 @@ describe('PG workspace settings guard', () => {
 
     await fn();
 
-    expect(updateTowerPgWorkspaceSpy).toHaveBeenCalledWith('workspace-1', expect.objectContaining({
-      metadata: {
-        wingman_harness_url: 'https://harness.example',
-        wingman_harness_agent_npub: 'npub1agent',
-      },
-    }), {
-      baseUrl: 'https://tower.example',
-      appNpub: 'flightdeck_pg',
-    });
+    expect(updateTowerPgWorkspaceSpy).not.toHaveBeenCalled();
+    expect(mergeKnownWorkspaces).not.toHaveBeenCalled();
     expect(store.workspaceHarnessUrl).toBe('https://harness.example');
     expect(store.workspaceHarnessAgentNpub).toBe('npub1agent');
+    expect(store.wingmanHarnessDirty).toBe(false);
     expect(store.wingmanHarnessError).toBeNull();
     expect(flushAndBackgroundSync).not.toHaveBeenCalled();
     updateTowerPgWorkspaceSpy.mockRestore();
@@ -798,6 +781,37 @@ describe('applyWorkspaceSettingsRow', () => {
     expect(store.workspaceHarnessAgentNpub).toBe('npub1wingman21');
     expect(store.wingmanHarnessInput).toBe('https://rick.runwingman.com');
     expect(resolveChatProfile).toHaveBeenCalledWith('npub1wingman21');
+  });
+
+  it('uses a personal harness setting before the shared workspace default', async () => {
+    const { fn, store } = bindMethod('saveHarnessSettings', {
+      canAdminWorkspace: false,
+      session: { npub: 'npub1member' },
+      selectedWorkspaceKey: 'pg:workspace',
+      currentWorkspaceOwnerNpub: 'npub1workspace',
+      workspaceHarnessAgentNpub: 'npub1personal',
+      wingmanHarnessInput: 'https://my-autopilot.example',
+      wingmanHarnessDirty: true,
+      currentWorkspace: {
+        workspaceKey: 'pg:workspace',
+        workspaceOwnerNpub: 'npub1workspace',
+        workspaceId: 'workspace-1',
+        pgBackendMode: true,
+        metadata: {
+          wingman_harness_url: 'https://shared-autopilot.example',
+          wingman_harness_agent_npub: 'npub1shared',
+        },
+      },
+    });
+
+    await fn();
+    store.workspaceHarnessUrl = '';
+    store.workspaceHarnessAgentNpub = '';
+    store.applyWorkspaceSettingsRow(null);
+
+    expect(store.workspaceHarnessUrl).toBe('https://my-autopilot.example');
+    expect(store.workspaceHarnessAgentNpub).toBe('npub1personal');
+    expect(store.wingmanHarnessInput).toBe('https://my-autopilot.example');
   });
 
   it('reorders loaded channels from the settings row', () => {

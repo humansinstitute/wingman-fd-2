@@ -6091,7 +6091,7 @@
             <div class="settings-panel-header">
               <div>
                 <h2>Autopilot</h2>
-                <p>Select the Wingman agent and the Autopilot site that agent runs on.</p>
+                <p>Select your Wingman agent and the Autopilot site that agent runs on.</p>
               </div>
             </div>
             <template x-if="$store.chat.workspaceHarnessAgentNpub">
@@ -6156,12 +6156,12 @@
               placeholder="rick.runwingman.com or https://rick.runwingman.com"
             />
             <p class="settings-field-help">
-              Current workspace:
+              Saved for you in:
               <span x-text="$store.chat.currentWorkspaceName"></span>
             </p>
             <p class="error-text" x-show="$store.chat.wingmanHarnessError" x-text="$store.chat.wingmanHarnessError"></p>
             <div class="settings-actions">
-              <button type="button" class="btn-confirm" @click="$store.chat.saveHarnessSettings()" :disabled="!$store.chat.wingmanHarnessDirty">Save Autopilot</button>
+              <button type="button" class="btn-confirm" @click="$store.chat.saveHarnessSettings()" :disabled="!$store.chat.wingmanHarnessDirty">Save my Autopilot</button>
               <button type="button" class="btn-cancel" @click="$store.chat.openHarnessLink()" :disabled="!$store.chat.hasHarnessLink">Test link</button>
             </div>
           </section>

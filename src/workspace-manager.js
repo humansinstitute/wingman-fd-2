@@ -78,9 +78,54 @@ import { pgWorkspaceSessionNpubFromMe } from './pg-workspace-descriptor.js';
 import { blockDisabledFlightDeckSurface, isFlightDeckSurfaceDisabled } from './disabled-surfaces.js';
 
 const WORKSPACE_ALL_BOARD_ID = '__all__';
+const PERSONAL_HARNESS_SETTINGS_PREFIX = 'flightdeck:personal-harness-settings:v1';
 
 export function guessDefaultBackendUrl() {
   return DEFAULT_SUPERBASED_URL || '';
+}
+
+function getPersonalHarnessSettingsKey(store) {
+  const userNpub = String(store?.session?.npub || store?.currentViewerNpub || '').trim();
+  const workspaceKey = String(
+    store?.currentWorkspaceKey
+    || store?.selectedWorkspaceKey
+    || store?.currentWorkspace?.workspaceKey
+    || store?.currentWorkspaceOwnerNpub
+    || store?.workspaceOwnerNpub
+    || '',
+  ).trim();
+  if (!userNpub || !workspaceKey || typeof localStorage === 'undefined') return '';
+  return `${PERSONAL_HARNESS_SETTINGS_PREFIX}:${encodeURIComponent(userNpub)}:${encodeURIComponent(workspaceKey)}`;
+}
+
+function readPersonalHarnessSettings(store) {
+  const key = getPersonalHarnessSettingsKey(store);
+  if (!key) return null;
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || parsed.personal_autopilot_configured !== true) return null;
+    return {
+      wingman_harness_url: String(parsed.wingman_harness_url || '').trim(),
+      wingman_harness_agent_npub: String(parsed.wingman_harness_agent_npub || '').trim(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writePersonalHarnessSettings(store, settings) {
+  const key = getPersonalHarnessSettingsKey(store);
+  if (!key) return false;
+  const payload = {
+    personal_autopilot_configured: true,
+    wingman_harness_url: String(settings?.wingman_harness_url || '').trim(),
+    wingman_harness_agent_npub: String(settings?.wingman_harness_agent_npub || '').trim(),
+    updated_at: new Date().toISOString(),
+  };
+  localStorage.setItem(key, JSON.stringify(payload));
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -564,6 +609,11 @@ export const workspaceManagerMixin = {
     this.workspaceSettingsGroupIds = Array.isArray(row?.group_ids) ? [...row.group_ids] : [];
     this.workspaceHarnessUrl = String(source?.wingman_harness_url || '').trim();
     this.workspaceHarnessAgentNpub = String(source?.wingman_harness_agent_npub || '').trim();
+    const personalHarnessSettings = readPersonalHarnessSettings(this);
+    if (personalHarnessSettings) {
+      this.workspaceHarnessUrl = personalHarnessSettings.wingman_harness_url;
+      this.workspaceHarnessAgentNpub = personalHarnessSettings.wingman_harness_agent_npub;
+    }
     if (this.workspaceHarnessAgentNpub) this.resolveChatProfile?.(this.workspaceHarnessAgentNpub);
     this.workspaceTriggers = Array.isArray(source?.triggers) ? [...source.triggers] : [];
     const rowChannelOrder = Array.isArray(source?.channel_order)
@@ -805,12 +855,6 @@ export const workspaceManagerMixin = {
 
   async saveHarnessSettings({ triggerOnly = false } = {}) {
     if (!triggerOnly) this.wingmanHarnessError = null;
-    if (!this.canAdminWorkspace) {
-      const msg = 'Only workspace admins can update shared automation settings.';
-      if (triggerOnly) throw new Error(msg);
-      this.wingmanHarnessError = msg;
-      return;
-    }
     if (!this.session?.npub) {
       const msg = 'Sign in first';
       if (triggerOnly) throw new Error(msg);
@@ -847,46 +891,33 @@ export const workspaceManagerMixin = {
       }
     }
 
-    if (isTowerPgBackendMode()) {
-      if (triggerOnly) return null;
-      const workspace = this.currentWorkspace;
-      if (!workspace?.workspaceId) {
-        this.wingmanHarnessError = 'Tower PG workspace id is missing.';
+    if (!triggerOnly) {
+      const harnessAgentNpub = String(this.workspaceHarnessAgentNpub || '').trim();
+      const saved = writePersonalHarnessSettings(this, {
+        wingman_harness_url: normalizedUrl,
+        wingman_harness_agent_npub: harnessAgentNpub,
+      });
+      if (!saved) {
+        this.wingmanHarnessError = 'Select a workspace first';
         return null;
       }
-      const harnessAgentNpub = String(this.workspaceHarnessAgentNpub || '').trim();
-      const metadata = {
-        ...(workspace.metadata || workspace.pgDescriptor?.metadata || {}),
-        wingman_harness_url: normalizedUrl,
-        wingman_harness_agent_npub: harnessAgentNpub,
-      };
-      const response = await updateTowerPgWorkspace(workspace.workspaceId, {
-        name: workspace.name || this.currentWorkspaceName || 'Workspace',
-        slug: workspace.slug || '',
-        description: workspace.description || '',
-        avatar_url: workspace.avatarUrl || null,
-        metadata,
-      }, {
-        baseUrl: workspace.directHttpsUrl || this.currentWorkspaceBackendUrl,
-        appNpub: workspace.appNpub || FLIGHT_DECK_PG_APP_NPUB,
-      });
-      const nextMetadata = response?.metadata || response?.workspace?.metadata || metadata;
-      const nextWorkspace = normalizeWorkspaceEntry({
-        ...workspace,
-        metadata: nextMetadata,
-        pgDescriptor: response?.workspace || {
-          ...(workspace.pgDescriptor || {}),
-          metadata: nextMetadata,
-        },
-      });
-      if (nextWorkspace) this.mergeKnownWorkspaces([nextWorkspace]);
-      this.applyWorkspaceSettingsRow({
-        wingman_harness_url: normalizedUrl,
-        wingman_harness_agent_npub: harnessAgentNpub,
-        triggers: [],
-        channel_order: this.channelOrder || [],
-      });
-      return response;
+      this.workspaceHarnessUrl = normalizedUrl;
+      this.workspaceHarnessAgentNpub = harnessAgentNpub;
+      if (this.workspaceHarnessAgentNpub) this.resolveChatProfile?.(this.workspaceHarnessAgentNpub);
+      this.wingmanHarnessInput = this.workspaceHarnessUrl;
+      this.wingmanHarnessAgentQuery = '';
+      this.wingmanHarnessDirty = false;
+      this.wingmanHarnessError = null;
+      return { personal: true };
+    }
+
+    if (!this.canAdminWorkspace) {
+      const msg = 'Only workspace admins can update shared automation settings.';
+      throw new Error(msg);
+    }
+
+    if (isTowerPgBackendMode()) {
+      return null;
     }
 
     const now = new Date().toISOString();
