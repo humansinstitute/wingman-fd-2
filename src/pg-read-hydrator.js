@@ -444,7 +444,7 @@ export function mapPgTaskToLocal(task, { workspaceOwnerNpub } = {}) {
     state: trimText(task?.state) || 'new',
     priority: trimText(task?.priority) || 'sand',
     board_order: Number.isFinite(Number(metadata.board_order)) ? Number(metadata.board_order) : null,
-    parent_task_id: null,
+    parent_task_id: trimText(task?.parent_task_id || metadata.parent_task_id) || null,
     board_group_id: null,
     assigned_to_npubs: assignedToNpubs,
     assigned_to_npub: assignedToNpubs[0] || null,

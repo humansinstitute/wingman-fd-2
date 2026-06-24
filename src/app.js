@@ -5559,10 +5559,6 @@ export function initApp() {
     async addSubtask(parentId) {
       const title = String(this.newSubtaskTitle || '').trim();
       if (!title || !this.session?.npub) return;
-      if (isTowerPgBackendMode()) {
-        this.error = 'PG subtasks are not available yet.';
-        return;
-      }
 
       const parent = this.tasks.find(t => t.record_id === parentId);
       if (parent && parent.parent_task_id) {
@@ -5591,6 +5587,12 @@ export function initApp() {
         source_links: [{ type: 'task', id: parentId }],
         references: [],
         deliverable_links: [],
+        ...(isTowerPgBackendMode() ? {
+          pg_backend: true,
+          pg_record_type: 'task',
+          pg_channel_id: parent?.pg_channel_id || parent?.channel_id || this.selectedChannelId || null,
+          pg_thread_id: parent?.pg_thread_id || parent?.thread_id || null,
+        } : {}),
         sync_status: 'pending',
         record_state: 'active',
         version: 1,
@@ -5601,6 +5603,25 @@ export function initApp() {
       await upsertTask(localRow);
       this.tasks = mergeTaskIntoList(this.tasks, localRow);
       this.newSubtaskTitle = '';
+
+      if (isTowerPgBackendMode()) {
+        try {
+          const createdTask = await createTowerPgTaskFromLocal(this, localRow);
+          await replaceLocalTaskWithAcceptedPgTask(this, localRow.record_id, createdTask);
+          this.scheduleTasksRefresh('PG subtask create');
+          return createdTask;
+        } catch (error) {
+          const failedRow = { ...localRow, sync_status: 'failed', updated_at: new Date().toISOString() };
+          await upsertTask(failedRow);
+          this.tasks = this.tasks.map((task) => task.record_id === localRow.record_id
+            ? failedRow
+            : task);
+          this.error = isOnlineForPgEdit()
+            ? (error?.message || 'Failed to create PG subtask')
+            : 'PG subtask saved locally. Reconnect to sync it.';
+          return failedRow;
+        }
+      }
 
       const taskWriteFields = await this.getTaskWriteFieldsForWrite(localRow);
       const envelope = await outboundTask({

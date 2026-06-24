@@ -137,6 +137,111 @@ describe('app PG task offline drafts', () => {
     expect(store.tasks.map((task) => task.record_id)).toEqual(['pg-task-1']);
   });
 
+  it('creates PG subtasks under their parent task', async () => {
+    const wsDb = openWorkspaceDb('npub1pgworkspace-subtask');
+    await wsDb.open();
+    await Promise.all(wsDb.tables.map((table) => table.clear()));
+    createTowerPgTaskFromLocalMock.mockResolvedValueOnce({
+      record_id: 'pg-subtask-1',
+      owner_npub: 'npub1pgworkspace-subtask',
+      title: 'Child PG task',
+      description: '',
+      state: 'new',
+      priority: 'sand',
+      parent_task_id: 'pg-parent-1',
+      scope_id: 'scope-1',
+      scope_l1_id: 'scope-1',
+      sync_status: 'synced',
+      record_state: 'active',
+      version: 1,
+      pg_backend: true,
+      pg_record_type: 'task',
+      pg_channel_id: 'channel-1',
+    });
+
+    const { initApp } = await import('../src/app.js');
+    initApp();
+    const store = alpineStoreMock.mock.calls.find(([name]) => name === 'chat')?.[1];
+    expect(store).toBeTruthy();
+
+    const parentTask = {
+      record_id: 'pg-parent-1',
+      owner_npub: 'npub1pgworkspace-subtask',
+      title: 'Parent PG task',
+      description: '',
+      state: 'new',
+      priority: 'sand',
+      parent_task_id: null,
+      scope_id: 'scope-1',
+      scope_l1_id: 'scope-1',
+      sync_status: 'synced',
+      record_state: 'active',
+      version: 1,
+      pg_backend: true,
+      pg_record_type: 'task',
+      pg_channel_id: 'channel-1',
+    };
+
+    Object.assign(store, {
+      session: { npub: 'npub1owner' },
+      ownerNpub: 'npub1pgworkspace-subtask',
+      currentWorkspaceOwnerNpub: 'npub1pgworkspace-subtask',
+      selectedWorkspaceKey: 'workspace-1',
+      knownWorkspaces: [{
+        workspaceKey: 'workspace-1',
+        workspaceId: 'workspace-1',
+        workspaceOwnerNpub: 'npub1pgworkspace-subtask',
+        directHttpsUrl: 'https://tower.example',
+        appNpub: 'flightdeck_pg',
+        pgBackendMode: true,
+      }],
+      backendUrl: 'https://tower.example',
+      channels: [{ record_id: 'channel-1', scope_id: 'scope-1', scope_l1_id: 'scope-1', record_state: 'active' }],
+      selectedChannelId: 'channel-1',
+      selectedBoardId: 'scope-1',
+      newSubtaskTitle: 'Child PG task',
+      tasks: [parentTask],
+      buildTaskBoardAssignment: vi.fn(() => ({
+        scope_id: 'scope-1',
+        scope_l1_id: 'scope-1',
+        scope_l2_id: null,
+        scope_l3_id: null,
+        scope_l4_id: null,
+        scope_l5_id: null,
+        scope_policy_group_ids: null,
+        board_group_id: null,
+        shares: [],
+        group_ids: [],
+      })),
+      refreshTasks: vi.fn(async () => store.tasks),
+      scheduleTasksRefresh: vi.fn(),
+    });
+    await upsertTask(parentTask);
+
+    const acceptedSubtask = await store.addSubtask('pg-parent-1');
+    const localSubtask = createTowerPgTaskFromLocalMock.mock.calls[0]?.[1];
+
+    expect(localSubtask).toMatchObject({
+      title: 'Child PG task',
+      parent_task_id: 'pg-parent-1',
+      pg_backend: true,
+      pg_channel_id: 'channel-1',
+    });
+    expect(acceptedSubtask).toMatchObject({
+      record_id: 'pg-subtask-1',
+      parent_task_id: 'pg-parent-1',
+      sync_status: 'synced',
+    });
+    expect(await getTaskById(localSubtask.record_id)).toBeUndefined();
+    expect(await getTaskById('pg-subtask-1')).toMatchObject({
+      title: 'Child PG task',
+      parent_task_id: 'pg-parent-1',
+    });
+    expect(store.tasks.find((task) => task.record_id === 'pg-subtask-1')).toMatchObject({
+      parent_task_id: 'pg-parent-1',
+    });
+  });
+
   it('creates a local PG task offline and keeps it editable until Tower accepts it', async () => {
     const wsDb = openWorkspaceDb('npub1pgworkspace');
     await wsDb.open();

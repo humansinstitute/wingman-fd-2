@@ -159,6 +159,7 @@ describe('PG write adapter', () => {
     await createTowerPgTaskFromLocal(store(), {
       title: 'Task',
       scope_id: 'scope-1',
+      parent_task_id: 'task-parent',
       scheduled_for: '2026-06-22',
       assigned_to_npubs: ['npub1agent'],
       tags: 'ops,urgent',
@@ -167,6 +168,7 @@ describe('PG write adapter', () => {
 
     expect(api.createTowerPgChannelTask).toHaveBeenCalledWith('workspace-1', 'channel-1', expect.objectContaining({
       metadata: expect.objectContaining({
+        parent_task_id: 'task-parent',
         scheduled_for: '2026-06-22',
         tags: 'ops,urgent',
         predecessor_task_ids: ['task-prev'],

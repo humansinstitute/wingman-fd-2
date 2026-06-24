@@ -334,6 +334,7 @@ describe('PG read hydrator', () => {
       metadata: {
         tags: 'pg,migration',
         board_order: 4,
+        parent_task_id: 'task-parent',
         scheduled_for: '2026-06-22',
         assigned_to_npub: 'npub1stale',
         predecessor_task_ids: ['task-prev'],
@@ -352,6 +353,7 @@ describe('PG read hydrator', () => {
       state: 'in_progress',
       priority: 'stone',
       board_order: 4,
+      parent_task_id: 'task-parent',
       tags: 'pg,migration',
       scheduled_for: '2026-06-22',
       assigned_to_npubs: ['npub1agent'],

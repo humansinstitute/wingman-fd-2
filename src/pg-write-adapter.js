@@ -102,6 +102,7 @@ function pgTaskMetadata(task = {}) {
       ? { ...task.metadata }
       : {};
   base.board_order = task.board_order ?? null;
+  base.parent_task_id = task.parent_task_id || null;
   base.tags = typeof task.tags === 'string' ? task.tags : '';
   base.scheduled_for = task.scheduled_for || null;
   delete base.assigned_to_npub;
