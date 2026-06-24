@@ -2145,6 +2145,12 @@ button:disabled {
   background: #ffffff;
 }
 
+.docs-header {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+
 .docs-title-block {
   flex: 0 0 auto;
   min-width: 4.75rem;
@@ -12758,6 +12764,16 @@ button:disabled {
 }
 
 /* Create bar */
+.task-top-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  margin-bottom: 0.85rem;
+  padding: 0 0 0.75rem;
+  border-bottom: 1px solid var(--border);
+  background: #ffffff;
+}
+
 .task-create-bar {
   display: flex;
   gap: 0.5rem;
@@ -12788,7 +12804,7 @@ button:disabled {
   flex-wrap: wrap;
   gap: 0.5rem;
   align-items: center;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0;
 }
 
 .focus-areas-panel {

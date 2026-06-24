@@ -78,6 +78,21 @@ describe('Chat channel rendering hooks', () => {
     expect(taskToolbar).toContain('<option value="alpha_desc">Z-A</option>');
   });
 
+  it('keeps task and docs top toolbars sticky inside the content scroller', () => {
+    const taskSectionIndex = html.indexOf('class="tasks-section"');
+    const taskToolbarIndex = html.indexOf('class="task-top-toolbar"', taskSectionIndex);
+    const taskCreateIndex = html.indexOf('class="task-create-bar"', taskToolbarIndex);
+    const taskFiltersIndex = html.indexOf('class="task-filters-bar"', taskToolbarIndex);
+    const taskBulkIndex = html.indexOf('class="task-bulk-bar"', taskSectionIndex);
+
+    expect(taskToolbarIndex).toBeGreaterThan(taskSectionIndex);
+    expect(taskCreateIndex).toBeGreaterThan(taskToolbarIndex);
+    expect(taskFiltersIndex).toBeGreaterThan(taskCreateIndex);
+    expect(taskFiltersIndex).toBeLessThan(taskBulkIndex);
+    expect(styles).toMatch(/\.task-top-toolbar\s*\{[\s\S]*position:\s*sticky;[\s\S]*top:\s*0;/);
+    expect(styles).toMatch(/\.docs-header\s*\{[\s\S]*position:\s*sticky;[\s\S]*top:\s*0;/);
+  });
+
   it('renders the fullscreen header toggle in the shared PG channel bar', () => {
     const globalBarIndex = html.indexOf('class="global-pg-channel-bar"');
     const globalBarEndIndex = html.indexOf('<template x-if="$store.chat.navSection === \'status\'">', globalBarIndex);

@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-CyMvfJYv.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-wjvMWlg4.css">
+  <script type="module" crossorigin src="/assets/index-BE16Lw98.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-IwlALSgc.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -2004,6 +2004,7 @@
             </div>
           </div>
 
+          <div class="task-top-toolbar" x-show="!$store.chat.showTaskDetail">
           <!-- Task create bar -->
           <form class="task-create-bar" x-show="!$store.chat.showTaskDetail" @submit.prevent="$store.chat.addTask()">
             <input
@@ -2179,6 +2180,7 @@
                 >Mark all as read</button>
               </div>
             </div>
+          </div>
           </div>
 
           <div class="task-bulk-bar" x-show="!$store.chat.showTaskDetail && $store.chat.selectedTaskCount > 0">
