@@ -8,8 +8,24 @@ function readProjectFile(relativePath) {
   return fs.readFileSync(path.join(projectRoot, relativePath), 'utf8');
 }
 
-function taskPanelFixture() {
+function taskPanelFixture(options = {}) {
   const css = readProjectFile('src/styles.css');
+  const sectionClass = options.sectionClass || 'tasks-section chat-task-inline-section';
+  const descriptionRepeat = options.descriptionRepeat || 48;
+  const commentRepeat = options.commentRepeat || 56;
+  const commentCount = options.commentCount || 1;
+  const commentRows = Array.from({ length: commentCount }, (_, index) => `
+    <div class="task-comment-row">
+      <div class="task-comment-header">
+        <span class="task-comment-sender">Implementation worker with a long display name</span>
+        <span class="task-comment-time">${index + 1}m ago</span>
+      </div>
+      <div class="task-comment-body task-comment-body-collapsed">
+        <p>${'A long task comment body '.repeat(commentRepeat)}</p>
+        <pre><code>${'unbroken-code-fragment'.repeat(18)}</code></pre>
+      </div>
+    </div>
+  `).join('');
   return `<!doctype html>
     <html>
       <head>
@@ -17,63 +33,58 @@ function taskPanelFixture() {
       </head>
       <body>
         <main class="app-shell">
-          <section class="tasks-section chat-task-inline-section">
-          <div class="task-detail-panel">
-            <div class="task-detail-body">
-              <div class="task-detail-main">
-                <h1 class="task-detail-title-display">Task detail</h1>
-                <div class="task-desc-preview chat-post-markdown">
-                  <p>${'A long task description '.repeat(48)}</p>
-                  <p>https://example.test/${'unbroken-description-token'.repeat(12)}</p>
+          <div class="main-content">
+            <div class="content-scroll-area">
+              <section class="${sectionClass}">
+              <div class="task-detail-panel">
+                <div class="task-detail-body">
+                  <div class="task-detail-main">
+                    <h1 class="task-detail-title-display">Task detail</h1>
+                    <div class="task-desc-preview chat-post-markdown">
+                      <p>${'A long task description '.repeat(descriptionRepeat)}</p>
+                      <p>https://example.test/${'unbroken-description-token'.repeat(12)}</p>
+                    </div>
+                  </div>
+                  <div id="task-comments-panel" class="task-comments-section">
+                    <div class="task-comments-header">
+                      <div class="task-comments-header-copy">
+                        <label class="task-field-label">Activity</label>
+                        <span>7 comments</span>
+                      </div>
+                      <button class="thread-resize-btn task-comments-fullscreen-btn" type="button" aria-label="Open activity fullscreen">Open</button>
+                    </div>
+                    <div class="task-comments-list">
+                      ${commentRows}
+                    </div>
+                  </div>
+                </div>
+                <div class="task-comments-fullscreen-backdrop" style="display: none;">
+                  <section class="task-comments-fullscreen-modal" role="dialog" aria-modal="true">
+                    <header class="task-comments-fullscreen-header">
+                      <div>
+                        <h2>Activity</h2>
+                        <span>7 comments</span>
+                      </div>
+                      <button type="button" class="task-comments-fullscreen-close" aria-label="Close activity fullscreen">&times;</button>
+                    </header>
+                    <div class="task-comments-fullscreen-list">
+                      <article class="task-comment-row task-comment-fullscreen-row">
+                        <div class="task-comment-header">
+                          <span class="task-comment-sender">Implementation worker with a long display name</span>
+                          <span class="task-comment-time">just now</span>
+                        </div>
+                        <div class="task-comment-body task-comment-fullscreen-body">
+                          <p>${'A long task comment body '.repeat(commentRepeat)}</p>
+                          <pre><code>${'unbroken-code-fragment'.repeat(18)}</code></pre>
+                        </div>
+                      </article>
+                    </div>
+                  </section>
                 </div>
               </div>
-              <div id="task-comments-panel" class="task-comments-section">
-                <div class="task-comments-header">
-                  <div class="task-comments-header-copy">
-                    <label class="task-field-label">Activity</label>
-                    <span>7 comments</span>
-                  </div>
-                  <button class="thread-resize-btn task-comments-fullscreen-btn" type="button" aria-label="Open activity fullscreen">Open</button>
-                </div>
-                <div class="task-comments-list">
-                  <div class="task-comment-row">
-                    <div class="task-comment-header">
-                      <span class="task-comment-sender">Implementation worker with a long display name</span>
-                      <span class="task-comment-time">just now</span>
-                    </div>
-                    <div class="task-comment-body task-comment-body-collapsed">
-                      <p>${'A long task comment body '.repeat(56)}</p>
-                      <pre><code>${'unbroken-code-fragment'.repeat(18)}</code></pre>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="task-comments-fullscreen-backdrop" style="display: none;">
-              <section class="task-comments-fullscreen-modal" role="dialog" aria-modal="true">
-                <header class="task-comments-fullscreen-header">
-                  <div>
-                    <h2>Activity</h2>
-                    <span>7 comments</span>
-                  </div>
-                  <button type="button" class="task-comments-fullscreen-close" aria-label="Close activity fullscreen">&times;</button>
-                </header>
-                <div class="task-comments-fullscreen-list">
-                  <article class="task-comment-row task-comment-fullscreen-row">
-                    <div class="task-comment-header">
-                      <span class="task-comment-sender">Implementation worker with a long display name</span>
-                      <span class="task-comment-time">just now</span>
-                    </div>
-                    <div class="task-comment-body task-comment-fullscreen-body">
-                      <p>${'A long task comment body '.repeat(56)}</p>
-                      <pre><code>${'unbroken-code-fragment'.repeat(18)}</code></pre>
-                    </div>
-                  </article>
-                </div>
               </section>
             </div>
           </div>
-          </section>
         </main>
         <script>
           const backdrop = document.querySelector('.task-comments-fullscreen-backdrop');
@@ -116,9 +127,50 @@ test('task activity header exposes only the fullscreen comment reader control', 
   await page.locator('.task-comments-fullscreen-btn').click();
   await expect(page.locator('.task-comments-fullscreen-backdrop')).toBeVisible();
   await expect(page.locator('.task-comment-fullscreen-body')).toBeVisible();
+  const modalWidth = await page.locator('.task-comments-fullscreen-modal').evaluate((node) => node.getBoundingClientRect().width);
+  expect(modalWidth / 1280).toBeGreaterThan(0.78);
+  expect(modalWidth / 1280).toBeLessThan(0.82);
 
   await page.locator('.task-comments-fullscreen-close').click();
   await expect(page.locator('.task-comments-fullscreen-backdrop')).toBeHidden();
+});
+
+test('desktop task details and comments scroll independently', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 820 });
+  await page.setContent(taskPanelFixture({
+    sectionClass: 'tasks-section',
+    descriptionRepeat: 260,
+    commentRepeat: 32,
+    commentCount: 12,
+  }));
+
+  const metrics = await page.evaluate(() => {
+    const body = document.querySelector('.task-detail-body');
+    const main = document.querySelector('.task-detail-main');
+    const comments = document.querySelector('.task-comments-section');
+    const commentsList = document.querySelector('.task-comments-list');
+    main.scrollTop = 80;
+    commentsList.scrollTop = 140;
+    return {
+      bodyOverflowY: getComputedStyle(body).overflowY,
+      mainOverflowY: getComputedStyle(main).overflowY,
+      commentsOverflowY: getComputedStyle(comments).overflowY,
+      commentsListOverflowY: getComputedStyle(commentsList).overflowY,
+      mainScrollTop: main.scrollTop,
+      commentsListScrollTop: commentsList.scrollTop,
+      mainCanScroll: main.scrollHeight > main.clientHeight,
+      commentsListCanScroll: commentsList.scrollHeight > commentsList.clientHeight,
+    };
+  });
+
+  expect(metrics.bodyOverflowY).toBe('hidden');
+  expect(metrics.mainOverflowY).toBe('auto');
+  expect(metrics.commentsOverflowY).toBe('auto');
+  expect(metrics.commentsListOverflowY).toBe('auto');
+  expect(metrics.mainCanScroll).toBe(true);
+  expect(metrics.commentsListCanScroll).toBe(true);
+  expect(metrics.mainScrollTop).toBeGreaterThan(0);
+  expect(metrics.commentsListScrollTop).toBeGreaterThan(0);
 });
 
 test('task comments layout stays single column on mobile', async ({ page }) => {

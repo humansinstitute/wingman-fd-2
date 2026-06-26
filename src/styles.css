@@ -13659,6 +13659,11 @@ button:disabled {
 .task-detail-panel {
   width: 100%;
   max-width: none;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .task-detail-header {
@@ -13771,16 +13776,23 @@ button:disabled {
   display: grid;
   grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
   gap: 1rem;
-  align-items: start;
+  align-items: stretch;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
   padding-inline: clamp(1rem, 2vw, 2rem) clamp(0.75rem, 1.5vw, 1.5rem);
 }
 
 .task-detail-main {
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 1.15rem;
   max-width: 60rem;
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .task-detail-title {
@@ -14334,12 +14346,15 @@ button:disabled {
 .task-comments-section {
   position: relative;
   min-width: 0;
+  min-height: 0;
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   border-left: 1px solid var(--border);
   padding-left: 1rem;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  min-height: calc(100dvh - 11rem);
 }
 
 .task-comments-header {
@@ -14508,7 +14523,7 @@ button:disabled {
 }
 
 .task-comments-fullscreen-modal {
-  width: min(48rem, 100%);
+  width: min(80vw, 100%);
   max-height: 100%;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -14881,14 +14896,13 @@ button:disabled {
   .task-detail-body {
     grid-template-columns: 1fr;
     gap: 1rem;
+    overflow: auto;
     padding-inline: 0.9rem;
     padding-bottom: calc(3.25rem + var(--mobile-section-switcher-height, 68px) + env(safe-area-inset-bottom));
   }
 
-  .tasks-section.chat-task-inline-section .task-detail-body {
-    overflow: auto;
-  }
-
+  .task-detail-main,
+  .task-comments-section,
   .tasks-section.chat-task-inline-section .task-detail-main,
   .tasks-section.chat-task-inline-section .task-comments-section {
     max-height: none;
