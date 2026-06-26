@@ -1,5 +1,6 @@
 import {
   completeStorageObject,
+  downloadStorageObject,
   downloadStorageObjectBlob,
   prepareStorageObject,
   uploadStorageObject,
@@ -115,6 +116,20 @@ function kindFromContentType(contentType = '') {
   if (normalized.startsWith('audio/')) return 'audio';
   if (normalized.includes('pdf') || normalized.includes('document') || normalized.includes('text/')) return 'document';
   return 'file';
+}
+
+function fileExtension(value = '') {
+  const clean = normalizeString(value).split(/[?#]/)[0].toLowerCase();
+  const segment = clean.split('/').pop() || clean;
+  const index = segment.lastIndexOf('.');
+  return index >= 0 ? segment.slice(index) : '';
+}
+
+export function isConvertibleTextFile(row = {}, document = null) {
+  const extension = fileExtension(row.name || document?.title || document?.display_name);
+  if (extension === '.txt' || extension === '.md' || extension === '.markdown') return true;
+  const contentType = normalizeString(row.content_type || document?.content_storage_content_type).toLowerCase();
+  return contentType === 'text/plain' || contentType === 'text/markdown' || contentType === 'text/x-markdown';
 }
 
 function fileUploadId() {
@@ -798,6 +813,12 @@ export const filesManagerMixin = {
     return Boolean(document?.pg_backend && (document.pg_record_type === 'file' || document.pg_storage_object_id));
   },
 
+  canConvertFileBrowserRowToDoc(row = {}) {
+    if (!this.canEditFileBrowserRow(row)) return false;
+    const document = (this.documents || []).find((item) => item?.record_id === row.source_record_id) || null;
+    return isConvertibleTextFile(row, document);
+  },
+
   openFileMoveModal(row = {}) {
     return this.openFileEditModal(row);
   },
@@ -877,6 +898,59 @@ export const filesManagerMixin = {
       return accepted;
     } catch (error) {
       this.fileEditError = error?.message || 'Failed to save file.';
+      return null;
+    } finally {
+      this.fileEditSubmitting = false;
+    }
+  },
+
+  async convertFileEditRowToDocument() {
+    if (this.fileEditSubmitting) return null;
+    const row = this.fileEditRow || {};
+    if (!this.canConvertFileBrowserRowToDoc(row)) {
+      this.fileEditError = 'Only .txt and .md files can be converted to Wingman Docs.';
+      return null;
+    }
+    const sourceDocument = (this.documents || []).find((item) => item?.record_id === row.source_record_id) || null;
+    const objectId = normalizeString(row.object_id || sourceDocument?.pg_storage_object_id);
+    if (!objectId) {
+      this.fileEditError = 'This file is missing a storage object.';
+      return null;
+    }
+    const title = normalizeString(this.fileEditName || sourceDocument?.title || row.name)
+      .replace(/\.(txt|md|markdown)$/i, '')
+      || 'Converted document';
+    const scopeId = normalizeString(this.fileEditScopeId || getRecordScopeId(sourceDocument) || row.scope_id);
+    const channelId = normalizeString(this.fileEditChannelId || sourceDocument?.pg_channel_id || row.channel_id);
+    if (!scopeId || !channelId) {
+      this.fileEditError = 'Select a scope and channel before converting this file.';
+      return null;
+    }
+
+    this.fileEditSubmitting = true;
+    this.fileEditError = '';
+    try {
+      const bytes = await downloadStorageObject(objectId);
+      const initialContent = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+      const created = await this.createDocument?.(title, {
+        scopeId,
+        channelId,
+        threadId: normalizeString(sourceDocument?.pg_thread_id || row.thread_id) || null,
+        initialContent,
+      });
+      if (!created?.record_id) throw new Error('Document conversion did not create a document.');
+      this.showFileEditModal = false;
+      this.fileEditRow = null;
+      this.fileEditName = '';
+      this.fileEditScopeId = '';
+      this.fileEditChannelId = '';
+      this.navigateTo?.('docs');
+      this.openDoc?.(created.record_id);
+      await this.enterSelectedDocEditMode?.('rich');
+      return created;
+    } catch (error) {
+      this.fileEditError = error?.message || 'Failed to convert file to document.';
+      this.error = this.fileEditError;
       return null;
     } finally {
       this.fileEditSubmitting = false;

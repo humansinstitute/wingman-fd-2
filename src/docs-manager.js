@@ -2702,7 +2702,8 @@ export const docsManagerMixin = {
     }
     const recordId = crypto.randomUUID();
     const now = new Date().toISOString();
-    const contentModel = createDocumentEditorState({ content: '', content_blocks: [] }).contentModel;
+    const initialContent = typeof options.initialContent === 'string' ? options.initialContent : '';
+    const contentModel = createDocumentEditorState({ content: initialContent, content_blocks: [] }).contentModel;
     if (pgContext) {
       try {
         const pgWorkspaceContext = resolveTowerPgWorkspaceContext(this);

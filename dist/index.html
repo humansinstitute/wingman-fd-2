@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-6P2i90Bg.js"></script>
+  <script type="module" crossorigin src="/assets/index-Cwi-Yz-z.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-CXNY94aP.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
@@ -5250,6 +5250,15 @@
                 <p class="file-edit-warning" x-show="$store.chat.fileEditContextChanged">
                   Changing scope or channel can make this file inaccessible in previous chat threads or to people who could previously access it.
                 </p>
+                <div class="file-edit-current" x-show="$store.chat.canConvertFileBrowserRowToDoc($store.chat.fileEditRow || {})">
+                  <button
+                    type="button"
+                    class="file-action-btn"
+                    :disabled="$store.chat.fileEditSubmitting || !$store.chat.fileEditScopeId || !$store.chat.fileEditChannelId"
+                    @click="$store.chat.convertFileEditRowToDocument()"
+                    x-text="$store.chat.fileEditSubmitting ? 'Converting...' : 'Convert to Doc'"
+                  ></button>
+                </div>
                 <p class="files-upload-error" x-show="$store.chat.fileEditError" x-text="$store.chat.fileEditError"></p>
 
                 <div class="new-doc-modal-actions">

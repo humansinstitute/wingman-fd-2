@@ -1,11 +1,21 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('../src/api.js', () => ({
+  completeStorageObject: vi.fn(),
+  downloadStorageObject: vi.fn(),
+  downloadStorageObjectBlob: vi.fn(),
+  prepareStorageObject: vi.fn(),
+  uploadStorageObject: vi.fn(),
+}));
 
 import {
   buildFileUploadQueueItem,
   buildFileBrowserRows,
   filterFileBrowserRows,
   filesManagerMixin,
+  isConvertibleTextFile,
 } from '../src/files-manager.js';
+import { downloadStorageObject } from '../src/api.js';
 import { recordFamilyHash } from '../src/translators/chat.js';
 
 describe('files manager', () => {
@@ -199,5 +209,64 @@ describe('files manager', () => {
     });
 
     expect(editStore.fileEditContextChanged).toBe(false);
+  });
+
+  it('recognizes imported text and markdown files as convertible documents', () => {
+    expect(isConvertibleTextFile({ name: 'Notes.md' })).toBe(true);
+    expect(isConvertibleTextFile({ name: 'brief.txt' })).toBe(true);
+    expect(isConvertibleTextFile({ name: 'capture.bin', content_type: 'text/markdown' })).toBe(true);
+    expect(isConvertibleTextFile({ name: 'deck.pdf', content_type: 'application/pdf' })).toBe(false);
+  });
+
+  it('converts an editable text file row into a Wingman document', async () => {
+    downloadStorageObject.mockResolvedValue(new TextEncoder().encode('# Imported\n\nBody text'));
+    const createdDoc = { record_id: 'doc-converted' };
+    const editStore = Object.assign(Object.create(filesManagerMixin), {
+      isTowerPgMode: true,
+      fileEditSubmitting: false,
+      fileEditRow: {
+        source_type: 'document',
+        source_record_id: 'file-1',
+        name: 'Imported.md',
+        scope_id: 'scope-1',
+        channel_id: 'chan-1',
+        thread_id: 'thread-1',
+        object_id: 'storage-1',
+      },
+      fileEditName: 'Imported.md',
+      fileEditScopeId: 'scope-1',
+      fileEditChannelId: 'chan-1',
+      fileEditError: '',
+      showFileEditModal: true,
+      documents: [{
+        record_id: 'file-1',
+        title: 'Imported.md',
+        pg_backend: true,
+        pg_record_type: 'file',
+        pg_storage_object_id: 'storage-1',
+        scope_id: 'scope-1',
+        pg_channel_id: 'chan-1',
+        pg_thread_id: 'thread-1',
+      }],
+      createDocument: vi.fn(async () => createdDoc),
+      navigateTo: vi.fn(),
+      openDoc: vi.fn(),
+      enterSelectedDocEditMode: vi.fn(async () => true),
+    });
+
+    const result = await editStore.convertFileEditRowToDocument();
+
+    expect(result).toBe(createdDoc);
+    expect(downloadStorageObject).toHaveBeenCalledWith('storage-1');
+    expect(editStore.createDocument).toHaveBeenCalledWith('Imported', {
+      scopeId: 'scope-1',
+      channelId: 'chan-1',
+      threadId: 'thread-1',
+      initialContent: '# Imported\n\nBody text',
+    });
+    expect(editStore.navigateTo).toHaveBeenCalledWith('docs');
+    expect(editStore.openDoc).toHaveBeenCalledWith('doc-converted');
+    expect(editStore.enterSelectedDocEditMode).toHaveBeenCalledWith('rich');
+    expect(editStore.showFileEditModal).toBe(false);
   });
 });
