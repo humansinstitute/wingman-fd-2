@@ -479,6 +479,50 @@ describe('PG workspace manager mode', () => {
     expect(store.stopSelectedChannelLiveQuery).toHaveBeenCalled();
   });
 
+  it('clears stale runtime rows when a created PG workspace was preselected before opening home', async () => {
+    const workspace = {
+      workspaceKey: 'pg:npub1user::tower:npub1tower::workspace:npub1createdworkspace::app:flightdeck_pg',
+      workspaceOwnerNpub: 'npub1owner',
+      directHttpsUrl: 'https://tower.example',
+      pgSessionNpub: 'npub1user',
+      pgBackendMode: true,
+    };
+    const store = await buildStore({
+      knownWorkspaces: [workspace],
+      selectedWorkspaceKey: workspace.workspaceKey,
+      localWorkspaceCoreLoadedForKey: '',
+      selectedBoardId: 'old-scope-id',
+      selectedChannelId: 'old-channel',
+      activeThreadId: 'old-thread',
+      pgContextSelectedChannelId: 'old-channel',
+      pgContextSelectedThreadId: 'old-thread',
+      channels: [{ record_id: 'old-channel' }],
+      messages: [{ record_id: 'old-message', channel_id: 'old-channel' }],
+      documents: [{ record_id: 'old-doc' }],
+      tasks: [{ record_id: 'old-task' }],
+      loadLocalWorkspaceCoreData: vi.fn().mockResolvedValue({ scopes: [], channels: [] }),
+      closeThread: vi.fn(),
+      stopSelectedChannelLiveQuery: vi.fn(),
+    });
+
+    await store.selectWorkspace(workspace.workspaceKey, { pgVerified: true, openWorkspaceHome: true });
+
+    expect(store.navSection).toBe('status');
+    expect(store.selectedBoardId).toBe('__all__');
+    expect(store.selectedChannelId).toBeNull();
+    expect(store.pgContextSelectedChannelId).toBe('');
+    expect(store.pgContextSelectedThreadId).toBe('');
+    expect(store.channels).toEqual([]);
+    expect(store.messages).toEqual([]);
+    expect(store.documents).toEqual([]);
+    expect(store.tasks).toEqual([]);
+    expect(store.closeThread).toHaveBeenCalledWith({ syncRoute: false });
+    expect(store.stopSelectedChannelLiveQuery).toHaveBeenCalled();
+    expect(store.loadLocalWorkspaceCoreData).toHaveBeenCalledWith({ syncRoute: false });
+    expect(store.localWorkspaceCoreLoadedForKey).toBe(workspace.workspaceKey);
+    expect(store.syncRoute).toHaveBeenCalledWith(true);
+  });
+
   it('does not reload local PG core data when selecting the same already-loaded workspace', async () => {
     const workspace = {
       workspaceKey: 'pg:npub1user::tower:npub1tower::workspace:npub1workspace::app:flightdeck_pg',

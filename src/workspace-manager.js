@@ -1142,6 +1142,7 @@ export const workspaceManagerMixin = {
     const shouldResetRuntimeData = Boolean(
       (previousWorkspaceKey && previousWorkspaceKey !== nextWorkspaceKey)
       || (loadedWorkspaceKey && loadedWorkspaceKey !== nextWorkspaceKey)
+      || (shouldOpenWorkspaceHome && hasRuntimeData)
       || (!loadedWorkspaceKey && hasRuntimeData && previousWorkspaceKey !== nextWorkspaceKey)
     );
     this.selectedWorkspaceKey = workspace.workspaceKey || '';
