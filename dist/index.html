@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-Cwi-Yz-z.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-CXNY94aP.css">
+  <script type="module" crossorigin src="/assets/index-fomP2Rg_.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-D6qriniP.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -5256,9 +5256,16 @@
                     class="file-action-btn"
                     :disabled="$store.chat.fileEditSubmitting || !$store.chat.fileEditScopeId || !$store.chat.fileEditChannelId"
                     @click="$store.chat.convertFileEditRowToDocument()"
-                    x-text="$store.chat.fileEditSubmitting ? 'Converting...' : 'Convert to Doc'"
+                    x-text="$store.chat.fileEditAction === 'convert' ? 'Converting...' : 'Convert to Doc'"
                   ></button>
                 </div>
+                <p
+                  class="file-edit-progress"
+                  x-show="$store.chat.fileEditProgressText"
+                  x-text="$store.chat.fileEditProgressText"
+                  role="status"
+                  aria-live="polite"
+                ></p>
                 <p class="files-upload-error" x-show="$store.chat.fileEditError" x-text="$store.chat.fileEditError"></p>
 
                 <div class="new-doc-modal-actions">
@@ -5268,7 +5275,7 @@
                     class="btn-confirm"
                     :disabled="$store.chat.fileEditSubmitting || !$store.chat.fileEditName.trim() || !$store.chat.fileEditScopeId || !$store.chat.fileEditChannelId"
                     @click="$store.chat.saveFileEditModal()"
-                    x-text="$store.chat.fileEditSubmitting ? 'Saving...' : 'Save changes'"
+                    x-text="$store.chat.fileEditAction === 'save' ? 'Saving...' : 'Save changes'"
                   ></button>
                 </div>
               </div>

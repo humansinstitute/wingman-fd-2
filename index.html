@@ -5254,9 +5254,16 @@
                     class="file-action-btn"
                     :disabled="$store.chat.fileEditSubmitting || !$store.chat.fileEditScopeId || !$store.chat.fileEditChannelId"
                     @click="$store.chat.convertFileEditRowToDocument()"
-                    x-text="$store.chat.fileEditSubmitting ? 'Converting...' : 'Convert to Doc'"
+                    x-text="$store.chat.fileEditAction === 'convert' ? 'Converting...' : 'Convert to Doc'"
                   ></button>
                 </div>
+                <p
+                  class="file-edit-progress"
+                  x-show="$store.chat.fileEditProgressText"
+                  x-text="$store.chat.fileEditProgressText"
+                  role="status"
+                  aria-live="polite"
+                ></p>
                 <p class="files-upload-error" x-show="$store.chat.fileEditError" x-text="$store.chat.fileEditError"></p>
 
                 <div class="new-doc-modal-actions">
@@ -5266,7 +5273,7 @@
                     class="btn-confirm"
                     :disabled="$store.chat.fileEditSubmitting || !$store.chat.fileEditName.trim() || !$store.chat.fileEditScopeId || !$store.chat.fileEditChannelId"
                     @click="$store.chat.saveFileEditModal()"
-                    x-text="$store.chat.fileEditSubmitting ? 'Saving...' : 'Save changes'"
+                    x-text="$store.chat.fileEditAction === 'save' ? 'Saving...' : 'Save changes'"
                   ></button>
                 </div>
               </div>

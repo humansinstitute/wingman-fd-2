@@ -27,5 +27,9 @@ describe('files upload UI', () => {
     expect(html).toContain('x-model="$store.chat.fileEditScopeId"');
     expect(html).toContain('x-model="$store.chat.fileEditChannelId"');
     expect(html).toContain('Changing scope or channel can make this file inaccessible in previous chat threads');
+    expect(html).toContain('fileEditProgressText');
+    expect(html).toContain('role="status"');
+    expect(html).toContain("fileEditAction === 'convert'");
+    expect(html).toContain("fileEditAction === 'save'");
   });
 });

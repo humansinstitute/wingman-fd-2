@@ -834,6 +834,8 @@ export const filesManagerMixin = {
     this.fileEditChannelId = channelId;
     this.fileEditError = '';
     this.fileEditSubmitting = false;
+    this.fileEditAction = '';
+    this.fileEditProgressText = '';
     this.showFileEditModal = true;
     return row;
   },
@@ -846,6 +848,8 @@ export const filesManagerMixin = {
     this.fileEditScopeId = '';
     this.fileEditChannelId = '';
     this.fileEditError = '';
+    this.fileEditAction = '';
+    this.fileEditProgressText = '';
   },
 
   selectFileEditScope(scopeId) {
@@ -883,6 +887,8 @@ export const filesManagerMixin = {
       return null;
     }
     this.fileEditSubmitting = true;
+    this.fileEditAction = 'save';
+    this.fileEditProgressText = 'Saving file details...';
     this.fileEditError = '';
     try {
       const accepted = await this.updateFileBrowserRow(row, {
@@ -895,12 +901,18 @@ export const filesManagerMixin = {
       this.fileEditName = '';
       this.fileEditScopeId = '';
       this.fileEditChannelId = '';
+      this.fileEditAction = '';
+      this.fileEditProgressText = '';
       return accepted;
     } catch (error) {
       this.fileEditError = error?.message || 'Failed to save file.';
       return null;
     } finally {
       this.fileEditSubmitting = false;
+      if (this.fileEditAction === 'save') {
+        this.fileEditAction = '';
+        this.fileEditProgressText = '';
+      }
     }
   },
 
@@ -928,10 +940,14 @@ export const filesManagerMixin = {
     }
 
     this.fileEditSubmitting = true;
+    this.fileEditAction = 'convert';
+    this.fileEditProgressText = 'Downloading text file...';
     this.fileEditError = '';
     try {
       const bytes = await downloadStorageObject(objectId);
+      this.fileEditProgressText = 'Preparing document body...';
       const initialContent = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+      this.fileEditProgressText = 'Creating Wingman Doc...';
       const created = await this.createDocument?.(title, {
         scopeId,
         channelId,
@@ -944,6 +960,7 @@ export const filesManagerMixin = {
       this.fileEditName = '';
       this.fileEditScopeId = '';
       this.fileEditChannelId = '';
+      this.fileEditProgressText = 'Opening document editor...';
       this.navigateTo?.('docs');
       this.openDoc?.(created.record_id);
       await this.enterSelectedDocEditMode?.('rich');
@@ -954,6 +971,10 @@ export const filesManagerMixin = {
       return null;
     } finally {
       this.fileEditSubmitting = false;
+      if (this.fileEditAction === 'convert') {
+        this.fileEditAction = '';
+        this.fileEditProgressText = '';
+      }
     }
   },
 

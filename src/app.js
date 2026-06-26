@@ -666,6 +666,8 @@ export function initApp() {
     fileEditScopeId: '',
     fileEditChannelId: '',
     fileEditSubmitting: false,
+    fileEditAction: '',
+    fileEditProgressText: '',
     fileEditError: '',
     reports: [],
     addressBookPeople: [],

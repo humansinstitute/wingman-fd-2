@@ -248,10 +248,17 @@ describe('files manager', () => {
         pg_channel_id: 'chan-1',
         pg_thread_id: 'thread-1',
       }],
-      createDocument: vi.fn(async () => createdDoc),
+      createDocument: vi.fn(async function createDocument() {
+        expect(this.fileEditAction).toBe('convert');
+        expect(this.fileEditProgressText).toBe('Creating Wingman Doc...');
+        return createdDoc;
+      }),
       navigateTo: vi.fn(),
       openDoc: vi.fn(),
-      enterSelectedDocEditMode: vi.fn(async () => true),
+      enterSelectedDocEditMode: vi.fn(async function enterSelectedDocEditMode() {
+        expect(this.fileEditProgressText).toBe('Opening document editor...');
+        return true;
+      }),
     });
 
     const result = await editStore.convertFileEditRowToDocument();
@@ -268,5 +275,7 @@ describe('files manager', () => {
     expect(editStore.openDoc).toHaveBeenCalledWith('doc-converted');
     expect(editStore.enterSelectedDocEditMode).toHaveBeenCalledWith('rich');
     expect(editStore.showFileEditModal).toBe(false);
+    expect(editStore.fileEditAction).toBe('');
+    expect(editStore.fileEditProgressText).toBe('');
   });
 });
