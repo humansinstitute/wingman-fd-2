@@ -728,6 +728,12 @@ export const workspaceManagerMixin = {
         ownerNpub: workspaceOwnerNpub,
         ownerGroupId: usesPgStorage ? null : settingsGroupId,
         accessGroupIds: usesPgStorage ? [] : [settingsGroupId],
+        isPublic: usesPgStorage,
+        metadata: usesPgStorage ? {
+          purpose: 'workspace-profile/avatar',
+          visibility: 'public',
+          workspace_id: this.currentWorkspace?.workspaceId || null,
+        } : null,
         contentType: file.type || 'image/png',
         sizeBytes: file.size || bytes.byteLength,
         fileName: this.defaultPastedImageName(file, 'workspace-avatar'),

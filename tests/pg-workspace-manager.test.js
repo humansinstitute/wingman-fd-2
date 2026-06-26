@@ -539,8 +539,14 @@ describe('PG workspace manager mode', () => {
     expect(result).toBe('storage://storage-avatar-1');
     expect(prepareStorageObjectForCurrentWorkspace).toHaveBeenCalledWith(expect.objectContaining({
       owner_npub: 'npub1owner',
+      is_public: true,
       content_type: 'image/png',
       file_name: 'workspace-avatar.png',
+      metadata: {
+        purpose: 'workspace-profile/avatar',
+        visibility: 'public',
+        workspace_id: 'workspace-1',
+      },
     }));
     expect(prepareStorageObjectForCurrentWorkspace.mock.calls[0][0]).not.toHaveProperty('owner_group_id');
     expect(prepareStorageObjectForCurrentWorkspace.mock.calls[0][0]).not.toHaveProperty('access_group_ids');

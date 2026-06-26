@@ -30,6 +30,7 @@ export function buildStoragePrepareBody({
   ownerGroupId = null,
   accessGroupIds = [],
   isPublic = false,
+  metadata = null,
   contentType,
   sizeBytes = null,
   fileName = null,
@@ -43,6 +44,7 @@ export function buildStoragePrepareBody({
   if (resolved.ownerGroupId) body.owner_group_id = resolved.ownerGroupId;
   if (resolved.accessGroupIds.length > 0) body.access_group_ids = resolved.accessGroupIds;
   if (isPublic === true) body.is_public = true;
+  if (metadata && typeof metadata === 'object' && !Array.isArray(metadata)) body.metadata = metadata;
 
   if (Number.isFinite(Number(sizeBytes))) body.size_bytes = Number(sizeBytes);
 

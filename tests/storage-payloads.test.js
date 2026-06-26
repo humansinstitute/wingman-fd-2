@@ -38,11 +38,13 @@ describe('storage payload helpers', () => {
       sizeBytes: 12,
       fileName: 'avatar.png',
       isPublic: true,
+      metadata: { purpose: 'workspace-profile/avatar' },
     })).toEqual({
       owner_npub: 'npub1workspace',
       owner_group_id: 'group-2',
       access_group_ids: ['group-2', 'group-1'],
       is_public: true,
+      metadata: { purpose: 'workspace-profile/avatar' },
       content_type: 'image/png',
       size_bytes: 12,
       file_name: 'avatar.png',
