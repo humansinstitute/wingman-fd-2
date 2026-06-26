@@ -4678,73 +4678,6 @@
             </div>
           </div>
 
-          <div class="doc-modal-backdrop" x-show="$store.chat.showInvocationModal" x-cloak @click.self="$store.chat.closeInvocationModal()">
-            <div class="doc-modal-card invocation-modal">
-              <button class="modal-close" type="button" @click="$store.chat.closeInvocationModal()">&times;</button>
-              <h3 x-text="`${$store.chat.getInvocationTargetTypeLabel($store.chat.invocationTargetType)} invocation`"></h3>
-              <p class="docs-browser-empty" x-text="$store.chat.invocationTargetTitle"></p>
-
-              <label class="docs-field-label">Recipient</label>
-              <select class="docs-share-input invocation-select" x-model="$store.chat.invocationRecipientNpub" :disabled="$store.chat.invocationSubmitting || $store.chat.invocablePersonalAgents.length === 0">
-                <option value="" x-show="$store.chat.invocablePersonalAgents.length === 0">No agents configured</option>
-                <template x-for="agent in $store.chat.invocablePersonalAgents" :key="agent.npub">
-                  <option :value="agent.npub" x-text="agent.title"></option>
-                </template>
-              </select>
-
-              <label class="docs-field-label">Prompt</label>
-              <textarea
-                class="docs-share-input invocation-prompt"
-                x-model="$store.chat.invocationPrompt"
-                :disabled="$store.chat.invocationSubmitting"
-                rows="7"
-              ></textarea>
-
-              <p class="doc-comment-modal-copy invocation-error" x-show="$store.chat.invocationError" x-text="$store.chat.invocationError"></p>
-              <p class="doc-comment-modal-copy invocation-success" x-show="$store.chat.invocationSuccess" x-text="$store.chat.invocationSuccess"></p>
-
-              <div class="new-doc-modal-actions">
-                <button type="button" class="btn-cancel" @click="$store.chat.closeInvocationModal()" :disabled="$store.chat.invocationSubmitting">Cancel</button>
-                <button
-                  type="button"
-                  class="btn-confirm"
-                  @click="$store.chat.submitInvocation()"
-                  :disabled="$store.chat.invocationSubmitting || !$store.chat.invocationPrompt.trim() || !$store.chat.invocationRecipientNpub"
-                  x-text="$store.chat.invocationSubmitting ? 'Sending...' : 'Send invocation'"
-                ></button>
-              </div>
-            </div>
-          </div>
-
-          <div class="doc-modal-backdrop" x-show="$store.chat.showInvocationHistoryModal" x-cloak @click.self="$store.chat.closeInvocationHistoryModal()">
-            <div class="doc-modal-card invocation-history-modal">
-              <button class="modal-close" type="button" @click="$store.chat.closeInvocationHistoryModal()">&times;</button>
-              <h3>Invocation history</h3>
-              <p class="docs-browser-empty">
-                <span x-text="$store.chat.getInvocationTargetTypeLabel($store.chat.invocationHistoryTargetType)"></span>
-                <span>&middot;</span>
-                <span x-text="$store.chat.invocationHistoryTargetTitle"></span>
-              </p>
-
-              <div class="doc-versioning-status" x-show="$store.chat.invocationHistoryLoading">Loading invocations...</div>
-              <div class="doc-versioning-status doc-versioning-error" x-show="$store.chat.invocationHistoryError" x-text="$store.chat.invocationHistoryError"></div>
-              <div class="doc-versioning-status" x-show="!$store.chat.invocationHistoryLoading && !$store.chat.invocationHistoryError && $store.chat.invocationHistoryRows.length === 0">No invocations yet.</div>
-
-              <ul class="invocation-history-list" x-show="$store.chat.invocationHistoryRows.length > 0">
-                <template x-for="row in $store.chat.invocationHistoryRows" :key="row.invocation_id">
-                  <li class="invocation-history-row">
-                    <div class="invocation-history-row-main">
-                      <span class="invocation-history-status" x-text="row.status || 'open'"></span>
-                      <span class="invocation-history-date" x-text="$store.chat.formatRelativeTime(row.created_at || row.updated_at)"></span>
-                    </div>
-                    <p x-text="row.prompt"></p>
-                    <small x-text="(row.recipients || []).map((recipient) => $store.chat.getInvocationRecipientLabel(recipient.npub)).join(', ')"></small>
-                  </li>
-                </template>
-              </ul>
-            </div>
-          </div>
-
           <div class="doc-modal-backdrop" x-show="$store.chat.showDocScopeModal" x-cloak @click.self="$store.chat.closeDocScopeModal()">
             <div class="doc-modal-card doc-scope-modal">
               <button class="modal-close" type="button" @click="$store.chat.closeDocScopeModal()">&times;</button>
@@ -8398,6 +8331,73 @@
                 Create
               </button>
             </div>
+          </div>
+        </div>
+
+        <div class="doc-modal-backdrop" x-show="$store.chat.showInvocationModal" x-cloak @click.self="$store.chat.closeInvocationModal()">
+          <div class="doc-modal-card invocation-modal">
+            <button class="modal-close" type="button" @click="$store.chat.closeInvocationModal()">&times;</button>
+            <h3 x-text="`${$store.chat.getInvocationTargetTypeLabel($store.chat.invocationTargetType)} invocation`"></h3>
+            <p class="docs-browser-empty" x-text="$store.chat.invocationTargetTitle"></p>
+
+            <label class="docs-field-label">Recipient</label>
+            <select class="docs-share-input invocation-select" x-model="$store.chat.invocationRecipientNpub" :disabled="$store.chat.invocationSubmitting || $store.chat.invocablePersonalAgents.length === 0">
+              <option value="" x-show="$store.chat.invocablePersonalAgents.length === 0">No agents configured</option>
+              <template x-for="agent in $store.chat.invocablePersonalAgents" :key="agent.npub">
+                <option :value="agent.npub" x-text="agent.title"></option>
+              </template>
+            </select>
+
+            <label class="docs-field-label">Prompt</label>
+            <textarea
+              class="docs-share-input invocation-prompt"
+              x-model="$store.chat.invocationPrompt"
+              :disabled="$store.chat.invocationSubmitting"
+              rows="7"
+            ></textarea>
+
+            <p class="doc-comment-modal-copy invocation-error" x-show="$store.chat.invocationError" x-text="$store.chat.invocationError"></p>
+            <p class="doc-comment-modal-copy invocation-success" x-show="$store.chat.invocationSuccess" x-text="$store.chat.invocationSuccess"></p>
+
+            <div class="new-doc-modal-actions">
+              <button type="button" class="btn-cancel" @click="$store.chat.closeInvocationModal()" :disabled="$store.chat.invocationSubmitting">Cancel</button>
+              <button
+                type="button"
+                class="btn-confirm"
+                @click="$store.chat.submitInvocation()"
+                :disabled="$store.chat.invocationSubmitting || !$store.chat.invocationPrompt.trim() || !$store.chat.invocationRecipientNpub"
+                x-text="$store.chat.invocationSubmitting ? 'Sending...' : 'Send invocation'"
+              ></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="doc-modal-backdrop" x-show="$store.chat.showInvocationHistoryModal" x-cloak @click.self="$store.chat.closeInvocationHistoryModal()">
+          <div class="doc-modal-card invocation-history-modal">
+            <button class="modal-close" type="button" @click="$store.chat.closeInvocationHistoryModal()">&times;</button>
+            <h3>Invocation history</h3>
+            <p class="docs-browser-empty">
+              <span x-text="$store.chat.getInvocationTargetTypeLabel($store.chat.invocationHistoryTargetType)"></span>
+              <span>&middot;</span>
+              <span x-text="$store.chat.invocationHistoryTargetTitle"></span>
+            </p>
+
+            <div class="doc-versioning-status" x-show="$store.chat.invocationHistoryLoading">Loading invocations...</div>
+            <div class="doc-versioning-status doc-versioning-error" x-show="$store.chat.invocationHistoryError" x-text="$store.chat.invocationHistoryError"></div>
+            <div class="doc-versioning-status" x-show="!$store.chat.invocationHistoryLoading && !$store.chat.invocationHistoryError && $store.chat.invocationHistoryRows.length === 0">No invocations yet.</div>
+
+            <ul class="invocation-history-list" x-show="$store.chat.invocationHistoryRows.length > 0">
+              <template x-for="row in $store.chat.invocationHistoryRows" :key="row.invocation_id">
+                <li class="invocation-history-row">
+                  <div class="invocation-history-row-main">
+                    <span class="invocation-history-status" x-text="row.status || 'open'"></span>
+                    <span class="invocation-history-date" x-text="$store.chat.formatRelativeTime(row.created_at || row.updated_at)"></span>
+                  </div>
+                  <p x-text="row.prompt"></p>
+                  <small x-text="(row.recipients || []).map((recipient) => $store.chat.getInvocationRecipientLabel(recipient.npub)).join(', ')"></small>
+                </li>
+              </template>
+            </ul>
           </div>
         </div>
 

@@ -6,6 +6,10 @@ const appSource = fs.readFileSync(
   path.resolve(import.meta.dirname, '..', 'src', 'app.js'),
   'utf-8',
 );
+const indexSource = fs.readFileSync(
+  path.resolve(import.meta.dirname, '..', 'index.html'),
+  'utf-8',
+);
 
 describe('invocation modal lifecycle', () => {
   it('closes the invocation modal after a successful submit', () => {
@@ -25,5 +29,18 @@ describe('invocation modal lifecycle', () => {
 
     expect(errorPath).toContain("this.invocationError = error?.message || 'Failed to create invocation.';");
     expect(errorPath).not.toContain('this.showInvocationModal = false;');
+  });
+
+  it('mounts invocation modals outside the docs-only template', () => {
+    const docsTemplateStart = indexSource.indexOf('<template x-if="$store.chat.navSection === \'docs\' || $store.chat.chatDocModalOpen">');
+    const filesTemplateStart = indexSource.indexOf('<template x-if="$store.chat.navSection === \'files\'">');
+    const docsTemplateSource = indexSource.slice(docsTemplateStart, filesTemplateStart);
+
+    expect(docsTemplateStart).toBeGreaterThan(-1);
+    expect(filesTemplateStart).toBeGreaterThan(docsTemplateStart);
+    expect(docsTemplateSource).not.toContain('x-show="$store.chat.showInvocationModal"');
+    expect(docsTemplateSource).not.toContain('x-show="$store.chat.showInvocationHistoryModal"');
+    expect(indexSource.match(/x-show="\$store\.chat\.showInvocationModal"/g)).toHaveLength(1);
+    expect(indexSource.match(/x-show="\$store\.chat\.showInvocationHistoryModal"/g)).toHaveLength(1);
   });
 });
