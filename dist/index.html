@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-DrvEAd-7.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-CHg6YyYF.css">
+  <script type="module" crossorigin src="/assets/index-Db5MCRfe.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-D1mp3AsC.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -2390,7 +2390,7 @@
                   <span
                     class="task-detail-mode-pill"
                     :class="$store.chat.isTaskDetailEditing() ? 'task-detail-mode-edit' : 'task-detail-mode-view'"
-                    x-text="$store.chat.isTaskDetailEditing() ? 'Editing checkout' : 'View mode'"
+                    x-text="$store.chat.isTowerPgMode ? ($store.chat.taskDraftRemoteChanged ? 'Remote update available' : ($store.chat.taskDraftDirty ? ($store.chat.taskDraftSaveState === 'local' ? 'Saved locally' : 'Unsaved changes') : 'Ready to edit')) : ($store.chat.isTaskDetailEditing() ? 'Editing checkout' : 'View mode')"
                   ></span>
                   <button
                     type="button"
@@ -2403,7 +2403,7 @@
                   <button
                     type="button"
                     class="task-copy-btn task-save-btn"
-                    x-show="$store.chat.isTaskDetailEditing()"
+                    x-show="$store.chat.isTaskDetailEditing() && (!$store.chat.isTowerPgMode || $store.chat.taskDraftDirty)"
                     @click="$store.chat.saveEditingTask()"
                     :disabled="$store.chat.taskDetailSaving || $store.chat.containsInlineImageUploadToken($store.chat.editingTask?.description)"
                     x-text="$store.chat.taskDetailSaving ? 'Saving...' : 'Save'"
@@ -2411,10 +2411,11 @@
                   <button
                     type="button"
                     class="task-copy-btn"
-                    x-show="$store.chat.isTaskDetailEditing()"
+                    x-show="$store.chat.isTaskDetailEditing() && (!$store.chat.isTowerPgMode || $store.chat.taskDraftDirty)"
                     @click="$store.chat.cancelTaskDetailEdit()"
                     :disabled="$store.chat.taskDetailSaving"
-                  >Cancel</button>
+                    x-text="$store.chat.isTowerPgMode ? 'Discard' : 'Cancel'"
+                  ></button>
                   <button
                     type="button"
                     class="task-copy-btn"
@@ -2540,6 +2541,7 @@
                     type="text"
                     x-show="$store.chat.isTaskDetailEditing()"
                     x-model="$store.chat.editingTask.title"
+                    @input="$store.chat.handleEditingTaskDraftChanged()"
                     :readonly="!$store.chat.isTaskDetailEditing()"
                     :class="{ 'task-readonly-control': !$store.chat.isTaskDetailEditing() }"
                     placeholder="Task title"
@@ -2549,7 +2551,7 @@
                   <div class="task-detail-fields" x-show="$store.chat.isTaskDetailEditing()">
                     <div class="task-field">
                       <label class="task-field-label">Status</label>
-                      <select x-model="$store.chat.editingTask.state" :disabled="!$store.chat.isTaskDetailEditing()">
+                      <select x-model="$store.chat.editingTask.state" @change="$store.chat.handleEditingTaskDraftChanged()" :disabled="!$store.chat.isTaskDetailEditing()">
                         <option value="new">New</option>
                         <option value="ready">Ready</option>
 
@@ -2566,7 +2568,7 @@
                     </div>
                     <div class="task-field">
                       <label class="task-field-label">Scheduled</label>
-                      <input type="date" x-model="$store.chat.editingTask.scheduled_for" :disabled="!$store.chat.isTaskDetailEditing()" />
+                      <input type="date" x-model="$store.chat.editingTask.scheduled_for" @change="$store.chat.handleEditingTaskDraftChanged()" :disabled="!$store.chat.isTaskDetailEditing()" />
                       <span class="task-quick-date-links">
                         <button type="button" class="task-quick-date-link" :disabled="!$store.chat.isTaskDetailEditing()" @click="$store.chat.setTaskDueToday()">Today</button>
                         <span class="task-quick-date-sep">|</span>
@@ -2574,8 +2576,16 @@
                       </span>
                     </div>
                     <div class="task-field">
+                      <label class="task-field-label">Priority</label>
+                      <select x-model="$store.chat.editingTask.priority" @change="$store.chat.handleEditingTaskDraftChanged()" :disabled="!$store.chat.isTaskDetailEditing()">
+                        <option value="sand">Sand</option>
+                        <option value="pebble">Pebble</option>
+                        <option value="rock">Rock</option>
+                      </select>
+                    </div>
+                    <div class="task-field">
                       <label class="task-field-label">Tags</label>
-                      <input type="text" x-model="$store.chat.editingTask.tags" :readonly="!$store.chat.isTaskDetailEditing()" placeholder="comma,separated" />
+                      <input type="text" x-model="$store.chat.editingTask.tags" @input="$store.chat.handleEditingTaskDraftChanged()" :readonly="!$store.chat.isTaskDetailEditing()" placeholder="comma,separated" />
                       <template x-if="$store.chat.getTaskTags($store.chat.editingTask).length > 0">
                         <div class="task-detail-tags">
                           <template x-for="tag in $store.chat.getTaskTags($store.chat.editingTask)" :key="`detail-${tag}`">
@@ -2832,29 +2842,40 @@
                       <label class="task-field-label">Description</label>
                       <a
                         class="task-desc-toggle"
-                        x-show="$store.chat.isTaskDetailEditing() && $store.chat.taskDescriptionEditing && $store.chat.editingTask.description"
+                        x-show="!$store.chat.isTowerPgMode && $store.chat.isTaskDetailEditing() && $store.chat.taskDescriptionEditing && $store.chat.editingTask.description"
                         @click.prevent="$store.chat.taskDescriptionEditing = false"
                       >Preview</a>
                       <a
                         class="task-desc-toggle"
-                        x-show="$store.chat.isTaskDetailEditing() && !$store.chat.taskDescriptionEditing"
+                        x-show="!$store.chat.isTowerPgMode && $store.chat.isTaskDetailEditing() && !$store.chat.taskDescriptionEditing"
                         @click.prevent="$store.chat.taskDescriptionEditing = true"
                       >Edit</a>
                     </div>
-                    <textarea
-                      x-show="$store.chat.taskDescriptionEditing"
-                      x-model="$store.chat.editingTask.description"
-                      @input="$store.chat.handleMentionInput($event.target)"
-                      @keydown="$store.chat.handleMentionKeydown($event)"
-                      @paste="$store.chat.handleTaskDescriptionPaste($event)"
-                      placeholder="Add a description..."
-                      rows="4"
-                    ></textarea>
-                    <div
-                      class="task-desc-preview chat-post-markdown"
-                      x-show="!$store.chat.taskDescriptionEditing"
-                      x-html="$store.chat.renderMarkdown($store.chat.editingTask.description)"
-                    ></div>
+                    <template x-if="$store.chat.isTowerPgMode">
+                      <div
+                        class="doc-rich-editor task-rich-editor"
+                        x-init="$nextTick(() => $store.chat.mountTaskRichDescriptionEditor($el))"
+                        x-effect="$store.chat.editingTask?.record_id; if ($store.chat.isTaskDetailEditing()) $nextTick(() => $store.chat.mountTaskRichDescriptionEditor($el))"
+                      ></div>
+                    </template>
+                    <template x-if="!$store.chat.isTowerPgMode">
+                      <div>
+                        <textarea
+                          x-show="$store.chat.taskDescriptionEditing"
+                          x-model="$store.chat.editingTask.description"
+                          @input="$store.chat.handleMentionInput($event.target); $store.chat.handleEditingTaskDraftChanged()"
+                          @keydown="$store.chat.handleMentionKeydown($event)"
+                          @paste="$store.chat.handleTaskDescriptionPaste($event)"
+                          placeholder="Add a description..."
+                          rows="4"
+                        ></textarea>
+                        <div
+                          class="task-desc-preview chat-post-markdown"
+                          x-show="!$store.chat.taskDescriptionEditing"
+                          x-html="$store.chat.renderMarkdown($store.chat.editingTask.description)"
+                        ></div>
+                      </div>
+                    </template>
                   </div>
 
                   <!-- Subtasks -->

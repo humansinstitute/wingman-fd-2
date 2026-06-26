@@ -312,7 +312,7 @@ export async function updateTowerPgTaskFromLocal(store, task, previousTask = nul
   let acceptedTask = null;
   if (Object.prototype.hasOwnProperty.call(patch, 'state')) {
     const result = await updateTowerPgTaskState(context.workspaceId, task.record_id, {
-      ...addPgEditLeaseToSaveBody(store, previousTask || task, 'task', body),
+      ...body,
       state: task.state,
     }, pgRequestOptions(context));
     acceptedTask = mapPgTaskToLocal(result.task, { workspaceOwnerNpub: context.workspaceOwnerNpub });
@@ -323,8 +323,6 @@ export async function updateTowerPgTaskFromLocal(store, task, previousTask = nul
   const patchBody = {
     row_version: acceptedTask?.version || body.row_version,
   };
-  const patchTask = acceptedTask ? { ...task, version: acceptedTask.version } : task;
-  const previousForPatch = acceptedTask || previousTask || task;
   if (Object.prototype.hasOwnProperty.call(patch, 'title')) patchBody.title = task.title;
   if (Object.prototype.hasOwnProperty.call(patch, 'description')) patchBody.description = task.description || null;
   if (Object.prototype.hasOwnProperty.call(patch, 'priority')) patchBody.priority = task.priority || 'sand';
@@ -332,7 +330,7 @@ export async function updateTowerPgTaskFromLocal(store, task, previousTask = nul
   const result = await updateTowerPgTask(
     context.workspaceId,
     task.record_id,
-    addPgEditLeaseToSaveBody(store, { ...patchTask, ...previousForPatch }, 'task', patchBody),
+    patchBody,
     pgRequestOptions(context),
   );
   acceptedTask = mapPgTaskToLocal(result.task, { workspaceOwnerNpub: context.workspaceOwnerNpub });

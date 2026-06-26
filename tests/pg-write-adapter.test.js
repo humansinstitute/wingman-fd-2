@@ -381,11 +381,7 @@ describe('PG write adapter', () => {
       },
     });
 
-    const task = await updateTowerPgTaskFromLocal(store({
-      pgEditLeaseSessions: {
-        'task:task-1': { lease: { lease_token: 'state-lease-token' } },
-      },
-    }), {
+    const task = await updateTowerPgTaskFromLocal(store(), {
       record_id: 'task-1',
       pg_backend: true,
       sync_status: 'synced',
@@ -397,7 +393,6 @@ describe('PG write adapter', () => {
 
     expect(api.updateTowerPgTaskState).toHaveBeenCalledWith('workspace-1', 'task-1', {
       row_version: 1,
-      lease_token: 'state-lease-token',
       state: 'done',
     }, { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
     expect(task).toMatchObject({ record_id: 'task-1', state: 'done', version: 2 });
@@ -431,11 +426,7 @@ describe('PG write adapter', () => {
       },
     });
 
-    const task = await updateTowerPgTaskFromLocal(store({
-      pgEditLeaseSessions: {
-        'task:task-1': { lease: { lease_token: 'quick-lease-token' } },
-      },
-    }), {
+    const task = await updateTowerPgTaskFromLocal(store(), {
       record_id: 'task-1',
       pg_backend: true,
       sync_status: 'synced',
@@ -453,12 +444,10 @@ describe('PG write adapter', () => {
 
     expect(api.updateTowerPgTaskState).toHaveBeenCalledWith('workspace-1', 'task-1', {
       row_version: 1,
-      lease_token: 'quick-lease-token',
       state: 'archive',
     }, { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
     expect(api.updateTowerPgTask).toHaveBeenCalledWith('workspace-1', 'task-1', expect.objectContaining({
       row_version: 2,
-      lease_token: 'quick-lease-token',
       metadata: expect.objectContaining({
         scheduled_for: '2026-06-22',
       }),
@@ -553,7 +542,7 @@ describe('PG write adapter', () => {
     expect(task).toMatchObject({ assigned_to_npub: null, assigned_to_npubs: [] });
   });
 
-  it('adds PG edit lease token and row version to synced task save payloads', async () => {
+  it('adds row version to synced task save payloads without requiring a task edit lease', async () => {
     const api = await import('../src/api.js');
     api.updateTowerPgTask.mockResolvedValue({
       task: {
@@ -568,11 +557,7 @@ describe('PG write adapter', () => {
       },
     });
 
-    await updateTowerPgTaskFromLocal(store({
-      pgEditLeaseSessions: {
-        'task:task-1': { lease: { lease_token: 'lease-token-1' } },
-      },
-    }), {
+    await updateTowerPgTaskFromLocal(store(), {
       record_id: 'task-1',
       pg_backend: true,
       sync_status: 'synced',
@@ -585,7 +570,7 @@ describe('PG write adapter', () => {
 
     expect(api.updateTowerPgTask).toHaveBeenCalledWith('workspace-1', 'task-1', expect.objectContaining({
       row_version: 2,
-      lease_token: 'lease-token-1',
+      title: 'Edited',
     }), { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
   });
 

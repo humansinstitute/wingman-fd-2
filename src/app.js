@@ -66,14 +66,10 @@ import {
   updateTowerPgTaskFromLocal,
 } from './pg-write-adapter.js';
 import {
-  acquirePgEditLeaseForRecord,
-  getPgEditLeaseSession,
   isOnlineForPgEdit,
   isSyncedPgRecord,
   isUnsyncedLocalPgRecord,
-  preparePgSyncedRecordMutation,
   releasePgEditLeaseForRecord,
-  startPgEditLeaseRenewal,
 } from './pg-edit-session.js';
 import { createShellState } from './shell-state.js';
 import {
@@ -126,6 +122,7 @@ import { commandPaletteMixin, createCommandPaletteState } from './command-palett
 import { buildAttentionFeed, buildTimingFeed, summarizeAttentionFeed } from './attention-feed.js';
 import { avatarStatusMixin } from './components/avatar-status.js';
 import { createDocumentEditorState } from './docs/editor/document-editor-store.js';
+import { createTiptapEditorAdapter } from './docs/editor/tiptap-editor-adapter.js';
 import {
   toRaw,
   normalizeBackendUrl,
@@ -319,6 +316,8 @@ function documentRecordSignature(document = {}) {
 const NUMBER_FORMATTER = new Intl.NumberFormat();
 const PG_TASK_WRITE_QUEUE_SYNC_STATE_KEY = 'pg_task_write_queue:v1';
 const PG_TASK_WRITE_BATCH_SIZE = 6;
+const PG_TASK_DETAIL_DRAFT_PREFIX = 'pg_task_detail_draft:v1:';
+const PG_TASK_DETAIL_DRAFT_AUTOSAVE_MS = 700;
 const MAX_STATUS_RECENT_CHANGES = 50;
 const STATUS_RECORD_TYPE_LABELS = Object.freeze({
   chat: 'Chat',
@@ -345,6 +344,45 @@ const STATUS_RECORD_TYPE_ORDER = Object.freeze([
 const scopedReportsCache = new WeakMap();
 const reportTimeseriesCache = new WeakMap();
 const reportTableColumnsCache = new WeakMap();
+
+function taskDetailDraftKey(recordId) {
+  const clean = String(recordId || '').trim();
+  return clean ? `${PG_TASK_DETAIL_DRAFT_PREFIX}${clean}` : '';
+}
+
+function normalizeTaskDraftPayload(task = {}) {
+  if (!task?.record_id) return null;
+  return {
+    title: String(task.title || ''),
+    description: String(task.description || ''),
+    state: String(task.state || 'new'),
+    priority: String(task.priority || 'sand'),
+    scheduled_for: task.scheduled_for || null,
+    tags: String(task.tags || ''),
+    assigned_to_npubs: normalizeTaskAssigneeNpubs(task),
+    predecessor_task_ids: normalizePredecessorTaskIds(task.predecessor_task_ids || [], task.record_id),
+    scope_id: task.scope_id ?? null,
+    scope_l1_id: task.scope_l1_id ?? null,
+    scope_l2_id: task.scope_l2_id ?? null,
+    scope_l3_id: task.scope_l3_id ?? null,
+    scope_l4_id: task.scope_l4_id ?? null,
+    scope_l5_id: task.scope_l5_id ?? null,
+    scope_policy_group_ids: Array.isArray(task.scope_policy_group_ids) ? [...task.scope_policy_group_ids] : null,
+    board_group_id: task.board_group_id ?? null,
+    shares: Array.isArray(task.shares) ? toRaw(task.shares) : [],
+    group_ids: Array.isArray(task.group_ids) ? [...task.group_ids] : [],
+    flow_id: task.flow_id ?? null,
+    flow_run_id: task.flow_run_id ?? null,
+    flow_step: task.flow_step ?? null,
+    source_links: Array.isArray(task.source_links) ? toRaw(task.source_links) : [],
+    references: Array.isArray(task.references) ? toRaw(task.references) : [],
+    deliverable_links: Array.isArray(task.deliverable_links) ? toRaw(task.deliverable_links) : [],
+  };
+}
+
+function taskDraftSignature(task = {}) {
+  return JSON.stringify(normalizeTaskDraftPayload(task) || {});
+}
 
 function getScopedReportsCacheEntry(store) {
   const existing = scopedReportsCache.get(store);
@@ -430,7 +468,14 @@ async function replaceLocalTaskWithAcceptedPgTask(store, localRecordId, accepted
     acceptedTask,
   );
   if (store.activeTaskId === previousId) store.activeTaskId = acceptedId;
-  if (store.editingTask?.record_id === previousId) store.editingTask = { ...acceptedTask };
+  if (store.editingTask?.record_id === previousId) {
+    store.editingTask = { ...acceptedTask };
+    store.taskEditOriginal = { ...acceptedTask };
+    store.taskDraftDirty = false;
+    store.taskDraftSaveState = '';
+    store.taskDraftRemoteChanged = false;
+    store.destroyTaskRichDescriptionEditor?.();
+  }
   if (Array.isArray(store.selectedTaskIds)) {
     store.selectedTaskIds = [...new Set(store.selectedTaskIds.map((taskId) => taskId === previousId ? acceptedId : taskId))];
   }
@@ -811,6 +856,14 @@ export function initApp() {
     taskEditOriginal: null,
     taskDetailSaving: false,
     taskDetailCheckoutPending: false,
+    taskDraftDirty: false,
+    taskDraftSaveState: '',
+    taskDraftSavedAt: '',
+    taskDraftRemoteChanged: false,
+    taskDraftAutosaveTimer: null,
+    taskRichDescriptionAdapter: null,
+    taskRichDescriptionMountEl: null,
+    taskRichDescriptionRecordId: '',
     taskAssigneeQuery: '',
     predecessorTaskQuery: '',
     showPredecessorTaskPicker: false,
@@ -4606,13 +4659,21 @@ export function initApp() {
 
       if (this.activeTaskId !== recordId) return;
       const selectedTask = this.tasks.find((item) => item.record_id === recordId) || null;
-      this.editingTask = selectedTask ? toRaw(selectedTask) : null;
-      if (this.editingTask) {
-        const hasStoredRefs = Array.isArray(this.editingTask.references) && this.editingTask.references.length > 0;
-        if (!hasStoredRefs && this.editingTask.description) {
-          this.editingTask.references = parseReferencesFromDescription(this.editingTask.description);
+      if (selectedTask) {
+        const nextTask = toRaw(selectedTask);
+        const hasStoredRefs = Array.isArray(nextTask.references) && nextTask.references.length > 0;
+        if (!hasStoredRefs && nextTask.description) {
+          nextTask.references = parseReferencesFromDescription(nextTask.description);
         }
-        this.editingTask.predecessor_task_ids = normalizePredecessorTaskIds(this.editingTask.predecessor_task_ids || [], this.editingTask.record_id);
+        nextTask.predecessor_task_ids = normalizePredecessorTaskIds(nextTask.predecessor_task_ids || [], nextTask.record_id);
+        if (!this.editingTask || this.editingTask.record_id !== nextTask.record_id) {
+          this.editingTask = nextTask;
+          this.taskEditOriginal = toRaw(nextTask);
+        } else {
+          this.replaceEditingTaskFromRecord(nextTask);
+        }
+      } else {
+        this.editingTask = null;
       }
       for (const npub of this.getTaskAssigneeNpubs(this.editingTask)) {
         this.resolveChatProfile(npub);
@@ -5174,6 +5235,158 @@ export function initApp() {
       return this.taskDetailMode === 'edit';
     },
 
+    isPgTaskDetailDraftEnabled(task = this.editingTask) {
+      return isTowerPgBackendMode() && Boolean(task?.record_id);
+    },
+
+    isEditingTaskDirty() {
+      if (!this.editingTask?.record_id || !this.taskEditOriginal?.record_id) return false;
+      return taskDraftSignature(this.editingTask) !== taskDraftSignature(this.taskEditOriginal);
+    },
+
+    refreshTaskDraftDirtyState() {
+      this.taskDraftDirty = this.isEditingTaskDirty();
+      if (!this.taskDraftDirty && !this.taskDraftRemoteChanged) {
+        this.taskDraftSaveState = '';
+      }
+      return this.taskDraftDirty;
+    },
+
+    handleEditingTaskDraftChanged() {
+      if (!this.editingTask?.record_id) return;
+      const dirty = this.refreshTaskDraftDirtyState();
+      if (!this.isPgTaskDetailDraftEnabled()) return;
+      if (!dirty) {
+        this.clearTaskLocalDraft(this.editingTask.record_id).catch(() => {});
+        return;
+      }
+      this.taskDraftSaveState = 'pending';
+      this.scheduleTaskLocalDraftSave();
+    },
+
+    scheduleTaskLocalDraftSave() {
+      if (!this.isPgTaskDetailDraftEnabled() || !this.taskDraftDirty) return;
+      if (this.taskDraftAutosaveTimer) clearTimeout(this.taskDraftAutosaveTimer);
+      this.taskDraftAutosaveTimer = setTimeout(() => {
+        this.taskDraftAutosaveTimer = null;
+        void this.persistTaskLocalDraft();
+      }, PG_TASK_DETAIL_DRAFT_AUTOSAVE_MS);
+    },
+
+    async persistTaskLocalDraft() {
+      if (!this.isPgTaskDetailDraftEnabled() || !this.editingTask?.record_id) return false;
+      if (!this.refreshTaskDraftDirtyState()) {
+        await this.clearTaskLocalDraft(this.editingTask.record_id);
+        return false;
+      }
+      const key = taskDetailDraftKey(this.editingTask.record_id);
+      if (!key) return false;
+      await setSyncState(key, {
+        record_id: this.editingTask.record_id,
+        base_version: this.taskEditOriginal?.version ?? null,
+        base_updated_at: this.taskEditOriginal?.updated_at || null,
+        saved_at: new Date().toISOString(),
+        draft: normalizeTaskDraftPayload(this.editingTask),
+      });
+      this.taskDraftSaveState = 'local';
+      this.taskDraftSavedAt = new Date().toISOString();
+      return true;
+    },
+
+    async clearTaskLocalDraft(recordId = null) {
+      const key = taskDetailDraftKey(recordId || this.editingTask?.record_id);
+      if (!key) return false;
+      if (this.taskDraftAutosaveTimer) {
+        clearTimeout(this.taskDraftAutosaveTimer);
+        this.taskDraftAutosaveTimer = null;
+      }
+      await deleteSyncState(key);
+      if (!recordId || recordId === this.editingTask?.record_id) {
+        this.taskDraftDirty = false;
+        this.taskDraftSaveState = '';
+        this.taskDraftSavedAt = '';
+        this.taskDraftRemoteChanged = false;
+      }
+      return true;
+    },
+
+    async restoreTaskLocalDraft(task = null) {
+      if (!this.isPgTaskDetailDraftEnabled(task)) return false;
+      const recordId = String(task?.record_id || '').trim();
+      const key = taskDetailDraftKey(recordId);
+      if (!key) return false;
+      const stored = await getSyncState(key);
+      if (!stored?.draft || this.activeTaskId !== recordId || this.editingTask?.record_id !== recordId) return false;
+      const draft = stored.draft;
+      this.editingTask = this.withTaskAssigneeNpubs({
+        ...this.editingTask,
+        ...draft,
+        record_id: recordId,
+        predecessor_task_ids: normalizePredecessorTaskIds(draft.predecessor_task_ids || [], recordId),
+      }, Array.isArray(draft.assigned_to_npubs) ? draft.assigned_to_npubs : []);
+      this.taskDraftDirty = true;
+      this.taskDraftSaveState = 'local';
+      this.taskDraftSavedAt = stored.saved_at || '';
+      this.destroyTaskRichDescriptionEditor();
+      return true;
+    },
+
+    replaceEditingTaskFromRecord(task = null, options = {}) {
+      if (!task?.record_id || this.editingTask?.record_id !== task.record_id) return false;
+      if (!options.force && this.refreshTaskDraftDirtyState()) {
+        this.taskDraftRemoteChanged = true;
+        return false;
+      }
+      this.editingTask = toRaw(task);
+      this.editingTask.predecessor_task_ids = normalizePredecessorTaskIds(this.editingTask.predecessor_task_ids || [], this.editingTask.record_id);
+      this.taskEditOriginal = toRaw(task);
+      this.taskDraftDirty = false;
+      this.taskDraftSaveState = '';
+      this.taskDraftSavedAt = '';
+      this.taskDraftRemoteChanged = false;
+      this.destroyTaskRichDescriptionEditor();
+      return true;
+    },
+
+    destroyTaskRichDescriptionEditor() {
+      if (this.taskRichDescriptionAdapter) {
+        this.taskRichDescriptionAdapter.destroy();
+      }
+      this.taskRichDescriptionAdapter = null;
+      this.taskRichDescriptionMountEl = null;
+      this.taskRichDescriptionRecordId = '';
+    },
+
+    mountTaskRichDescriptionEditor(element = null) {
+      if (!element || !this.editingTask?.record_id || !this.isTaskDetailEditing()) return;
+      if (
+        this.taskRichDescriptionAdapter
+        && this.taskRichDescriptionMountEl === element
+        && this.taskRichDescriptionRecordId === this.editingTask.record_id
+      ) return;
+      this.destroyTaskRichDescriptionEditor();
+      this.taskRichDescriptionMountEl = element;
+      this.taskRichDescriptionRecordId = this.editingTask.record_id;
+      this.taskRichDescriptionAdapter = createTiptapEditorAdapter({
+        element,
+        document: {
+          content: this.editingTask.description || '',
+          content_blocks: [],
+          editor_state: null,
+        },
+        editable: true,
+        placeholder: 'Add a description...',
+        onPaste: (event, editor) => this.handleTaskRichPaste?.(event, editor) === true,
+        onUpdate: (contentModel) => {
+          if (!this.editingTask) return;
+          this.editingTask.description = contentModel?.content || '';
+          this.handleEditingTaskDraftChanged();
+          this.scheduleStorageImageHydration?.();
+        },
+      });
+      this.scheduleStorageImageHydration?.();
+    },
+
     // Task creates stay optimistic. Every existing-task mutation should use
     // this helper so checkout, write groups, and pending-write semantics stay aligned.
     async queueTaskWrite(updatedTask, previousTask, options = {}) {
@@ -5224,21 +5437,7 @@ export function initApp() {
       const usePgBackgroundWrite = isTowerPgBackendMode()
         && isSyncedPgRecord(task)
         && options.backgroundPg === true;
-      const hadPgLease = isTowerPgBackendMode()
-        && isSyncedPgRecord(task)
-        && Boolean(getPgEditLeaseSession(this, 'task', task.record_id)?.lease?.lease_token);
-      const releasePatchPgLease = isTowerPgBackendMode()
-        && isSyncedPgRecord(task)
-        && !hadPgLease
-        && options.retainPgLease !== true;
-      if (isTowerPgBackendMode() && !usePgBackgroundWrite) {
-        try {
-          await preparePgSyncedRecordMutation(this, task, 'task', options);
-        } catch (error) {
-          this.error = error?.userMessage || error?.message || 'Unable to acquire Tower PG edit lease.';
-          return null;
-        }
-      }
+      const releasePatchPgLease = false;
 
       const nextVersion = (task.version ?? 1) + 1;
       const patchHasAssignees = Object.prototype.hasOwnProperty.call(patch, 'assigned_to_npubs')
@@ -5264,7 +5463,7 @@ export function initApp() {
       this.tasks = this.tasks.map((entry) => entry.record_id === taskId ? updated : entry);
 
       if (this.editingTask?.record_id === taskId) {
-        this.editingTask = { ...updated };
+        this.replaceEditingTaskFromRecord(updated, { force: true });
       }
 
       if (isTowerPgBackendMode()) {
@@ -5283,7 +5482,7 @@ export function initApp() {
             };
             await upsertTask(localOnlyTask);
             this.tasks = this.tasks.map((entry) => entry.record_id === taskId ? localOnlyTask : entry);
-            if (this.editingTask?.record_id === taskId) this.editingTask = { ...localOnlyTask };
+            if (this.editingTask?.record_id === taskId) this.replaceEditingTaskFromRecord(localOnlyTask, { force: true });
             return localOnlyTask;
           }
           try {
@@ -5295,7 +5494,7 @@ export function initApp() {
             const failedTask = { ...updated, sync_status: 'failed', updated_at: new Date().toISOString() };
             await upsertTask(failedTask);
             this.tasks = this.tasks.map((entry) => entry.record_id === taskId ? failedTask : entry);
-            if (this.editingTask?.record_id === taskId) this.editingTask = { ...failedTask };
+            if (this.editingTask?.record_id === taskId) this.replaceEditingTaskFromRecord(failedTask, { force: true });
             this.error = error?.message || 'Failed to sync local PG task.';
             return null;
           }
@@ -5304,7 +5503,7 @@ export function initApp() {
           const acceptedTask = await updateTowerPgTaskFromLocal(this, updated, task, patch);
           await upsertTask(acceptedTask);
           this.tasks = this.tasks.map((entry) => entry.record_id === taskId ? acceptedTask : entry);
-          if (this.editingTask?.record_id === taskId) this.editingTask = { ...acceptedTask };
+          if (this.editingTask?.record_id === taskId) this.replaceEditingTaskFromRecord(acceptedTask, { force: true });
           if (options.refresh) this.scheduleTasksRefresh('PG task patch');
           if (releasePatchPgLease) await releasePgEditLeaseForRecord(this, task, 'task');
           return acceptedTask;
@@ -5438,7 +5637,6 @@ export function initApp() {
         if (currentBeforeWrite && currentSyncStatus !== 'pending' && currentVersionBeforeWrite >= queuedVersion) {
           return { status: 'skipped', item };
         }
-        await preparePgSyncedRecordMutation(this, previousTask, 'task', item.options || {});
         const currentLocal = await getTaskById(item.recordId)
           || this.tasks.find((task) => task.record_id === item.recordId)
           || item.updatedTask;
@@ -5454,7 +5652,7 @@ export function initApp() {
           if (!this.tasks.some((task) => task.record_id === item.recordId)) {
             this.tasks = mergeTaskIntoList(this.tasks, acceptedTask);
           }
-          if (this.editingTask?.record_id === item.recordId) this.editingTask = { ...acceptedTask };
+        if (this.editingTask?.record_id === item.recordId) this.replaceEditingTaskFromRecord(acceptedTask, { force: true });
         }
         if (item.options?.releasePatchPgLease) await releasePgEditLeaseForRecord(this, previousTask, 'task');
         return { status: 'synced', item, acceptedTask };
@@ -5466,7 +5664,7 @@ export function initApp() {
         };
         await upsertTask(failedTask);
         this.tasks = this.tasks.map((task) => task.record_id === item.recordId ? failedTask : task);
-        if (this.editingTask?.record_id === item.recordId) this.editingTask = { ...failedTask };
+        if (this.editingTask?.record_id === item.recordId) this.replaceEditingTaskFromRecord(failedTask, { force: true });
         this.error = error?.message || 'Failed to update PG task';
         this.pgTaskWriteFailedCount = Number(this.pgTaskWriteFailedCount || 0) + 1;
         if (item.options?.releasePatchPgLease) await releasePgEditLeaseForRecord(this, previousTask, 'task');
@@ -5692,17 +5890,20 @@ export function initApp() {
     setTaskDueToday() {
       if (!this.editingTask || !this.isTaskDetailEditing()) return;
       this.editingTask.scheduled_for = this.getTaskDueTodayDateKey();
+      this.handleEditingTaskDraftChanged();
     },
 
     setTaskDueThisWeek() {
       if (!this.editingTask || !this.isTaskDetailEditing()) return;
       this.editingTask.scheduled_for = this.getTaskDueThisWeekDateKey();
+      this.handleEditingTaskDraftChanged();
     },
 
     async quickSetTaskState(state) {
       if (!this.editingTask || !this.isTaskDetailEditing()) return;
       this.editingTask.state = state;
       this.editingTask = this.withTaskAssigneeNpubs(this.editingTask, []);
+      this.handleEditingTaskDraftChanged();
     },
 
     async applyTaskDetailQuickAction(action) {
@@ -5733,8 +5934,7 @@ export function initApp() {
         if (this.activeTaskId === taskId) {
           const current = this.tasks.find((task) => task.record_id === taskId) || updated;
           if (current) {
-            this.editingTask = { ...toRaw(current) };
-            this.editingTask.predecessor_task_ids = normalizePredecessorTaskIds(this.editingTask.predecessor_task_ids || [], this.editingTask.record_id);
+            this.replaceEditingTaskFromRecord(toRaw(current), { force: true });
           }
         }
       } catch (error) {
@@ -5766,9 +5966,8 @@ export function initApp() {
       this.taskDetailCheckoutPending = true;
       try {
         if (isTowerPgBackendMode()) {
-          if (isSyncedPgRecord(taskForEdit)) {
-            await acquirePgEditLeaseForRecord(this, taskForEdit, 'task');
-          }
+          // PG tasks use local drafts and explicit saves; editing no longer waits
+          // for a Tower edit lease.
         } else if (pendingTaskWrites.length === 0) {
           await this.ensureLockManagedCheckout(taskForEdit, taskFamilyHash('task'), {
             intent: 'edit',
@@ -5780,9 +5979,6 @@ export function initApp() {
         this.editingTask.predecessor_task_ids = normalizePredecessorTaskIds(this.editingTask.predecessor_task_ids || [], this.editingTask.record_id);
         this.taskDetailMode = 'edit';
         this.taskDescriptionEditing = true;
-        if (isTowerPgBackendMode() && isSyncedPgRecord(taskForEdit)) {
-          startPgEditLeaseRenewal(this, taskForEdit, 'task');
-        }
         this.error = '';
         return true;
       } catch (error) {
@@ -5802,7 +5998,17 @@ export function initApp() {
       const checkoutPolicyConfig = this.getTaskDetailCheckoutPolicyConfig();
       if (task?.record_id) {
         if (isTowerPgBackendMode()) {
-          await releasePgEditLeaseForRecord(this, task, 'task', { reportError: options.reportError === true });
+          await this.clearTaskLocalDraft(task.record_id);
+          const latest = this.tasks.find(t => t.record_id === task.record_id) || task;
+          this.replaceEditingTaskFromRecord(latest, { force: true });
+          this.taskDetailMode = 'edit';
+          this.taskDescriptionEditing = true;
+          this.taskAssigneeQuery = '';
+          this.predecessorTaskQuery = '';
+          this.showPredecessorTaskPicker = false;
+          this.showFlowPicker = false;
+          this.closeScopePicker();
+          return;
         } else {
           await this.releaseLockManagedCheckout(task, taskFamilyHash('task'), {
             reportError: options.reportError === true,
@@ -5842,9 +6048,11 @@ export function initApp() {
       const pendingWritesBeforeSave = await getPendingWrites();
       if (isTaskBlockedByPendingSave(task, pendingWritesBeforeSave, taskFamilyHash('task'))) {
         this.error = 'This task has a pending save. Sync before saving it again.';
-        this.taskDetailMode = 'view';
-        this.taskEditOriginal = null;
-        this.taskDescriptionEditing = false;
+        if (!isTowerPgBackendMode()) {
+          this.taskDetailMode = 'view';
+          this.taskEditOriginal = null;
+          this.taskDescriptionEditing = false;
+        }
         return;
       }
       const pendingTaskWrites = this.getPendingTaskWrites(pendingWritesBeforeSave, task.record_id);
@@ -5943,34 +6151,32 @@ export function initApp() {
         if (isTowerPgBackendMode()) {
           await upsertTask(updated);
           this.tasks = this.tasks.map(t => t.record_id === updated.record_id ? updated : t);
-          this.editingTask = { ...updated };
-          this.editingTask.predecessor_task_ids = normalizePredecessorTaskIds(this.editingTask.predecessor_task_ids || [], this.editingTask.record_id);
+          this.replaceEditingTaskFromRecord(updated, { force: true });
 
           if (isUnsyncedLocalPgRecord(taskForSave)) {
             if (isOnlineForPgEdit()) {
               try {
                 const createdTask = await createTowerPgTaskFromLocal(this, updated);
+                await this.clearTaskLocalDraft(updated.record_id);
                 await replaceLocalTaskWithAcceptedPgTask(this, updated.record_id, createdTask);
+                await this.clearTaskLocalDraft(createdTask.record_id);
+                this.replaceEditingTaskFromRecord(createdTask, { force: true });
               } catch (error) {
                 const failed = { ...updated, sync_status: 'failed', updated_at: new Date().toISOString() };
                 await upsertTask(failed);
                 this.tasks = this.tasks.map(t => t.record_id === failed.record_id ? failed : t);
-                this.editingTask = { ...failed };
+                this.replaceEditingTaskFromRecord(failed, { force: true });
                 this.error = error?.message || 'Failed to sync local PG task.';
                 return;
               }
             }
-            this.taskDetailMode = 'view';
-            this.taskEditOriginal = null;
-            this.taskDescriptionEditing = false;
+            await this.clearTaskLocalDraft(this.editingTask?.record_id || updated.record_id);
+            this.taskDetailMode = 'edit';
+            this.taskDescriptionEditing = true;
             this.scheduleTasksRefresh('PG task save');
             return;
           }
 
-          if (!getPgEditLeaseSession(this, 'task', taskForSave.record_id)?.lease?.lease_token) {
-            this.error = 'Acquire a PG edit lease before saving this task.';
-            return;
-          }
           let acceptedTask = taskForSave;
           const stateChanged = updated.state !== taskForSave.state;
           const scalarPatch = {};
@@ -6003,12 +6209,10 @@ export function initApp() {
           }
           await upsertTask(acceptedTask);
           this.tasks = this.tasks.map(t => t.record_id === updated.record_id ? acceptedTask : t);
-          this.editingTask = { ...acceptedTask };
-          this.editingTask.predecessor_task_ids = normalizePredecessorTaskIds(this.editingTask.predecessor_task_ids || [], this.editingTask.record_id);
-          await releasePgEditLeaseForRecord(this, taskForSave, 'task');
-          this.taskDetailMode = 'view';
-          this.taskEditOriginal = null;
-          this.taskDescriptionEditing = false;
+          this.replaceEditingTaskFromRecord(acceptedTask, { force: true });
+          await this.clearTaskLocalDraft(acceptedTask.record_id);
+          this.taskDetailMode = 'edit';
+          this.taskDescriptionEditing = true;
           this.scheduleTasksRefresh('PG task save');
           return;
         }
@@ -6020,8 +6224,7 @@ export function initApp() {
           : this.getTaskPatchCheckoutPolicyConfig(updated, taskForSave, { intent: 'edit' });
         await upsertTask(updated);
         this.tasks = this.tasks.map(t => t.record_id === updated.record_id ? updated : t);
-        this.editingTask = { ...updated };
-        this.editingTask.predecessor_task_ids = normalizePredecessorTaskIds(this.editingTask.predecessor_task_ids || [], this.editingTask.record_id);
+        this.replaceEditingTaskFromRecord(updated, { force: true });
         if (this.activeTaskId === updated.record_id) this.scheduleStorageImageHydration();
 
         if (hasQueuedTaskWrite) {
@@ -6059,8 +6262,7 @@ export function initApp() {
         if (acceptedTask) {
           await upsertTask(acceptedTask);
           this.tasks = this.tasks.map(t => t.record_id === acceptedTask.record_id ? acceptedTask : t);
-          this.editingTask = { ...acceptedTask };
-          this.editingTask.predecessor_task_ids = normalizePredecessorTaskIds(this.editingTask.predecessor_task_ids || [], this.editingTask.record_id);
+          this.replaceEditingTaskFromRecord(acceptedTask, { force: true });
           if (isTowerPgBackendMode()) {
             await releasePgEditLeaseForRecord(this, updated, 'task');
           } else {
@@ -6244,12 +6446,14 @@ export function initApp() {
       const patch = buildAttachFlowPatch(flowId, this.editingTask.references || []);
       Object.assign(this.editingTask, patch);
       this.showFlowPicker = false;
+      this.handleEditingTaskDraftChanged();
     },
 
     async detachFlowFromEditingTask() {
       if (!this.editingTask || !this.isTaskDetailEditing()) return;
       const patch = buildDetachFlowPatch(this.editingTask.references || []);
       Object.assign(this.editingTask, patch);
+      this.handleEditingTaskDraftChanged();
     },
 
     handleTaskAssigneeInput(value) {
@@ -6381,6 +6585,7 @@ export function initApp() {
       ], this.editingTask.record_id);
       this.predecessorTaskQuery = '';
       this.showPredecessorTaskPicker = false;
+      this.handleEditingTaskDraftChanged();
     },
 
     async removeEditingTaskPredecessor(taskId) {
@@ -6389,6 +6594,7 @@ export function initApp() {
         (this.editingTask.predecessor_task_ids || []).filter((candidate) => candidate !== taskId),
         this.editingTask.record_id,
       );
+      this.handleEditingTaskDraftChanged();
     },
 
     async assignEditingTask(npub) {
@@ -6396,6 +6602,7 @@ export function initApp() {
       const nextNpub = String(npub || '').trim();
       this.editingTask = this.withTaskAssigneeNpubs(this.editingTask, nextNpub ? [nextNpub] : []);
       this.taskAssigneeQuery = '';
+      this.handleEditingTaskDraftChanged();
       if (nextNpub) {
         await this.rememberPeople([nextNpub], 'task-assignee');
       }
@@ -6410,6 +6617,7 @@ export function initApp() {
       this.editingTask = this.withTaskAssigneeNpubs(this.editingTask, [this.defaultAgentNpub]);
       this.editingTask.state = 'ready';
       this.taskAssigneeQuery = '';
+      this.handleEditingTaskDraftChanged();
       this.rememberPeople([this.defaultAgentNpub], 'task-assignee');
     },
 
@@ -6958,7 +7166,7 @@ export function initApp() {
       this.tasks = this.tasks.map(t => t.record_id === taskId ? updated : t);
 
       if (this.editingTask?.record_id === taskId) {
-        this.editingTask = { ...updated };
+        this.replaceEditingTaskFromRecord(updated, { force: true });
       }
 
       // Move subtasks along with parent
@@ -8193,6 +8401,67 @@ export function initApp() {
         accessGroupIds: this.editingTask.group_ids ?? [],
         fileLabel: 'task-comment',
       });
+    },
+
+    handleTaskRichPaste(event, editor) {
+      const clipboardItems = [...(event?.clipboardData?.items || [])];
+      const imageItem = clipboardItems.find((item) => String(item?.type || '').startsWith('image/'));
+      if (!imageItem) return false;
+      event.preventDefault();
+
+      const task = this.editingTask;
+      if (!task) return true;
+      const file = imageItem.getAsFile?.();
+      if (!file) {
+        this.error = 'Could not read pasted image.';
+        return true;
+      }
+
+      const uploadId = globalThis.crypto?.randomUUID
+        ? `task-rich-upload-${globalThis.crypto.randomUUID()}`
+        : `task-rich-upload-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      editor?.chain?.()
+        .focus()
+        .insertContent({
+          type: 'fdUploadPlaceholder',
+          attrs: {
+            uploadId,
+            label: 'Uploading image...',
+          },
+        })
+        .run();
+
+      void (async () => {
+        try {
+          const uploaded = await this.uploadInlineImageFile(file, {
+            ownerNpub: task.owner_npub || this.workspaceOwnerNpub || this.session?.npub,
+            accessGroupIds: task.group_ids ?? [],
+            fileLabel: 'task-rich',
+          });
+          this.replaceDocRichUploadPlaceholder(editor, uploadId, {
+            type: 'fdStorageImage',
+            attrs: {
+              src: `storage://${uploaded.objectId}`,
+              objectId: uploaded.objectId,
+              alt: uploaded.fileName,
+              title: uploaded.fileName,
+            },
+          });
+          const model = this.taskRichDescriptionAdapter?.getContentModel?.();
+          if (model && this.editingTask) {
+            this.editingTask.description = model.content || '';
+            this.handleEditingTaskDraftChanged();
+          }
+          this.scheduleStorageImageHydration();
+        } catch (error) {
+          this.replaceDocRichUploadPlaceholder(editor, uploadId, {
+            type: 'paragraph',
+            content: [{ type: 'text', text: 'Image upload failed.' }],
+          });
+          this.error = error?.message || 'Could not upload pasted image.';
+        }
+      })();
+      return true;
     },
 
     async handleDocSourcePaste(event) {

@@ -390,7 +390,7 @@ describe('app PG task offline drafts', () => {
     expect(store.pgEditLeaseRenewalTimers['task:task-1']).toBeUndefined();
     expect(store.activeTaskId).toBe('task-2');
     expect(store.editingTask.record_id).toBe('task-2');
-    expect(store.taskDetailMode).toBe('view');
+    expect(store.taskDetailMode).toBe('edit');
   });
 
   it('clears stale task comments immediately when switching task detail records', async () => {
@@ -422,6 +422,73 @@ describe('app PG task offline drafts', () => {
     expect(store.editingTask.record_id).toBe('task-2');
     expect(store.taskComments).toEqual([]);
     expect(store.loadTaskComments).toHaveBeenCalledWith('task-2');
+  });
+
+  it('opens PG task detail as an editable local draft and restores unsaved changes', async () => {
+    const wsDb = openWorkspaceDb('npub1pgworkspace-task-draft');
+    await wsDb.open();
+    await Promise.all(wsDb.tables.map((table) => table.clear()));
+
+    const { initApp } = await import('../src/app.js');
+    initApp();
+    const store = alpineStoreMock.mock.calls.find(([name]) => name === 'chat')?.[1];
+    expect(store).toBeTruthy();
+
+    Object.assign(store, {
+      session: { npub: 'npub1owner' },
+      ownerNpub: 'npub1pgworkspace-task-draft',
+      currentWorkspaceOwnerNpub: 'npub1pgworkspace-task-draft',
+      selectedWorkspaceKey: 'workspace-1',
+      knownWorkspaces: [{
+        workspaceKey: 'workspace-1',
+        workspaceId: 'workspace-1',
+        workspaceOwnerNpub: 'npub1pgworkspace-task-draft',
+        directHttpsUrl: 'https://tower.example',
+        appNpub: 'flightdeck_pg',
+        pgBackendMode: true,
+      }],
+      backendUrl: 'https://tower.example',
+      tasks: [{
+        record_id: 'task-1',
+        title: 'Original title',
+        description: '',
+        state: 'new',
+        priority: 'sand',
+        version: 7,
+        pg_backend: true,
+        sync_status: 'synced',
+        record_state: 'active',
+      }],
+      loadTaskComments: vi.fn(),
+      scheduleStorageImageHydration: vi.fn(),
+      markTaskRead: vi.fn(),
+      syncRoute: vi.fn(),
+    });
+
+    store.openTaskDetail('task-1');
+    expect(store.taskDetailMode).toBe('edit');
+
+    store.editingTask.title = 'Unsaved local title';
+    store.handleEditingTaskDraftChanged();
+    await store.persistTaskLocalDraft();
+
+    const draft = await getSyncState('pg_task_detail_draft:v1:task-1');
+    expect(draft).toMatchObject({
+      record_id: 'task-1',
+      base_version: 7,
+      draft: {
+        title: 'Unsaved local title',
+      },
+    });
+
+    store.editingTask = null;
+    store.taskEditOriginal = null;
+    store.openTaskDetail('task-1');
+    await waitForCondition(() => store.editingTask?.title === 'Unsaved local title');
+
+    expect(store.taskDraftDirty).toBe(true);
+    expect(store.taskDraftSaveState).toBe('local');
+    expect(store.editingTask.title).toBe('Unsaved local title');
   });
 
   it('uses the original PG workspace context when a task comment save finishes after switching workspaces', async () => {

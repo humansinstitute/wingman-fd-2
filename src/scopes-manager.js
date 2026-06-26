@@ -1087,6 +1087,7 @@ export const scopesManagerMixin = {
     if (!this.editingTask || !this.session?.npub || !this.isTaskDetailEditing?.()) return;
     Object.assign(this.editingTask, this.buildTaskBoardAssignment(scopeId, this.editingTask));
     this.closeScopePicker();
+    this.handleEditingTaskDraftChanged?.();
   },
 
   async clearTaskScope() {
@@ -1100,6 +1101,7 @@ export const scopesManagerMixin = {
       scope_l5_id: null,
     });
     this.closeScopePicker();
+    this.handleEditingTaskDraftChanged?.();
   },
 
   async selectScopeForDoc(scopeId) {
@@ -1864,7 +1866,7 @@ export const scopesManagerMixin = {
     await upsertTask(updated);
     this.tasks = this.tasks.map((entry) => entry.record_id === updated.record_id ? updated : entry);
     if (this.editingTask?.record_id === updated.record_id) {
-      this.editingTask = { ...updated };
+      this.replaceEditingTaskFromRecord?.(updated, { force: true });
     }
     const writeFields = await getRecordWriteFieldsForStore(this, updated, {
       label: 'Task scope repair write',

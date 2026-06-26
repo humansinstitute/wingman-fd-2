@@ -52,12 +52,17 @@ export const taskDetailManagerMixin = {
     if (isTowerPgBackendMode() && task?.pg_channel_id && task.pg_channel_id !== this.selectedChannelId) {
       this.selectPgChannelContext?.(task.pg_channel_id);
     }
+    this.destroyTaskRichDescriptionEditor?.();
     this.editingTask = task ? toRaw(task) : null;
     this.taskEditOriginal = this.editingTask ? toRaw(this.editingTask) : null;
-    this.taskDetailMode = 'view';
+    this.taskDetailMode = isTowerPgBackendMode() ? 'edit' : 'view';
     this.taskDetailMobilePane = 'details';
     this.taskDetailSaving = false;
     this.taskDetailCheckoutPending = false;
+    this.taskDraftDirty = false;
+    this.taskDraftSaveState = '';
+    this.taskDraftSavedAt = '';
+    this.taskDraftRemoteChanged = false;
     this.taskCommentsFullscreenOpen = false;
     this.applyTaskComments([]);
     if (this.editingTask) {
@@ -77,9 +82,12 @@ export const taskDetailManagerMixin = {
     this.predecessorTaskQuery = '';
     this.showPredecessorTaskPicker = false;
     this.showTaskDetail = true;
-    this.taskDescriptionEditing = false;
+    this.taskDescriptionEditing = isTowerPgBackendMode();
     this.newSubtaskTitle = '';
     this.newTaskCommentBody = '';
+    if (this.editingTask && isTowerPgBackendMode()) {
+      void this.restoreTaskLocalDraft?.(this.editingTask).catch(() => {});
+    }
     this.loadTaskComments(taskId);
     this.scheduleStorageImageHydration();
     this.markTaskRead(taskId);
@@ -88,8 +96,13 @@ export const taskDetailManagerMixin = {
 
   async closeTaskDetail(options = {}) {
     if (this.isTaskDetailEditing() && options.releaseCheckout !== false) {
-      await this.cancelTaskDetailEdit({ reportError: false });
+      if (isTowerPgBackendMode()) {
+        if (this.taskDraftDirty) await this.persistTaskLocalDraft?.();
+      } else {
+        await this.cancelTaskDetailEdit({ reportError: false });
+      }
     }
+    this.destroyTaskRichDescriptionEditor?.();
     this.stopTaskCommentsLiveQuery();
     this.showTaskDetail = false;
     this.activeTaskId = null;
@@ -99,6 +112,10 @@ export const taskDetailManagerMixin = {
     this.taskDetailMobilePane = 'details';
     this.taskDetailSaving = false;
     this.taskDetailCheckoutPending = false;
+    this.taskDraftDirty = false;
+    this.taskDraftSaveState = '';
+    this.taskDraftSavedAt = '';
+    this.taskDraftRemoteChanged = false;
     this.taskAssigneeQuery = '';
     this.predecessorTaskQuery = '';
     this.showPredecessorTaskPicker = false;

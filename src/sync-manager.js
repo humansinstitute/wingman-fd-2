@@ -1026,7 +1026,7 @@ export const syncManagerMixin = {
       await upsertTask(nextRecord);
       this.tasks = this.tasks.map((entry) => entry.record_id === nextRecord.record_id ? nextRecord : entry);
       if (this.editingTask?.record_id === nextRecord.record_id) {
-        this.editingTask = { ...nextRecord };
+        this.replaceEditingTaskFromRecord?.(nextRecord);
       }
       return;
     }

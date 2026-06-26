@@ -13700,6 +13700,10 @@ button:disabled {
   color: #047857;
 }
 
+.task-detail-mode-pill.task-detail-mode-edit {
+  white-space: nowrap;
+}
+
 .task-actions-menu .doc-actions-popover {
   right: 0;
 }
@@ -13988,6 +13992,22 @@ button:disabled {
 
 .task-description-section .task-field-label {
   margin-bottom: 0.2rem;
+}
+
+.task-rich-editor {
+  min-height: 11rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.task-rich-editor .ProseMirror {
+  min-height: 9.5rem;
+}
+
+.task-rich-editor .ProseMirror p:last-child {
+  margin-bottom: 0;
 }
 
 .task-field select,
