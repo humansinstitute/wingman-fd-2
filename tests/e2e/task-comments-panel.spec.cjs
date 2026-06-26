@@ -107,7 +107,8 @@ test('task activity header exposes only the fullscreen comment reader control', 
   await page.setContent(taskPanelFixture());
 
   const normal = await panelMetrics(page);
-  expect(normal.commentsWidth).toBeLessThanOrEqual(410);
+  expect(normal.commentsShare).toBeGreaterThan(0.38);
+  expect(normal.commentsShare).toBeLessThan(0.42);
   await expect(page.locator('.task-comments-panel-rail')).toHaveCount(0);
   await expect(page.locator('.task-comments-resize-btn')).toHaveCount(0);
   await expect(page.locator('.task-comments-fullscreen-btn')).toHaveCount(1);

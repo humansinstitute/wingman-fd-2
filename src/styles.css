@@ -13769,7 +13769,7 @@ button:disabled {
 
 .task-detail-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(20rem, 25rem);
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
   gap: 1rem;
   align-items: start;
   padding-inline: clamp(1rem, 2vw, 2rem) clamp(0.75rem, 1.5vw, 1.5rem);
