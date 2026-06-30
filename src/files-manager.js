@@ -102,6 +102,28 @@ function matchesScope(rowScopeId, selectedScopeId, scopesMap) {
   ].some((value) => normalizeString(value) === selected);
 }
 
+function currentPgFilesScopeId(store = {}) {
+  return normalizeString(store.pgContextScopeId || store.selectedBoardScope?.record_id || '');
+}
+
+function currentPgFilesChannelIds(store = {}) {
+  const selectedChannelId = normalizeString(store.pgContextSelectedChannelId);
+  if (selectedChannelId) return [selectedChannelId];
+  const channels = Array.isArray(store.pgContextChannels) ? store.pgContextChannels : [];
+  return [...new Set(channels
+    .map((channel) => normalizeString(channel?.record_id))
+    .filter(Boolean))];
+}
+
+function fileFolderMatchesCurrentContext(folder = {}, store = {}) {
+  if (!folder?.record_id || folder.record_state === 'deleted') return false;
+  const scopeId = currentPgFilesScopeId(store);
+  if (scopeId && !matchesScope(folder.scope_id, scopeId, store.scopesMap)) return false;
+  const channelIds = currentPgFilesChannelIds(store);
+  if (channelIds.length > 0 && !channelIds.includes(normalizeString(folder.channel_id))) return false;
+  return true;
+}
+
 function sortRows(rows = []) {
   return [...rows].sort((a, b) => {
     const ts = String(b.updated_at || '').localeCompare(String(a.updated_at || ''));
@@ -838,6 +860,14 @@ export const filesManagerMixin = {
   },
 
   get currentFileChannelId() {
+    const selectedFolderId = normalizeString(this.fileCurrentFolderId);
+    if (selectedFolderId) {
+      const folder = (this.fileFolders || []).find((entry) =>
+        entry?.record_id === selectedFolderId
+        && fileFolderMatchesCurrentContext(entry, this)
+      );
+      if (folder?.channel_id) return normalizeString(folder.channel_id);
+    }
     return normalizeString(this.pgContextSelectedChannelId);
   },
 
@@ -846,8 +876,7 @@ export const filesManagerMixin = {
     if (!selected) return '';
     const folder = (this.fileFolders || []).find((entry) =>
       entry?.record_id === selected
-      && entry.record_state !== 'deleted'
-      && entry.channel_id === this.currentFileChannelId
+      && fileFolderMatchesCurrentContext(entry, this)
     );
     return folder ? selected : '';
   },
@@ -861,7 +890,7 @@ export const filesManagerMixin = {
   get currentFileFolderBreadcrumbs() {
     const crumbs = [];
     const byId = new Map((this.fileFolders || [])
-      .filter((folder) => folder?.record_id && folder.channel_id === this.currentFileChannelId)
+      .filter((folder) => fileFolderMatchesCurrentContext(folder, this))
       .map((folder) => [folder.record_id, folder]));
     const seen = new Set();
     let cursor = this.currentFileFolderId;
@@ -878,9 +907,7 @@ export const filesManagerMixin = {
     const parentId = this.currentFileFolderId;
     return (this.fileFolders || [])
       .filter((folder) =>
-        folder?.record_id
-        && folder.record_state !== 'deleted'
-        && folder.channel_id === this.currentFileChannelId
+        fileFolderMatchesCurrentContext(folder, this)
         && normalizeString(folder.parent_folder_id) === parentId
       )
       .sort((left, right) => String(left.title || '').localeCompare(String(right.title || '')));
@@ -965,7 +992,7 @@ export const filesManagerMixin = {
       query: this.fileSearch,
       type: this.fileTypeFilter,
       source: this.fileSourceFilter,
-      scopeId: this.fileScopeFilter,
+      scopeId: this.isTowerPgMode ? (currentPgFilesScopeId(this) || 'all') : this.fileScopeFilter,
       channelId: this.fileChannelFilter,
       threadId: this.fileThreadFilter,
       folderId: this.isTowerPgMode ? this.currentFileFolderId : 'all',

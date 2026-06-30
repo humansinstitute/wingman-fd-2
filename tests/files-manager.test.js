@@ -394,6 +394,71 @@ describe('files manager', () => {
     expect(updateTowerPgFileFromLocal).toHaveBeenCalledTimes(2);
   });
 
+  it('shows scoped PG folders when no single channel is selected', () => {
+    const scopeStore = Object.assign(Object.create(filesManagerMixin), {
+      isTowerPgMode: true,
+      pgContextScopeId: 'scope-1',
+      pgContextSelectedChannelId: '',
+      pgContextSelectedThreadId: '',
+      pgContextChannels: [
+        { record_id: 'chan-1', scope_id: 'scope-1', record_state: 'active' },
+      ],
+      scopesMap: new Map(),
+      fileSearch: '',
+      fileTypeFilter: 'all',
+      fileSourceFilter: 'all',
+      fileScopeFilter: 'all',
+      fileChannelFilter: 'all',
+      fileThreadFilter: 'all',
+      fileCurrentFolderId: '',
+      documents: [
+        {
+          record_id: 'file-1',
+          title: 'Visible.pdf',
+          content: '[Visible.pdf](storage://storage-1)',
+          pg_backend: true,
+          pg_record_type: 'file',
+          pg_storage_object_id: 'storage-1',
+          scope_id: 'scope-1',
+          pg_channel_id: 'chan-1',
+          pg_folder_id: null,
+        },
+        {
+          record_id: 'file-2',
+          title: 'Hidden.pdf',
+          content: '[Hidden.pdf](storage://storage-2)',
+          pg_backend: true,
+          pg_record_type: 'file',
+          pg_storage_object_id: 'storage-2',
+          scope_id: 'scope-2',
+          pg_channel_id: 'chan-2',
+          pg_folder_id: null,
+        },
+      ],
+      tasks: [],
+      fileMessages: [],
+      fileComments: [],
+      audioNotes: [],
+      fileFolders: [
+        { record_id: 'folder-1', title: 'Assets', scope_id: 'scope-1', channel_id: 'chan-1', parent_folder_id: '', record_state: 'active' },
+        { record_id: 'folder-2', title: 'Other', scope_id: 'scope-2', channel_id: 'chan-2', parent_folder_id: '', record_state: 'active' },
+      ],
+      channels: [
+        { record_id: 'chan-1', title: 'General', scope_id: 'scope-1', record_state: 'active' },
+        { record_id: 'chan-2', title: 'Other', scope_id: 'scope-2', record_state: 'active' },
+      ],
+    });
+
+    expect(scopeStore.currentFileChildFolders.map((folder) => folder.record_id)).toEqual(['folder-1']);
+    expect(scopeStore.filteredFileBrowserRows.map((row) => row.source_record_id)).toEqual(['file-1']);
+
+    scopeStore.selectFileFolder('folder-1');
+
+    expect(scopeStore.currentFileFolderId).toBe('folder-1');
+    expect(scopeStore.currentFileChannelId).toBe('chan-1');
+    expect(scopeStore.currentFileFolderBreadcrumbs.map((folder) => folder.record_id)).toEqual(['folder-1']);
+  });
+
   it('preserves PG file folders when leaving the files section', () => {
     const shell = {
       fileFolders: [{ record_id: 'folder-1', title: 'Assets' }],
