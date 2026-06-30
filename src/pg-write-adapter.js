@@ -2,6 +2,7 @@ import {
   createTowerPgChannelAudioNote,
   createTowerPgChannelDoc,
   createTowerPgChannelFile,
+  createTowerPgChannelFileFolder,
   createTowerPgChannelMessage,
   createTowerPgChannelTask,
   archiveTowerPgThread,
@@ -21,6 +22,7 @@ import {
 import {
   mapPgAudioNoteToLocal,
   mapPgDocToLocal,
+  mapPgFileFolderToLocal,
   mapPgFileToLocalDocument,
   mapPgMessageToLocal,
   mapPgDocCommentToLocal,
@@ -241,6 +243,7 @@ export async function createTowerPgFileFromLocal(store, file) {
   if (!channel?.record_id) throw new Error('Selected PG channel does not match the file scope');
   const result = await createTowerPgChannelFile(context.workspaceId, channel.record_id, {
     storage_object_id: file.storage_object_id || file.content_storage_object_id,
+    folder_id: file.folder_id || file.pg_folder_id || null,
     display_name: file.display_name || file.title || null,
     description: file.description || file.content || null,
     metadata: pgMetadataWithThread(file.pg_metadata || file.metadata, recordContext.threadId),
@@ -256,11 +259,28 @@ export async function updateTowerPgFileFromLocal(store, file, previous = null) {
   const result = await updateTowerPgFile(context.workspaceId, file.record_id, {
     row_version: previous?.version || file.version || undefined,
     channel_id: channel.record_id,
+    folder_id: file.folder_id ?? file.pg_folder_id ?? null,
     display_name: file.display_name || file.title || null,
     description: file.description || file.content || null,
     metadata: pgMetadataWithThread(file.pg_metadata || file.metadata, recordContext.threadId),
   }, pgRequestOptions(context));
   return mapPgFileToLocalDocument(result.file, { workspaceOwnerNpub: context.workspaceOwnerNpub });
+}
+
+export async function createTowerPgFileFolderFromLocal(store, folder) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  if (!context.workspaceId || !context.workspaceOwnerNpub || !context.baseUrl) throw new Error('Tower PG workspace is not ready');
+  const { recordContext, channel } = resolveTowerPgChannelForRecord(store, {
+    scope_id: folder.scope_id,
+    pg_channel_id: folder.channel_id,
+  });
+  if (!channel?.record_id) throw new Error('Selected PG channel does not match the folder scope');
+  const result = await createTowerPgChannelFileFolder(context.workspaceId, channel.record_id, {
+    title: folder.title,
+    parent_folder_id: folder.parent_folder_id || null,
+    metadata: pgMetadataWithThread(folder.metadata, recordContext.threadId),
+  }, pgRequestOptions(context));
+  return mapPgFileFolderToLocal(result.folder);
 }
 
 export async function createTowerPgAudioNoteFromLocal(store, audioNote) {

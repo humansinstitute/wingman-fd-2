@@ -134,17 +134,44 @@ describe('files manager', () => {
     ]);
   });
 
+  it('carries PG file folder placement into rows and filters by folder', () => {
+    const rows = buildFileBrowserRows({
+      documents: [{
+        record_id: 'file-1',
+        title: 'Asset.pdf',
+        content: '[Asset.pdf](storage://object-file-1)',
+        scope_id: 'scope-1',
+        pg_channel_id: 'chan-1',
+        pg_folder_id: 'folder-1',
+        pg_record_type: 'file',
+        updated_at: '2026-05-06T10:00:00.000Z',
+      }],
+    });
+
+    expect(rows).toEqual([
+      expect.objectContaining({
+        object_id: 'object-file-1',
+        folder_id: 'folder-1',
+        channel_id: 'chan-1',
+      }),
+    ]);
+    expect(filterFileBrowserRows(rows, { folderId: 'folder-1' })).toHaveLength(1);
+    expect(filterFileBrowserRows(rows, { folderId: '' })).toHaveLength(0);
+  });
+
   it('builds upload queue items from browser files', () => {
     const item = buildFileUploadQueueItem({
       name: 'Plan.pdf',
       type: 'application/pdf',
       size: 4096,
-    }, { scopeId: 'scope-1' });
+    }, { scopeId: 'scope-1', channelId: 'chan-1', folderId: 'folder-1' });
 
     expect(item).toMatchObject({
       original_name: 'Plan.pdf',
       name: 'Plan.pdf',
       scope_id: 'scope-1',
+      channel_id: 'chan-1',
+      folder_id: 'folder-1',
       status: 'queued',
       progress: 0,
       size_bytes: 4096,
@@ -172,7 +199,11 @@ describe('files manager', () => {
         pg_storage_object_id: 'storage-1',
         scope_id: 'scope-1',
         pg_channel_id: 'chan-1',
+        pg_folder_id: 'folder-1',
       }],
+      fileFolders: [
+        { record_id: 'folder-1', title: 'Assets', scope_id: 'scope-1', channel_id: 'chan-1' },
+      ],
       channels: [
         { record_id: 'chan-1', title: 'General', scope_id: 'scope-1', record_state: 'active' },
         { record_id: 'chan-2', title: 'Finance', scope_id: 'scope-2', record_state: 'active' },
@@ -192,11 +223,13 @@ describe('files manager', () => {
     expect(editStore.fileEditName).toBe('Original.pdf');
     expect(editStore.fileEditScopeId).toBe('scope-1');
     expect(editStore.fileEditChannelId).toBe('chan-1');
+    expect(editStore.fileEditFolderId).toBe('folder-1');
     expect(editStore.fileEditContextChanged).toBe(false);
 
     editStore.selectFileEditScope('scope-2');
 
     expect(editStore.fileEditChannelId).toBe('chan-2');
+    expect(editStore.fileEditFolderId).toBe('');
     expect(editStore.fileEditContextChanged).toBe(true);
   });
 

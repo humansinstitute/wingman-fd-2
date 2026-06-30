@@ -4,6 +4,7 @@ import {
   getTowerPgChannelAudioNotes,
   getTowerPgChannelDocs,
   getTowerPgChannelFiles,
+  getTowerPgChannelFileFolders,
   getTowerPgDailyNotes,
   getTowerPgPersonalWapps,
   getTowerPgDoc,
@@ -811,10 +812,29 @@ export function mapPgFileToLocalDocument(file, { workspaceOwnerNpub } = {}) {
     pg_workspace_id: trimText(file?.workspace_id),
     pg_channel_id: trimText(file?.channel_id),
     pg_thread_id: pgMetadataThreadId(file),
+    pg_folder_id: trimText(file?.folder_id),
     pg_storage_object_id: storageObjectId || null,
     pg_object_route: trimText(file?.object?.route),
     pg_created_by_actor_id: trimText(file?.created_by_actor_id),
     pg_updated_by_actor_id: trimText(file?.updated_by_actor_id),
+  };
+}
+
+export function mapPgFileFolderToLocal(folder) {
+  return {
+    record_id: trimText(folder?.id || folder?.record_id),
+    workspace_id: trimText(folder?.workspace_id),
+    scope_id: trimText(folder?.scope_id),
+    channel_id: trimText(folder?.channel_id),
+    parent_folder_id: trimText(folder?.parent_folder_id),
+    title: trimText(folder?.title) || 'Untitled folder',
+    metadata: folder?.metadata && typeof folder.metadata === 'object' && !Array.isArray(folder.metadata)
+      ? folder.metadata
+      : {},
+    version: rowVersion(folder?.row_version || folder?.version),
+    created_at: isoTimestamp(folder?.created_at || folder?.updated_at),
+    updated_at: isoTimestamp(folder?.updated_at || folder?.created_at),
+    record_state: 'active',
   };
 }
 
@@ -1273,13 +1293,18 @@ export async function hydrateTowerPgChannelDocumentsAndFiles(store, channelId, d
 
   const readDocs = deps.getTowerPgChannelDocs || getTowerPgChannelDocs;
   const readFiles = deps.getTowerPgChannelFiles || getTowerPgChannelFiles;
+  const readFolders = deps.getTowerPgChannelFileFolders || getTowerPgChannelFileFolders;
   const replaceDocuments = deps.replacePgDocumentsForChannel || replacePgDocumentsForChannel;
-  const [docsResult, filesResult] = await Promise.all([
+  const [docsResult, filesResult, foldersResult] = await Promise.all([
     readDocs(context.workspaceId, targetChannelId, {
       baseUrl: context.baseUrl,
       appNpub: context.appNpub,
     }),
     readFiles(context.workspaceId, targetChannelId, {
+      baseUrl: context.baseUrl,
+      appNpub: context.appNpub,
+    }),
+    readFolders(context.workspaceId, targetChannelId, {
       baseUrl: context.baseUrl,
       appNpub: context.appNpub,
     }),
@@ -1294,8 +1319,18 @@ export async function hydrateTowerPgChannelDocumentsAndFiles(store, channelId, d
     ...(Array.isArray(filesResult?.files) ? filesResult.files : [])
       .map((file) => mapPgFileToLocalDocument(file, { workspaceOwnerNpub: context.workspaceOwnerNpub })),
   ].filter((doc) => doc.record_id);
+  const folders = (Array.isArray(foldersResult?.folders) ? foldersResult.folders : [])
+    .map(mapPgFileFolderToLocal)
+    .filter((folder) => folder.record_id);
   await replaceDocuments(targetChannelId, documents);
   await mergeStoreChannelRows(store, 'documents', 'applyDocuments', targetChannelId, documents);
+  if (typeof store.applyFileFolders === 'function') {
+    const existing = Array.isArray(store.fileFolders) ? store.fileFolders : [];
+    store.applyFileFolders([
+      ...existing.filter((folder) => folder?.channel_id !== targetChannelId),
+      ...folders,
+    ]);
+  }
   return documents;
 }
 
@@ -1463,7 +1498,7 @@ export async function hydrateTowerPgEventUpdates(store, events = [], deps = {}) 
       if (taskId) taskIds.add(taskId);
       else if (channelId) taskChannels.add(channelId);
       else fallbackEvents += 1;
-    } else if (['doc', 'file'].includes(entityType) && channelId) {
+    } else if (['doc', 'file', 'file_folder'].includes(entityType) && channelId) {
       documentChannels.add(channelId);
     } else if (entityType === 'audio_note' && channelId) {
       audioChannels.add(channelId);
@@ -1690,6 +1725,7 @@ export async function hydrateTowerPgDocumentsAndFiles(store, deps = {}) {
   if (!context.workspaceId || !context.workspaceOwnerNpub || !context.baseUrl) return [];
   const readDocs = deps.getTowerPgChannelDocs || getTowerPgChannelDocs;
   const readFiles = deps.getTowerPgChannelFiles || getTowerPgChannelFiles;
+  const readFolders = deps.getTowerPgChannelFileFolders || getTowerPgChannelFileFolders;
   const replaceDocuments = deps.replaceDocumentsForOwner || replaceDocumentsForOwner;
   let channels = Array.isArray(store.channels) ? store.channels : [];
   if (channels.length === 0 && typeof store.refreshChannels === 'function') {
@@ -1698,10 +1734,12 @@ export async function hydrateTowerPgDocumentsAndFiles(store, deps = {}) {
   }
 
   const documents = [];
+  const fileFolders = [];
   for (const channel of channels.filter((entry) => entry?.record_id && entry.record_state !== 'deleted')) {
-    const [docsResult, filesResult] = await Promise.all([
+    const [docsResult, filesResult, foldersResult] = await Promise.all([
       readDocs(context.workspaceId, channel.record_id, { baseUrl: context.baseUrl, appNpub: context.appNpub }),
       readFiles(context.workspaceId, channel.record_id, { baseUrl: context.baseUrl, appNpub: context.appNpub }),
+      readFolders(context.workspaceId, channel.record_id, { baseUrl: context.baseUrl, appNpub: context.appNpub }),
     ]);
     const docRows = await hydratePgDocStorageContents(
       (Array.isArray(docsResult?.docs) ? docsResult.docs : [])
@@ -1715,10 +1753,16 @@ export async function hydrateTowerPgDocumentsAndFiles(store, deps = {}) {
         .map((file) => mapPgFileToLocalDocument(file, { workspaceOwnerNpub: context.workspaceOwnerNpub }))
         .filter((doc) => doc.record_id),
     );
+    fileFolders.push(
+      ...(Array.isArray(foldersResult?.folders) ? foldersResult.folders : [])
+        .map(mapPgFileFolderToLocal)
+        .filter((folder) => folder.record_id),
+    );
   }
 
   await replaceDocuments(context.workspaceOwnerNpub, documents);
   if (typeof store.applyDocuments === 'function') store.applyDocuments(documents);
+  if (typeof store.applyFileFolders === 'function') store.applyFileFolders(fileFolders);
   return documents;
 }
 

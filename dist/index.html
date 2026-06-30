@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-BhVlLjWt.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-BaGyQO28.css">
+  <script type="module" crossorigin src="/assets/index-D-Qrs2vq.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-CdmWM2g8.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -5037,6 +5037,22 @@
                 <span aria-hidden="true">+</span>
                 <span>File</span>
               </button>
+              <button
+                type="button"
+                class="files-upload-open-btn"
+                x-show="$store.chat.isTowerPgMode"
+                @click="$store.chat.createFileFolderFromPrompt()"
+              >
+                <span aria-hidden="true">+</span>
+                <span>Folder</span>
+              </button>
+            </div>
+
+            <div class="files-folder-bar" x-show="$store.chat.isTowerPgMode" x-cloak>
+              <button type="button" class="file-folder-crumb" :class="{ active: !$store.chat.currentFileFolderId }" @click="$store.chat.selectFileFolder('')">Root</button>
+              <template x-for="folder in $store.chat.currentFileFolderBreadcrumbs" :key="folder.record_id">
+                <button type="button" class="file-folder-crumb" :class="{ active: $store.chat.currentFileFolderId === folder.record_id }" @click="$store.chat.selectFileFolder(folder.record_id)" x-text="folder.title"></button>
+              </template>
             </div>
 
             <div class="files-toolbar">
@@ -5108,7 +5124,7 @@
                         <span>Scope</span>
                         <select
                           x-model="item.scope_id"
-                          @change="item.channel_id = ($store.chat.fileUploadChannelOptions(item.scope_id)[0]?.id || '')"
+                          @change="item.channel_id = ($store.chat.fileUploadChannelOptions(item.scope_id)[0]?.id || ''); item.folder_id = ''"
                           :disabled="!$store.chat.canEditFileUploadItem(item)"
                         >
                           <option value="">Select scope</option>
@@ -5121,10 +5137,22 @@
                         <span>Channel</span>
                         <select
                           x-model="item.channel_id"
+                          @change="item.folder_id = ''"
                           :disabled="!$store.chat.canEditFileUploadItem(item)"
                         >
                           <option value="">Select channel</option>
                           <template x-for="option in $store.chat.fileUploadChannelOptions(item.scope_id)" :key="option.id">
+                            <option :value="option.id" x-text="option.label"></option>
+                          </template>
+                        </select>
+                      </label>
+                      <label>
+                        <span>Folder</span>
+                        <select
+                          x-model="item.folder_id"
+                          :disabled="!$store.chat.canEditFileUploadItem(item)"
+                        >
+                          <template x-for="option in $store.chat.fileFolderOptions(item.scope_id, item.channel_id)" :key="option.id">
                             <option :value="option.id" x-text="option.label"></option>
                           </template>
                         </select>
@@ -5152,7 +5180,27 @@
               </div>
             </section>
 
-            <div class="files-list" x-show="$store.chat.filteredFileBrowserRows.length > 0">
+            <div class="files-list" x-show="$store.chat.currentFileChildFolders.length > 0 || $store.chat.filteredFileBrowserRows.length > 0">
+              <template x-for="folder in $store.chat.currentFileChildFolders" :key="folder.record_id">
+                <article class="file-row file-folder-row" @dblclick="$store.chat.selectFileFolder(folder.record_id)">
+                  <button type="button" class="file-thumb file-folder-thumb" @click="$store.chat.selectFileFolder(folder.record_id)" aria-label="Open folder">
+                    <span class="file-thumb-icon">F</span>
+                  </button>
+                  <div class="file-row-main">
+                    <div class="file-row-title">
+                      <button type="button" class="file-folder-title-btn" @click="$store.chat.selectFileFolder(folder.record_id)" x-text="folder.title"></button>
+                      <span class="file-kind-pill">Folder</span>
+                    </div>
+                    <div class="file-row-meta">
+                      <span x-show="folder.scope_id" x-text="$store.chat.getScopeBreadcrumb(folder.scope_id) || $store.chat.getTaskBoardLabel(folder.scope_id)"></span>
+                      <span x-show="folder.channel_id" x-text="$store.chat.getChannelLabel($store.chat.channels.find((channel) => channel.record_id === folder.channel_id) || {})"></span>
+                    </div>
+                  </div>
+                  <div class="file-row-actions">
+                    <button type="button" class="file-action-btn" @click="$store.chat.selectFileFolder(folder.record_id)">Open</button>
+                  </div>
+                </article>
+              </template>
               <template x-for="row in $store.chat.filteredFileBrowserRows" :key="row.id">
                 <article class="file-row">
                   <div class="file-thumb" :data-kind="row.kind">
@@ -5177,6 +5225,7 @@
                       <span x-text="row.source_label"></span>
                       <span x-show="row.scope_id" x-text="$store.chat.getScopeBreadcrumb(row.scope_id) || $store.chat.getTaskBoardLabel(row.scope_id)"></span>
                       <span x-show="row.channel_id" x-text="$store.chat.getChannelLabel($store.chat.channels.find((channel) => channel.record_id === row.channel_id) || {})"></span>
+                      <span x-show="row.folder_id" x-text="$store.chat.getFileFolderPathLabel(row.folder_id)"></span>
                       <span x-show="$store.chat.formatFileSize(row.size_bytes)" x-text="$store.chat.formatFileSize(row.size_bytes)"></span>
                       <span x-show="$store.chat.fileUpdatedLabel(row)" x-text="$store.chat.fileUpdatedLabel(row)"></span>
                     </div>
@@ -5191,7 +5240,7 @@
               </template>
             </div>
 
-            <div class="files-empty" x-show="$store.chat.filteredFileBrowserRows.length === 0">
+            <div class="files-empty" x-show="$store.chat.currentFileChildFolders.length === 0 && $store.chat.filteredFileBrowserRows.length === 0">
               <h2>Files</h2>
               <p>No files found.</p>
             </div>
@@ -5233,9 +5282,17 @@
                   </label>
                   <label class="file-edit-field">
                     <span>Channel</span>
-                    <select x-model="$store.chat.fileEditChannelId" :disabled="$store.chat.fileEditSubmitting">
+                    <select x-model="$store.chat.fileEditChannelId" @change="$store.chat.selectFileEditChannel($event.target.value)" :disabled="$store.chat.fileEditSubmitting">
                       <option value="">Select channel</option>
                       <template x-for="option in $store.chat.fileUploadChannelOptions($store.chat.fileEditScopeId)" :key="option.id">
+                        <option :value="option.id" x-text="option.label"></option>
+                      </template>
+                    </select>
+                  </label>
+                  <label class="file-edit-field">
+                    <span>Folder</span>
+                    <select x-model="$store.chat.fileEditFolderId" :disabled="$store.chat.fileEditSubmitting">
+                      <template x-for="option in $store.chat.fileFolderOptions($store.chat.fileEditScopeId, $store.chat.fileEditChannelId)" :key="option.id">
                         <option :value="option.id" x-text="option.label"></option>
                       </template>
                     </select>

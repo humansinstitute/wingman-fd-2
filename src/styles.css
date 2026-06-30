@@ -2207,6 +2207,35 @@ button:disabled {
   background: #ffffff;
 }
 
+.files-folder-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  overflow-x: auto;
+  padding: 0.7rem 1.5rem 0;
+  background: #ffffff;
+}
+
+.file-folder-crumb {
+  flex: 0 0 auto;
+  min-height: 30px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #ffffff;
+  color: #475569;
+  font-size: 0.8rem;
+  font-weight: 650;
+  padding: 0.32rem 0.58rem;
+  cursor: pointer;
+}
+
+.file-folder-crumb.active,
+.file-folder-crumb:hover {
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
 .files-search-input,
 .files-filter-select {
   width: 100%;
@@ -2311,7 +2340,7 @@ button:disabled {
 
 .files-upload-item-fields {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   align-items: end;
   gap: 0.75rem;
 }
@@ -2417,6 +2446,10 @@ button:disabled {
   background: #ffffff;
 }
 
+.file-folder-row {
+  border-color: #cbd5e1;
+}
+
 .file-thumb {
   width: 56px;
   height: 44px;
@@ -2427,6 +2460,14 @@ button:disabled {
   align-items: center;
   justify-content: center;
   overflow: hidden;
+}
+
+.file-folder-thumb {
+  cursor: pointer;
+}
+
+.file-folder-thumb .file-thumb-icon {
+  color: #1d4ed8;
 }
 
 .file-thumb[data-kind="audio"] {
@@ -2467,6 +2508,24 @@ button:disabled {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.file-folder-title-btn {
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  overflow: hidden;
+  padding: 0;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.file-folder-title-btn:hover {
+  color: #1d4ed8;
 }
 
 .file-kind-pill {
@@ -2650,6 +2709,7 @@ button:disabled {
 @media (max-width: 640px) {
   .files-header,
   .docs-header,
+  .files-folder-bar,
   .files-toolbar,
   .files-upload-panel,
   .files-list {

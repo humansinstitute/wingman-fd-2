@@ -6,7 +6,7 @@ import {
   uploadStorageObject,
 } from './api.js';
 import { upsertDocument } from './db.js';
-import { createTowerPgFileFromLocal, updateTowerPgFileFromLocal } from './pg-write-adapter.js';
+import { createTowerPgFileFolderFromLocal, createTowerPgFileFromLocal, updateTowerPgFileFromLocal } from './pg-write-adapter.js';
 import { buildStoragePrepareBody } from './storage-payloads.js';
 import { recordFamilyHash } from './translators/chat.js';
 
@@ -148,7 +148,7 @@ async function sha256HexForBytes(bytes) {
     .join('');
 }
 
-export function buildFileUploadQueueItem(file, { scopeId = null, channelId = null } = {}) {
+export function buildFileUploadQueueItem(file, { scopeId = null, channelId = null, folderId = null } = {}) {
   return {
     id: fileUploadId(),
     file,
@@ -156,6 +156,7 @@ export function buildFileUploadQueueItem(file, { scopeId = null, channelId = nul
     name: defaultFileUploadName(file),
     scope_id: normalizeString(scopeId),
     channel_id: normalizeString(channelId),
+    folder_id: normalizeString(folderId),
     status: 'queued',
     progress: 0,
     error: '',
@@ -175,6 +176,7 @@ function baseRow({
   scope_id = null,
   channel_id = null,
   thread_id = null,
+  folder_id = null,
   content_type = '',
   size_bytes = null,
   updated_at = '',
@@ -192,6 +194,7 @@ function baseRow({
     scope_id: scope_id || null,
     channel_id: channel_id || null,
     thread_id: thread_id || null,
+    folder_id: folder_id || null,
     content_type: normalizeString(content_type),
     size_bytes: Number.isFinite(Number(size_bytes)) ? Number(size_bytes) : null,
     updated_at: updated_at || '',
@@ -305,6 +308,7 @@ export function buildFileBrowserRows(store = {}) {
         scope_id: scopeId,
         channel_id: document.pg_channel_id || null,
         thread_id: document.pg_thread_id || null,
+        folder_id: document.pg_folder_id || null,
         content_type: document.content_storage_content_type,
         size_bytes: document.content_size_bytes,
         updated_at: document.updated_at,
@@ -321,6 +325,7 @@ export function buildFileBrowserRows(store = {}) {
         scope_id: scopeId,
         channel_id: document.pg_channel_id || null,
         thread_id: document.pg_thread_id || null,
+        folder_id: document.pg_folder_id || null,
         content_type: ref.contentType,
         updated_at: document.updated_at,
       }));
@@ -421,6 +426,7 @@ export function filterFileBrowserRows(rows = [], {
   scopeId = 'all',
   channelId = 'all',
   threadId = 'all',
+  folderId = 'all',
   contextChannelId = null,
   contextThreadId = null,
   scopesMap = null,
@@ -430,6 +436,7 @@ export function filterFileBrowserRows(rows = [], {
   const normalizedSource = normalizeString(source) || 'all';
   const normalizedChannel = normalizeString(channelId) || 'all';
   const normalizedThread = normalizeString(threadId) || 'all';
+  const normalizedFolder = folderId === null ? '' : normalizeString(folderId);
   const normalizedContextChannel = normalizeString(contextChannelId);
   const normalizedContextThread = normalizeString(contextThreadId);
 
@@ -438,6 +445,7 @@ export function filterFileBrowserRows(rows = [], {
     if (normalizedSource !== 'all' && row.source_type !== normalizedSource) return false;
     if (normalizedChannel !== 'all' && row.channel_id !== normalizedChannel) return false;
     if (normalizedThread !== 'all' && row.thread_id !== normalizedThread) return false;
+    if (normalizedFolder !== 'all' && normalizeString(row.folder_id) !== normalizedFolder) return false;
     if (normalizedContextChannel && row.channel_id !== normalizedContextChannel) return false;
     if (normalizedContextThread && row.thread_id !== normalizedContextThread) return false;
     if (!matchesScope(row.scope_id, scopeId, scopesMap)) return false;
@@ -612,7 +620,8 @@ export const filesManagerMixin = {
     this.fileUploadError = '';
     const defaultScopeId = selectedContext.scopeId;
     const defaultChannelId = selectedContext.channelId;
-    const items = nextFiles.map((file) => buildFileUploadQueueItem(file, { scopeId: defaultScopeId, channelId: defaultChannelId }));
+    const defaultFolderId = defaultChannelId === this.currentFileChannelId ? this.currentFileFolderId : '';
+    const items = nextFiles.map((file) => buildFileUploadQueueItem(file, { scopeId: defaultScopeId, channelId: defaultChannelId, folderId: defaultFolderId }));
     this.fileUploadItems = [...items, ...(this.fileUploadItems || [])];
     for (const item of items) {
       void this.startFileUploadItem(item.id);
@@ -652,6 +661,9 @@ export const filesManagerMixin = {
       if (!channel?.record_id) throw new Error('Select a scope with a channel before uploading this file.');
       const displayName = normalizeString(latest.name) || defaultFileUploadName(initial.file);
       const threadId = this.resolveFileUploadThreadId(channel.record_id);
+      const folderId = this.fileFolderOptions(scopeId, channel.record_id).some((folder) => folder.id === normalizeString(latest.folder_id))
+        ? normalizeString(latest.folder_id)
+        : '';
       this.patchFileUploadItem(id, { status: 'saving', progress: 88, scope_id: scopeId });
       const acceptedFile = await createTowerPgFileFromLocal(this, {
         title: displayName,
@@ -662,6 +674,7 @@ export const filesManagerMixin = {
         scope_id: scopeId,
         pg_channel_id: channel.record_id,
         pg_thread_id: threadId || null,
+        folder_id: folderId || null,
       });
       await upsertDocument(acceptedFile);
       if (typeof this.patchDocumentLocal === 'function') this.patchDocumentLocal(acceptedFile);
@@ -670,6 +683,7 @@ export const filesManagerMixin = {
         progress: 100,
         name: displayName,
         scope_id: scopeId,
+        folder_id: folderId,
         object_id: prepared.object_id,
       });
       this.scheduleStorageImageHydration?.();
@@ -691,6 +705,127 @@ export const filesManagerMixin = {
     this.fileComments = Array.isArray(comments) ? comments : [];
   },
 
+  applyFileFolders(folders = []) {
+    this.fileFolders = Array.isArray(folders) ? folders : [];
+  },
+
+  get currentFileChannelId() {
+    return normalizeString(this.pgContextSelectedChannelId);
+  },
+
+  get currentFileFolderId() {
+    const selected = normalizeString(this.fileCurrentFolderId);
+    if (!selected) return '';
+    const folder = (this.fileFolders || []).find((entry) =>
+      entry?.record_id === selected
+      && entry.record_state !== 'deleted'
+      && entry.channel_id === this.currentFileChannelId
+    );
+    return folder ? selected : '';
+  },
+
+  get currentFileFolder() {
+    const selected = this.currentFileFolderId;
+    if (!selected) return null;
+    return (this.fileFolders || []).find((entry) => entry?.record_id === selected) || null;
+  },
+
+  get currentFileFolderBreadcrumbs() {
+    const crumbs = [];
+    const byId = new Map((this.fileFolders || [])
+      .filter((folder) => folder?.record_id && folder.channel_id === this.currentFileChannelId)
+      .map((folder) => [folder.record_id, folder]));
+    const seen = new Set();
+    let cursor = this.currentFileFolderId;
+    while (cursor && byId.has(cursor) && !seen.has(cursor)) {
+      seen.add(cursor);
+      const folder = byId.get(cursor);
+      crumbs.unshift(folder);
+      cursor = normalizeString(folder.parent_folder_id);
+    }
+    return crumbs;
+  },
+
+  get currentFileChildFolders() {
+    const parentId = this.currentFileFolderId;
+    return (this.fileFolders || [])
+      .filter((folder) =>
+        folder?.record_id
+        && folder.record_state !== 'deleted'
+        && folder.channel_id === this.currentFileChannelId
+        && normalizeString(folder.parent_folder_id) === parentId
+      )
+      .sort((left, right) => String(left.title || '').localeCompare(String(right.title || '')));
+  },
+
+  fileFolderOptions(scopeId = '', channelId = '') {
+    const requestedScopeId = normalizeString(scopeId);
+    const requestedChannelId = normalizeString(channelId);
+    const options = [{ id: '', label: 'Root' }];
+    for (const folder of (this.fileFolders || [])) {
+      if (!folder?.record_id || folder.record_state === 'deleted') continue;
+      if (requestedScopeId && folder.scope_id !== requestedScopeId) continue;
+      if (requestedChannelId && folder.channel_id !== requestedChannelId) continue;
+      options.push({
+        id: folder.record_id,
+        label: this.getFileFolderPathLabel(folder.record_id),
+      });
+    }
+    return options;
+  },
+
+  getFileFolderPathLabel(folderId = '') {
+    const id = normalizeString(folderId);
+    if (!id) return 'Root';
+    const byId = new Map((this.fileFolders || []).map((folder) => [folder.record_id, folder]));
+    const names = [];
+    const seen = new Set();
+    let cursor = id;
+    while (cursor && byId.has(cursor) && !seen.has(cursor)) {
+      seen.add(cursor);
+      const folder = byId.get(cursor);
+      names.unshift(folder.title || 'Untitled folder');
+      cursor = normalizeString(folder.parent_folder_id);
+    }
+    return names.join(' / ') || 'Folder';
+  },
+
+  selectFileFolder(folderId = '') {
+    this.fileCurrentFolderId = normalizeString(folderId);
+  },
+
+  async createFileFolderFromPrompt() {
+    if (!this.isTowerPgMode) return null;
+    const channelId = this.currentFileChannelId;
+    const channel = (this.channels || []).find((entry) => entry?.record_id === channelId);
+    const scopeId = getRecordScopeId(channel);
+    if (!scopeId || !channelId) {
+      this.error = 'Select a scope and channel before creating a folder.';
+      return null;
+    }
+    const title = typeof window !== 'undefined'
+      ? normalizeString(window.prompt('Folder name') || '')
+      : '';
+    if (!title) return null;
+    try {
+      const folder = await createTowerPgFileFolderFromLocal(this, {
+        title,
+        scope_id: scopeId,
+        channel_id: channelId,
+        parent_folder_id: this.currentFileFolderId || null,
+      });
+      this.applyFileFolders([
+        ...(this.fileFolders || []).filter((entry) => entry?.record_id !== folder.record_id),
+        folder,
+      ]);
+      this.selectFileFolder(folder.record_id);
+      return folder;
+    } catch (error) {
+      this.error = error?.message || 'Failed to create folder.';
+      return null;
+    }
+  },
+
   get fileBrowserRows() {
     return buildFileBrowserRows(this);
   },
@@ -703,6 +838,7 @@ export const filesManagerMixin = {
       scopeId: this.fileScopeFilter,
       channelId: this.fileChannelFilter,
       threadId: this.fileThreadFilter,
+      folderId: this.isTowerPgMode ? this.currentFileFolderId : 'all',
       contextChannelId: this.isTowerPgMode ? this.pgContextSelectedChannelId : null,
       contextThreadId: this.isTowerPgMode ? this.pgContextSelectedThreadId : null,
       scopesMap: this.scopesMap,
@@ -828,10 +964,12 @@ export const filesManagerMixin = {
     const document = (this.documents || []).find((item) => item?.record_id === row.source_record_id) || null;
     const scopeId = getRecordScopeId(document) || normalizeString(row.scope_id);
     const channelId = normalizeString(document?.pg_channel_id || row.channel_id);
+    const folderId = normalizeString(document?.pg_folder_id || row.folder_id);
     this.fileEditRow = row;
     this.fileEditName = normalizeString(document?.title || document?.display_name || row.name) || 'Untitled file';
     this.fileEditScopeId = scopeId;
     this.fileEditChannelId = channelId;
+    this.fileEditFolderId = this.fileFolderOptions(scopeId, channelId).some((folder) => folder.id === folderId) ? folderId : '';
     this.fileEditError = '';
     this.fileEditSubmitting = false;
     this.fileEditAction = '';
@@ -847,6 +985,7 @@ export const filesManagerMixin = {
     this.fileEditName = '';
     this.fileEditScopeId = '';
     this.fileEditChannelId = '';
+    this.fileEditFolderId = '';
     this.fileEditError = '';
     this.fileEditAction = '';
     this.fileEditProgressText = '';
@@ -858,6 +997,12 @@ export const filesManagerMixin = {
     const selectedStillValid = this.fileEditChannelId
       && this.fileUploadChannelOptions(nextScopeId).some((channel) => channel.id === this.fileEditChannelId);
     if (!selectedStillValid) this.fileEditChannelId = this.fileUploadChannelOptions(nextScopeId)[0]?.id || '';
+    this.fileEditFolderId = '';
+  },
+
+  selectFileEditChannel(channelId) {
+    this.fileEditChannelId = normalizeString(channelId);
+    this.fileEditFolderId = '';
   },
 
   get fileEditContextChanged() {
@@ -866,9 +1011,11 @@ export const filesManagerMixin = {
     const document = (this.documents || []).find((item) => item?.record_id === row.source_record_id) || null;
     const currentScopeId = getRecordScopeId(document) || normalizeString(row.scope_id);
     const currentChannelId = normalizeString(document?.pg_channel_id || row.channel_id);
+    const currentFolderId = normalizeString(document?.pg_folder_id || row.folder_id);
     return Boolean(
       normalizeString(this.fileEditScopeId) !== currentScopeId
       || normalizeString(this.fileEditChannelId) !== currentChannelId
+      || normalizeString(this.fileEditFolderId) !== currentFolderId
     );
   },
 
@@ -878,6 +1025,7 @@ export const filesManagerMixin = {
     const name = normalizeString(this.fileEditName);
     const scopeId = normalizeString(this.fileEditScopeId);
     const channelId = normalizeString(this.fileEditChannelId);
+    const folderId = normalizeString(this.fileEditFolderId);
     if (!name) {
       this.fileEditError = 'Enter a file name.';
       return null;
@@ -895,12 +1043,14 @@ export const filesManagerMixin = {
         name,
         scopeId,
         channelId,
+        folderId,
       });
       this.showFileEditModal = false;
       this.fileEditRow = null;
       this.fileEditName = '';
       this.fileEditScopeId = '';
       this.fileEditChannelId = '';
+      this.fileEditFolderId = '';
       this.fileEditAction = '';
       this.fileEditProgressText = '';
       return accepted;
@@ -960,6 +1110,7 @@ export const filesManagerMixin = {
       this.fileEditName = '';
       this.fileEditScopeId = '';
       this.fileEditChannelId = '';
+      this.fileEditFolderId = '';
       this.fileEditProgressText = 'Opening document editor...';
       this.navigateTo?.('docs');
       this.openDoc?.(created.record_id);
@@ -983,6 +1134,7 @@ export const filesManagerMixin = {
       name: row.name,
       scopeId: options.scopeId,
       channelId: options.channelId,
+      folderId: options.folderId,
     });
   },
 
@@ -996,6 +1148,9 @@ export const filesManagerMixin = {
     }
     const scopeId = getRecordScopeId(channel);
     const displayName = normalizeString(options.name) || document.title || row.name || 'Untitled file';
+    const folderId = this.fileFolderOptions(scopeId, channel.record_id).some((folder) => folder.id === normalizeString(options.folderId))
+      ? normalizeString(options.folderId)
+      : '';
     const currentChannelId = normalizeString(document.pg_channel_id || row.channel_id);
     const nextThreadId = currentChannelId && currentChannelId === channel.record_id
       ? normalizeString(document.pg_thread_id || row.thread_id)
@@ -1010,6 +1165,8 @@ export const filesManagerMixin = {
       content: storageObjectId ? `[${displayName}](storage://${storageObjectId})` : document.content,
       pg_channel_id: channel.record_id,
       pg_thread_id: nextThreadId || null,
+      pg_folder_id: folderId || null,
+      folder_id: folderId || null,
       thread_id: nextThreadId || null,
       sync_status: 'pending',
       updated_at: new Date().toISOString(),

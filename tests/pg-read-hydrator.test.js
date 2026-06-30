@@ -59,6 +59,9 @@ function store(seed = {}) {
     applyDocuments: vi.fn((documents) => {
       seed.documents = documents;
     }),
+    applyFileFolders: vi.fn((folders) => {
+      seed.fileFolders = folders;
+    }),
     applyAudioNotes: vi.fn(async (audioNotes) => {
       seed.audioNotes = audioNotes;
     }),
@@ -1027,6 +1030,9 @@ describe('PG read hydrator', () => {
     const getTowerPgChannelFiles = vi.fn(async (_workspaceId, channelId) => ({
       files: [{ id: `file-${channelId}`, channel_id: channelId, display_name: 'File' }],
     }));
+    const getTowerPgChannelFileFolders = vi.fn(async (_workspaceId, channelId) => ({
+      folders: [{ id: `folder-${channelId}`, channel_id: channelId, scope_id: 'scope-1', title: 'Assets' }],
+    }));
     const getTowerPgChannelAudioNotes = vi.fn(async (_workspaceId, channelId) => ({
       audio_notes: [{ id: `audio-${channelId}`, channel_id: channelId, storage_object_id: 'object-audio', title: 'Voice note' }],
     }));
@@ -1052,6 +1058,7 @@ describe('PG read hydrator', () => {
     const result = await hydrateTowerPgEventUpdates(target, [
       { entity_type: 'doc', channel_id: 'channel-doc' },
       { entity_type: 'file', channel_id: 'channel-doc' },
+      { entity_type: 'file_folder', channel_id: 'channel-doc' },
       { entity_type: 'audio_note', channel_id: 'channel-audio' },
       { entity_type: 'task_comment', payload: { task_id: 'task-1' } },
       { entity_type: 'doc_comment', payload: { doc_id: 'doc-1' } },
@@ -1061,6 +1068,7 @@ describe('PG read hydrator', () => {
     ], {
       getTowerPgChannelDocs,
       getTowerPgChannelFiles,
+      getTowerPgChannelFileFolders,
       getTowerPgChannelAudioNotes,
       getTowerPgTaskComments,
       getTowerPgDocComments,
@@ -1074,11 +1082,12 @@ describe('PG read hydrator', () => {
       replacePgReactionsForTarget,
     });
 
-    expect(result).toEqual({ channels: 0, appliedTargets: 6, fallbackEvents: 1, events: 8 });
+    expect(result).toEqual({ channels: 0, appliedTargets: 6, fallbackEvents: 1, events: 9 });
     expect(replacePgDocumentsForChannel).toHaveBeenCalledWith('channel-doc', [
       expect.objectContaining({ record_id: 'doc-channel-doc' }),
       expect.objectContaining({ record_id: 'file-channel-doc' }),
     ]);
+    expect(target.applyFileFolders).toHaveBeenCalledWith([expect.objectContaining({ record_id: 'folder-channel-doc' })]);
     expect(replacePgAudioNotesForChannel).toHaveBeenCalledWith('channel-audio', [expect.objectContaining({ record_id: 'audio-channel-audio' })]);
     expect(replacePgCommentsForTarget).toHaveBeenCalledWith('task-1', [expect.objectContaining({ record_id: 'comment-task-1' })]);
     expect(replacePgCommentsForTarget).toHaveBeenCalledWith('doc-1', [expect.objectContaining({ record_id: 'doc-comment-doc-1' })]);
@@ -1615,7 +1624,10 @@ describe('PG read hydrator', () => {
       }],
     }));
     const getTowerPgChannelFiles = vi.fn(async () => ({
-      files: [{ id: 'file-1', scope_id: 'scope-1', channel_id: 'channel-1', storage_object_id: 'object-file', display_name: 'File.pdf' }],
+      files: [{ id: 'file-1', scope_id: 'scope-1', channel_id: 'channel-1', folder_id: 'folder-1', storage_object_id: 'object-file', display_name: 'File.pdf' }],
+    }));
+    const getTowerPgChannelFileFolders = vi.fn(async () => ({
+      folders: [{ id: 'folder-1', scope_id: 'scope-1', channel_id: 'channel-1', title: 'Assets' }],
     }));
     const replaceDocumentsForOwner = vi.fn(async () => 2);
     const downloadStorageObject = vi.fn(async () => new TextEncoder().encode(JSON.stringify({
@@ -1630,6 +1642,7 @@ describe('PG read hydrator', () => {
     const documents = await hydrateTowerPgDocumentsAndFiles(target, {
       getTowerPgChannelDocs,
       getTowerPgChannelFiles,
+      getTowerPgChannelFileFolders,
       replaceDocumentsForOwner,
       downloadStorageObject,
     });
@@ -1641,11 +1654,12 @@ describe('PG read hydrator', () => {
         content: '# Updated stored body',
         content_storage_status: 'loaded',
       }),
-      expect.objectContaining({ record_id: 'file-1', pg_record_type: 'file' }),
+      expect.objectContaining({ record_id: 'file-1', pg_record_type: 'file', pg_folder_id: 'folder-1' }),
     ]);
     expect(downloadStorageObject).toHaveBeenCalledWith('object-doc');
     expect(replaceDocumentsForOwner).toHaveBeenCalledWith('npub1owner', documents);
     expect(target.applyDocuments).toHaveBeenCalledWith(documents);
+    expect(target.applyFileFolders).toHaveBeenCalledWith([expect.objectContaining({ record_id: 'folder-1', title: 'Assets' })]);
   });
 
   it('hydrates a selected PG doc directly from the typed body route', async () => {

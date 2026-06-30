@@ -656,6 +656,8 @@ export function initApp() {
     dailyScopeAgentAccess: [],
     dailyScopeAgentAccessSaving: false,
     directories: [],
+    fileFolders: [],
+    fileCurrentFolderId: '',
     fileMessages: [],
     fileComments: [],
     fileSearch: '',
@@ -672,6 +674,7 @@ export function initApp() {
     fileEditName: '',
     fileEditScopeId: '',
     fileEditChannelId: '',
+    fileEditFolderId: '',
     fileEditSubmitting: false,
     fileEditAction: '',
     fileEditProgressText: '',
@@ -2653,6 +2656,8 @@ export function initApp() {
       this.groups = [];
       this.documents = [];
       this.directories = [];
+      this.fileFolders = [];
+      this.fileCurrentFolderId = '';
       this.fileMessages = [];
       this.fileComments = [];
       this.addressBookPeople = [];
@@ -2797,6 +2802,8 @@ export function initApp() {
         this.docComments = [];
       }
       if (activeSection !== 'files') {
+        this.fileFolders = [];
+        this.fileCurrentFolderId = '';
         this.fileMessages = [];
         this.fileComments = [];
       }

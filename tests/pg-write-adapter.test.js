@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createTowerPgAudioNoteFromLocal,
   createTowerPgDocCommentFromLocal,
+  createTowerPgFileFolderFromLocal,
   createTowerPgDocFromLocal,
   createTowerPgFileFromLocal,
   createTowerPgMessageFromLocal,
@@ -27,6 +28,7 @@ vi.mock('../src/api.js', () => ({
   createTowerPgChannelAudioNote: vi.fn(),
   createTowerPgChannelDoc: vi.fn(),
   createTowerPgChannelFile: vi.fn(),
+  createTowerPgChannelFileFolder: vi.fn(),
   createTowerPgChannelMessage: vi.fn(),
   createTowerPgChannelTask: vi.fn(),
   createTowerPgDocComment: vi.fn(),
@@ -255,6 +257,7 @@ describe('PG write adapter', () => {
         workspace_id: 'workspace-1',
         scope_id: 'scope-1',
         channel_id: 'channel-1',
+        folder_id: 'folder-1',
         storage_object_id: 'storage-file',
         display_name: 'File.pdf',
         metadata: { thread_id: 'thread-1' },
@@ -268,15 +271,46 @@ describe('PG write adapter', () => {
       scope_id: 'scope-1',
       pg_channel_id: 'channel-1',
       pg_thread_id: 'thread-1',
+      folder_id: 'folder-1',
     });
 
     expect(api.createTowerPgChannelFile).toHaveBeenCalledWith('workspace-1', 'channel-1', {
       storage_object_id: 'storage-file',
+      folder_id: 'folder-1',
       display_name: 'File.pdf',
       description: null,
       metadata: { thread_id: 'thread-1' },
     }, { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
-    expect(file).toMatchObject({ record_id: 'file-1', pg_channel_id: 'channel-1', pg_thread_id: 'thread-1' });
+    expect(file).toMatchObject({ record_id: 'file-1', pg_channel_id: 'channel-1', pg_thread_id: 'thread-1', pg_folder_id: 'folder-1' });
+  });
+
+  it('creates Tower PG file folders inside the selected channel', async () => {
+    const api = await import('../src/api.js');
+    api.createTowerPgChannelFileFolder.mockResolvedValue({
+      folder: {
+        id: 'folder-1',
+        workspace_id: 'workspace-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        parent_folder_id: null,
+        title: 'Assets',
+        metadata: {},
+        row_version: 1,
+      },
+    });
+
+    const folder = await createTowerPgFileFolderFromLocal(store(), {
+      title: 'Assets',
+      scope_id: 'scope-1',
+      channel_id: 'channel-1',
+    });
+
+    expect(api.createTowerPgChannelFileFolder).toHaveBeenCalledWith('workspace-1', 'channel-1', {
+      title: 'Assets',
+      parent_folder_id: null,
+      metadata: {},
+    }, { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
+    expect(folder).toMatchObject({ record_id: 'folder-1', scope_id: 'scope-1', channel_id: 'channel-1' });
   });
 
   it('rejects PG file creation when the selected channel mismatches the requested scope', async () => {
@@ -296,6 +330,7 @@ describe('PG write adapter', () => {
         workspace_id: 'workspace-1',
         scope_id: 'scope-2',
         channel_id: 'channel-2',
+        folder_id: null,
         storage_object_id: 'storage-file',
         display_name: 'File.pdf',
         metadata: {},
@@ -310,6 +345,7 @@ describe('PG write adapter', () => {
       pg_storage_object_id: 'storage-file',
       scope_id: 'scope-2',
       pg_channel_id: 'channel-2',
+      pg_folder_id: null,
       version: 5,
     }, {
       version: 4,
@@ -318,6 +354,7 @@ describe('PG write adapter', () => {
     expect(api.updateTowerPgFile).toHaveBeenCalledWith('workspace-1', 'file-1', {
       row_version: 4,
       channel_id: 'channel-2',
+      folder_id: null,
       display_name: 'File.pdf',
       description: null,
       metadata: {},
