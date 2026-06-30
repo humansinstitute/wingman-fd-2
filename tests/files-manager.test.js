@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../src/api.js', () => ({
   completeStorageObject: vi.fn(),
@@ -6,6 +6,16 @@ vi.mock('../src/api.js', () => ({
   downloadStorageObjectBlob: vi.fn(),
   prepareStorageObject: vi.fn(),
   uploadStorageObject: vi.fn(),
+}));
+
+vi.mock('../src/db.js', () => ({
+  upsertDocument: vi.fn(async () => undefined),
+}));
+
+vi.mock('../src/pg-write-adapter.js', () => ({
+  createTowerPgFileFolderFromLocal: vi.fn(),
+  createTowerPgFileFromLocal: vi.fn(),
+  updateTowerPgFileFromLocal: vi.fn(async (_store, file) => ({ ...file, sync_status: 'synced', version: 2 })),
 }));
 
 import {
@@ -16,9 +26,15 @@ import {
   isConvertibleTextFile,
 } from '../src/files-manager.js';
 import { downloadStorageObject } from '../src/api.js';
+import { upsertDocument } from '../src/db.js';
+import { updateTowerPgFileFromLocal } from '../src/pg-write-adapter.js';
 import { recordFamilyHash } from '../src/translators/chat.js';
 
 describe('files manager', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   const store = {
     documents: [
       {
@@ -231,6 +247,150 @@ describe('files manager', () => {
     expect(editStore.fileEditChannelId).toBe('chan-2');
     expect(editStore.fileEditFolderId).toBe('');
     expect(editStore.fileEditContextChanged).toBe(true);
+  });
+
+  it('optimistically saves file moves while Tower confirmation runs in the background', async () => {
+    let confirmMove;
+    updateTowerPgFileFromLocal.mockReturnValueOnce(new Promise((resolve) => {
+      confirmMove = () => resolve({
+        record_id: 'file-1',
+        title: 'Original.pdf',
+        pg_backend: true,
+        pg_record_type: 'file',
+        pg_storage_object_id: 'storage-1',
+        scope_id: 'scope-1',
+        pg_channel_id: 'chan-1',
+        pg_folder_id: 'folder-1',
+        version: 2,
+      });
+    }));
+    const editStore = Object.assign(Object.create(filesManagerMixin), {
+      isTowerPgMode: true,
+      documents: [{
+        record_id: 'file-1',
+        title: 'Original.pdf',
+        content: '[Original.pdf](storage://storage-1)',
+        pg_backend: true,
+        pg_record_type: 'file',
+        pg_storage_object_id: 'storage-1',
+        scope_id: 'scope-1',
+        pg_channel_id: 'chan-1',
+        pg_folder_id: null,
+        version: 1,
+      }],
+      fileFolders: [
+        { record_id: 'folder-1', title: 'Assets', scope_id: 'scope-1', channel_id: 'chan-1' },
+      ],
+      channels: [
+        { record_id: 'chan-1', title: 'General', scope_id: 'scope-1', record_state: 'active' },
+      ],
+      buildScopeAssignment(scopeId) {
+        return { scope_id: scopeId };
+      },
+      resolveFileUploadChannel(scopeId, channelId) {
+        return this.channels.find((channel) => channel.scope_id === scopeId && channel.record_id === channelId);
+      },
+      patchDocumentLocal: vi.fn(function patchDocumentLocal(document) {
+        this.documents = this.documents.map((entry) => entry.record_id === document.record_id ? document : entry);
+      }),
+      scheduleDocumentsRefresh: vi.fn(),
+    });
+    const row = buildFileBrowserRows(editStore).find((entry) => entry.source_record_id === 'file-1');
+
+    const moved = await editStore.moveFileBrowserRowToContext(row, {
+      scopeId: 'scope-1',
+      channelId: 'chan-1',
+      folderId: 'folder-1',
+      background: true,
+    });
+
+    expect(moved).toMatchObject({ pg_folder_id: 'folder-1', sync_status: 'pending' });
+    expect(upsertDocument).toHaveBeenCalledWith(expect.objectContaining({ record_id: 'file-1', pg_folder_id: 'folder-1' }));
+    expect(updateTowerPgFileFromLocal).toHaveBeenCalledTimes(1);
+    expect(editStore.scheduleDocumentsRefresh).not.toHaveBeenCalled();
+
+    confirmMove();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(editStore.scheduleDocumentsRefresh).toHaveBeenCalledWith('PG file edit');
+  });
+
+  it('selects multiple visible files and moves them to a dropped folder', async () => {
+    const moveStore = Object.assign(Object.create(filesManagerMixin), {
+      isTowerPgMode: true,
+      pgContextSelectedChannelId: 'chan-1',
+      pgContextSelectedThreadId: '',
+      fileSearch: '',
+      fileTypeFilter: 'all',
+      fileSourceFilter: 'all',
+      fileScopeFilter: 'all',
+      fileChannelFilter: 'all',
+      fileThreadFilter: 'all',
+      fileCurrentFolderId: '',
+      fileSelectedRowIds: [],
+      fileSelectionMode: true,
+      documents: [
+        {
+          record_id: 'file-1',
+          title: 'One.pdf',
+          content: '[One.pdf](storage://storage-1)',
+          pg_backend: true,
+          pg_record_type: 'file',
+          pg_storage_object_id: 'storage-1',
+          scope_id: 'scope-1',
+          pg_channel_id: 'chan-1',
+          pg_folder_id: null,
+          version: 1,
+        },
+        {
+          record_id: 'file-2',
+          title: 'Two.pdf',
+          content: '[Two.pdf](storage://storage-2)',
+          pg_backend: true,
+          pg_record_type: 'file',
+          pg_storage_object_id: 'storage-2',
+          scope_id: 'scope-1',
+          pg_channel_id: 'chan-1',
+          pg_folder_id: null,
+          version: 1,
+        },
+      ],
+      fileFolders: [
+        { record_id: 'folder-1', title: 'Assets', scope_id: 'scope-1', channel_id: 'chan-1', record_state: 'active' },
+      ],
+      channels: [
+        { record_id: 'chan-1', title: 'General', scope_id: 'scope-1', record_state: 'active' },
+      ],
+      buildScopeAssignment(scopeId) {
+        return { scope_id: scopeId };
+      },
+      resolveFileUploadChannel(scopeId, channelId) {
+        return this.channels.find((channel) => channel.scope_id === scopeId && channel.record_id === channelId);
+      },
+      patchDocumentLocal: vi.fn(function patchDocumentLocal(document) {
+        this.documents = this.documents.map((entry) => entry.record_id === document.record_id ? document : entry);
+      }),
+      scheduleDocumentsRefresh: vi.fn(),
+    });
+    const rows = moveStore.filteredFileBrowserRows;
+    moveStore.toggleFileRowSelection(rows[0], true);
+    moveStore.toggleFileRowSelection(rows[1], true);
+    moveStore.fileDraggingRowIds = rows.map((row) => row.id);
+    const event = {
+      preventDefault: vi.fn(),
+      dataTransfer: {
+        getData: vi.fn(() => ''),
+      },
+    };
+
+    await moveStore.handleFileFolderDrop(moveStore.fileFolders[0], event);
+
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect(moveStore.fileSelectedRowIds).toEqual([]);
+    expect(upsertDocument).toHaveBeenCalledWith(expect.objectContaining({ record_id: 'file-1', pg_folder_id: 'folder-1' }));
+    expect(upsertDocument).toHaveBeenCalledWith(expect.objectContaining({ record_id: 'file-2', pg_folder_id: 'folder-1' }));
+    expect(updateTowerPgFileFromLocal).toHaveBeenCalledTimes(2);
   });
 
   it('does not report file edit context changes when no file is being edited', () => {

@@ -19,8 +19,14 @@ describe('files upload UI', () => {
     expect(html).toContain('@drop.prevent="$store.chat.handleFilesPageDrop($event)"');
     expect(html).toContain('@change="$store.chat.handleFileUploadInput($event)"');
     expect(html).toContain('@click="$store.chat.createFileFolderFromPrompt()"');
+    expect(html).toContain('Select multiple');
+    expect(html).toContain('$store.chat.toggleFileSelectionMode()');
+    expect(html).toContain('files-selection-bar');
     expect(html).toContain('currentFileFolderBreadcrumbs');
     expect(html).toContain('currentFileChildFolders');
+    expect(html).toContain('@dragstart="$store.chat.handleFileRowDragStart(row, $event)"');
+    expect(html).toContain('@drop="$store.chat.handleFileFolderDrop(folder, $event)"');
+    expect(html).toContain('x-show="$store.chat.fileSelectionMode && $store.chat.canMoveFileBrowserRow(row)"');
     expect(html).toContain('x-model="item.name"');
     expect(html).toContain('x-model="item.scope_id"');
     expect(html).toContain('x-model="item.folder_id"');

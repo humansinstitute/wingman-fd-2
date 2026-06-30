@@ -709,6 +709,134 @@ export const filesManagerMixin = {
     this.fileFolders = Array.isArray(folders) ? folders : [];
   },
 
+  setFileSelectionMode(enabled) {
+    this.fileSelectionMode = Boolean(enabled);
+    if (!this.fileSelectionMode) this.clearFileSelection();
+  },
+
+  toggleFileSelectionMode() {
+    this.setFileSelectionMode(!this.fileSelectionMode);
+  },
+
+  clearFileSelection() {
+    this.fileSelectedRowIds = [];
+  },
+
+  get selectedFileRowIdsSet() {
+    return new Set(Array.isArray(this.fileSelectedRowIds) ? this.fileSelectedRowIds : []);
+  },
+
+  get selectedFileRows() {
+    const selectedIds = this.selectedFileRowIdsSet;
+    if (selectedIds.size === 0) return [];
+    return this.filteredFileBrowserRows.filter((row) => selectedIds.has(row.id) && this.canMoveFileBrowserRow(row));
+  },
+
+  get selectedFileCount() {
+    return this.selectedFileRows.length;
+  },
+
+  isFileRowSelected(row = {}) {
+    return this.selectedFileRowIdsSet.has(row.id);
+  },
+
+  toggleFileRowSelection(row = {}, checked = null) {
+    if (!this.canMoveFileBrowserRow(row)) return;
+    const selectedIds = this.selectedFileRowIdsSet;
+    const shouldSelect = checked === null ? !selectedIds.has(row.id) : Boolean(checked);
+    if (shouldSelect) selectedIds.add(row.id);
+    else selectedIds.delete(row.id);
+    this.fileSelectedRowIds = [...selectedIds];
+  },
+
+  visibleFileRowsById(rowIds = []) {
+    const requested = new Set((Array.isArray(rowIds) ? rowIds : []).map(normalizeString).filter(Boolean));
+    if (requested.size === 0) return [];
+    return this.filteredFileBrowserRows.filter((row) => requested.has(row.id) && this.canMoveFileBrowserRow(row));
+  },
+
+  handleFileRowDragStart(row = {}, event = null) {
+    if (!this.canMoveFileBrowserRow(row)) {
+      event?.preventDefault?.();
+      return;
+    }
+    if (this.fileSelectionMode && !this.isFileRowSelected(row)) this.toggleFileRowSelection(row, true);
+    const rowIds = this.fileSelectionMode && this.isFileRowSelected(row)
+      ? this.selectedFileRows.map((selectedRow) => selectedRow.id)
+      : [row.id];
+    this.fileDraggingRowIds = rowIds;
+    const payload = JSON.stringify({ type: 'flightdeck/files', rowIds });
+    if (event?.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('application/json', payload);
+      event.dataTransfer.setData('text/plain', payload);
+    }
+  },
+
+  handleFileRowDragEnd() {
+    this.fileDraggingRowIds = [];
+    this.fileFolderDragOverId = '';
+  },
+
+  fileDragRowIdsFromEvent(event = null) {
+    const transfer = event?.dataTransfer;
+    const raw = transfer?.getData?.('application/json') || transfer?.getData?.('text/plain') || '';
+    try {
+      const payload = JSON.parse(raw);
+      if (payload?.type === 'flightdeck/files' && Array.isArray(payload.rowIds)) {
+        return payload.rowIds.map(normalizeString).filter(Boolean);
+      }
+    } catch {
+      // Ignore external drags and malformed payloads.
+    }
+    if (Array.isArray(this.fileDraggingRowIds) && this.fileDraggingRowIds.length > 0) return this.fileDraggingRowIds;
+    return this.selectedFileRows.map((row) => row.id);
+  },
+
+  handleFileFolderDragOver(folder = {}, event = null) {
+    const folderId = normalizeString(folder?.record_id);
+    if (!folderId) return;
+    const rowIds = this.fileDragRowIdsFromEvent(event);
+    if (this.visibleFileRowsById(rowIds).length === 0) return;
+    event?.preventDefault?.();
+    if (event?.dataTransfer) event.dataTransfer.dropEffect = 'move';
+    this.fileFolderDragOverId = folderId;
+  },
+
+  handleFileFolderDragLeave(folder = {}) {
+    if (this.fileFolderDragOverId === normalizeString(folder?.record_id)) this.fileFolderDragOverId = '';
+  },
+
+  async handleFileFolderDrop(folder = {}, event = null) {
+    const folderId = normalizeString(folder?.record_id);
+    if (!folderId) return;
+    event?.preventDefault?.();
+    this.fileFolderDragOverId = '';
+    const rows = this.visibleFileRowsById(this.fileDragRowIdsFromEvent(event));
+    this.fileDraggingRowIds = [];
+    if (rows.length === 0) return;
+    await this.moveFileRowsToFolder(rows, folderId);
+  },
+
+  async moveFileRowsToFolder(rows = [], folderId = '') {
+    const targetFolder = (this.fileFolders || []).find((folder) => folder?.record_id === normalizeString(folderId));
+    if (!targetFolder?.record_id) return [];
+    const movableRows = rows.filter((row) =>
+      this.canMoveFileBrowserRow(row)
+      && normalizeString(row.channel_id) === normalizeString(targetFolder.channel_id)
+      && normalizeString(row.folder_id) !== normalizeString(targetFolder.record_id)
+    );
+    if (movableRows.length === 0) return [];
+    const results = await Promise.all(movableRows.map((row) => this.moveFileBrowserRowToContext(row, {
+      scopeId: targetFolder.scope_id,
+      channelId: targetFolder.channel_id,
+      folderId: targetFolder.record_id,
+      background: true,
+    })));
+    this.clearFileSelection();
+    return results.filter(Boolean);
+  },
+
   get currentFileChannelId() {
     return normalizeString(this.pgContextSelectedChannelId);
   },
@@ -792,6 +920,7 @@ export const filesManagerMixin = {
 
   selectFileFolder(folderId = '') {
     this.fileCurrentFolderId = normalizeString(folderId);
+    this.clearFileSelection();
   },
 
   async createFileFolderFromPrompt() {
@@ -1044,6 +1173,7 @@ export const filesManagerMixin = {
         scopeId,
         channelId,
         folderId,
+        background: true,
       });
       this.showFileEditModal = false;
       this.fileEditRow = null;
@@ -1135,6 +1265,7 @@ export const filesManagerMixin = {
       scopeId: options.scopeId,
       channelId: options.channelId,
       folderId: options.folderId,
+      background: options.background,
     });
   },
 
@@ -1173,6 +1304,14 @@ export const filesManagerMixin = {
     };
     await upsertDocument(updated);
     this.patchDocumentLocal?.(updated);
+    if (options.background) {
+      void this.confirmFileBrowserRowUpdate(updated, previous);
+      return updated;
+    }
+    return this.confirmFileBrowserRowUpdate(updated, previous);
+  },
+
+  async confirmFileBrowserRowUpdate(updated, previous) {
     try {
       const accepted = await updateTowerPgFileFromLocal(this, updated, previous);
       await upsertDocument(accepted);

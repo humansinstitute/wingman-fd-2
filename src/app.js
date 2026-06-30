@@ -666,6 +666,10 @@ export function initApp() {
     fileScopeFilter: 'all',
     fileChannelFilter: 'all',
     fileThreadFilter: 'all',
+    fileSelectionMode: false,
+    fileSelectedRowIds: [],
+    fileDraggingRowIds: [],
+    fileFolderDragOverId: '',
     fileUploadOpen: false,
     fileUploadItems: [],
     fileUploadError: '',
@@ -2658,6 +2662,10 @@ export function initApp() {
       this.directories = [];
       this.fileFolders = [];
       this.fileCurrentFolderId = '';
+      this.fileSelectionMode = false;
+      this.fileSelectedRowIds = [];
+      this.fileDraggingRowIds = [];
+      this.fileFolderDragOverId = '';
       this.fileMessages = [];
       this.fileComments = [];
       this.addressBookPeople = [];
@@ -2804,6 +2812,10 @@ export function initApp() {
       if (activeSection !== 'files') {
         this.fileFolders = [];
         this.fileCurrentFolderId = '';
+        this.fileSelectionMode = false;
+        this.fileSelectedRowIds = [];
+        this.fileDraggingRowIds = [];
+        this.fileFolderDragOverId = '';
         this.fileMessages = [];
         this.fileComments = [];
       }

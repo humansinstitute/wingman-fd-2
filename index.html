@@ -5079,6 +5079,29 @@
                   <option :value="option.id" x-text="option.label"></option>
                 </template>
               </select>
+              <div class="files-toolbar-menu doc-actions-menu" x-data="{ open: false }" @click.outside="open = false">
+                <button
+                  type="button"
+                  class="files-toolbar-menu-button"
+                  :class="{ active: $store.chat.fileSelectionMode }"
+                  @click="open = !open"
+                  aria-label="Files options"
+                  :aria-expanded="open.toString()"
+                >...</button>
+                <div class="doc-actions-popover files-toolbar-popover" x-show="open" x-cloak>
+                  <button
+                    type="button"
+                    @click="$store.chat.toggleFileSelectionMode(); open = false"
+                    x-text="$store.chat.fileSelectionMode ? 'Exit select multiple' : 'Select multiple'"
+                  ></button>
+                </div>
+              </div>
+            </div>
+
+            <div class="files-selection-bar" x-show="$store.chat.fileSelectionMode" x-cloak>
+              <span x-text="$store.chat.selectedFileCount === 1 ? '1 file selected' : `${$store.chat.selectedFileCount} files selected`"></span>
+              <button type="button" class="file-action-btn" @click="$store.chat.clearFileSelection()">Clear</button>
+              <button type="button" class="file-action-btn" @click="$store.chat.setFileSelectionMode(false)">Done</button>
             </div>
 
             <section class="files-upload-panel" x-show="$store.chat.fileUploadOpen && $store.chat.isTowerPgMode" x-cloak>
@@ -5180,7 +5203,14 @@
 
             <div class="files-list" x-show="$store.chat.currentFileChildFolders.length > 0 || $store.chat.filteredFileBrowserRows.length > 0">
               <template x-for="folder in $store.chat.currentFileChildFolders" :key="folder.record_id">
-                <article class="file-row file-folder-row" @dblclick="$store.chat.selectFileFolder(folder.record_id)">
+                <article
+                  class="file-row file-folder-row"
+                  :class="{ 'file-folder-row-drop': $store.chat.fileFolderDragOverId === folder.record_id }"
+                  @dblclick="$store.chat.selectFileFolder(folder.record_id)"
+                  @dragover="$store.chat.handleFileFolderDragOver(folder, $event)"
+                  @dragleave="$store.chat.handleFileFolderDragLeave(folder)"
+                  @drop="$store.chat.handleFileFolderDrop(folder, $event)"
+                >
                   <button type="button" class="file-thumb file-folder-thumb" @click="$store.chat.selectFileFolder(folder.record_id)" aria-label="Open folder">
                     <span class="file-thumb-icon">F</span>
                   </button>
@@ -5200,7 +5230,20 @@
                 </article>
               </template>
               <template x-for="row in $store.chat.filteredFileBrowserRows" :key="row.id">
-                <article class="file-row">
+                <article
+                  class="file-row"
+                  :class="{ 'file-row-selected': $store.chat.isFileRowSelected(row), 'file-row-selectable': $store.chat.fileSelectionMode && $store.chat.canMoveFileBrowserRow(row) }"
+                  :draggable="$store.chat.canMoveFileBrowserRow(row)"
+                  @dragstart="$store.chat.handleFileRowDragStart(row, $event)"
+                  @dragend="$store.chat.handleFileRowDragEnd()"
+                >
+                  <label class="file-select-check" x-show="$store.chat.fileSelectionMode && $store.chat.canMoveFileBrowserRow(row)" x-cloak>
+                    <input
+                      type="checkbox"
+                      :checked="$store.chat.isFileRowSelected(row)"
+                      @change="$store.chat.toggleFileRowSelection(row, $event.target.checked)"
+                    />
+                  </label>
                   <div class="file-thumb" :data-kind="row.kind">
                     <template x-if="row.kind === 'image'">
                       <img
