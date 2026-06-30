@@ -393,6 +393,39 @@ describe('files manager', () => {
     expect(updateTowerPgFileFromLocal).toHaveBeenCalledTimes(2);
   });
 
+  it('preserves PG file folders when leaving the files section', () => {
+    const shell = {
+      fileFolders: [{ record_id: 'folder-1', title: 'Assets' }],
+      fileCurrentFolderId: 'folder-1',
+      fileSelectionMode: true,
+      fileSelectedRowIds: ['row-1'],
+      fileDraggingRowIds: ['row-1'],
+      fileFolderDragOverId: 'folder-1',
+      fileMessages: [{ record_id: 'msg-1' }],
+      fileComments: [{ record_id: 'comment-1' }],
+    };
+
+    function clearInactiveFilesData(activeSection) {
+      if (activeSection !== 'files') {
+        shell.fileSelectionMode = false;
+        shell.fileSelectedRowIds = [];
+        shell.fileDraggingRowIds = [];
+        shell.fileFolderDragOverId = '';
+        shell.fileMessages = [];
+        shell.fileComments = [];
+      }
+    }
+
+    clearInactiveFilesData('chat');
+
+    expect(shell.fileFolders).toEqual([{ record_id: 'folder-1', title: 'Assets' }]);
+    expect(shell.fileCurrentFolderId).toBe('folder-1');
+    expect(shell.fileSelectionMode).toBe(false);
+    expect(shell.fileSelectedRowIds).toEqual([]);
+    expect(shell.fileMessages).toEqual([]);
+    expect(shell.fileComments).toEqual([]);
+  });
+
   it('does not report file edit context changes when no file is being edited', () => {
     const editStore = Object.assign(Object.create(filesManagerMixin), {
       fileEditRow: null,

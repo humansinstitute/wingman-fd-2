@@ -2810,8 +2810,6 @@ export function initApp() {
         this.docComments = [];
       }
       if (activeSection !== 'files') {
-        this.fileFolders = [];
-        this.fileCurrentFolderId = '';
         this.fileSelectionMode = false;
         this.fileSelectedRowIds = [];
         this.fileDraggingRowIds = [];
@@ -2894,6 +2892,13 @@ export function initApp() {
       }
       if (section === 'status') {
         this.refreshStatusRecentChanges({ force: true });
+      }
+      if (section === 'files' && isTowerPgBackendMode()) {
+        Promise.resolve()
+          .then(() => this.refreshDocuments())
+          .catch((error) => {
+            console.warn('Failed to refresh PG file folders', error);
+          });
       }
       if (section === 'reports' && !this.selectedReportId) {
         this.selectedReportId = this.selectedReport?.record_id || null;
