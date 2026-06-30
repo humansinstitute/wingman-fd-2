@@ -43,6 +43,8 @@ function getSectionState(store) {
       pgHydratedWorkspaceKeys: new Set(),
       pgRefreshingTaskBoardKeys: new Set(),
       pgTaskBoardRefreshAt: new Map(),
+      pgRefreshingFilesKeys: new Set(),
+      pgFilesRefreshAt: new Map(),
     };
     SECTION_STATE.set(store, state);
   }
@@ -138,6 +140,7 @@ function scheduleTowerPgWorkspaceHydration(store, state) {
 }
 
 const PG_TASK_BOARD_REFRESH_MIN_MS = 5000;
+const PG_FILES_REFRESH_MIN_MS = 5000;
 
 function buildTowerPgTaskBoardRefreshKey(store) {
   const workspaceKey = String(store?.currentWorkspaceKey || store?.currentWorkspace?.workspaceKey || '').trim();
@@ -178,6 +181,47 @@ function scheduleTowerPgTaskBoardRefresh(store, state) {
     })
     .finally(() => {
       state.pgRefreshingTaskBoardKeys.delete(refreshKey);
+    });
+}
+
+function buildTowerPgFilesRefreshKey(store) {
+  const workspaceKey = String(store?.currentWorkspaceKey || store?.currentWorkspace?.workspaceKey || '').trim();
+  if (!workspaceKey) return '';
+  const channelId = String(store?.pgContextSelectedChannelId || '').trim();
+  return channelId ? `${workspaceKey}:files:${channelId}` : `${workspaceKey}:files`;
+}
+
+function scheduleTowerPgFilesRefresh(store, state) {
+  if (!isTowerPgBackendMode()) return;
+  if (store?.navSection !== 'files') return;
+  if (!store?.currentWorkspace?.pgBackendMode) return;
+  if (!store?.session?.npub) return;
+  if (!store?.backendUrl) return;
+  if (typeof store?.refreshDocuments !== 'function') return;
+  const workspaceKey = String(store.currentWorkspaceKey || store.currentWorkspace?.workspaceKey || '').trim();
+  if (!workspaceKey || !isWorkspaceDbOpenForKey(workspaceKey)) return;
+
+  const refreshKey = buildTowerPgFilesRefreshKey(store);
+  if (!refreshKey || state.pgRefreshingFilesKeys.has(refreshKey)) return;
+  const lastRefreshAt = Number(state.pgFilesRefreshAt.get(refreshKey) || 0);
+  if (Date.now() - lastRefreshAt < PG_FILES_REFRESH_MIN_MS) return;
+
+  state.pgRefreshingFilesKeys.add(refreshKey);
+  state.pgFilesRefreshAt.set(refreshKey, Date.now());
+  Promise.resolve()
+    .then(async () => {
+      if (String(store.currentWorkspaceKey || '') !== workspaceKey) return;
+      await store.refreshDocuments();
+    })
+    .catch((error) => {
+      flightDeckLog('debug', 'pg', 'Tower PG files refresh failed after route activation', {
+        workspaceKey,
+        channelId: String(store?.pgContextSelectedChannelId || ''),
+        error: error?.message || String(error),
+      });
+    })
+    .finally(() => {
+      state.pgRefreshingFilesKeys.delete(refreshKey);
     });
 }
 
@@ -603,6 +647,7 @@ export const sectionLiveQueryMixin = {
 
     scheduleTowerPgWorkspaceHydration(this, state);
     scheduleTowerPgTaskBoardRefresh(this, state);
+    scheduleTowerPgFilesRefresh(this, state);
   },
 
   stopWorkspaceLiveQueries() {
