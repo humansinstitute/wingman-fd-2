@@ -10,6 +10,7 @@ vi.mock('../src/api.js', () => ({
 
 vi.mock('../src/db.js', () => ({
   upsertDocument: vi.fn(async () => undefined),
+  upsertFileFolder: vi.fn(async () => undefined),
 }));
 
 vi.mock('../src/pg-write-adapter.js', () => ({
@@ -26,8 +27,8 @@ import {
   isConvertibleTextFile,
 } from '../src/files-manager.js';
 import { downloadStorageObject } from '../src/api.js';
-import { upsertDocument } from '../src/db.js';
-import { updateTowerPgFileFromLocal } from '../src/pg-write-adapter.js';
+import { upsertDocument, upsertFileFolder } from '../src/db.js';
+import { createTowerPgFileFolderFromLocal, updateTowerPgFileFromLocal } from '../src/pg-write-adapter.js';
 import { recordFamilyHash } from '../src/translators/chat.js';
 
 describe('files manager', () => {
@@ -424,6 +425,44 @@ describe('files manager', () => {
     expect(shell.fileSelectedRowIds).toEqual([]);
     expect(shell.fileMessages).toEqual([]);
     expect(shell.fileComments).toEqual([]);
+  });
+
+  it('persists newly created PG file folders locally', async () => {
+    const folder = {
+      record_id: 'folder-1',
+      workspace_id: 'workspace-1',
+      scope_id: 'scope-1',
+      channel_id: 'channel-1',
+      title: 'Assets',
+      record_state: 'active',
+    };
+    createTowerPgFileFolderFromLocal.mockResolvedValueOnce(folder);
+    const originalWindow = globalThis.window;
+    globalThis.window = { prompt: vi.fn(() => 'Assets') };
+    const createStore = Object.assign(Object.create(filesManagerMixin), {
+      isTowerPgMode: true,
+      pgContextSelectedChannelId: 'channel-1',
+      channels: [{ record_id: 'channel-1', scope_id: 'scope-1' }],
+      fileFolders: [],
+      fileCurrentFolderId: '',
+      fileSelectedRowIds: [],
+      applyFileFolders(folders) {
+        this.fileFolders = folders;
+      },
+      selectFileFolder(folderId) {
+        this.fileCurrentFolderId = folderId;
+      },
+    });
+
+    try {
+      await createStore.createFileFolderFromPrompt();
+    } finally {
+      globalThis.window = originalWindow;
+    }
+
+    expect(upsertFileFolder).toHaveBeenCalledWith(folder);
+    expect(createStore.fileFolders).toEqual([folder]);
+    expect(createStore.fileCurrentFolderId).toBe('folder-1');
   });
 
   it('does not report file edit context changes when no file is being edited', () => {

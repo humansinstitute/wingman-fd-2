@@ -86,6 +86,10 @@ const WORKSPACE_STORES_V14 = {
   ...WORKSPACE_STORES_V13,
   response_activities: 'record_id, target_type, target_id, channel_id, thread_id, task_id, doc_id, parent_comment_id, status, expires_at, updated_at',
 };
+const WORKSPACE_STORES_V15 = {
+  ...WORKSPACE_STORES_V14,
+  file_folders: 'record_id, workspace_id, scope_id, channel_id, parent_folder_id, updated_at',
+};
 
 function createWorkspaceDb(workspaceDbKey) {
   const db = new Dexie(`wingman-fd-ws-${workspaceDbKey}`);
@@ -159,6 +163,7 @@ function createWorkspaceDb(workspaceDbKey) {
   db.version(12).stores(WORKSPACE_STORES_V12);
   db.version(13).stores(WORKSPACE_STORES_V13);
   db.version(14).stores(WORKSPACE_STORES_V14);
+  db.version(15).stores(WORKSPACE_STORES_V15);
   return db;
 }
 
@@ -510,6 +515,52 @@ export async function replacePgDocumentsForChannel(channelId, documents = []) {
 
 export async function getDocumentById(recordId) {
   return wsDb().documents.get(recordId);
+}
+
+// ---------------------------------------------------------------------------
+// file_folders — workspace DB
+// ---------------------------------------------------------------------------
+
+export async function getFileFoldersByWorkspace(workspaceId) {
+  const normalizedWorkspaceId = String(workspaceId || '').trim();
+  if (!normalizedWorkspaceId) return [];
+  const rows = await wsDb().file_folders.where('workspace_id').equals(normalizedWorkspaceId).toArray();
+  return sortRowsByTimestamp(rows.filter((row) => row.record_state !== 'deleted'), 'updated_at');
+}
+
+export async function upsertFileFolder(folder) {
+  const row = sanitizeForStorage(folder);
+  if (!row?.record_id) return null;
+  await wsDb().file_folders.put(row);
+  return row.record_id;
+}
+
+export async function replaceFileFoldersForWorkspace(workspaceId, folders = []) {
+  const normalizedWorkspaceId = String(workspaceId || '').trim();
+  if (!normalizedWorkspaceId) return 0;
+  const rows = (Array.isArray(folders) ? folders : [])
+    .map((folder) => sanitizeForStorage(folder))
+    .filter((folder) => folder?.record_id);
+  const db = wsDb();
+  return db.transaction('rw', db.file_folders, async () => {
+    await db.file_folders.where('workspace_id').equals(normalizedWorkspaceId).delete();
+    if (rows.length > 0) await db.file_folders.bulkPut(rows);
+    return rows.length;
+  });
+}
+
+export async function replacePgFileFoldersForChannel(channelId, folders = []) {
+  const normalizedChannelId = String(channelId || '').trim();
+  if (!normalizedChannelId) return 0;
+  const rows = (Array.isArray(folders) ? folders : [])
+    .map((folder) => sanitizeForStorage(folder))
+    .filter((folder) => folder?.record_id);
+  const db = wsDb();
+  return db.transaction('rw', db.file_folders, async () => {
+    await db.file_folders.where('channel_id').equals(normalizedChannelId).delete();
+    if (rows.length > 0) await db.file_folders.bulkPut(rows);
+    return rows.length;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1556,6 +1607,7 @@ export async function clearRuntimeData() {
     db.channels.clear(),
     db.chat_messages.clear(),
     db.documents.clear(),
+    db.file_folders.clear(),
     db.directories.clear(),
     db.reports.clear(),
     db.daily_notes.clear(),

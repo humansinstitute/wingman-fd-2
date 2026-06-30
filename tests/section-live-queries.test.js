@@ -132,6 +132,27 @@ describe('section live query plan', () => {
     expect(plan.detail).toEqual([]);
   });
 
+  it('keeps PG file folders hot on the files route', () => {
+    const plan = getSectionLiveQueryPlan({
+      workspaceOwnerNpub: 'npub-owner',
+      currentWorkspace: { workspaceId: 'workspace-1' },
+      navSection: 'files',
+      applyAddressBookPeople() {},
+    });
+
+    expect(plan.workspace).toEqual([
+      'ws:scopes',
+      'ws:channels',
+      'files:messages',
+      'files:comments',
+      'files:audio-notes',
+      'files:directories',
+      'files:documents',
+      'files:file-folders',
+      'files:tasks',
+    ]);
+  });
+
   it('keeps disabled CRM records cold on the opportunities route', () => {
     const plan = getSectionLiveQueryPlan({
       workspaceOwnerNpub: 'npub-owner',

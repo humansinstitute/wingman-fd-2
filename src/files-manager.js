@@ -5,7 +5,7 @@ import {
   prepareStorageObject,
   uploadStorageObject,
 } from './api.js';
-import { upsertDocument } from './db.js';
+import { upsertDocument, upsertFileFolder } from './db.js';
 import { createTowerPgFileFolderFromLocal, createTowerPgFileFromLocal, updateTowerPgFileFromLocal } from './pg-write-adapter.js';
 import { buildStoragePrepareBody } from './storage-payloads.js';
 import { recordFamilyHash } from './translators/chat.js';
@@ -943,6 +943,7 @@ export const filesManagerMixin = {
         channel_id: channelId,
         parent_folder_id: this.currentFileFolderId || null,
       });
+      await upsertFileFolder(folder);
       this.applyFileFolders([
         ...(this.fileFolders || []).filter((entry) => entry?.record_id !== folder.record_id),
         folder,

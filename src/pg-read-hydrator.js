@@ -32,8 +32,10 @@ import {
   replacePgCommentsForTarget,
   getCommentsByTarget,
   replacePgDailyNotesForOwnerAndDate,
+  replaceFileFoldersForWorkspace,
   replacePgPersonalWappsForOwner,
   replacePgDocumentsForChannel,
+  replacePgFileFoldersForChannel,
   replacePgMessagesForChannel,
   replacePgReactionsForTarget,
   replacePgResponseActivitiesForChannel,
@@ -1295,6 +1297,7 @@ export async function hydrateTowerPgChannelDocumentsAndFiles(store, channelId, d
   const readFiles = deps.getTowerPgChannelFiles || getTowerPgChannelFiles;
   const readFolders = deps.getTowerPgChannelFileFolders || getTowerPgChannelFileFolders;
   const replaceDocuments = deps.replacePgDocumentsForChannel || replacePgDocumentsForChannel;
+  const replaceFolders = deps.replacePgFileFoldersForChannel || replacePgFileFoldersForChannel;
   const [docsResult, filesResult, foldersResult] = await Promise.all([
     readDocs(context.workspaceId, targetChannelId, {
       baseUrl: context.baseUrl,
@@ -1323,6 +1326,7 @@ export async function hydrateTowerPgChannelDocumentsAndFiles(store, channelId, d
     .map(mapPgFileFolderToLocal)
     .filter((folder) => folder.record_id);
   await replaceDocuments(targetChannelId, documents);
+  await replaceFolders(targetChannelId, folders);
   await mergeStoreChannelRows(store, 'documents', 'applyDocuments', targetChannelId, documents);
   if (typeof store.applyFileFolders === 'function') {
     const existing = Array.isArray(store.fileFolders) ? store.fileFolders : [];
@@ -1727,6 +1731,7 @@ export async function hydrateTowerPgDocumentsAndFiles(store, deps = {}) {
   const readFiles = deps.getTowerPgChannelFiles || getTowerPgChannelFiles;
   const readFolders = deps.getTowerPgChannelFileFolders || getTowerPgChannelFileFolders;
   const replaceDocuments = deps.replaceDocumentsForOwner || replaceDocumentsForOwner;
+  const replaceFolders = deps.replaceFileFoldersForWorkspace || replaceFileFoldersForWorkspace;
   let channels = Array.isArray(store.channels) ? store.channels : [];
   if (channels.length === 0 && typeof store.refreshChannels === 'function') {
     const refreshed = await store.refreshChannels();
@@ -1761,6 +1766,7 @@ export async function hydrateTowerPgDocumentsAndFiles(store, deps = {}) {
   }
 
   await replaceDocuments(context.workspaceOwnerNpub, documents);
+  await replaceFolders(context.workspaceId, fileFolders);
   if (typeof store.applyDocuments === 'function') store.applyDocuments(documents);
   if (typeof store.applyFileFolders === 'function') store.applyFileFolders(fileFolders);
   return documents;

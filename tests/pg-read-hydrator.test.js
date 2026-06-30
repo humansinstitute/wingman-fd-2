@@ -1049,6 +1049,7 @@ describe('PG read hydrator', () => {
       reactions: [{ id: 'reaction-1', target_type: 'message', target_id: 'message-1', emoji: 'thumbs_up', reactor_npub: 'npub1alice' }],
     }));
     const replacePgDocumentsForChannel = vi.fn(async () => 2);
+    const replacePgFileFoldersForChannel = vi.fn(async () => 1);
     const replacePgAudioNotesForChannel = vi.fn(async () => 1);
     const replacePgCommentsForTarget = vi.fn(async () => 1);
     const getCommentsByTarget = vi.fn(async (targetId) => [{ record_id: `local-comment-${targetId}`, target_record_id: targetId }]);
@@ -1075,6 +1076,7 @@ describe('PG read hydrator', () => {
       getTowerPgDailyNotes,
       getTowerPgReactions,
       replacePgDocumentsForChannel,
+      replacePgFileFoldersForChannel,
       replacePgAudioNotesForChannel,
       replacePgCommentsForTarget,
       getCommentsByTarget,
@@ -1086,6 +1088,9 @@ describe('PG read hydrator', () => {
     expect(replacePgDocumentsForChannel).toHaveBeenCalledWith('channel-doc', [
       expect.objectContaining({ record_id: 'doc-channel-doc' }),
       expect.objectContaining({ record_id: 'file-channel-doc' }),
+    ]);
+    expect(replacePgFileFoldersForChannel).toHaveBeenCalledWith('channel-doc', [
+      expect.objectContaining({ record_id: 'folder-channel-doc' }),
     ]);
     expect(target.applyFileFolders).toHaveBeenCalledWith([expect.objectContaining({ record_id: 'folder-channel-doc' })]);
     expect(replacePgAudioNotesForChannel).toHaveBeenCalledWith('channel-audio', [expect.objectContaining({ record_id: 'audio-channel-audio' })]);
@@ -1630,6 +1635,7 @@ describe('PG read hydrator', () => {
       folders: [{ id: 'folder-1', scope_id: 'scope-1', channel_id: 'channel-1', title: 'Assets' }],
     }));
     const replaceDocumentsForOwner = vi.fn(async () => 2);
+    const replaceFileFoldersForWorkspace = vi.fn(async () => 1);
     const downloadStorageObject = vi.fn(async () => new TextEncoder().encode(JSON.stringify({
       format: 'document_content_v1',
       content_model: {
@@ -1644,6 +1650,7 @@ describe('PG read hydrator', () => {
       getTowerPgChannelFiles,
       getTowerPgChannelFileFolders,
       replaceDocumentsForOwner,
+      replaceFileFoldersForWorkspace,
       downloadStorageObject,
     });
 
@@ -1658,6 +1665,9 @@ describe('PG read hydrator', () => {
     ]);
     expect(downloadStorageObject).toHaveBeenCalledWith('object-doc');
     expect(replaceDocumentsForOwner).toHaveBeenCalledWith('npub1owner', documents);
+    expect(replaceFileFoldersForWorkspace).toHaveBeenCalledWith('workspace-1', [
+      expect.objectContaining({ record_id: 'folder-1', title: 'Assets' }),
+    ]);
     expect(target.applyDocuments).toHaveBeenCalledWith(documents);
     expect(target.applyFileFolders).toHaveBeenCalledWith([expect.objectContaining({ record_id: 'folder-1', title: 'Assets' })]);
   });

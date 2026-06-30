@@ -9,6 +9,7 @@ import {
   getDirectoriesByOwner,
   getDocumentsByOwner,
   getDocumentById,
+  getFileFoldersByWorkspace,
   getWindowedDocumentsByOwner,
   getReportById,
   getWindowedReportsByOwner,
@@ -83,6 +84,10 @@ function stopBucket(store, bucket) {
 
 function currentWorkspaceKey(store) {
   return String(store?.currentWorkspaceKey || '').trim();
+}
+
+function currentPgWorkspaceId(store) {
+  return String(store?.currentWorkspace?.workspaceId || store?.workspaceId || '').trim();
 }
 
 function isSameWorkspace(store, workspaceKey, ownerNpub) {
@@ -319,6 +324,11 @@ function buildWorkspaceSpecs(store) {
           key: 'files:documents',
           query: () => getDocumentsByOwner(ownerNpub),
           onNext: (documents) => store.applyDocuments(documents),
+        },
+        {
+          key: 'files:file-folders',
+          query: () => getFileFoldersByWorkspace(currentPgWorkspaceId(store)),
+          onNext: (folders) => store.applyFileFolders(folders),
         },
         {
           key: 'files:tasks',
