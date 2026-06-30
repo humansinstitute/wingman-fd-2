@@ -8,7 +8,6 @@ import {
   publishOnboardingAnnouncement,
   queryOnboardingAnnouncementCandidates,
 } from './nostr-onboarding-announcements.js';
-import { buildSuperBasedConnectionToken } from './superbased-token.js';
 
 function errorMessage(error) {
   return error?.message || String(error || 'Onboarding announcement failed');
@@ -33,18 +32,6 @@ function statusKey({ recipientNpub = '', workspace = {}, grantId = '' } = {}) {
     trimText(workspace.workspaceServiceNpub || workspace.workspace_service_npub),
     trimText(grantId),
   ].join('::');
-}
-
-function buildConnectionToken(workspace = {}, backendUrl = '') {
-  return trimText(workspace.connectionToken) || buildSuperBasedConnectionToken({
-    directHttpsUrl: workspace.directHttpsUrl || backendUrl,
-    serviceNpub: workspace.towerServiceNpub || workspace.serviceNpub || '',
-    towerName: workspace.towerName || '',
-    towerDescription: workspace.towerDescription || '',
-    workspaceOwnerNpub: workspace.workspaceOwnerNpub || '',
-    appNpub: APP_NPUB,
-    relayUrls: workspace.relayUrls || [],
-  });
 }
 
 function locatorIdentity(locator = {}) {
@@ -141,7 +128,6 @@ export const onboardingAnnouncementsManagerMixin = {
   },
 
   buildPgOnboardingAgentConnectPackage(workspace = this.currentWorkspace) {
-    const token = buildConnectionToken(workspace, this.backendUrl);
     return buildAgentConnectPackage({
       windowOrigin: currentOrigin(),
       backendUrl: workspace?.directHttpsUrl || this.backendUrl,
@@ -149,9 +135,7 @@ export const onboardingAnnouncementsManagerMixin = {
         ...(this.session || {}),
         npub: workspace?.workspaceOwnerNpub || this.session?.npub || '',
       },
-      token,
-      towerName: workspace?.towerName || '',
-      towerDescription: workspace?.towerDescription || '',
+      workspace,
     });
   },
 

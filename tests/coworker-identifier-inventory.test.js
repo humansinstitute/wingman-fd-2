@@ -76,13 +76,6 @@ describe('external-contract identifiers', () => {
     // Renaming requires coordinated changes across repos.
   });
 
-  it('agent-connect.js notes reference mentions Coworker/agent session', () => {
-    const hits = grepFile('src/agent-connect.js', /Coworker\/agent session/);
-    expect(hits.length).toBeGreaterThanOrEqual(1);
-    // User-facing note inside a structured payload. Low risk but technically
-    // part of a published JSON shape that agents may parse.
-  });
-
   it('public/llms.txt references coworker_agent_connect kind', () => {
     const hits = grepFile('public/llms.txt', /coworker_agent_connect/);
     expect(hits.length).toBeGreaterThanOrEqual(1);

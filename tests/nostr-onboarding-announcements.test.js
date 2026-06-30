@@ -34,23 +34,31 @@ const workspace = {
 
 const agentConnect = {
   kind: 'coworker_agent_connect',
-  version: 5,
+  version: 6,
+  protocol: 'flightdeck_pg',
   generated_at: '2026-06-07T00:00:00.000Z',
   llms_url: 'https://fd.example/llms.txt',
   service: {
     direct_https_url: 'https://tower.example',
-    service_npub: 'npub1tower',
-    relay_urls: ['wss://relay.test'],
   },
-  workspace: {
-    owner_npub: 'npub1owner',
-  },
-  app: {
+  auth: {
+    scheme: 'NIP-98',
+    app_header: 'x-flightdeck-pg-app-npub',
     app_npub: app.npub,
     app_pubkey: app.pubkey,
   },
-  connection_token: 'encrypted-payload-only-token',
-  notes: [],
+  workspace_descriptor: {
+    type: 'wingman_workspace_locator',
+    version: 1,
+    tower_base_url: 'https://tower.example',
+    identity: {
+      tower_service_npub: 'npub1tower',
+      workspace_service_npub: 'npub1workspace',
+      workspace_owner_npub: 'npub1owner',
+      workspace_id: 'workspace-1',
+      app_npub: defaultPgAppNpub,
+    },
+  },
 };
 
 async function validPayload(overrides = {}) {
@@ -136,7 +144,10 @@ describe('Nostr kind 33357 onboarding announcements', () => {
       },
       agent_connect: {
         kind: 'coworker_agent_connect',
-        connection_token: 'encrypted-payload-only-token',
+        protocol: 'flightdeck_pg',
+        workspace_descriptor: {
+          type: 'wingman_workspace_locator',
+        },
       },
       grant: {
         reason: 'added_to_workspace_or_group',
@@ -185,8 +196,8 @@ describe('Nostr kind 33357 onboarding announcements', () => {
 
     expect(() => validateOnboardingAnnouncementPayload({
       ...payload,
-      agent_connect: { ...payload.agent_connect, connection_token: '' },
-    }, { recipientNpub: recipient.npub, appPubkeyHex })).toThrow(/connection_token/);
+      agent_connect: { ...payload.agent_connect, workspace_descriptor: null },
+    }, { recipientNpub: recipient.npub, appPubkeyHex })).toThrow(/workspace descriptor/);
 
     expect(() => validateOnboardingAnnouncementPayload({
       ...payload,

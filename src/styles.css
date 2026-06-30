@@ -9581,6 +9581,110 @@ button:disabled {
   margin-top: 0.5rem;
 }
 
+.channel-bulk-grant-panel {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 1rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #f8fafc;
+}
+
+.channel-bulk-grant-header,
+.channel-bulk-grant-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.channel-bulk-grant-header h5,
+.channel-bulk-grant-header p {
+  margin: 0;
+}
+
+.channel-bulk-grant-header h5 {
+  font-size: 0.86rem;
+}
+
+.channel-bulk-grant-count,
+.channel-bulk-grant-header > span {
+  flex: 0 0 auto;
+  padding: 0.22rem 0.48rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.channel-bulk-grant-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) minmax(0, 1fr);
+}
+
+.channel-bulk-grant-actions {
+  justify-content: flex-start;
+}
+
+.channel-bulk-grant-actions .btn-confirm {
+  min-height: 2rem;
+  padding: 0.35rem 0.7rem;
+  white-space: normal;
+}
+
+.channel-bulk-grant-list {
+  display: grid;
+  gap: 0.35rem;
+  max-height: 13rem;
+  overflow: auto;
+  padding-right: 0.2rem;
+}
+
+.channel-bulk-grant-channel {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.5rem;
+  align-items: center;
+  min-height: 2.35rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: var(--radius-sm);
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.channel-bulk-grant-channel input {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+}
+
+.channel-bulk-grant-channel span {
+  display: grid;
+  min-width: 0;
+  gap: 0.08rem;
+}
+
+.channel-bulk-grant-channel strong,
+.channel-bulk-grant-channel small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.channel-bulk-grant-channel strong {
+  color: var(--text);
+  font-size: 0.84rem;
+}
+
+.channel-bulk-grant-channel small {
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
 .channel-grants-empty {
   padding: 1rem 0;
 }
@@ -9702,6 +9806,7 @@ button:disabled {
 
 @media (max-width: 760px) {
   .channel-grant-grid,
+  .channel-bulk-grant-grid,
   .channel-grant-row {
     grid-template-columns: 1fr;
   }

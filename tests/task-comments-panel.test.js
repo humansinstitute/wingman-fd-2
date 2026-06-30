@@ -89,7 +89,7 @@ describe('task comments panel fullscreen affordance', () => {
     expect(headerRule).toMatch(/z-index\s*:\s*31/);
 
     const bodyRule = extractRule(css, '\n.task-detail-body');
-    expect(bodyRule).toMatch(/grid-template-columns\s*:\s*minmax\(0,\s*1fr\)\s*minmax\(20rem,\s*25rem\)/);
+    expect(bodyRule).toMatch(/grid-template-columns\s*:\s*minmax\(0,\s*3fr\)\s*minmax\(0,\s*2fr\)/);
     expect(css).not.toContain('task-detail-body-comments-expanded');
     expect(css).not.toContain('task-comments-resize-btn');
     expect(css).not.toContain('task-detail-activity-sidebar');

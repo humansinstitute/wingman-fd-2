@@ -1,200 +1,93 @@
 # Wingman Flight Deck llms.txt
 
-This is the canonical LLM handoff document for Wingman Flight Deck.
+This file describes the current Agent Connect surface for Wingman Flight Deck.
+The active protocol is Postgres-backed Tower PG only.
 
-If you received an Agent Connect package, read that package first and then use this file.
+## Agent Connect package
 
-## Primary instructions
-
-1. Use `llms_url` from the Agent Connect package as the semantic guide for this workspace.
-2. Use `connection_token` from the package to configure the target agent session against the same workspace.
-3. Use `service.openapi_url`, `service.docs_url`, and `service.health_url` from the package to inspect the live backend.
-4. Prefer Wingman Yoke for agent and operator workflows when it is available in the target environment.
-
-Wingman Yoke should be the default integration path for workspace-aware automation because it preserves active workspace context, maintains a local SQLite mirror, and reduces manual setup drift.
-
-## Wingman Yoke
-
-Use Wingman Yoke to connect an agent or operator session to this Flight Deck workspace.
-
-Download and install:
-
-- npm package: `wingman-yoke`
-- source repo: `https://github.com/humansinstitute/wingman-yoke`
-- preferred no-install launch: `npx wingman-yoke --help` or `bunx wingman-yoke --help`
-- global install: `npm install -g wingman-yoke`
-- local clone install:
-
-```bash
-git clone https://github.com/humansinstitute/wingman-yoke.git
-cd wingman-yoke
-npm install
-```
-
-Runtime requirement:
-
-- Node.js `>= 20`
-
-Connect Yoke to this workspace:
-
-```bash
-export WINGMAN_YOKE_NSEC=nsec1...
-wingman-yoke init --token "<connection_token>"
-wingman-yoke sync
-wingman-yoke status
-```
-
-Notes:
-
-- Yoke accepts either the raw `connection_token` or the full Agent Connect JSON package.
-- Yoke stores local state by default in `~/.wingman-yoke/`.
-- If you are running from a local clone, replace `wingman-yoke` with `node src/cli.js`.
-
-## Package fields
-
-The Agent Connect package includes:
+Flight Deck emits a JSON package with:
 
 - `kind`: `coworker_agent_connect`
-- `version`: `5`
-- `generated_at`: package creation timestamp
-- `llms_url`: this document
-- `robots_url`: crawler and discovery hints
-- `service.direct_https_url`: the current SuperBased backend
-- `service.openapi_url`: live OpenAPI for the backend
-- `service.docs_url`: interactive API docs
-- `service.health_url`: service health endpoint
-- `service.service_npub`: service identity when available
-- `service.relay_urls`: relay hints when available
-- `workspace.owner_npub`: workspace owner identity
-- `workspace.owner_pubkey`: workspace owner pubkey in hex when available
-- `app.app_npub`: Flight Deck app/schema identity
-- `app.app_pubkey`: Flight Deck app pubkey in hex when available
-- `connection_token`: a SuperBased connection key for another Coworker or agent session
-- `notes`: short operational hints for importers
+- `version`: `6`
+- `protocol`: `flightdeck_pg`
+- `service.direct_https_url`: Tower base URL
+- `service.openapi_url`: live OpenAPI URL for the Tower deployment
+- `service.docs_url`: live docs URL for the Tower deployment
+- `auth.scheme`: `NIP-98`
+- `auth.app_header`: `x-flightdeck-pg-app-npub`
+- `workspace_descriptor`: a `wingman_workspace_locator`
 
-## How Wingman Flight Deck uses SuperBased
+The package intentionally includes only Tower PG connection details and excludes
+legacy connection keys, relay credentials, private keys, bearer tokens, and
+encrypted-record metadata.
 
-Flight Deck is a workspace-scoped app built on SuperBased v4 groups and append-only records.
+## Connect flow
 
-- Groups define sharing boundaries.
-- Records are append-only and versioned.
-- Writes create a new record version instead of mutating rows in place.
-- Record families are scoped by the app namespace.
-- Local UI state is materialized from synced records.
+1. Parse the Agent Connect JSON.
+2. Read `workspace_descriptor.tower_base_url` and
+   `workspace_descriptor.identity.workspace_id`.
+3. Sign every Tower request with NIP-98.
+4. Send `x-flightdeck-pg-app-npub` with
+   `workspace_descriptor.identity.app_npub`.
+5. Verify the workspace with:
+   `GET /api/v4/flightdeck-pg/workspaces/:workspaceId/descriptor`
+   and `GET /api/v4/flightdeck-pg/workspaces/:workspaceId/me`.
+6. Use `service.openapi_url` and `service.docs_url` for exact request and
+   response shapes on the live deployment.
 
-## Important identities
+If a static OpenAPI export is behind the deployed Tower, prefer the direct
+Postgres routes below until the export catches up.
 
-There are three distinct identity layers:
+## Core Tower PG routes
 
-- Service identity: `service.service_npub`
-- Workspace owner identity: `workspace.owner_npub`
-- App/schema identity: `app.app_npub`
+All routes are under `/api/v4/flightdeck-pg`.
 
-Do not conflate service identity with workspace ownership.
+- `GET /service`
+- `GET /workspaces`
+- `GET /workspaces/:workspaceId/descriptor`
+- `GET /workspaces/:workspaceId/me`
+- `PATCH /workspaces/:workspaceId`
+- `POST /workspaces/:workspaceId/storage/prepare`
+- `GET /workspaces/:workspaceId/events`
+- `GET /workspaces/:workspaceId/events/stream`
+- `GET|POST /workspaces/:workspaceId/members`
+- `GET|POST /workspaces/:workspaceId/groups`
+- `POST /workspaces/:workspaceId/groups/:groupId/members`
+- `DELETE /workspaces/:workspaceId/groups/:groupId/members/:actorId`
+- `GET /workspaces/:workspaceId/groups/:groupId/effective-members`
+- `POST /workspaces/:workspaceId/groups/:groupId/child-groups`
+- `DELETE /workspaces/:workspaceId/groups/:groupId/child-groups/:childGroupId`
+- `POST /workspaces/:workspaceId/invites`
+- `GET|POST /workspaces/:workspaceId/scopes`
+- `DELETE /workspaces/:workspaceId/scopes/:scopeId`
+- `GET|POST /workspaces/:workspaceId/scopes/:scopeId/channels`
+- `PATCH|DELETE /workspaces/:workspaceId/channels/:channelId`
+- `GET|POST /workspaces/:workspaceId/channels/:channelId/grants`
+- `PUT|DELETE /workspaces/:workspaceId/channels/:channelId/grants/:principalType/:principalId`
+- `GET|POST /workspaces/:workspaceId/channels/:channelId/threads`
+- `DELETE /workspaces/:workspaceId/threads/:threadId`
+- `PATCH /workspaces/:workspaceId/threads/:threadId/archive`
+- `GET|POST /workspaces/:workspaceId/channels/:channelId/messages`
+- `DELETE /workspaces/:workspaceId/messages/:messageId`
+- `GET|POST /workspaces/:workspaceId/channels/:channelId/docs`
+- `GET|PATCH|DELETE /workspaces/:workspaceId/docs/:docId`
+- `GET /workspaces/:workspaceId/docs/:docId/body`
+- `GET /workspaces/:workspaceId/docs/:docId/versions`
+- `GET|POST /workspaces/:workspaceId/docs/:docId/comments`
+- `PATCH|DELETE /workspaces/:workspaceId/docs/:docId/comments/:commentId`
+- `GET|POST /workspaces/:workspaceId/channels/:channelId/files`
+- `GET|PATCH /workspaces/:workspaceId/files/:fileId`
+- `GET /workspaces/:workspaceId/files/:fileId/object`
+- `GET|POST /workspaces/:workspaceId/channels/:channelId/tasks`
+- `GET /workspaces/:workspaceId/scopes/:scopeId/tasks`
+- `GET|PATCH|DELETE /workspaces/:workspaceId/tasks/:taskId`
+- `POST /workspaces/:workspaceId/tasks/:taskId/state`
+- `GET|POST /workspaces/:workspaceId/tasks/:taskId/comments`
+- `POST /workspaces/:workspaceId/tasks/:taskId/assignments`
+- `DELETE /workspaces/:workspaceId/tasks/:taskId/assignments/:actorId`
 
-## Connection token
+Markdown documents are storage-backed: prepare/upload the Markdown object with
+`POST /storage/prepare`, then create or update docs using the returned
+`storage_object_id`.
 
-The `connection_token` is a base64-encoded JSON object shaped like:
-
-```json
-{
-  "type": "superbased_connection",
-  "version": 2,
-  "direct_https_url": "https://sb4.otherstuff.studio",
-  "service_npub": "npub1...",
-  "workspace_owner_npub": "npub1...",
-  "app_npub": "npub1...",
-  "relays": [
-    "wss://relay.example"
-  ]
-}
-```
-
-Notes:
-
-- `relay` may be present instead of `relays` when there is exactly one relay hint.
-- If `workspace_owner_npub` is absent, agents should default to the current signed-in user only when that is explicitly appropriate for the target workflow.
-
-## API summary
-
-Use the backend OpenAPI for exact request and response shapes.
-
-Common areas:
-
-- `POST /api/v4/groups`
-- `POST /api/v4/groups/{groupId}/members`
-- `GET /api/v4/groups`
-- `POST /api/v4/records/sync`
-- `GET /api/v4/records`
-- `POST /api/v4/storage/prepare`
-- `PUT /api/v4/storage/{objectId}`
-- `POST /api/v4/storage/{objectId}/complete`
-
-## Record conventions
-
-Current outbound Flight Deck payloads broadly look like:
-
-```json
-{
-  "app_namespace": "<app npub>",
-  "collection_space": "task",
-  "schema_version": 1,
-  "record_id": "<uuid>",
-  "data": {
-    "...": "family-specific fields",
-    "record_state": "active"
-  }
-}
-```
-
-Important current conventions:
-
-- `schema_version` is `1`
-- `record_state` is usually `active` or `deleted`
-- writes are version checked
-- payloads are wrapped in owner and group payload containers
-- scope records use generic lineage fields `l1_id` through `l5_id`
-- scoped records use `scope_id` plus `scope_l1_id` through `scope_l5_id`
-- task payloads include a `references` array when available
-- report payloads use `metadata` plus a declaration `data` payload
-
-## Flight Deck record families
-
-Record families are namespaced by the app identity:
-
-- `<app_npub>:settings`
-- `<app_npub>:channel`
-- `<app_npub>:chat_message`
-- `<app_npub>:directory`
-- `<app_npub>:document`
-- `<app_npub>:report`
-- `<app_npub>:task`
-- `<app_npub>:schedule`
-- `<app_npub>:comment`
-- `<app_npub>:audio_note`
-- `<app_npub>:scope`
-
-Current family notes:
-
-- `scope` records now use generic depth labels `l1` through `l5` rather than semantic `product` / `project` / `deliverable` field names.
-- `task`, `document`, `directory`, and `report` records can carry scope lineage fields for filtering and materialization.
-- `report` records are first-class sync families in Flight Deck.
-
-## Agent workflow
-
-For a new agent session:
-
-1. Import or parse the Agent Connect package.
-2. Read this `llms.txt`.
-3. Install or launch Wingman Yoke if you need an agent/operator CLI.
-4. Verify the backend with `service.health_url`.
-5. Inspect `service.openapi_url` before making assumptions about route shape.
-6. Run `wingman-yoke init --token "<connection_token>"`.
-7. Run `wingman-yoke sync`.
-8. Use the `connection_token` directly only when Yoke is unavailable or inappropriate for the workflow.
-
-## Compatibility
-
-Older clients may still reference `/agentconnect.md` or `/llm.txt`.
-
-Treat both as compatibility shims. `llms.txt` is the source of truth.
+Do not use legacy record-sync setup for Postgres Flight Deck work.

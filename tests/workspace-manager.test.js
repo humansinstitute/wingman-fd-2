@@ -1054,6 +1054,32 @@ describe('prepareWorkspaceSharingSettings', () => {
     expect(store.groupsLoading).toBe(false);
     expect(store.groupsLoadError).toBeNull();
   });
+
+  it('loads PG members and channels then primes bulk channel access for all channels', async () => {
+    const refreshGroups = vi.fn().mockResolvedValue([]);
+    const refreshTowerPgWorkspaceMembers = vi.fn().mockResolvedValue([]);
+    const refreshChannels = vi.fn().mockResolvedValue([]);
+    const resetChannelBulkGrantDraft = vi.fn();
+    const { fn } = bindMethod('prepareWorkspaceSharingSettings', {
+      canAdminWorkspace: true,
+      isTowerPgMode: true,
+      refreshGroups,
+      refreshTowerPgWorkspaceMembers,
+      refreshChannels,
+      resetChannelBulkGrantDraft,
+    });
+
+    await fn({ force: true });
+
+    expect(refreshGroups).toHaveBeenCalledWith({
+      force: true,
+      maxAgeMs: 30000,
+      minIntervalMs: 5000,
+    });
+    expect(refreshTowerPgWorkspaceMembers).toHaveBeenCalledWith({ force: true, limit: 200 });
+    expect(refreshChannels).toHaveBeenCalledTimes(1);
+    expect(resetChannelBulkGrantDraft).toHaveBeenCalledWith({ selectAll: true });
+  });
 });
 
 // ---------------------------------------------------------------------------

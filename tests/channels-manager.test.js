@@ -513,6 +513,131 @@ describe('channels-manager pure utilities', () => {
     expect(store.channelGrantsSaving).toBeFalsy();
   });
 
+  it('sends explicit permissions when granting Agent access from channel settings', async () => {
+    const store = createPgGrantStore({
+      channelGrantPrincipalType: 'group',
+      channelGrantGroupId: 'group-agents',
+      channelGrantCapacity: 'agent',
+      currentWorkspaceGroups: [{ group_id: 'group-agents', name: 'Agents' }],
+    });
+
+    await store.createChannelGrant();
+
+    expect(createTowerPgChannelGrant).toHaveBeenCalledWith('workspace-1', 'channel-1', {
+      principal_type: 'group',
+      principal_id: 'group-agents',
+      permissions: expect.arrayContaining(['channel.read', 'task.create', 'doc.write']),
+    }, { baseUrl: 'https://tower.example', appNpub: 'flightdeck-app' });
+  });
+
+  it('defaults bulk channel grants to the agents group and selected channel', () => {
+    const store = createPgGrantStore({
+      selectedChannelId: 'channel-2',
+      channels: [
+        { record_id: 'channel-1', title: 'General', scope_id: 'scope-a', record_state: 'active' },
+        { record_id: 'channel-2', title: 'Implementation', scope_id: 'scope-a', record_state: 'active' },
+        { record_id: 'dm-1', title: 'DM', channel_type: 'dm', record_state: 'active' },
+      ],
+      scopesMap: new Map([['scope-a', { record_id: 'scope-a', title: 'Flight Deck' }]]),
+      currentWorkspaceGroups: [
+        { group_id: 'group-workspace', name: 'Workspace' },
+        { group_id: 'group-agents', name: 'Agents' },
+      ],
+      getChannelLabel: (channel) => channel.title,
+    });
+
+    store.resetChannelBulkGrantDraft();
+
+    expect(store.channelBulkGrantPrincipalType).toBe('group');
+    expect(store.channelBulkGrantGroupId).toBe('group-agents');
+    expect(store.channelBulkGrantCapacity).toBe('contributor');
+    expect(store.channelBulkGrantSelectedChannelIds).toEqual(['channel-2']);
+    expect(store.pgChannelBulkGrantChannelOptions.map((channel) => channel.id)).toEqual(['channel-1', 'channel-2']);
+  });
+
+  it('can initialize bulk channel grants with all channels selected for setup', () => {
+    const store = createPgGrantStore({
+      selectedChannelId: 'channel-2',
+      channels: [
+        { record_id: 'channel-1', title: 'General', scope_id: 'scope-a', record_state: 'active' },
+        { record_id: 'channel-2', title: 'Implementation', scope_id: 'scope-a', record_state: 'active' },
+      ],
+      currentWorkspaceGroups: [{ group_id: 'group-agents', name: 'Agents' }],
+      getChannelLabel: (channel) => channel.title,
+    });
+
+    store.resetChannelBulkGrantDraft({ selectAll: true });
+
+    expect(store.channelBulkGrantSelectedChannelIds).toEqual(['channel-1', 'channel-2']);
+  });
+
+  it('applies a bulk grant across selected channels without rewriting custom grants', async () => {
+    getTowerPgChannelGrants
+      .mockResolvedValueOnce({ grants: [] })
+      .mockResolvedValueOnce({
+        grants: [{
+          principal_type: 'group',
+          principal_id: 'group-agents',
+          permissions: permissionsForPgChannelCapacity('viewer'),
+        }],
+      })
+      .mockResolvedValueOnce({
+        grants: [{
+          principal_type: 'group',
+          principal_id: 'group-agents',
+          permissions: ['channel.read', 'bespoke.permission'],
+        }],
+      })
+      .mockResolvedValueOnce({
+        grants: [{
+          principal_type: 'actor',
+          principal_id: 'actor-manager',
+          permissions: ['channel.read', 'channel.grants.read', 'channel.grants.manage'],
+        }],
+      });
+    const store = createPgGrantStore({
+      channels: [
+        { record_id: 'channel-a', title: 'A', scope_id: 'scope-a', record_state: 'active' },
+        { record_id: 'channel-b', title: 'B', scope_id: 'scope-a', record_state: 'active' },
+        { record_id: 'channel-c', title: 'C', scope_id: 'scope-a', record_state: 'active' },
+      ],
+      scopesMap: new Map([['scope-a', { record_id: 'scope-a', title: 'Flight Deck' }]]),
+      currentWorkspaceGroups: [{ group_id: 'group-agents', name: 'Agents' }],
+      getChannelLabel: (channel) => channel.title,
+      channelBulkGrantPrincipalType: 'group',
+      channelBulkGrantGroupId: 'group-agents',
+      channelBulkGrantCapacity: 'contributor',
+      channelBulkGrantSelectedChannelIds: ['channel-a', 'channel-b', 'channel-c'],
+      schedulePgChannelAccessMaterializationRefresh: vi.fn(),
+    });
+
+    await store.applyChannelBulkGrant();
+
+    expect(createTowerPgChannelGrant).toHaveBeenCalledWith('workspace-1', 'channel-a', {
+      principal_type: 'group',
+      principal_id: 'group-agents',
+      access_level: 'contribute',
+    }, { baseUrl: 'https://tower.example', appNpub: 'flightdeck-app' });
+    expect(updateTowerPgChannelGrant).toHaveBeenCalledWith(
+      'workspace-1',
+      'channel-b',
+      'group',
+      'group-agents',
+      { access_level: 'contribute' },
+      { baseUrl: 'https://tower.example', appNpub: 'flightdeck-app' },
+    );
+    expect(updateTowerPgChannelGrant).not.toHaveBeenCalledWith(
+      'workspace-1',
+      'channel-c',
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    );
+    expect(store.channelGrantsNotice).toBe('Bulk access complete: 1 added, 1 updated, 1 custom skipped.');
+    expect(store.channelGrantsError).toBeNull();
+  });
+
   it('creates PG channels with group/person access rows', async () => {
     const store = applyChannelMixin({
       channels: [],

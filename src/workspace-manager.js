@@ -329,11 +329,19 @@ export const workspaceManagerMixin = {
     this.groupsLoading = true;
     this.groupsLoadError = null;
     try {
-      await this.refreshGroups?.({
+      const refreshOptions = {
         force: options.force === true,
         maxAgeMs: options.maxAgeMs ?? 30_000,
         minIntervalMs: options.minIntervalMs ?? 5_000,
-      });
+      };
+      await Promise.all([
+        this.refreshGroups?.(refreshOptions) ?? Promise.resolve([]),
+        this.isTowerPgMode ? (this.refreshTowerPgWorkspaceMembers?.({ force: options.force === true, limit: 200 }) ?? Promise.resolve([])) : Promise.resolve([]),
+        this.isTowerPgMode ? (this.refreshChannels?.() ?? Promise.resolve([])) : Promise.resolve([]),
+      ]);
+      if (this.isTowerPgMode && typeof this.resetChannelBulkGrantDraft === 'function') {
+        this.resetChannelBulkGrantDraft({ selectAll: true });
+      }
     } catch (error) {
       this.groupsLoadError = error?.message || 'Failed to load groups';
     } finally {

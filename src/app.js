@@ -527,6 +527,13 @@ export function initApp() {
     channelGrantActorId: '',
     channelGrantGroupId: '',
     channelGrantCapacity: 'viewer',
+    channelBulkGrantPrincipalType: 'group',
+    channelBulkGrantActorId: '',
+    channelBulkGrantGroupId: '',
+    channelBulkGrantCapacity: 'contributor',
+    channelBulkGrantSelectedChannelIds: [],
+    channelBulkGrantBusy: false,
+    channelBulkGrantProgress: '',
     presetConnecting: false,
     // Connect modal (two-step)
     showConnectModal: false,

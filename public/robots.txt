@@ -4,5 +4,6 @@ Allow: /
 # Agent discovery hints
 Agent-Connect: /llms.txt
 LLM: /llms.txt
-OpenAPI: https://sb4.otherstuff.studio/openapi.json
-Docs: https://sb4.otherstuff.studio/docs
+
+# OpenAPI and Docs are Tower-specific.
+# Read service.openapi_url and service.docs_url from the Agent Connect package.

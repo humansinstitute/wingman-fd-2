@@ -181,9 +181,6 @@ export function buildOnboardingAgentConnectPackage({
   windowOrigin = '',
   backendUrl = '',
   session = null,
-  token = '',
-  towerName = '',
-  towerDescription = '',
 } = {}) {
   const descriptor = workspaceDescriptor(workspace);
   const directHttpsUrl = normalizeBackendUrl(backendUrl || descriptor.towerBaseUrl || workspace?.directHttpsUrl);
@@ -191,9 +188,7 @@ export function buildOnboardingAgentConnectPackage({
     windowOrigin,
     backendUrl: directHttpsUrl,
     session,
-    token,
-    towerName: towerName || workspace?.towerName || '',
-    towerDescription: towerDescription || workspace?.towerDescription || '',
+    workspace,
   });
 }
 
@@ -230,6 +225,7 @@ export async function buildOnboardingPayload({
   const connectPackage = agentConnect || buildAgentConnectPackage({
     backendUrl: directHttpsUrl,
     session: { npub: issuedByNpub },
+    workspace,
   });
 
   return {
@@ -296,8 +292,8 @@ export function validateOnboardingAnnouncementPayload(payload, {
     if (payload.agent_connect?.kind !== 'coworker_agent_connect') {
       throw new Error('Onboarding announcement payload is missing Agent Connect.');
     }
-    if (!trimText(payload.agent_connect?.connection_token)) {
-      throw new Error('Onboarding announcement payload is missing connection_token.');
+    if (payload.agent_connect?.protocol !== 'flightdeck_pg' || !payload.agent_connect?.workspace_descriptor) {
+      throw new Error('Onboarding announcement payload is missing Postgres workspace descriptor.');
     }
   }
   if (action === ONBOARDING_ACTION_GRANT && payload.expires_at) {

@@ -685,7 +685,7 @@
       <div class="modal agent-connect-modal">
         <button class="modal-close" type="button" @click="$store.chat.closeAgentConnect()">&times;</button>
         <h2>Agent Connect</h2>
-        <p>Copy an agent package with `llms.txt`, live OpenAPI docs, service endpoint, and the workspace connection key.</p>
+        <p>Copy a Postgres Agent Connect package with `llms.txt`, live OpenAPI docs, service endpoint, and the workspace descriptor.</p>
         <div class="agent-connect-content">
           <button
             class="copy-button"
@@ -7519,6 +7519,84 @@
                 </div>
               </template>
             </div>
+          </section>
+
+          <section class="settings-panel channel-bulk-grant-settings-panel" x-show="$store.chat.isTowerPgMode">
+            <div class="groups-header">
+              <div>
+                <h2>Channel access</h2>
+                <p class="groups-subtitle">Apply one group or user permission across multiple channels.</p>
+              </div>
+              <span class="channel-bulk-grant-count" x-text="`${$store.chat.channelBulkGrantSelectedCount} selected`"></span>
+            </div>
+
+            <div class="channel-bulk-grant-panel">
+              <div class="channel-bulk-grant-header">
+                <div>
+                  <h5>Bulk channel permissions</h5>
+                  <p class="channel-grant-draft-help">Choose channels, then add or update the same access rule on each one.</p>
+                </div>
+              </div>
+              <div class="channel-grant-grid channel-bulk-grant-grid">
+                <select class="new-group-input" x-model="$store.chat.channelBulkGrantPrincipalType" :disabled="$store.chat.channelBulkGrantBusy">
+                  <option value="group">Group</option>
+                  <option value="actor">User</option>
+                </select>
+
+                <select class="new-group-input" x-show="$store.chat.channelBulkGrantPrincipalType === 'actor'" x-model="$store.chat.channelBulkGrantActorId" :disabled="$store.chat.channelBulkGrantBusy || $store.chat.pgChannelGrantActorOptions.length === 0">
+                  <option value="">Select user...</option>
+                  <template x-for="member in $store.chat.pgChannelGrantActorOptions" :key="member.actorId">
+                    <option :value="member.actorId" x-text="member.label"></option>
+                  </template>
+                </select>
+
+                <select class="new-group-input" x-show="$store.chat.channelBulkGrantPrincipalType === 'group'" x-model="$store.chat.channelBulkGrantGroupId" :disabled="$store.chat.channelBulkGrantBusy || $store.chat.pgChannelGrantGroupOptions.length === 0">
+                  <option value="">Select group...</option>
+                  <template x-for="group in $store.chat.pgChannelGrantGroupOptions" :key="group.groupId">
+                    <option :value="group.groupId" x-text="group.label"></option>
+                  </template>
+                </select>
+
+                <select class="new-group-input" x-model="$store.chat.channelBulkGrantCapacity" :disabled="$store.chat.channelBulkGrantBusy">
+                  <template x-for="capacity in $store.chat.pgChannelGrantCapacityOptions" :key="capacity.value">
+                    <option :value="capacity.value" x-text="capacity.label"></option>
+                  </template>
+                </select>
+              </div>
+
+              <div class="channel-bulk-grant-actions">
+                <button type="button" class="btn-secondary btn-compact" @click="$store.chat.selectAllChannelBulkGrantChannels()" :disabled="$store.chat.channelBulkGrantBusy || $store.chat.pgChannelBulkGrantChannelOptions.length === 0">Select all</button>
+                <button type="button" class="btn-secondary btn-compact" @click="$store.chat.clearChannelBulkGrantChannels()" :disabled="$store.chat.channelBulkGrantBusy || $store.chat.channelBulkGrantSelectedCount === 0">Clear</button>
+                <button
+                  type="button"
+                  class="btn-confirm"
+                  @click="$store.chat.applyChannelBulkGrant()"
+                  :disabled="!$store.chat.canApplyChannelBulkGrant"
+                  x-text="$store.chat.channelBulkGrantBusy ? 'Applying...' : 'Apply to selected'"
+                ></button>
+              </div>
+
+              <div class="channel-bulk-grant-list" x-show="$store.chat.pgChannelBulkGrantChannelOptions.length > 0">
+                <template x-for="channel in $store.chat.pgChannelBulkGrantChannelOptions" :key="channel.id">
+                  <label class="channel-bulk-grant-channel">
+                    <input
+                      type="checkbox"
+                      :checked="$store.chat.isChannelSelectedForBulkGrant(channel.id)"
+                      @change="$store.chat.setChannelBulkGrantSelection(channel.id, $event.target.checked)"
+                      :disabled="$store.chat.channelBulkGrantBusy"
+                    />
+                    <span>
+                      <strong x-text="channel.label"></strong>
+                      <small x-text="channel.scopeLabel"></small>
+                    </span>
+                  </label>
+                </template>
+              </div>
+              <p class="groups-empty" x-show="!$store.chat.groupsLoading && $store.chat.pgChannelBulkGrantChannelOptions.length === 0">No channels loaded yet.</p>
+              <p class="channel-grant-draft-help" x-show="$store.chat.channelBulkGrantProgress" x-text="$store.chat.channelBulkGrantProgress"></p>
+            </div>
+            <p class="settings-success" x-show="$store.chat.channelGrantsNotice" x-text="$store.chat.channelGrantsNotice"></p>
+            <p class="groups-subtitle channel-access-error" x-show="$store.chat.channelGrantsError" x-text="$store.chat.channelGrantsError"></p>
           </section>
 
           <section class="settings-panel">

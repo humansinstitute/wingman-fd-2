@@ -1290,11 +1290,9 @@ export const connectSettingsManagerMixin = {
     this.agentConfigCopied = false;
     this.agentConnectJson = JSON.stringify(buildAgentConnectPackage({
       windowOrigin: typeof window === 'undefined' ? '' : window.location.origin,
-      backendUrl: this.backendUrl || DEFAULT_SUPERBASED_URL,
+      backendUrl: this.currentWorkspace?.directHttpsUrl || this.backendUrl || DEFAULT_SUPERBASED_URL,
       session: this.session,
-      token: this.superbasedTokenInput,
-      towerName: this.currentWorkspace?.towerName || this.superbasedConnectionConfig?.towerName || '',
-      towerDescription: this.currentWorkspace?.towerDescription || this.superbasedConnectionConfig?.towerDescription || '',
+      workspace: this.currentWorkspace,
     }), null, 2);
     this.showAgentConnectModal = true;
   },
