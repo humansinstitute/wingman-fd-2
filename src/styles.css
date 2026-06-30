@@ -2309,6 +2309,12 @@ button:disabled {
 }
 
 .files-upload-panel {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  max-height: min(62vh, 640px);
+  overflow: hidden;
   padding: 0.9rem 1.5rem;
   border-bottom: 1px solid var(--border);
   background: #ffffff;
@@ -2319,6 +2325,7 @@ button:disabled {
 }
 
 .files-upload-dropzone {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 0.85rem;
@@ -2371,8 +2378,13 @@ button:disabled {
 
 .files-upload-queue {
   display: grid;
+  flex: 1 1 auto;
   gap: 0.65rem;
+  min-height: 0;
   margin-top: 0.75rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 0.2rem;
 }
 
 .files-upload-item {

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const html = fs.readFileSync(path.resolve('index.html'), 'utf8');
+const css = fs.readFileSync(path.resolve('src/styles.css'), 'utf8');
 
 describe('files upload UI', () => {
   it('exposes a PG files upload button and drag/drop form', () => {
@@ -42,5 +43,9 @@ describe('files upload UI', () => {
     expect(html).toContain('role="status"');
     expect(html).toContain("fileEditAction === 'convert'");
     expect(html).toContain("fileEditAction === 'save'");
+    expect(css).toContain('.files-upload-panel');
+    expect(css).toContain('max-height: min(62vh, 640px)');
+    expect(css).toContain('.files-upload-queue');
+    expect(css).toContain('overflow-y: auto');
   });
 });
