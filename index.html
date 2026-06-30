@@ -5026,24 +5026,24 @@
                 <h2>Files</h2>
                 <p class="files-subtitle" x-text="`${$store.chat.filteredFileBrowserRows.length} of ${$store.chat.fileBrowserRows.length}`"></p>
               </div>
-              <button
-                type="button"
-                class="files-upload-open-btn"
-                x-show="$store.chat.isTowerPgMode"
-                @click="$store.chat.openFileUploadPanel()"
-              >
-                <span aria-hidden="true">+</span>
-                <span>File</span>
-              </button>
-              <button
-                type="button"
-                class="files-upload-open-btn"
-                x-show="$store.chat.isTowerPgMode"
-                @click="$store.chat.createFileFolderFromPrompt()"
-              >
-                <span aria-hidden="true">+</span>
-                <span>Folder</span>
-              </button>
+              <div class="files-header-actions" x-show="$store.chat.isTowerPgMode">
+                <button
+                  type="button"
+                  class="files-upload-open-btn"
+                  @click="$store.chat.openFileUploadPanel()"
+                >
+                  <span aria-hidden="true">+</span>
+                  <span>File</span>
+                </button>
+                <button
+                  type="button"
+                  class="files-upload-open-btn"
+                  @click="$store.chat.createFileFolderFromPrompt()"
+                >
+                  <span aria-hidden="true">+</span>
+                  <span>Folder</span>
+                </button>
+              </div>
             </div>
 
             <div class="files-folder-bar" x-show="$store.chat.isTowerPgMode" x-cloak>

@@ -2170,6 +2170,14 @@ button:disabled {
   font-size: 0.82rem;
 }
 
+.files-header-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  margin-left: auto;
+}
+
 .files-upload-open-btn,
 .docs-new-doc-btn {
   display: inline-flex;

@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-D-Qrs2vq.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-CdmWM2g8.css">
+  <script type="module" crossorigin src="/assets/index-D620CPJH.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-C9g3gA82.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -5028,24 +5028,24 @@
                 <h2>Files</h2>
                 <p class="files-subtitle" x-text="`${$store.chat.filteredFileBrowserRows.length} of ${$store.chat.fileBrowserRows.length}`"></p>
               </div>
-              <button
-                type="button"
-                class="files-upload-open-btn"
-                x-show="$store.chat.isTowerPgMode"
-                @click="$store.chat.openFileUploadPanel()"
-              >
-                <span aria-hidden="true">+</span>
-                <span>File</span>
-              </button>
-              <button
-                type="button"
-                class="files-upload-open-btn"
-                x-show="$store.chat.isTowerPgMode"
-                @click="$store.chat.createFileFolderFromPrompt()"
-              >
-                <span aria-hidden="true">+</span>
-                <span>Folder</span>
-              </button>
+              <div class="files-header-actions" x-show="$store.chat.isTowerPgMode">
+                <button
+                  type="button"
+                  class="files-upload-open-btn"
+                  @click="$store.chat.openFileUploadPanel()"
+                >
+                  <span aria-hidden="true">+</span>
+                  <span>File</span>
+                </button>
+                <button
+                  type="button"
+                  class="files-upload-open-btn"
+                  @click="$store.chat.createFileFolderFromPrompt()"
+                >
+                  <span aria-hidden="true">+</span>
+                  <span>Folder</span>
+                </button>
+              </div>
             </div>
 
             <div class="files-folder-bar" x-show="$store.chat.isTowerPgMode" x-cloak>
