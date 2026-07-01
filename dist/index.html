@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-VdHITqvs.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-WXgSB9KL.css">
+  <script type="module" crossorigin src="/assets/index-czqSvVlw.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-DU5W1ZrQ.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -5145,7 +5145,10 @@
                     <p class="file-edit-eyebrow">Files</p>
                     <h3 id="files-upload-title">Upload files</h3>
                   </div>
-                  <button type="button" class="file-action-btn" x-show="$store.chat.fileUploadItems.length > 0" @click="$store.chat.clearCompletedFileUploads()">Clear completed</button>
+                  <div class="files-upload-modal-actions">
+                    <button type="button" class="file-action-btn" x-show="$store.chat.fileUploadItems.length > 0" @click="$store.chat.clearCompletedFileUploads()">Clear completed</button>
+                    <button type="button" class="file-action-btn files-upload-modal-close-btn" @click="$store.chat.closeFileUploadPanel()">Close</button>
+                  </div>
                 </div>
                 <input
                   x-ref="filesUploadInput"

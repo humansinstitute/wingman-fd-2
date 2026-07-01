@@ -2422,6 +2422,24 @@ button:disabled {
   font-size: 1.15rem;
 }
 
+.files-upload-modal-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.files-upload-modal-close-btn {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.files-upload-modal-close-btn:hover {
+  background: #1d4ed8;
+}
+
 .files-upload-input {
   display: none;
 }
@@ -2965,6 +2983,18 @@ button:disabled {
   .files-upload-modal {
     max-height: calc(100dvh - 1rem);
     padding: 1rem;
+  }
+
+  .files-upload-modal-header {
+    align-items: flex-start;
+    flex-direction: column;
+    padding-right: 2rem;
+  }
+
+  .files-upload-modal-actions {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
 
   .docs-header {

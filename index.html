@@ -5143,7 +5143,10 @@
                     <p class="file-edit-eyebrow">Files</p>
                     <h3 id="files-upload-title">Upload files</h3>
                   </div>
-                  <button type="button" class="file-action-btn" x-show="$store.chat.fileUploadItems.length > 0" @click="$store.chat.clearCompletedFileUploads()">Clear completed</button>
+                  <div class="files-upload-modal-actions">
+                    <button type="button" class="file-action-btn" x-show="$store.chat.fileUploadItems.length > 0" @click="$store.chat.clearCompletedFileUploads()">Clear completed</button>
+                    <button type="button" class="file-action-btn files-upload-modal-close-btn" @click="$store.chat.closeFileUploadPanel()">Close</button>
+                  </div>
                 </div>
                 <input
                   x-ref="filesUploadInput"

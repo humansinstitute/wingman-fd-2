@@ -21,6 +21,8 @@ describe('files upload UI', () => {
     expect(html).toContain('@change="$store.chat.handleFileUploadInput($event)"');
     expect(html).toContain('@click="$store.chat.closeFileUploadPanel()"');
     expect(html).not.toContain('@click.self="$store.chat.closeFileUploadPanel()"');
+    expect(html).toContain('files-upload-modal-close-btn');
+    expect(html).toContain('>Close</button>');
     expect(html).toContain('class="files-upload-status-btn"');
     expect(html).toContain('x-show="$store.chat.hasActiveFileUploads"');
     expect(html).toContain('x-text="$store.chat.fileUploadToolbarLabel"');
@@ -59,5 +61,7 @@ describe('files upload UI', () => {
     expect(css).toContain('.files-upload-toast');
     expect(css).toContain('.files-upload-status-btn');
     expect(css).toContain('.files-upload-status-track');
+    expect(css).toContain('.files-upload-modal-actions');
+    expect(css).toContain('.files-upload-modal-close-btn');
   });
 });
