@@ -145,7 +145,7 @@ describe('profile resolution', () => {
     const { fn } = bindMethod('getSenderAvatar', { resolveChatProfile });
     const npub = 'npub1alice0000000000000000000000000000000000000000000000000000000';
     expect(fn(npub)).toBeNull();
-    expect(resolveChatProfile).toHaveBeenCalledWith(npub);
+    expect(resolveChatProfile).toHaveBeenCalledWith(npub, { requirePicture: true });
   });
 
   it('getSenderAvatar does not queue profile resolution when cached avatar exists', () => {
@@ -228,6 +228,18 @@ describe('profile resolution', () => {
     });
     fn('npub1a');
     expect(store.chatProfiles.npub1a.name).toBe('Alice');
+  });
+
+  it('resolveChatProfile revalidates a name-only profile when a picture is required', () => {
+    const { fn, store } = bindMethod('resolveChatProfile', {
+      chatProfiles: { npub1a: { name: 'Alice', picture: null, loading: false } },
+    });
+    fn('npub1a', { requirePicture: true });
+    expect(store.chatProfiles.npub1a).toMatchObject({
+      name: 'Alice',
+      picture: null,
+      loading: true,
+    });
   });
 
   it('resolveChatProfile sets loading state for new profile', () => {

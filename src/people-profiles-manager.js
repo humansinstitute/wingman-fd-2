@@ -197,8 +197,10 @@ export const peopleProfilesManagerMixin = {
     const npub = this.resolveDisplayNpub(rawNpub);
     const current = this.chatProfiles[npub] || null;
     const force = options?.force === true;
+    const requirePicture = options?.requirePicture === true;
     if (!npub || current?.loading) return;
-    if (!force && (current?.name || current?.picture)) return;
+    if (!force && current?.picture) return;
+    if (!force && current?.name && !requirePicture) return;
     const lastLookupAt = Number(current?.profileLookupAttemptedAt || 0);
     if (!force && lastLookupAt && Date.now() - lastLookupAt < PROFILE_LOOKUP_RETRY_MS) return;
     const cached = this.getCachedPerson(npub);
@@ -217,16 +219,16 @@ export const peopleProfilesManagerMixin = {
     this.chatProfiles = {
       ...this.chatProfiles,
       [npub]: {
-        name: cached?.label || null,
-        picture: cached?.avatar_url || null,
-        nip05: cached?.nip05 || null,
-        about: cached?.bio || null,
+        name: current?.name || cached?.label || null,
+        picture: current?.picture || cached?.avatar_url || null,
+        nip05: current?.nip05 || cached?.nip05 || null,
+        about: current?.about || current?.bio || cached?.bio || null,
         loading: true,
         profileLookupAttemptedAt: Date.now(),
       },
     };
 
-    fetchProfileByNpub(npub, { force })
+    fetchProfileByNpub(npub, { force: force || requirePicture })
       .then((profile) => {
         const existingProfile = this.chatProfiles[npub] || current || {};
         const profileName = resolveProfileName(profile) || existingProfile?.name || cached?.label || null;
@@ -354,10 +356,10 @@ export const peopleProfilesManagerMixin = {
     const npub = this.resolveDisplayNpub(rawNpub);
     const rawNpubCandidate = String(rawNpub || '').trim();
     if (isFullNpubCandidate(rawNpubCandidate) && rawNpubCandidate !== npub) {
-      this.resolveChatProfile(rawNpubCandidate);
+      this.resolveChatProfile(rawNpubCandidate, { requirePicture: true });
     }
     if (isFullNpubCandidate(npub)) {
-      this.resolveChatProfile(npub);
+      this.resolveChatProfile(npub, { requirePicture: true });
     }
     return null;
   },
