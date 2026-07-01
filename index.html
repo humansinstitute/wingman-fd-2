@@ -5137,7 +5137,6 @@
               @keydown.escape.window="$store.chat.closeFileUploadPanel()"
             >
               <section class="doc-modal-card files-upload-modal" role="dialog" aria-modal="true" aria-labelledby="files-upload-title">
-                <button class="modal-close" type="button" @click="$store.chat.closeFileUploadPanel()" aria-label="Close upload modal">&times;</button>
                 <div class="files-upload-modal-header">
                   <div>
                     <p class="file-edit-eyebrow">Files</p>
@@ -5241,6 +5240,9 @@
                       </div>
                     </article>
                   </template>
+                </div>
+                <div class="files-upload-modal-footer">
+                  <button type="button" class="file-action-btn files-upload-modal-close-btn" @click="$store.chat.closeFileUploadPanel()">Close</button>
                 </div>
               </section>
             </div>

@@ -2440,6 +2440,16 @@ button:disabled {
   background: #1d4ed8;
 }
 
+.files-upload-modal-footer {
+  display: flex;
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  padding-top: 0.9rem;
+  margin-top: 0.85rem;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  background: #ffffff;
+}
+
 .files-upload-input {
   display: none;
 }
@@ -2995,6 +3005,14 @@ button:disabled {
     width: 100%;
     justify-content: flex-start;
     flex-wrap: wrap;
+  }
+
+  .files-upload-modal-footer {
+    justify-content: stretch;
+  }
+
+  .files-upload-modal-footer .files-upload-modal-close-btn {
+    width: 100%;
   }
 
   .docs-header {
