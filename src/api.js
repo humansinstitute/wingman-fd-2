@@ -1466,6 +1466,39 @@ export async function prepareStorageObject(body) {
 
 export async function uploadStorageObject(prepared, bytes, contentType = 'application/octet-stream', options = {}) {
   const uploadUrl = String(prepared?.upload_url || '').trim();
+  let directUploadFailure = null;
+  if (uploadUrl) {
+    let directResp;
+    try {
+      directResp = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': contentType,
+        },
+        body: bytes,
+        signal: AbortSignal.timeout(UPLOAD_FETCH_TIMEOUT_MS),
+      });
+    } catch (error) {
+      directUploadFailure = error instanceof Error ? error : new Error(String(error));
+    }
+
+    if (directResp?.ok) {
+      return {
+        object_id: prepared.object_id,
+        size_bytes: bytes.byteLength,
+        content_type: contentType,
+      };
+    }
+
+    if (directResp && !directResp.ok) {
+      directUploadFailure = await buildApiError(directResp, {
+        requestUrl: uploadUrl,
+        method: 'PUT',
+        prefix: 'Storage upload',
+      });
+    }
+  }
+
   const payload = {
     base64_data: bytesToBase64(bytes),
   };
@@ -1482,48 +1515,9 @@ export async function uploadStorageObject(prepared, bytes, contentType = 'applic
     requestUrl: fallbackUrl,
     method: 'PUT',
   });
-  if (fallbackResp.status !== 404 && fallbackResp.status !== 405) {
-    throw fallbackError;
-  }
-
-  if (!uploadUrl) {
-    throw fallbackError;
-  }
-
-  let directUploadFailure = null;
-  let directResp;
-  try {
-    directResp = await fetch(uploadUrl, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': contentType,
-      },
-      body: bytes,
-      signal: AbortSignal.timeout(UPLOAD_FETCH_TIMEOUT_MS),
-    });
-  } catch (error) {
-    directUploadFailure = error instanceof Error ? error : new Error(String(error));
-  }
-
-  if (directResp?.ok) {
-    return {
-      object_id: prepared.object_id,
-      size_bytes: bytes.byteLength,
-      content_type: contentType,
-    };
-  }
-
-  if (directResp && !directResp.ok) {
-    directUploadFailure = await buildApiError(directResp, {
-      requestUrl: uploadUrl,
-      method: 'PUT',
-      prefix: 'Storage upload',
-    });
-  }
-
   if (directUploadFailure) {
     fallbackError.directUploadMessage = directUploadFailure.message;
-    fallbackError.message = `${fallbackError.message} | direct upload failed after backend upload fallback: ${directUploadFailure.message}`;
+    fallbackError.message = `Direct storage upload failed: ${directUploadFailure.message} | backend upload fallback failed: ${fallbackError.message}`;
   }
   throw fallbackError;
 }

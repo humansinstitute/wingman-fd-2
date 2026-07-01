@@ -295,14 +295,13 @@ describe('workspace API host binding', () => {
     });
   });
 
-  it('uses backend storage upload before trying the direct upload URL', async () => {
+  it('uses direct storage upload before trying the backend upload fallback', async () => {
     const fetchMock = vi.fn(async (requestUrl) => {
-      if (requestUrl === 'https://sb.example/api/v4/storage/obj-1') {
+      if (requestUrl === 'https://upload.example/object') {
         return {
           ok: true,
           status: 200,
-          json: async () => ({ object_id: 'obj-1', requestUrl }),
-          text: async () => JSON.stringify({ object_id: 'obj-1', requestUrl }),
+          text: async () => '',
         };
       }
       throw new Error(`unexpected fetch ${requestUrl}`);
@@ -322,11 +321,15 @@ describe('workspace API host binding', () => {
     );
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0][0]).toBe('https://sb.example/api/v4/storage/obj-1');
-    expect(result.requestUrl).toBe('https://sb.example/api/v4/storage/obj-1');
+    expect(fetchMock.mock.calls[0][0]).toBe('https://upload.example/object');
+    expect(result).toEqual({
+      object_id: 'obj-1',
+      size_bytes: 3,
+      content_type: 'image/png',
+    });
   });
 
-  it('uses an explicit workspace backend for storage upload requests', async () => {
+  it('uses an explicit workspace backend for storage upload fallback requests', async () => {
     const fetchMock = vi.fn(async (requestUrl) => {
       if (requestUrl === 'https://workspace.example/api/v4/storage/obj-1') {
         return {
@@ -346,7 +349,7 @@ describe('workspace API host binding', () => {
     const result = await api.uploadStorageObject(
       {
         object_id: 'obj-1',
-        upload_url: 'https://upload.example/object',
+        upload_url: '',
       },
       new Uint8Array([1, 2, 3]),
       'image/png',
@@ -386,20 +389,51 @@ describe('workspace API host binding', () => {
     expect(result.requestUrl).toBe('https://workspace.example/api/v4/storage/obj-1/complete');
   });
 
-  it('includes direct upload failure when backend upload path is unavailable too', async () => {
+  it('falls back to backend storage upload when direct upload fails', async () => {
     globalThis.fetch = vi.fn(async (requestUrl) => {
+      if (requestUrl === 'https://upload.example/object') {
+        throw new Error('Failed to fetch');
+      }
       if (requestUrl === 'https://sb.example/api/v4/storage/obj-1') {
         return {
-          ok: false,
-          status: 404,
-          text: async () => 'Prepared object missing',
+          ok: true,
+          status: 200,
+          json: async () => ({ object_id: 'obj-1', requestUrl }),
+          text: async () => JSON.stringify({ object_id: 'obj-1', requestUrl }),
         };
       }
+      throw new Error(`unexpected fetch ${requestUrl}`);
+    });
+
+    const api = await import('../src/api.js');
+    api.setBaseUrl('https://sb.example');
+
+    const result = await api.uploadStorageObject(
+      {
+        object_id: 'obj-1',
+        upload_url: 'https://upload.example/object',
+      },
+      new Uint8Array([1, 2, 3]),
+      'image/png',
+    );
+
+    expect(result.requestUrl).toBe('https://sb.example/api/v4/storage/obj-1');
+  });
+
+  it('includes both direct and backend failures when storage upload fails', async () => {
+    globalThis.fetch = vi.fn(async (requestUrl) => {
       if (requestUrl === 'https://upload.example/object') {
         return {
           ok: false,
           status: 404,
           text: async () => 'Upload target missing',
+        };
+      }
+      if (requestUrl === 'https://sb.example/api/v4/storage/obj-1') {
+        return {
+          ok: false,
+          status: 404,
+          text: async () => 'Prepared object missing',
         };
       }
       throw new Error(`unexpected fetch ${requestUrl}`);
@@ -420,7 +454,7 @@ describe('workspace API host binding', () => {
       method: 'PUT',
       requestUrl: 'https://sb.example/api/v4/storage/obj-1',
       directUploadMessage: 'Storage upload 404 PUT https://upload.example/object: Upload target missing',
-      message: 'API 404 PUT https://sb.example/api/v4/storage/obj-1: Prepared object missing | direct upload failed after backend upload fallback: Storage upload 404 PUT https://upload.example/object: Upload target missing',
+      message: 'Direct storage upload failed: Storage upload 404 PUT https://upload.example/object: Upload target missing | backend upload fallback failed: API 404 PUT https://sb.example/api/v4/storage/obj-1: Prepared object missing',
     });
   });
 
