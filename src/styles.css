@@ -2308,16 +2308,37 @@ button:disabled {
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
 }
 
-.files-upload-panel {
+.files-upload-modal-backdrop {
+  align-items: stretch;
+  padding: 1rem;
+}
+
+.files-upload-modal {
   display: flex;
-  flex: 0 1 auto;
   flex-direction: column;
+  width: min(920px, 100%);
   min-height: 0;
-  max-height: min(62vh, 640px);
+  max-height: min(88dvh, 820px);
   overflow: hidden;
-  padding: 0.9rem 1.5rem;
-  border-bottom: 1px solid var(--border);
+  margin: auto;
+  padding: 1.15rem;
   background: #ffffff;
+}
+
+.files-upload-modal-header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-right: 2rem;
+  margin-bottom: 0.85rem;
+}
+
+.files-upload-modal-header h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 1.15rem;
 }
 
 .files-upload-input {
@@ -2384,7 +2405,8 @@ button:disabled {
   margin-top: 0.75rem;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding-right: 0.2rem;
+  padding-right: 0.35rem;
+  -webkit-overflow-scrolling: touch;
 }
 
 .files-upload-item {
@@ -2490,6 +2512,37 @@ button:disabled {
   font-size: 0.72rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.files-upload-toast {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 230;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  max-width: min(420px, calc(100vw - 2rem));
+  padding: 0.75rem 0.85rem;
+  border: 1px solid #bbf7d0;
+  border-radius: var(--radius-sm);
+  background: #f0fdf4;
+  color: #14532d;
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.16);
+  font-size: 0.86rem;
+}
+
+.files-upload-toast span {
+  min-width: 0;
+}
+
+.files-upload-toast button {
+  flex: 0 0 auto;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 1.1rem;
+  line-height: 1;
 }
 
 .files-list {
@@ -2819,10 +2872,18 @@ button:disabled {
   .docs-header,
   .files-folder-bar,
   .files-toolbar,
-  .files-upload-panel,
   .files-list {
     padding-left: 1rem;
     padding-right: 1rem;
+  }
+
+  .files-upload-modal-backdrop {
+    padding: 0.5rem;
+  }
+
+  .files-upload-modal {
+    max-height: calc(100dvh - 1rem);
+    padding: 1rem;
   }
 
   .docs-header {

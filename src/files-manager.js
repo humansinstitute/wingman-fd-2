@@ -493,9 +493,11 @@ export const filesManagerMixin = {
   },
 
   closeFileUploadPanel() {
-    if ((this.fileUploadItems || []).some((item) => this.isFileUploadBusy(item))) return;
     this.fileUploadOpen = false;
     this.fileUploadError = '';
+    if ((this.fileUploadItems || []).some((item) => this.isFileUploadBusy(item))) {
+      this.showFileUploadNotice('Uploads are continuing in the background.');
+    }
   },
 
   get defaultFileUploadScopeId() {
@@ -580,6 +582,39 @@ export const filesManagerMixin = {
 
   clearCompletedFileUploads() {
     this.fileUploadItems = (this.fileUploadItems || []).filter((item) => this.isFileUploadBusy(item));
+  },
+
+  clearFileUploadNotice() {
+    this.fileUploadNotice = '';
+    if (this._fileUploadNoticeTimer) {
+      clearTimeout(this._fileUploadNoticeTimer);
+      this._fileUploadNoticeTimer = null;
+    }
+  },
+
+  showFileUploadNotice(message = '') {
+    const text = normalizeString(message);
+    if (!text) return;
+    this.fileUploadNotice = text;
+    if (this._fileUploadNoticeTimer) clearTimeout(this._fileUploadNoticeTimer);
+    this._fileUploadNoticeTimer = setTimeout(() => {
+      this.fileUploadNotice = '';
+      this._fileUploadNoticeTimer = null;
+    }, 6500);
+  },
+
+  notifyFileUploadsSettled() {
+    const items = this.fileUploadItems || [];
+    if (items.length === 0 || items.some((item) => this.isFileUploadBusy(item))) return;
+    const uploadedCount = items.filter((item) => item.status === 'done').length;
+    const failedCount = items.filter((item) => item.status === 'failed').length;
+    if (failedCount > 0) {
+      this.showFileUploadNotice(`${uploadedCount} uploaded, ${failedCount} failed.`);
+      return;
+    }
+    if (uploadedCount > 0) {
+      this.showFileUploadNotice(uploadedCount === 1 ? 'Upload complete.' : `${uploadedCount} uploads complete.`);
+    }
   },
 
   resolveFileUploadChannel(scopeId, channelId = null) {
@@ -708,6 +743,7 @@ export const filesManagerMixin = {
         folder_id: folderId,
         object_id: prepared.object_id,
       });
+      this.notifyFileUploadsSettled();
       this.scheduleStorageImageHydration?.();
       return acceptedFile;
     } catch (error) {
@@ -715,6 +751,7 @@ export const filesManagerMixin = {
       this.patchFileUploadItem(id, { status: 'failed', progress: 100, error: message });
       this.fileUploadError = message;
       this.error = message;
+      this.notifyFileUploadsSettled();
       return null;
     }
   },

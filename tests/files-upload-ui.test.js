@@ -6,19 +6,23 @@ const html = fs.readFileSync(path.resolve('index.html'), 'utf8');
 const css = fs.readFileSync(path.resolve('src/styles.css'), 'utf8');
 
 describe('files upload UI', () => {
-  it('exposes a PG files upload button and drag/drop form', () => {
+  it('exposes a PG files upload button and modal drag/drop form', () => {
     const filesSectionIndex = html.indexOf('class="files-section"');
     expect(filesSectionIndex).toBeGreaterThan(-1);
 
     const uploadButtonIndex = html.indexOf('class="files-upload-open-btn"', filesSectionIndex);
-    const uploadPanelIndex = html.indexOf('class="files-upload-panel"', filesSectionIndex);
+    const uploadModalIndex = html.indexOf('class="doc-modal-backdrop files-upload-modal-backdrop"', filesSectionIndex);
     const filesListIndex = html.indexOf('class="files-list"', filesSectionIndex);
 
     expect(uploadButtonIndex).toBeGreaterThan(filesSectionIndex);
-    expect(uploadPanelIndex).toBeGreaterThan(uploadButtonIndex);
-    expect(uploadPanelIndex).toBeLessThan(filesListIndex);
+    expect(uploadModalIndex).toBeGreaterThan(uploadButtonIndex);
+    expect(uploadModalIndex).toBeLessThan(filesListIndex);
     expect(html).toContain('@drop.prevent="$store.chat.handleFilesPageDrop($event)"');
     expect(html).toContain('@change="$store.chat.handleFileUploadInput($event)"');
+    expect(html).toContain('@click="$store.chat.closeFileUploadPanel()"');
+    expect(html).toContain('Uploads keep running if this modal is closed.');
+    expect(html).toContain('files-upload-toast');
+    expect(html).toContain('$store.chat.clearFileUploadNotice()');
     expect(html).toContain('@click="$store.chat.createFileFolderFromPrompt()"');
     expect(html).toContain('Select multiple');
     expect(html).toContain('$store.chat.toggleFileSelectionMode()');
@@ -43,9 +47,11 @@ describe('files upload UI', () => {
     expect(html).toContain('role="status"');
     expect(html).toContain("fileEditAction === 'convert'");
     expect(html).toContain("fileEditAction === 'save'");
-    expect(css).toContain('.files-upload-panel');
-    expect(css).toContain('max-height: min(62vh, 640px)');
+    expect(css).toContain('.files-upload-modal-backdrop');
+    expect(css).toContain('.files-upload-modal');
+    expect(css).toContain('max-height: min(88dvh, 820px)');
     expect(css).toContain('.files-upload-queue');
     expect(css).toContain('overflow-y: auto');
+    expect(css).toContain('.files-upload-toast');
   });
 });

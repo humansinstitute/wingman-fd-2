@@ -673,6 +673,7 @@ export function initApp() {
     fileUploadOpen: false,
     fileUploadItems: [],
     fileUploadError: '',
+    fileUploadNotice: '',
     showFileEditModal: false,
     fileEditRow: null,
     fileEditName: '',
