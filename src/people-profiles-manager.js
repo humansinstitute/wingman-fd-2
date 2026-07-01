@@ -45,6 +45,25 @@ function resolveProfilePicture(profile = {}) {
   );
 }
 
+function normalizeProfilePictureUrl(url, npub = '') {
+  const avatarUrl = String(url || '').trim();
+  const profileNpub = String(npub || '').trim();
+  if (!avatarUrl) return null;
+  try {
+    const parsed = new URL(avatarUrl);
+    if (
+      parsed.protocol === 'https:'
+      && parsed.hostname === 'cdn.satellite.earth'
+      && isFullNpubCandidate(profileNpub)
+    ) {
+      return `https://images.fountain.fm/profile/${encodeURIComponent(profileNpub)}/large?original=${encodeURIComponent(avatarUrl)}`;
+    }
+  } catch {
+    return avatarUrl;
+  }
+  return avatarUrl;
+}
+
 function mergeAddressBookPersonLocal(store, entry = {}) {
   const npub = String(entry.npub || '').trim();
   if (!npub || !Array.isArray(store.addressBookPeople)) return;
@@ -232,7 +251,10 @@ export const peopleProfilesManagerMixin = {
       .then((profile) => {
         const existingProfile = this.chatProfiles[npub] || current || {};
         const profileName = resolveProfileName(profile) || existingProfile?.name || cached?.label || null;
-        const profilePicture = resolveProfilePicture(profile) || existingProfile?.picture || cached?.avatar_url || null;
+        const profilePicture = normalizeProfilePictureUrl(
+          resolveProfilePicture(profile) || existingProfile?.picture || cached?.avatar_url || null,
+          npub,
+        );
         const profileNip05 = firstNonEmptyString(profile?.nip05) || existingProfile?.nip05 || cached?.nip05 || null;
         const profileBio = firstNonEmptyString(profile?.about, profile?.bio) || existingProfile?.about || existingProfile?.bio || cached?.bio || null;
         this.chatProfiles = {
@@ -351,7 +373,7 @@ export const peopleProfilesManagerMixin = {
     if (!rawNpub) return null;
     const cached = this.getCachedPersonForSender(rawNpub);
     const profile = this.getProfileForSender(rawNpub);
-    const avatarUrl = profile?.picture || cached?.avatar_url || null;
+    const avatarUrl = normalizeProfilePictureUrl(profile?.picture || cached?.avatar_url || null, this.resolveDisplayNpub(rawNpub));
     if (avatarUrl) return avatarUrl;
     const npub = this.resolveDisplayNpub(rawNpub);
     const rawNpubCandidate = String(rawNpub || '').trim();

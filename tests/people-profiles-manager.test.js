@@ -140,6 +140,17 @@ describe('profile resolution', () => {
     expect(fn('npub1a')).toBe('https://cached.example.com/a.png');
   });
 
+  it('getSenderAvatar uses Fountain cache for Satellite CDN profile pictures', () => {
+    const npub = 'npub1alice0000000000000000000000000000000000000000000000000000000';
+    const satelliteUrl = 'https://cdn.satellite.earth/avatar.png';
+    const { fn } = bindMethod('getSenderAvatar', {
+      addressBookPeople: [{ npub, avatar_url: satelliteUrl }],
+    });
+    expect(fn(npub)).toBe(
+      `https://images.fountain.fm/profile/${encodeURIComponent(npub)}/large?original=${encodeURIComponent(satelliteUrl)}`,
+    );
+  });
+
   it('getSenderAvatar queues profile resolution for full npub avatar misses', () => {
     const resolveChatProfile = vi.fn();
     const { fn } = bindMethod('getSenderAvatar', { resolveChatProfile });
