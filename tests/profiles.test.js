@@ -52,7 +52,7 @@ describe('fetchProfileByNpub', () => {
     expect(queriedRelays).toContain('wss://relay.primal.net');
   });
 
-  it('bypasses the local profile cache when forced', async () => {
+  it('queries relays when forced even if a cached profile exists', async () => {
     getCachedProfile.mockResolvedValue({ name: 'Cached Name' });
     querySync.mockResolvedValue([
       {
@@ -64,8 +64,26 @@ describe('fetchProfileByNpub', () => {
     const { fetchProfileByNpub } = await import('../src/profiles.js');
     const profile = await fetchProfileByNpub('npub1example', { force: true });
 
-    expect(getCachedProfile).not.toHaveBeenCalled();
+    expect(getCachedProfile).toHaveBeenCalledWith('npub1example');
     expect(querySync).toHaveBeenCalled();
     expect(profile.name).toBe('Fresh Name');
+  });
+
+  it('returns the cached profile when a forced refresh finds no relay events', async () => {
+    getCachedProfile.mockResolvedValue({
+      name: 'Cached Name',
+      picture: 'https://example.com/cached.png',
+    });
+    querySync.mockResolvedValue([]);
+
+    const { fetchProfileByNpub } = await import('../src/profiles.js');
+    const profile = await fetchProfileByNpub('npub1example', { force: true });
+
+    expect(querySync).toHaveBeenCalled();
+    expect(profile).toEqual({
+      name: 'Cached Name',
+      picture: 'https://example.com/cached.png',
+    });
+    expect(cacheProfile).not.toHaveBeenCalled();
   });
 });

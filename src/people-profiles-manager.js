@@ -6,7 +6,6 @@
  */
 
 import {
-  clearCachedProfiles,
   getAddressBookPeople,
   upsertAddressBookPerson,
 } from './db.js';
@@ -282,7 +281,6 @@ export const peopleProfilesManagerMixin = {
     this.nostrProfilesRefreshMessage = '';
     try {
       const npubs = collectKnownProfileNpubs(this);
-      await clearCachedProfiles();
       this.chatProfiles = {};
       for (const npub of npubs) {
         this.resolveChatProfile(npub, { force: true });
@@ -290,7 +288,7 @@ export const peopleProfilesManagerMixin = {
       await this.refreshAddressBook?.();
       this.nostrProfilesRefreshMessage = npubs.length > 0
         ? `Refreshing ${npubs.length} Nostr profiles. Visible names will update as relays respond.`
-        : 'Nostr profile cache cleared. Visible names will refresh as profiles are used.';
+        : 'No known Nostr profiles to refresh yet.';
     } catch (error) {
       this.nostrProfilesRefreshMessage = error?.message || 'Failed to refresh Nostr profiles.';
     } finally {

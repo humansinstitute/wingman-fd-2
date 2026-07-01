@@ -22,10 +22,8 @@ export async function fetchProfileByNpub(npub, options = {}) {
   if (!npub) return null;
 
   const force = options?.force === true;
-  if (!force) {
-    const cached = await getCachedProfile(npub);
-    if (cached) return cached;
-  }
+  const cached = await getCachedProfile(npub);
+  if (!force && cached) return cached;
 
   let pubkeyHex;
   try {
@@ -64,14 +62,14 @@ export async function fetchProfileByNpub(npub, options = {}) {
         .flatMap((result) => result.value || []);
     }
 
-    if (!events?.length) return null;
+    if (!events?.length) return cached || null;
 
     const latest = events.reduce((a, b) => (a.created_at > b.created_at ? a : b));
     const profile = JSON.parse(latest.content);
     await cacheProfile(npub, profile);
     return profile;
   } catch {
-    return null;
+    return cached || null;
   } finally {
     pool.close(RELAYS);
   }
