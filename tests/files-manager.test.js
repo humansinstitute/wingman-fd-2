@@ -197,6 +197,21 @@ describe('files manager', () => {
     expect(item.id).toBeTruthy();
   });
 
+  it('summarizes active upload progress for the toolbar indicator', () => {
+    const uploadStore = Object.assign(Object.create(filesManagerMixin), {
+      fileUploadItems: [
+        { id: 'upload-1', status: 'uploading', progress: 40 },
+        { id: 'upload-2', status: 'saving', progress: 80 },
+        { id: 'upload-3', status: 'done', progress: 100 },
+      ],
+    });
+
+    expect(uploadStore.hasActiveFileUploads).toBe(true);
+    expect(uploadStore.activeFileUploadCount).toBe(2);
+    expect(uploadStore.fileUploadOverallProgress).toBe(60);
+    expect(uploadStore.fileUploadToolbarLabel).toBe('2 uploads 60%');
+  });
+
   it('opens editable metadata for PG-backed file rows', () => {
     const fileRow = {
       source_type: 'document',

@@ -547,6 +547,32 @@ export const filesManagerMixin = {
     return ['queued', 'reading', 'preparing', 'uploading', 'completing', 'saving'].includes(item.status);
   },
 
+  get activeFileUploadItems() {
+    return (this.fileUploadItems || []).filter((item) => this.isFileUploadBusy(item));
+  },
+
+  get activeFileUploadCount() {
+    return this.activeFileUploadItems.length;
+  },
+
+  get hasActiveFileUploads() {
+    return this.activeFileUploadCount > 0;
+  },
+
+  get fileUploadOverallProgress() {
+    const activeItems = this.activeFileUploadItems;
+    if (activeItems.length === 0) return 0;
+    const total = activeItems.reduce((sum, item) => sum + Math.max(0, Math.min(100, Number(item.progress) || 0)), 0);
+    return Math.round(total / activeItems.length);
+  },
+
+  get fileUploadToolbarLabel() {
+    const count = this.activeFileUploadCount;
+    if (count === 0) return 'Uploads';
+    const percent = this.fileUploadOverallProgress;
+    return count === 1 ? `1 upload ${percent}%` : `${count} uploads ${percent}%`;
+  },
+
   canEditFileUploadItem(item = {}) {
     return ['queued', 'reading', 'preparing', 'uploading', 'completing'].includes(item.status);
   },

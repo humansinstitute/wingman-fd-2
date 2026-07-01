@@ -5079,6 +5079,27 @@
                   <option :value="option.id" x-text="option.label"></option>
                 </template>
               </select>
+              <button
+                type="button"
+                class="files-upload-status-btn"
+                x-show="$store.chat.hasActiveFileUploads"
+                x-cloak
+                @click="$store.chat.openFileUploadPanel()"
+                :aria-label="$store.chat.fileUploadToolbarLabel"
+                :title="$store.chat.fileUploadToolbarLabel"
+              >
+                <span class="files-upload-status-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path d="M12 16V4"></path>
+                    <path d="M7 9l5-5 5 5"></path>
+                    <path d="M5 20h14"></path>
+                  </svg>
+                </span>
+                <span class="files-upload-status-copy" x-text="$store.chat.fileUploadToolbarLabel"></span>
+                <span class="files-upload-status-track" aria-hidden="true">
+                  <span :style="`width: ${Math.max(0, Math.min(100, Number($store.chat.fileUploadOverallProgress) || 0))}%`"></span>
+                </span>
+              </button>
               <div class="files-toolbar-menu doc-actions-menu" x-data="{ open: false }" @click.outside="open = false">
                 <button
                   type="button"
@@ -5113,7 +5134,6 @@
               class="doc-modal-backdrop files-upload-modal-backdrop"
               x-show="$store.chat.fileUploadOpen && $store.chat.isTowerPgMode"
               x-cloak
-              @click.self="$store.chat.closeFileUploadPanel()"
               @keydown.escape.window="$store.chat.closeFileUploadPanel()"
             >
               <section class="doc-modal-card files-upload-modal" role="dialog" aria-modal="true" aria-labelledby="files-upload-title">
