@@ -25,14 +25,20 @@ import { getSyncFamilyHash } from '../src/sync-families.js';
 import { createNip98AuthHeader, createNip98AuthHeaderForSecret } from '../src/auth/nostr.js';
 import { getActiveWorkspaceKeySecretForAuth } from '../src/crypto/workspace-keys.js';
 import { isTowerPgBackendMode } from '../src/backend-mode.js';
-import { hydrateTowerPgEventUpdates } from '../src/pg-read-hydrator.js';
+import {
+  hydrateTowerPgDocComments,
+  hydrateTowerPgEventUpdates,
+  hydrateTowerPgTaskComments,
+} from '../src/pg-read-hydrator.js';
 
 vi.mock('../src/backend-mode.js', () => ({
   isTowerPgBackendMode: vi.fn(() => false),
 }));
 
 vi.mock('../src/pg-read-hydrator.js', () => ({
+  hydrateTowerPgDocComments: vi.fn(async () => []),
   hydrateTowerPgEventUpdates: vi.fn(async () => ({ appliedTargets: 0, fallbackEvents: 0, events: 0 })),
+  hydrateTowerPgTaskComments: vi.fn(async () => []),
 }));
 
 vi.mock('../src/crypto/group-keys.js', () => ({
@@ -228,6 +234,8 @@ function createStore(overrides = {}) {
     refreshDirectories: vi.fn().mockResolvedValue(undefined),
     refreshDocuments: vi.fn().mockResolvedValue(undefined),
     refreshTasks: vi.fn().mockResolvedValue(undefined),
+    refreshDailyNotes: vi.fn().mockResolvedValue(undefined),
+    refreshPersonalWapps: vi.fn().mockResolvedValue(undefined),
     refreshSchedules: vi.fn().mockResolvedValue(undefined),
     refreshScopes: vi.fn().mockResolvedValue(undefined),
     refreshWorkspaceSettings: vi.fn().mockResolvedValue(undefined),
@@ -1750,6 +1758,70 @@ describe('performSync', () => {
   });
 });
 
+describe('performTowerPgFullSync', () => {
+  it('hydrates PG workspace collections with progress state', async () => {
+    const refreshGroups = vi.fn().mockResolvedValue([{ group_id: 'group-1' }]);
+    const refreshScopes = vi.fn().mockResolvedValue([{ record_id: 'scope-1' }]);
+    const refreshChannels = vi.fn().mockResolvedValue([{ record_id: 'channel-1' }]);
+    const refreshTasks = vi.fn().mockResolvedValue([{ record_id: 'task-1' }]);
+    const refreshDocuments = vi.fn().mockResolvedValue([{ record_id: 'doc-1', pg_record_type: 'document' }]);
+    const refreshAudioNotes = vi.fn().mockResolvedValue([{ record_id: 'audio-1' }]);
+    const refreshDailyNotes = vi.fn().mockResolvedValue([{ record_id: 'daily-1' }]);
+    const refreshPersonalWapps = vi.fn().mockResolvedValue([{ record_id: 'wapp-1' }]);
+    const { fn, store } = bindMethod('performTowerPgFullSync', {
+      session: { npub: 'npub1me' },
+      backendUrl: 'https://backend.example.com',
+      tasks: [{ record_id: 'task-1', record_state: 'active' }],
+      documents: [{ record_id: 'doc-1', record_state: 'active', pg_record_type: 'document' }],
+      refreshGroups,
+      refreshScopes,
+      refreshChannels,
+      refreshTasks,
+      refreshDocuments,
+      refreshAudioNotes,
+      refreshDailyNotes,
+      refreshPersonalWapps,
+    });
+
+    const result = await fn();
+
+    expect(result).toEqual({ pushed: 0, pulled: 10, pruned: 0, pgMode: true });
+    expect(refreshGroups).toHaveBeenCalledWith({ force: true, minIntervalMs: 0 });
+    expect(refreshScopes).toHaveBeenCalledTimes(1);
+    expect(refreshChannels).toHaveBeenCalledTimes(1);
+    expect(refreshTasks).toHaveBeenCalledTimes(1);
+    expect(hydrateTowerPgTaskComments.mock.calls[0][0]).toBe(store);
+    expect(hydrateTowerPgTaskComments.mock.calls[0][1]).toBe('task-1');
+    expect(refreshDocuments).toHaveBeenCalledTimes(1);
+    expect(hydrateTowerPgDocComments.mock.calls[0][0]).toBe(store);
+    expect(hydrateTowerPgDocComments.mock.calls[0][1]).toBe('doc-1');
+    expect(refreshAudioNotes).toHaveBeenCalledTimes(1);
+    expect(refreshDailyNotes).toHaveBeenCalledTimes(1);
+    expect(refreshPersonalWapps).toHaveBeenCalledTimes(1);
+    expect(store.showSyncProgressModal).toBe(true);
+    expect(store.syncStatus).toBe('synced');
+    expect(store.syncSession.phase).toBe('done');
+    expect(store.syncFamilyProgress.every((family) => family.status === 'done')).toBe(true);
+  });
+
+  it('surfaces PG full sync failures in the progress modal', async () => {
+    const refreshGroups = vi.fn().mockRejectedValue(new Error('PG is offline'));
+    const { fn, store } = bindMethod('performTowerPgFullSync', {
+      session: { npub: 'npub1me' },
+      backendUrl: 'https://backend.example.com',
+      refreshGroups,
+    });
+
+    await expect(fn()).rejects.toThrow('PG is offline');
+
+    expect(store.showSyncProgressModal).toBe(true);
+    expect(store.syncStatus).toBe('error');
+    expect(store.syncSession.phase).toBe('error');
+    expect(store.syncSession.error).toBe('PG is offline');
+    expect(store.syncFamilyProgress[0].status).toBe('error');
+  });
+});
+
 describe('PG mode encrypted record sync startup guard', () => {
   it('leaves encrypted-record mode access pruning untouched', async () => {
     const { fn } = bindMethod('runAccessPruneOnLogin', {
@@ -1893,6 +1965,26 @@ describe('syncNow', () => {
 
     expect(store.showAvatarMenu).toBe(false);
     expect(performSync).toHaveBeenCalledWith({ silent: false, forceFull: true, manual: true });
+    expect(ensureBackgroundSync).toHaveBeenCalled();
+  });
+
+  it('runs the Tower PG full sync path in PG mode', async () => {
+    const performSync = vi.fn().mockResolvedValue(undefined);
+    const performTowerPgFullSync = vi.fn().mockResolvedValue(undefined);
+    const ensureBackgroundSync = vi.fn();
+    const { fn, store } = bindMethod('syncNow', {
+      isTowerPgMode: true,
+      showAvatarMenu: true,
+      performSync,
+      performTowerPgFullSync,
+      ensureBackgroundSync,
+    });
+
+    await fn();
+
+    expect(store.showAvatarMenu).toBe(false);
+    expect(performTowerPgFullSync).toHaveBeenCalledWith({ manual: true });
+    expect(performSync).not.toHaveBeenCalled();
     expect(ensureBackgroundSync).toHaveBeenCalled();
   });
 });
@@ -2761,6 +2853,22 @@ describe('syncNow', () => {
     });
     await fn();
     expect(performSync).toHaveBeenCalledWith({ silent: false, forceFull: true, manual: true });
+    expect(ensureBackgroundSync).toHaveBeenCalled();
+  });
+
+  it('calls performTowerPgFullSync and ensureBackgroundSync in PG mode', async () => {
+    const performSync = vi.fn().mockResolvedValue(undefined);
+    const performTowerPgFullSync = vi.fn().mockResolvedValue(undefined);
+    const ensureBackgroundSync = vi.fn();
+    const { fn } = bindMethod('syncNow', {
+      isTowerPgMode: true,
+      performSync,
+      performTowerPgFullSync,
+      ensureBackgroundSync,
+    });
+    await fn();
+    expect(performTowerPgFullSync).toHaveBeenCalledWith({ manual: true });
+    expect(performSync).not.toHaveBeenCalled();
     expect(ensureBackgroundSync).toHaveBeenCalled();
   });
 

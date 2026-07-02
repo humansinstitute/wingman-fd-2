@@ -27,7 +27,7 @@
   </template>
   <div
     class="sync-progress-modal-overlay"
-    x-show="$store.chat.showSyncProgressModal && !$store.chat.isTowerPgMode"
+    x-show="$store.chat.showSyncProgressModal"
     x-cloak
     @click.self="$store.chat.closeSyncProgressModal()"
   >
@@ -221,12 +221,13 @@
               <span class="avatar-menu-label">Build</span>
               <code x-text="$store.chat.appBuildId"></code>
             </div>
-            <template x-if="$store.chat.syncStatus === 'syncing'">
+            <template x-if="$store.chat.syncSession.phase !== 'idle' && ($store.chat.syncSession.manual || $store.chat.syncStatus === 'syncing')">
               <div class="sync-progress-block">
                 <div class="sync-progress-bar-track">
                   <div class="sync-progress-bar-fill" :style="'width:' + $store.chat.syncProgressPercent() + '%'"></div>
                 </div>
                 <span class="sync-progress-text" x-text="$store.chat.syncProgressLabel()"></span>
+                <span class="sync-progress-text" x-show="$store.chat.syncSession.totalFamilies > 0" x-text="`${$store.chat.syncSession.completedFamilies} / ${$store.chat.syncSession.totalFamilies} collections`"></span>
               </div>
             </template>
             <template x-if="$store.chat.syncSession.error">
@@ -236,7 +237,7 @@
           <button type="button" @click="$store.chat.showAgentConnect()">Agent Connect</button>
           <button type="button" @click="$store.chat.copyContext()">Copy Context</button>
           <button type="button" @click="$store.chat.copyId()">Copy ID</button>
-          <button type="button" x-show="!$store.chat.isTowerPgMode" @click="$store.chat.syncNow()">Sync Now</button>
+          <button type="button" @click="$store.chat.syncNow()">Full sync</button>
           <button type="button" x-show="!$store.chat.isTowerPgMode" @click="$store.chat.openPendingWritesModal()">Pending Writes</button>
           <button type="button" @click="$store.chat.showAvatarMenu = false; $store.chat.navigateTo('settings'); $store.chat.openSettingsTab('apps')">App Management</button>
           <button type="button" @click="$store.chat.navigateTo('settings')">Setup</button>

@@ -67,7 +67,11 @@ import { outboundWapp } from './translators/wapps.js';
 import { decryptRecordPayload } from './translators/record-crypto.js';
 import { hasGroupKey } from './crypto/group-keys.js';
 import { outboundComment } from './translators/comments.js';
-import { hydrateTowerPgEventUpdates } from './pg-read-hydrator.js';
+import {
+  hydrateTowerPgDocComments,
+  hydrateTowerPgEventUpdates,
+  hydrateTowerPgTaskComments,
+} from './pg-read-hydrator.js';
 import {
   getRecordWriteFieldsForStore,
   getPreferredRecordWriteGroupForStore,
@@ -78,6 +82,18 @@ import { isFlightDeckSurfaceDisabled } from './disabled-surfaces.js';
 
 const PG_RECORD_SYNC_DISABLED_MESSAGE = 'Tower PG mode active; encrypted record sync is disabled.';
 const PG_RECORD_REPAIR_DISABLED_MESSAGE = 'Tower PG mode active; encrypted record repair is not available because encrypted record sync is disabled.';
+const PG_FULL_SYNC_STEPS = Object.freeze([
+  { id: 'pg-groups', label: 'Members and groups' },
+  { id: 'pg-scopes', label: 'Scopes' },
+  { id: 'pg-channels', label: 'Channels and chat' },
+  { id: 'pg-tasks', label: 'Tasks' },
+  { id: 'pg-task-comments', label: 'Task comments' },
+  { id: 'pg-documents', label: 'Documents and files' },
+  { id: 'pg-doc-comments', label: 'Document comments' },
+  { id: 'pg-audio-notes', label: 'Audio notes' },
+  { id: 'pg-daily-notes', label: 'Daily Scope' },
+  { id: 'pg-personal-wapps', label: 'Personal apps' },
+]);
 
 // ---------------------------------------------------------------------------
 // Mixin — methods and getters that use `this` (the Alpine store)
@@ -2348,6 +2364,15 @@ export const syncManagerMixin = {
     this.syncFamilyProgress = this.buildSyncFamilyProgressRows(families);
   },
 
+  initializePgFullSyncProgress() {
+    this.syncFamilyProgress = PG_FULL_SYNC_STEPS.map((step) => ({
+      id: step.id,
+      hash: step.id,
+      label: step.label,
+      status: 'pending',
+    }));
+  },
+
   markSyncFamilyProgress(familyHash, status) {
     const targetHash = String(familyHash || '').trim();
     if (!targetHash || !Array.isArray(this.syncFamilyProgress) || this.syncFamilyProgress.length === 0) return;
@@ -2421,6 +2446,10 @@ export const syncManagerMixin = {
     }
     if (s.phase === 'pulling') {
       if (s.heartbeat && s.totalFamilies === 0) return 'Up to date';
+      if (this.isTowerPgMode && s.manual) {
+        const familyPart = s.currentFamily ? `Refreshing ${s.currentFamily}` : 'Refreshing workspace';
+        return `${familyPart} (${s.completedFamilies} / ${s.totalFamilies} collections)`;
+      }
       const familyPart = s.currentFamily ? `Fetching ${s.currentFamily}` : 'Pulling';
       const suffix = s.heartbeat ? ' (heartbeat)' : '';
       return `${familyPart} (${s.completedFamilies} / ${s.totalFamilies} collections)${suffix}`;
@@ -2550,6 +2579,133 @@ export const syncManagerMixin = {
     }
 
     return { prepared, blocked, skipped };
+  },
+
+  async runPgFullSyncStep(stepId) {
+    switch (stepId) {
+      case 'pg-groups':
+        return this.refreshGroups?.({ force: true, minIntervalMs: 0 }) ?? [];
+      case 'pg-scopes':
+        return this.refreshScopes?.() ?? [];
+      case 'pg-channels':
+        return this.refreshChannels?.() ?? [];
+      case 'pg-tasks':
+        return this.refreshTasks?.() ?? [];
+      case 'pg-task-comments': {
+        const tasks = (Array.isArray(this.tasks) ? this.tasks : [])
+          .filter((task) => task?.record_id && task.record_state !== 'deleted');
+        for (const task of tasks) {
+          await hydrateTowerPgTaskComments(this, task.record_id);
+        }
+        return tasks;
+      }
+      case 'pg-documents':
+        return this.refreshDocuments?.() ?? [];
+      case 'pg-doc-comments': {
+        const documents = (Array.isArray(this.documents) ? this.documents : [])
+          .filter((document) => {
+            if (!document?.record_id || document.record_state === 'deleted') return false;
+            const pgType = String(document.pg_record_type || '').trim();
+            return pgType === '' || pgType === 'document';
+          });
+        for (const document of documents) {
+          await hydrateTowerPgDocComments(this, document.record_id);
+        }
+        return documents;
+      }
+      case 'pg-audio-notes':
+        return this.refreshAudioNotes?.() ?? [];
+      case 'pg-daily-notes':
+        return this.refreshDailyNotes?.() ?? [];
+      case 'pg-personal-wapps':
+        return this.refreshPersonalWapps?.() ?? [];
+      default:
+        return [];
+    }
+  },
+
+  async performTowerPgFullSync({ manual = true } = {}) {
+    if (!this.session?.npub || !this.backendUrl) {
+      this.error = 'Configure setup first';
+      return { pushed: 0, pulled: 0 };
+    }
+
+    this.error = null;
+    this.showAvatarMenu = false;
+    this.initializePgFullSyncProgress();
+    this.openSyncProgressModal();
+    this.syncing = true;
+    this.syncStatus = 'syncing';
+    const startedAt = Date.now();
+    this.updateSyncSession({
+      state: 'syncing',
+      phase: 'checking',
+      startedAt,
+      finishedAt: null,
+      error: null,
+      manual,
+      heartbeat: false,
+      pushed: 0,
+      pushTotal: 0,
+      pulled: 0,
+      completedFamilies: 0,
+      totalFamilies: PG_FULL_SYNC_STEPS.length,
+      currentFamily: null,
+      currentFamilyHash: null,
+    });
+
+    let pulled = 0;
+    try {
+      for (const [index, step] of PG_FULL_SYNC_STEPS.entries()) {
+        this.markSyncFamilyProgress(step.id, 'active');
+        this.handleSyncProgressUpdate({
+          phase: 'pulling',
+          currentFamily: step.label,
+          currentFamilyHash: step.id,
+          completedFamilies: index,
+          totalFamilies: PG_FULL_SYNC_STEPS.length,
+          pulled,
+        });
+        const result = await this.runPgFullSyncStep(step.id);
+        pulled += Array.isArray(result) ? result.length : 0;
+        this.handleSyncProgressUpdate({
+          phase: 'pulling',
+          currentFamily: step.label,
+          currentFamilyHash: step.id,
+          completedFamilies: index + 1,
+          totalFamilies: PG_FULL_SYNC_STEPS.length,
+          pulled,
+        });
+      }
+
+      this.handleSyncProgressUpdate({ phase: 'applying' });
+      if (this.navSection === 'status' && typeof this.refreshStatusRecentChanges === 'function') {
+        await this.refreshStatusRecentChanges({ hasNewData: true });
+      }
+      this.handleSyncProgressUpdate({
+        phase: 'done',
+        state: 'synced',
+        finishedAt: Date.now(),
+        lastSuccessAt: Date.now(),
+        pulled,
+        error: null,
+      });
+      this.syncStatus = 'synced';
+      return { pushed: 0, pulled, pruned: 0, pgMode: true };
+    } catch (error) {
+      this.error = error?.message || 'Full sync failed.';
+      this.handleSyncProgressUpdate({
+        phase: 'error',
+        state: 'error',
+        error: this.error,
+        finishedAt: Date.now(),
+      });
+      this.syncStatus = 'error';
+      throw error;
+    } finally {
+      this.catchUpSyncActive = false;
+      this.syncing = false;
+    }
   },
 
   async performSync({ silent = false, showBusy = !silent, forceFull = false, manual = false } = {}) {
@@ -2701,7 +2857,11 @@ export const syncManagerMixin = {
   async syncNow() {
     this.showAvatarMenu = false;
     try {
-      await this.performSync({ silent: false, forceFull: true, manual: true });
+      if (this.isTowerPgMode) {
+        await this.performTowerPgFullSync({ manual: true });
+      } else {
+        await this.performSync({ silent: false, forceFull: true, manual: true });
+      }
     } catch (e) {
       // performSync already surfaced the error state
     }

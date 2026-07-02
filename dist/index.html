@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-DJnTGu6D.js"></script>
+  <script type="module" crossorigin src="/assets/index-BlzeKTIN.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-BotMfn9J.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
@@ -29,7 +29,7 @@
   </template>
   <div
     class="sync-progress-modal-overlay"
-    x-show="$store.chat.showSyncProgressModal && !$store.chat.isTowerPgMode"
+    x-show="$store.chat.showSyncProgressModal"
     x-cloak
     @click.self="$store.chat.closeSyncProgressModal()"
   >
@@ -223,12 +223,13 @@
               <span class="avatar-menu-label">Build</span>
               <code x-text="$store.chat.appBuildId"></code>
             </div>
-            <template x-if="$store.chat.syncStatus === 'syncing'">
+            <template x-if="$store.chat.syncSession.phase !== 'idle' && ($store.chat.syncSession.manual || $store.chat.syncStatus === 'syncing')">
               <div class="sync-progress-block">
                 <div class="sync-progress-bar-track">
                   <div class="sync-progress-bar-fill" :style="'width:' + $store.chat.syncProgressPercent() + '%'"></div>
                 </div>
                 <span class="sync-progress-text" x-text="$store.chat.syncProgressLabel()"></span>
+                <span class="sync-progress-text" x-show="$store.chat.syncSession.totalFamilies > 0" x-text="`${$store.chat.syncSession.completedFamilies} / ${$store.chat.syncSession.totalFamilies} collections`"></span>
               </div>
             </template>
             <template x-if="$store.chat.syncSession.error">
@@ -238,7 +239,7 @@
           <button type="button" @click="$store.chat.showAgentConnect()">Agent Connect</button>
           <button type="button" @click="$store.chat.copyContext()">Copy Context</button>
           <button type="button" @click="$store.chat.copyId()">Copy ID</button>
-          <button type="button" x-show="!$store.chat.isTowerPgMode" @click="$store.chat.syncNow()">Sync Now</button>
+          <button type="button" @click="$store.chat.syncNow()">Full sync</button>
           <button type="button" x-show="!$store.chat.isTowerPgMode" @click="$store.chat.openPendingWritesModal()">Pending Writes</button>
           <button type="button" @click="$store.chat.showAvatarMenu = false; $store.chat.navigateTo('settings'); $store.chat.openSettingsTab('apps')">App Management</button>
           <button type="button" @click="$store.chat.navigateTo('settings')">Setup</button>
