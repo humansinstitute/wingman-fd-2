@@ -392,6 +392,10 @@ export function mapPgChannelToLocal(channel, { workspaceOwnerNpub } = {}) {
     channel_type: trimText(channel?.kind),
     group_ids: normalizeTextArray(channel?.group_ids || channel?.groupIds),
     participant_npubs: normalizeTextArray(channel?.participant_npubs || channel?.participantNpubs),
+    channel_grants: Array.isArray(channel?.channel_grants)
+      ? channel.channel_grants
+      : (Array.isArray(channel?.grants) ? channel.grants : []),
+    member_npubs: normalizeTextArray(channel?.member_npubs || channel?.memberNpubs),
     scope_id: scopeId || null,
     scope_l1_id: scopeId || null,
     scope_l2_id: null,

@@ -80,6 +80,95 @@ export function channelParticipantFormRows(channel, getChannelParticipants, getS
   return rows;
 }
 
+function text(value) {
+  return String(value || '').trim();
+}
+
+function valuesFrom(value) {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => typeof entry === 'string'
+    ? [text(entry)]
+    : [text(entry?.npub || entry?.member_npub || entry?.user_npub || entry?.actor_npub)]
+  ).filter(Boolean);
+}
+
+function groupMembers(group) {
+  return [
+    ...valuesFrom(group?.member_npubs),
+    ...valuesFrom(group?.effective_member_npubs),
+    ...valuesFrom(group?.members),
+  ];
+}
+
+function channelMemberNpubs(channel) {
+  return [
+    ...valuesFrom(channel?.member_npubs),
+    ...valuesFrom(channel?.visible_member_npubs),
+    ...valuesFrom(channel?.channel_member_npubs),
+    ...valuesFrom(channel?.members),
+    ...valuesFrom(channel?.channel_members),
+    ...valuesFrom(channel?.visible_members),
+  ];
+}
+
+function grantRowsForChannel(channel, channelGrants = []) {
+  const embedded = [channel?.channel_grants, channel?.grants, channel?.access_grants]
+    .flatMap((rows) => Array.isArray(rows) ? rows : []);
+  return [...embedded, ...(Array.isArray(channelGrants) ? channelGrants : [])];
+}
+
+/**
+ * Resolve the people who can see a channel from materialized visibility data.
+ * This intentionally does not fetch: opening the modal must remain usable when
+ * PG signing or refreshes are under pressure.
+ */
+export function workroomVisibleParticipantNpubs(channel, {
+  baseParticipants = [],
+  groups = [],
+  channelGrants = [],
+  workspaceMembers = [],
+  sessionNpub = '',
+  currentViewerNpub = '',
+} = {}) {
+  const participants = new Set([
+    ...valuesFrom(baseParticipants),
+    ...valuesFrom(channel?.participant_npubs),
+    ...channelMemberNpubs(channel),
+  ]);
+  const knownGroups = new Map();
+  for (const group of Array.isArray(groups) ? groups : []) {
+    const ids = [group?.group_id, group?.id, group?.group_npub].map(text).filter(Boolean);
+    for (const id of ids) knownGroups.set(id, group);
+  }
+  for (const groupId of valuesFrom(channel?.group_ids || channel?.groupIds)) {
+    for (const npub of groupMembers(knownGroups.get(groupId))) participants.add(npub);
+  }
+
+  const actorNpubById = new Map();
+  for (const member of Array.isArray(workspaceMembers) ? workspaceMembers : []) {
+    const actor = member?.actor && typeof member.actor === 'object' ? member.actor : member;
+    const actorId = text(actor?.actor_id || actor?.id || member?.actor_id || member?.id);
+    const npub = text(actor?.npub || member?.npub || member?.user_npub || member?.member_npub);
+    if (actorId && npub) actorNpubById.set(actorId, npub);
+  }
+  for (const grant of grantRowsForChannel(channel, channelGrants)) {
+    const principalType = text(grant?.principal_type || grant?.stored_principal_type || grant?.principal?.type);
+    const principalId = text(grant?.principal_id || grant?.principal?.actor_id || grant?.principal?.id);
+    if (principalType === 'actor' || principalType === 'person') {
+      const npub = text(grant?.principal_npub || grant?.actor_npub || grant?.npub || grant?.principal?.npub)
+        || actorNpubById.get(principalId)
+        || (principalId.startsWith('npub1') ? principalId : '');
+      if (npub) participants.add(npub);
+    } else if (principalType === 'group') {
+      for (const npub of groupMembers(knownGroups.get(principalId))) participants.add(npub);
+    }
+  }
+
+  const viewer = text(currentViewerNpub) || text(sessionNpub);
+  if (viewer) participants.add(viewer);
+  return [...participants];
+}
+
 export function workroomRepoSuggestions(channel, workrooms = []) {
   const values = [];
   const defaults = objectOrEmpty(channel?.metadata)?.[WORKROOM_DEFAULTS_KEY];
@@ -205,7 +294,27 @@ export const workroomCreationMixin = {
       return;
     }
     const form = mergeWorkroomFormWithChannelDefaults(channel);
-    form.participants = channelParticipantFormRows(channel, this.getChannelParticipants?.bind(this), this.getSenderName?.bind(this));
+    const baseParticipants = typeof this.getChannelParticipants === 'function'
+      ? this.getChannelParticipants(channel)
+      : [];
+    const cachedChannelGrants = this.selectedChannelId === channel.record_id
+      ? (this.channelGrantRows || this.channelGrants || [])
+      : [];
+    form.participants = channelParticipantFormRows(
+      channel,
+      () => workroomVisibleParticipantNpubs(channel, {
+        baseParticipants,
+        groups: [
+          ...(Array.isArray(this.currentWorkspaceGroups) ? this.currentWorkspaceGroups : []),
+          ...(Array.isArray(this.groups) ? this.groups : []),
+        ],
+        channelGrants: cachedChannelGrants,
+        workspaceMembers: this.pgWorkspaceMembers,
+        sessionNpub: this.session?.npub,
+        currentViewerNpub: this.currentPgActorNpub,
+      }),
+      this.getSenderName?.bind(this),
+    );
     form.integration_autopilot_npub = '';
     form.repo_query = form.repo_name || form.repo_url || '';
     this.workroomCreationForm = form;

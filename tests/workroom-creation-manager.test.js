@@ -9,6 +9,7 @@ import {
   workroomCreationMixin,
   workroomRepoSuggestions,
   workroomDefaultsFromChannel,
+  workroomVisibleParticipantNpubs,
 } from '../src/workroom-creation-manager.js';
 
 describe('workroom creation flow helpers', () => {
@@ -111,6 +112,52 @@ describe('workroom creation flow helpers', () => {
     expect(store.workroomCreationForm.participants[0].role).toBe('integration');
     expect(store.workroomCreationForm.participants[1].role).toBe('contributor');
     expect(store.workroomCreationForm.integration_autopilot_npub).toBe('npub-a');
+  });
+
+  it('expands actor grants for a non-DM PG channel', () => {
+    expect(workroomVisibleParticipantNpubs({ record_id: 'channel-1' }, {
+      channelGrants: [{ principal_type: 'actor', principal_id: 'actor-rick' }],
+      workspaceMembers: [{ actor_id: 'actor-rick', npub: 'npub-rick' }],
+      sessionNpub: 'npub-pete',
+    })).toEqual(['npub-rick', 'npub-pete']);
+  });
+
+  it('uses cached PG grants when opening the Workroom Creation modal', () => {
+    const store = {
+      selectedChannelId: 'channel-1',
+      selectedChannel: { record_id: 'channel-1', channel_type: 'channel' },
+      channelGrants: [{ principal_type: 'actor', principal_id: 'actor-rick' }],
+      pgWorkspaceMembers: [{ actor_id: 'actor-rick', npub: 'npub-rick' }],
+      session: { npub: 'npub-pete' },
+      workroomCreationForm: createWorkroomForm(),
+      getChannelParticipants: () => [],
+      getSenderName: () => '',
+    };
+    Object.assign(store, workroomCreationMixin);
+    store.openWorkroomCreation();
+    expect(store.workroomCreationForm.participants.map((row) => row.actor_npub)).toEqual([
+      'npub-rick',
+      'npub-pete',
+    ]);
+  });
+
+  it('expands group grants through known group members', () => {
+    expect(workroomVisibleParticipantNpubs({ record_id: 'channel-1' }, {
+      channelGrants: [{ principal_type: 'group', principal_id: 'group-team' }],
+      groups: [{ group_id: 'group-team', member_npubs: ['npub-rick', 'npub-pete'] }],
+    })).toEqual(['npub-rick', 'npub-pete']);
+  });
+
+  it('includes the current viewer when local channel visibility is incomplete', () => {
+    expect(workroomVisibleParticipantNpubs({ record_id: 'channel-1' }, {
+      currentViewerNpub: 'npub-pete',
+    })).toEqual(['npub-pete']);
+  });
+
+  it('preserves direct channel participants while deduplicating them', () => {
+    expect(workroomVisibleParticipantNpubs({ participant_npubs: ['npub-pete', 'npub-rick', 'npub-pete'] }, {
+      sessionNpub: 'npub-pete',
+    })).toEqual(['npub-pete', 'npub-rick']);
   });
 
   it('prioritizes channel defaults and existing workroom repositories', () => {
