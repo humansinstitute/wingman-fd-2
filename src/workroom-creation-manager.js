@@ -88,7 +88,7 @@ function valuesFrom(value) {
   if (!Array.isArray(value)) return [];
   return value.flatMap((entry) => typeof entry === 'string'
     ? [text(entry)]
-    : [text(entry?.npub || entry?.member_npub || entry?.user_npub || entry?.actor_npub)]
+    : [text(entry?.npub || entry?.member_npub || entry?.user_npub || entry?.actor_npub || entry?.actor?.npub)]
   ).filter(Boolean);
 }
 
@@ -108,6 +108,7 @@ function channelMemberNpubs(channel) {
     ...valuesFrom(channel?.members),
     ...valuesFrom(channel?.channel_members),
     ...valuesFrom(channel?.visible_members),
+    ...valuesFrom(channel?.effective_members),
   ];
 }
 
@@ -140,7 +141,7 @@ export function workroomVisibleParticipantNpubs(channel, {
     const ids = [group?.group_id, group?.id, group?.group_npub].map(text).filter(Boolean);
     for (const id of ids) knownGroups.set(id, group);
   }
-  for (const groupId of valuesFrom(channel?.group_ids || channel?.groupIds)) {
+  for (const groupId of valuesFrom(channel?.group_ids || channel?.groupIds || channel?.channel_group_ids || channel?.visible_group_ids)) {
     for (const npub of groupMembers(knownGroups.get(groupId))) participants.add(npub);
   }
 
@@ -152,21 +153,69 @@ export function workroomVisibleParticipantNpubs(channel, {
     if (actorId && npub) actorNpubById.set(actorId, npub);
   }
   for (const grant of grantRowsForChannel(channel, channelGrants)) {
-    const principalType = text(grant?.principal_type || grant?.stored_principal_type || grant?.principal?.type);
-    const principalId = text(grant?.principal_id || grant?.principal?.actor_id || grant?.principal?.id);
+    const principal = grant?.principal && typeof grant.principal === 'object' ? grant.principal : {};
+    const principalType = text(grant?.principal_type || grant?.stored_principal_type || principal?.type);
+    const principalId = text(
+      grant?.principal_id
+      || principal?.actor_id
+      || principal?.group_id
+      || principal?.group_npub
+      || principal?.id
+    );
     if (principalType === 'actor' || principalType === 'person') {
-      const npub = text(grant?.principal_npub || grant?.actor_npub || grant?.npub || grant?.principal?.npub)
+      const npub = text(grant?.principal_npub || grant?.actor_npub || grant?.npub || principal?.npub)
         || actorNpubById.get(principalId)
         || (principalId.startsWith('npub1') ? principalId : '');
       if (npub) participants.add(npub);
     } else if (principalType === 'group') {
-      for (const npub of groupMembers(knownGroups.get(principalId))) participants.add(npub);
+      for (const npub of groupMembers(knownGroups.get(principalId) || principal)) participants.add(npub);
     }
   }
 
   const viewer = text(currentViewerNpub) || text(sessionNpub);
   if (viewer) participants.add(viewer);
   return [...participants];
+}
+
+function buildWorkroomParticipantRows(store, channel) {
+  const baseParticipants = typeof store.getChannelParticipants === 'function'
+    ? store.getChannelParticipants(channel)
+    : [];
+  const cachedChannelGrants = store.selectedChannelId === channel.record_id
+    ? (store.channelGrantRows || store.channelGrants || [])
+    : [];
+  return channelParticipantFormRows(
+    channel,
+    () => workroomVisibleParticipantNpubs(channel, {
+      baseParticipants,
+      groups: [
+        ...(Array.isArray(store.currentWorkspaceGroups) ? store.currentWorkspaceGroups : []),
+        ...(Array.isArray(store.groups) ? store.groups : []),
+      ],
+      channelGrants: cachedChannelGrants,
+      workspaceMembers: store.pgWorkspaceMembers,
+      sessionNpub: store.session?.npub,
+      currentViewerNpub: store.currentPgActorNpub,
+    }),
+    store.getSenderName?.bind(store),
+  );
+}
+
+async function hydrateWorkroomCreationVisibility(store) {
+  const jobs = [];
+  if (typeof store.refreshGroups === 'function') {
+    jobs.push(store.refreshGroups({ force: true, minIntervalMs: 0 }).catch(() => []));
+  }
+  if (typeof store.refreshTowerPgWorkspaceMembers === 'function') {
+    jobs.push(store.refreshTowerPgWorkspaceMembers({ force: true, limit: 200 }).catch(() => []));
+  }
+  if (
+    typeof store.refreshChannelGrants === 'function'
+    && store.canAttemptSelectedPgChannelGrantRead !== false
+  ) {
+    jobs.push(store.refreshChannelGrants().catch(() => store.channelGrants || []));
+  }
+  if (jobs.length > 0) await Promise.all(jobs);
 }
 
 export function workroomRepoSuggestions(channel, workrooms = []) {
@@ -287,34 +336,14 @@ export const workroomCreationMixin = {
     const context = resolveTowerPgWorkspaceContext(this);
     return workroomAnnouncementLink({ metadata: this.workroomMessageMetadata(message) }, context.baseUrl);
   },
-  openWorkroomCreation() {
+  async openWorkroomCreation() {
     const channel = this.selectedChannel;
     if (!channel?.record_id) {
       this.error = 'Select a channel before creating a workroom.';
       return;
     }
     const form = mergeWorkroomFormWithChannelDefaults(channel);
-    const baseParticipants = typeof this.getChannelParticipants === 'function'
-      ? this.getChannelParticipants(channel)
-      : [];
-    const cachedChannelGrants = this.selectedChannelId === channel.record_id
-      ? (this.channelGrantRows || this.channelGrants || [])
-      : [];
-    form.participants = channelParticipantFormRows(
-      channel,
-      () => workroomVisibleParticipantNpubs(channel, {
-        baseParticipants,
-        groups: [
-          ...(Array.isArray(this.currentWorkspaceGroups) ? this.currentWorkspaceGroups : []),
-          ...(Array.isArray(this.groups) ? this.groups : []),
-        ],
-        channelGrants: cachedChannelGrants,
-        workspaceMembers: this.pgWorkspaceMembers,
-        sessionNpub: this.session?.npub,
-        currentViewerNpub: this.currentPgActorNpub,
-      }),
-      this.getSenderName?.bind(this),
-    );
+    form.participants = buildWorkroomParticipantRows(this, channel);
     form.integration_autopilot_npub = '';
     form.repo_query = form.repo_name || form.repo_url || '';
     this.workroomCreationForm = form;
@@ -323,6 +352,21 @@ export const workroomCreationMixin = {
     this.workroomCreationFailedParticipants = [];
     this.workroomCreationAnnouncement = null;
     this.workroomCreationOpen = true;
+    this.workroomCreationPeopleLoading = true;
+    try {
+      await hydrateWorkroomCreationVisibility(this);
+      const previousRoles = new Map((this.workroomCreationForm.participants || [])
+        .map((participant) => [participant.actor_npub, participant.role]));
+      this.workroomCreationForm.participants = buildWorkroomParticipantRows(this, channel)
+        .map((participant) => ({
+          ...participant,
+          role: previousRoles.get(participant.actor_npub) || participant.role,
+        }));
+      const integration = this.workroomCreationForm.participants.find((participant) => participant.role === 'integration');
+      this.workroomCreationForm.integration_autopilot_npub = integration?.actor_npub || '';
+    } finally {
+      this.workroomCreationPeopleLoading = false;
+    }
   },
 
   closeWorkroomCreation() {
@@ -456,6 +500,7 @@ export const workroomCreationMixin = {
 export function createWorkroomCreationState() {
   return {
     workroomCreationOpen: false,
+    workroomCreationPeopleLoading: false,
     workroomCreationSubmitting: false,
     workroomCreationForm: createWorkroomForm(),
     workroomCreationError: '',

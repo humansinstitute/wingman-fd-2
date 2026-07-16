@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   buildWorkroomCreatePayload,
   channelParticipantFormRows,
@@ -141,11 +141,62 @@ describe('workroom creation flow helpers', () => {
     ]);
   });
 
+  it('refreshes PG groups, members, and channel grants before finalizing the Workroom Creation roster', async () => {
+    const store = {
+      selectedChannelId: 'channel-1',
+      selectedChannel: { record_id: 'channel-1', channel_type: 'channel' },
+      channelGrants: [],
+      currentWorkspaceGroups: [],
+      pgWorkspaceMembers: [],
+      session: { npub: 'npub-pete' },
+      canAttemptSelectedPgChannelGrantRead: true,
+      workroomCreationForm: createWorkroomForm(),
+      getChannelParticipants: () => [],
+      getSenderName: (npub) => npub === 'npub-rick' ? 'Rick' : 'Pete',
+      refreshGroups: vi.fn(async function refreshGroups() {
+        this.currentWorkspaceGroups = [{ group_id: 'group-agents', name: 'Agents', member_npubs: ['npub-rick'] }];
+        return this.currentWorkspaceGroups;
+      }),
+      refreshTowerPgWorkspaceMembers: vi.fn(async function refreshTowerPgWorkspaceMembers() {
+        this.pgWorkspaceMembers = [{ actor_id: 'actor-rick', npub: 'npub-rick' }];
+        return this.pgWorkspaceMembers;
+      }),
+      refreshChannelGrants: vi.fn(async function refreshChannelGrants() {
+        this.channelGrants = [{ principal_type: 'group', principal_id: 'group-agents' }];
+        return this.channelGrants;
+      }),
+    };
+    Object.assign(store, workroomCreationMixin);
+
+    await store.openWorkroomCreation();
+
+    expect(store.refreshGroups).toHaveBeenCalledWith({ force: true, minIntervalMs: 0 });
+    expect(store.refreshTowerPgWorkspaceMembers).toHaveBeenCalledWith({ force: true, limit: 200 });
+    expect(store.refreshChannelGrants).toHaveBeenCalled();
+    expect(store.workroomCreationPeopleLoading).toBe(false);
+    expect(store.workroomCreationForm.participants).toEqual([
+      { actor_npub: 'npub-rick', role: 'contributor', label: 'Rick' },
+      { actor_npub: 'npub-pete', role: 'contributor', label: 'Pete' },
+    ]);
+  });
+
   it('expands group grants through known group members', () => {
     expect(workroomVisibleParticipantNpubs({ record_id: 'channel-1' }, {
       channelGrants: [{ principal_type: 'group', principal_id: 'group-team' }],
       groups: [{ group_id: 'group-team', member_npubs: ['npub-rick', 'npub-pete'] }],
     })).toEqual(['npub-rick', 'npub-pete']);
+  });
+
+  it('expands embedded Tower group principals in channel grants', () => {
+    expect(workroomVisibleParticipantNpubs({ record_id: 'channel-1' }, {
+      channelGrants: [{
+        principal_type: 'group',
+        principal: {
+          group_id: 'group-agents',
+          members: [{ actor: { npub: 'npub-rick' } }],
+        },
+      }],
+    })).toEqual(['npub-rick']);
   });
 
   it('includes the current viewer when local channel visibility is incomplete', () => {
