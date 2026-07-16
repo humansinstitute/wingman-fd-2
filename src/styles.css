@@ -12652,6 +12652,7 @@ button:disabled {
   .chat-input-bar .chat-input {
     align-self: flex-end;
     min-width: 0;
+    min-height: calc((2 * 1.4em) + 1.2rem + 2px);
     width: auto;
   }
 
