@@ -7116,14 +7116,14 @@ button:disabled {
 }
 
 .chat-send-btn-text {
-  padding: 0.5rem 1rem;
+  padding: 0.35rem 0.75rem;
   background: var(--text);
   color: var(--surface);
   border-radius: 8px;
   font-size: 0.85rem;
   font-weight: 600;
   flex-shrink: 0;
-  height: 42px;
+  height: 34px;
 }
 
 .chat-send-btn-text:hover:not(:disabled) {
@@ -7143,8 +7143,8 @@ button:disabled {
 }
 
 .chat-composer-menu-trigger {
-  height: 42px;
-  padding: 0.5rem 1rem;
+  height: 34px;
+  padding: 0.35rem 0.75rem;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface);
@@ -7548,14 +7548,14 @@ button:disabled {
 }
 
 .thread-reply-btn {
-  padding: 0.5rem 1rem;
+  padding: 0.35rem 0.75rem;
   background: var(--text);
   color: var(--surface);
   border-radius: var(--radius-md);
   font-size: 0.85rem;
   font-weight: 600;
   flex-shrink: 0;
-  height: 42px;
+  height: 34px;
 }
 
 .thread-reply-btn:hover:not(:disabled) {
@@ -12646,7 +12646,7 @@ button:disabled {
 
   .chat-input-actions .chat-composer-menu-trigger,
   .chat-input-actions .chat-send-btn-text {
-    min-height: 40px;
+    min-height: 34px;
     min-width: 48px;
     padding-left: 0.65rem;
     padding-right: 0.65rem;
@@ -12674,7 +12674,7 @@ button:disabled {
 
   .thread-input-actions .chat-composer-menu-trigger,
   .thread-input-actions .thread-reply-btn {
-    min-height: 40px;
+    min-height: 34px;
     min-width: 48px;
     padding-left: 0.65rem;
     padding-right: 0.65rem;
