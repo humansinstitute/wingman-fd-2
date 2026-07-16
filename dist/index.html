@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-Dpfw90BY.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-BETcxvPm.css">
+  <script type="module" crossorigin src="/assets/index-BUSgzurn.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-DQW2us2V.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -3461,8 +3461,13 @@
                   @drop.prevent="$store.chat.handleChatFileDrop($event, 'message')"
                 ></textarea>
                 <div class="chat-input-actions">
-                  <button class="workroom-create-trigger" type="button" @click="$store.chat.openWorkroomCreation()" :disabled="!$store.chat.isTowerPgMode || !$store.chat.selectedChannelId" title="Create native workroom">Workroom</button>
-                  <button class="audio-trigger-btn" type="button" @click="$store.chat.openAudioRecorder('chat')" title="Record voice note"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg></button>
+                  <div class="chat-composer-menu" x-data="{ open: false }" @click.outside="open = false">
+                    <button class="chat-composer-menu-trigger" type="button" @click="open = !open" :aria-expanded="open" aria-haspopup="menu">Menu</button>
+                    <div class="chat-composer-menu-popover" x-show="open" x-cloak x-transition role="menu">
+                      <button type="button" role="menuitem" @click="$store.chat.openAudioRecorder('chat'); open = false">Record Audio</button>
+                      <button type="button" role="menuitem" @click="$store.chat.openWorkroomCreation(); open = false" :disabled="!$store.chat.isTowerPgMode || !$store.chat.selectedChannelId">Start Workroom</button>
+                    </div>
+                  </div>
                   <button class="chat-send-btn-text" @click="$store.chat.sendMessage()" :disabled="((!$store.chat.messageInput.trim() && $store.chat.messageAudioDrafts.length === 0) || $store.chat.messageImageUploadCount > 0)">Send</button>
                 </div>
               </div>
