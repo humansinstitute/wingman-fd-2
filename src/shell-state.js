@@ -628,12 +628,10 @@ export function createShellState(options = {}) {
     getRoutePath(section = this.navSection) {
       const slug = this.currentWorkspaceSlug;
       const enabledSection = normalizeEnabledFlightDeckSection(section);
-      if (
-        enabledSection === 'status'
-        && this.workroomDetailOpen
-        && this.activeWorkroomId
-      ) {
-        return `/${slug}/workrooms/${encodeURIComponent(this.activeWorkroomId)}`;
+      if (enabledSection === 'workroom') {
+        return this.activeWorkroomId
+          ? `/${slug}/workroom/${encodeURIComponent(this.activeWorkroomId)}`
+          : `/${slug}/workroom`;
       }
       const page = (() => {
         switch (enabledSection) {
@@ -642,6 +640,7 @@ export function createShellState(options = {}) {
           case 'chat': return 'chat';
           case 'docs': return 'docs';
           case 'files': return 'files';
+          case 'workroom': return 'workroom';
           case 'reports': return 'reports';
           case 'opportunities': return 'opportunities';
           case 'people': return 'people';
@@ -759,11 +758,11 @@ export function createShellState(options = {}) {
             this.selectedChannelId = null;
             this.closeThread({ syncRoute: false });
           }
-        } else if (this.navSection === 'status') {
+        } else if (this.navSection === 'workroom') {
           if (route.params.workroomid && typeof this.openWorkroomDetail === 'function') {
             await this.openWorkroomDetail(route.params.workroomid, { syncRoute: false });
           } else if (this.workroomDetailOpen) {
-            this.closeWorkroomDetail({ syncRoute: false });
+            this.closeWorkroomDetail({ syncRoute: false, switchView: false });
           }
         } else if (this.navSection === 'docs') {
           this.selectedDocCommentId = route.params.commentid || null;
@@ -813,15 +812,15 @@ export function createShellState(options = {}) {
         this.clearInactiveSectionData(section);
       }
       this.navSection = section;
-      if (section === 'status' && this.workroomDetailOpen && options.preserveWorkroom !== true) {
-        this.closeWorkroomDetail?.({ syncRoute: false });
+      if (section !== 'workroom' && this.workroomDetailOpen && options.preserveWorkroom !== true) {
+        this.closeWorkroomDetail?.({ syncRoute: false, switchView: false });
       }
       this.mobileNavOpen = false;
       this.showWorkspaceSwitcherMenu = false;
       if (section === 'chat' || section === 'docs') {
         this.markSectionRead(section);
       }
-      if (section === 'tasks' || section === 'reports' || section === 'files') {
+      if (section === 'tasks' || section === 'reports' || section === 'files' || section === 'workroom') {
         this.validateSelectedBoardId();
         this.normalizeTaskFilterTags();
       }

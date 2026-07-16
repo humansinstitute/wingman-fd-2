@@ -121,23 +121,23 @@ describe('shell navigation data retention', () => {
   it('uses a page route for active workroom detail state', () => {
     const shell = buildNavigableShell();
     Object.defineProperty(shell, 'currentWorkspaceSlug', { value: 'be-free' });
-    shell.navSection = 'status';
+    shell.navSection = 'workroom';
     shell.workroomDetailOpen = true;
     shell.activeWorkroomId = 'room-123';
 
-    expect(shell.getRoutePath()).toBe('/be-free/workrooms/room-123');
+    expect(shell.getRoutePath()).toBe('/be-free/workroom/room-123');
   });
 
   it('clears an active workroom page when navigating to the status overview', () => {
     const shell = buildNavigableShell();
-    shell.navSection = 'status';
+    shell.navSection = 'workroom';
     shell.workroomDetailOpen = true;
     shell.activeWorkroomId = 'room-123';
     shell.closeWorkroomDetail = vi.fn();
 
     shell.navigateTo('status');
 
-    expect(shell.closeWorkroomDetail).toHaveBeenCalledWith({ syncRoute: false });
+    expect(shell.closeWorkroomDetail).toHaveBeenCalledWith({ syncRoute: false, switchView: false });
   });
 });
 

@@ -19258,7 +19258,10 @@ button:disabled {
 .chat-workroom-announcement-heading { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
 .chat-workroom-announcement-card a { color: #1d4ed8; overflow-wrap: anywhere; font-size: .78rem; }
 .chat-workroom-announcement-card button { width: fit-content; border: 0; padding: 0; background: transparent; color: #2563eb; cursor: pointer; font: inherit; font-size: .78rem; }
+.workroom-page-section { min-height: 100%; padding: 1rem; background: #f8fafc; }
 .workroom-native-view { margin: .9rem 0 1rem; padding: 1rem; border: 1px solid #cbd5e1; border-radius: 10px; background: #fff; }
+.workroom-page-section .workroom-native-view { margin: 0; min-height: calc(100vh - 9rem); }
+.workroom-empty-page { display: grid; align-content: start; }
 .workroom-detail-header { align-items: flex-start; padding-bottom: .9rem; border-bottom: 1px solid var(--border); }
 .workroom-detail-header-actions { align-items: flex-start; }
 .workroom-detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem; margin-top: .9rem; }

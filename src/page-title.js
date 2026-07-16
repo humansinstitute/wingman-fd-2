@@ -38,6 +38,8 @@ export function buildFlightDeckDocumentTitle({
       return buildSectionTitle('Docs', { workspaceLabel: nextWorkspaceLabel });
     case 'files':
       return buildSectionTitle('Files', { workspaceLabel: nextWorkspaceLabel });
+    case 'workroom':
+      return buildSectionTitle('Workroom', { workspaceLabel: nextWorkspaceLabel });
     case 'opportunities':
       return buildSectionTitle('Opportunities', { workspaceLabel: nextWorkspaceLabel });
     case 'people':

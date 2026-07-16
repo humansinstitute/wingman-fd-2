@@ -217,7 +217,7 @@ export const workroomDetailMixin = {
     const id = text(workroomId);
     if (!id) return;
     this.activeWorkroomId = id;
-    if (options.switchView !== false) this.navSection = 'status';
+    if (options.switchView !== false) this.navSection = 'workroom';
     this.workroomDetailOpen = true;
     this.workroomDetailLoading = true;
     this.workroomError = '';
@@ -239,6 +239,7 @@ export const workroomDetailMixin = {
     this.workroomDetailOpen = false;
     this.activeWorkroomId = '';
     this.workroomError = '';
+    if (this.navSection === 'workroom' && options.switchView !== false) this.navSection = 'status';
     if (typeof this.syncRoute === 'function' && options.syncRoute !== false) this.syncRoute();
   },
 

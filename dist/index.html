@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-CT_b3lnQ.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-nxTS5_Mz.css">
+  <script type="module" crossorigin src="/assets/index-CwGFvUce.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-9NrzLqck.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -1583,29 +1583,6 @@
               </div>
               <p class="workroom-error" x-show="$store.chat.workroomError" x-text="$store.chat.workroomError"></p>
               <button type="button" class="workroom-retry" x-show="$store.chat.workroomError" @click="$store.chat.refreshWorkrooms({ immediate: true })">Retry workrooms</button>
-              <section class="workroom-native-view" x-show="$store.chat.workroomDetailOpen" x-cloak>
-                <header class="workroom-detail-header">
-                  <div><p class="workroom-eyebrow">Workroom view</p><h2 x-text="$store.chat.selectedWorkroom?.title || 'Workroom'"></h2><p x-text="$store.chat.selectedWorkroom?.goal || 'No goal recorded.'"></p></div>
-                  <div class="workroom-detail-header-actions"><span class="workroom-status-chip" x-text="$store.chat.selectedWorkroom?.status || 'loading'"></span><button type="button" class="btn-secondary" x-show="$store.chat.selectedWorkroomAnnouncementMessageId" @click="$store.chat.openSelectedWorkroomThread()">Open room thread</button><button type="button" class="doc-modal-close" @click="$store.chat.closeWorkroomDetail()" aria-label="Close workroom view">&times;</button></div>
-                </header>
-                <p class="workroom-notice" x-show="$store.chat.workroomDetailNotice" x-text="$store.chat.workroomDetailNotice"></p>
-                <p class="workroom-loading" x-show="$store.chat.workroomDetailLoading">Loading room history…</p>
-                <div class="workroom-view-layout" x-show="!$store.chat.workroomDetailLoading && $store.chat.selectedWorkroom">
-                  <div class="workroom-view-main">
-                    <section class="workroom-detail-panel workroom-detail-overview"><h3>Delivery context</h3><dl><div><dt>Integration Autopilot</dt><dd x-text="$store.chat.selectedWorkroom?.integration_autopilot_npub || 'Not assigned'"></dd></div><div><dt>Repository</dt><dd><a x-show="$store.chat.selectedWorkroom?.repo?.url" :href="$store.chat.selectedWorkroom?.repo?.url" target="_blank" rel="noreferrer" x-text="$store.chat.selectedWorkroom?.repo?.name || $store.chat.selectedWorkroom?.repo?.url"></a><span x-show="!$store.chat.selectedWorkroom?.repo?.url">Not recorded</span></dd></div><div><dt>Branches</dt><dd x-text="[$store.chat.selectedWorkroom?.branches?.integration, $store.chat.selectedWorkroom?.branches?.production].filter(Boolean).join(' → ') || 'Not recorded'"></dd></div></dl></section>
-                    <section class="workroom-detail-panel"><h3>Participants and roles</h3><ul class="workroom-detail-list"><template x-for="person in $store.chat.selectedWorkroomParticipants" :key="person.record_id"><li><span><strong x-text="person.label || person.actor_npub || person.actor_id"></strong><small x-text="person.role"></small></span><span :class="person.access_status === 'failed' ? 'workroom-warning-text' : ''" x-text="person.access_status || person.status || 'active'"></span></li></template></ul><p class="workroom-empty" x-show="$store.chat.selectedWorkroomParticipants.length === 0">No participants recorded.</p></section>
-                    <section class="workroom-detail-panel"><h3>PRs, files, and links</h3><ul class="workroom-detail-list"><template x-for="link in $store.chat.selectedWorkroomLinks" :key="link.record_id"><li><span><strong x-text="link.label || link.external_url || link.target_id"></strong><small x-text="[link.link_type || link.target_type, link.status].filter(Boolean).join(' · ')"></small></span><a x-show="link.external_url" :href="link.external_url" target="_blank" rel="noreferrer">Open</a></li></template></ul><p class="workroom-empty" x-show="$store.chat.selectedWorkroomLinks.length === 0">No links recorded.</p></section>
-                    <section class="workroom-detail-panel workroom-timeline-panel"><div class="workroom-panel-heading"><h3>History</h3><span x-text="$store.chat.selectedWorkroomEvents.length + ' events'"></span></div><ol class="workroom-timeline"><template x-for="event in $store.chat.selectedWorkroomEvents.slice(0, 8)" :key="event.record_id"><li><span class="workroom-timeline-dot"></span><div><div class="workroom-timeline-meta"><strong x-text="event.title || event.event_type"></strong><span x-text="event.created_at ? new Date(event.created_at).toLocaleString() : ''"></span></div><p x-text="event.body || [event.target_type, event.target_ref].filter(Boolean).join(' · ') || 'Event recorded.'"></p></div></li></template></ol><p class="workroom-empty" x-show="$store.chat.selectedWorkroomEvents.length === 0">No history recorded.</p></section>
-                  </div>
-                  <aside class="workroom-thread-panel">
-                    <div class="workroom-panel-heading"><h3>Room thread</h3><span x-show="$store.chat.selectedWorkroomThreadReplies.length > 0" x-text="$store.chat.selectedWorkroomThreadReplies.length + ' replies'"></span></div>
-                    <p class="workroom-empty" x-show="!$store.chat.selectedWorkroomAnnouncementMessageId">No announcement thread has been recorded for this workroom.</p>
-                    <div class="workroom-thread-root" x-show="$store.chat.selectedWorkroomAnnouncementMessage"><strong x-text="$store.chat.getSenderName($store.chat.selectedWorkroomAnnouncementMessage?.sender_npub)"></strong><div class="chat-post-markdown" x-html="$store.chat.renderMarkdown($store.chat.selectedWorkroomAnnouncementMessage?.body || '')"></div></div>
-                    <div class="workroom-thread-replies" x-show="$store.chat.selectedWorkroomThreadReplies.length > 0"><template x-for="reply in $store.chat.selectedWorkroomThreadReplies" :key="reply.record_id"><article><div><strong x-text="$store.chat.getSenderName(reply.sender_npub)"></strong><span x-text="reply.updated_at ? new Date(reply.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''"></span></div><div class="chat-post-markdown" x-html="$store.chat.renderMarkdown(reply.body || '')"></div></article></template></div>
-                    <div class="workroom-thread-composer" x-show="$store.chat.selectedWorkroomAnnouncementMessageId"><textarea class="chat-input" rows="2" x-model="$store.chat.threadInput" placeholder="Reply in the room thread..." @keydown="$store.chat.handleComposerKeydown($event, () => $store.chat.sendSelectedWorkroomThreadReply())"></textarea><button type="button" class="thread-reply-btn" @click="$store.chat.sendSelectedWorkroomThreadReply()" :disabled="!$store.chat.threadInput.trim()">Reply</button></div>
-                  </aside>
-                </div>
-              </section>
               <div class="workroom-card-grid" x-show="$store.chat.visibleWorkroomRows.length > 0">
                 <template x-for="room in $store.chat.visibleWorkroomRows" :key="room.record_id">
                   <div class="workroom-summary-card">
@@ -5032,6 +5009,41 @@
             </div>
           </div>
           </div>
+        </template>
+
+        <template x-if="$store.chat.navSection === 'workroom'">
+          <section class="workroom-page-section" x-init="$store.chat.refreshWorkrooms({ debounceMs: 150 })">
+            <section class="workroom-native-view" x-show="$store.chat.workroomDetailOpen" x-cloak>
+              <header class="workroom-detail-header">
+                <div><p class="workroom-eyebrow">Workroom</p><h2 x-text="$store.chat.selectedWorkroom?.title || 'Workroom'"></h2><p x-text="$store.chat.selectedWorkroom?.goal || 'No goal recorded.'"></p></div>
+                <div class="workroom-detail-header-actions"><span class="workroom-status-chip" x-text="$store.chat.selectedWorkroom?.status || 'loading'"></span><button type="button" class="btn-secondary" x-show="$store.chat.selectedWorkroomAnnouncementMessageId" @click="$store.chat.openSelectedWorkroomThread()">Open room thread</button><button type="button" class="doc-modal-close" @click="$store.chat.closeWorkroomDetail()" aria-label="Close workroom page">&times;</button></div>
+              </header>
+              <p class="workroom-error" x-show="$store.chat.workroomError" x-text="$store.chat.workroomError"></p>
+              <p class="workroom-notice" x-show="$store.chat.workroomDetailNotice" x-text="$store.chat.workroomDetailNotice"></p>
+              <p class="workroom-loading" x-show="$store.chat.workroomDetailLoading">Loading room history…</p>
+              <div class="workroom-view-layout" x-show="!$store.chat.workroomDetailLoading && $store.chat.selectedWorkroom">
+                <div class="workroom-view-main">
+                  <section class="workroom-detail-panel workroom-detail-overview"><h3>Delivery context</h3><dl><div><dt>Integration Autopilot</dt><dd x-text="$store.chat.selectedWorkroom?.integration_autopilot_npub || 'Not assigned'"></dd></div><div><dt>Repository</dt><dd><a x-show="$store.chat.selectedWorkroom?.repo?.url" :href="$store.chat.selectedWorkroom?.repo?.url" target="_blank" rel="noreferrer" x-text="$store.chat.selectedWorkroom?.repo?.name || $store.chat.selectedWorkroom?.repo?.url"></a><span x-show="!$store.chat.selectedWorkroom?.repo?.url">Not recorded</span></dd></div><div><dt>Branches</dt><dd x-text="[$store.chat.selectedWorkroom?.branches?.integration, $store.chat.selectedWorkroom?.branches?.production].filter(Boolean).join(' → ') || 'Not recorded'"></dd></div></dl></section>
+                  <section class="workroom-detail-panel"><h3>Participants and roles</h3><ul class="workroom-detail-list"><template x-for="person in $store.chat.selectedWorkroomParticipants" :key="person.record_id"><li><span><strong x-text="person.label || person.actor_npub || person.actor_id"></strong><small x-text="person.role"></small></span><span :class="person.access_status === 'failed' ? 'workroom-warning-text' : ''" x-text="person.access_status || person.status || 'active'"></span></li></template></ul><p class="workroom-empty" x-show="$store.chat.selectedWorkroomParticipants.length === 0">No participants recorded.</p></section>
+                  <section class="workroom-detail-panel"><h3>PRs, files, and links</h3><ul class="workroom-detail-list"><template x-for="link in $store.chat.selectedWorkroomLinks" :key="link.record_id"><li><span><strong x-text="link.label || link.external_url || link.target_id"></strong><small x-text="[link.link_type || link.target_type, link.status].filter(Boolean).join(' · ')"></small></span><a x-show="link.external_url" :href="link.external_url" target="_blank" rel="noreferrer">Open</a></li></template></ul><p class="workroom-empty" x-show="$store.chat.selectedWorkroomLinks.length === 0">No links recorded.</p></section>
+                  <section class="workroom-detail-panel workroom-timeline-panel"><div class="workroom-panel-heading"><h3>History</h3><span x-text="$store.chat.selectedWorkroomEvents.length + ' events'"></span></div><ol class="workroom-timeline"><template x-for="event in $store.chat.selectedWorkroomEvents.slice(0, 8)" :key="event.record_id"><li><span class="workroom-timeline-dot"></span><div><div class="workroom-timeline-meta"><strong x-text="event.title || event.event_type"></strong><span x-text="event.created_at ? new Date(event.created_at).toLocaleString() : ''"></span></div><p x-text="event.body || [event.target_type, event.target_ref].filter(Boolean).join(' · ') || 'Event recorded.'"></p></div></li></template></ol><p class="workroom-empty" x-show="$store.chat.selectedWorkroomEvents.length === 0">No history recorded.</p></section>
+                </div>
+                <aside class="workroom-thread-panel">
+                  <div class="workroom-panel-heading"><h3>Room thread</h3><span x-show="$store.chat.selectedWorkroomThreadReplies.length > 0" x-text="$store.chat.selectedWorkroomThreadReplies.length + ' replies'"></span></div>
+                  <p class="workroom-empty" x-show="!$store.chat.selectedWorkroomAnnouncementMessageId">No announcement thread has been recorded for this workroom.</p>
+                  <div class="workroom-thread-root" x-show="$store.chat.selectedWorkroomAnnouncementMessage"><strong x-text="$store.chat.getSenderName($store.chat.selectedWorkroomAnnouncementMessage?.sender_npub)"></strong><div class="chat-post-markdown" x-html="$store.chat.renderMarkdown($store.chat.selectedWorkroomAnnouncementMessage?.body || '')"></div></div>
+                  <div class="workroom-thread-replies" x-show="$store.chat.selectedWorkroomThreadReplies.length > 0"><template x-for="reply in $store.chat.selectedWorkroomThreadReplies" :key="reply.record_id"><article><div><strong x-text="$store.chat.getSenderName(reply.sender_npub)"></strong><span x-text="reply.updated_at ? new Date(reply.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''"></span></div><div class="chat-post-markdown" x-html="$store.chat.renderMarkdown(reply.body || '')"></div></article></template></div>
+                  <div class="workroom-thread-composer" x-show="$store.chat.selectedWorkroomAnnouncementMessageId"><textarea class="chat-input" rows="2" x-model="$store.chat.threadInput" placeholder="Reply in the room thread..." @keydown="$store.chat.handleComposerKeydown($event, () => $store.chat.sendSelectedWorkroomThreadReply())"></textarea><button type="button" class="thread-reply-btn" @click="$store.chat.sendSelectedWorkroomThreadReply()" :disabled="!$store.chat.threadInput.trim()">Reply</button></div>
+                </aside>
+              </div>
+            </section>
+            <section class="workroom-native-view workroom-empty-page" x-show="!$store.chat.workroomDetailOpen" x-cloak>
+              <header class="workroom-detail-header">
+                <div><p class="workroom-eyebrow">Workroom</p><h2>Select a workroom</h2><p>Open a workroom from chat or the Flight Deck workroom list.</p></div>
+                <button type="button" class="btn-secondary" @click="$store.chat.navigateTo('status')">Back to Flight Deck</button>
+              </header>
+            </section>
+          </section>
         </template>
 
         <template x-if="$store.chat.navSection === 'files'">

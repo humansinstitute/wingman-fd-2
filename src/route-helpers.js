@@ -3,11 +3,12 @@ import { normalizeEnabledFlightDeckSection } from './disabled-surfaces.js';
 export const KNOWN_PAGES = new Set([
   'flight-deck', 'notifications', 'status', 'tasks',
   'chat', 'docs', 'files', 'reports', 'opportunities', 'people', 'settings',
-  'workrooms',
+  'workroom', 'workrooms',
 ]);
 
 export function pageToSection(page) {
-  if (page === 'flight-deck' || page === 'notifications' || page === 'status' || page === 'workrooms') return 'status';
+  if (page === 'flight-deck' || page === 'notifications' || page === 'status') return 'status';
+  if (page === 'workroom' || page === 'workrooms') return 'workroom';
   if (KNOWN_PAGES.has(page)) return normalizeEnabledFlightDeckSection(page);
   return null;
 }
@@ -23,9 +24,9 @@ export function pageToSection(page) {
  */
 export function buildSectionUrl({ workspaceSlug, section, scopeid, params } = {}) {
   const workroomId = params?.workroomid || params?.workroomId || null;
-  const page = section === 'status' ? 'flight-deck' : section;
-  const pathname = workroomId && (section === 'status' || section === 'flight-deck')
-    ? `${workspaceSlug ? `/${workspaceSlug}` : ''}/workrooms/${encodeURIComponent(workroomId)}`
+  const page = section === 'status' ? 'flight-deck' : section === 'workrooms' ? 'workroom' : section;
+  const pathname = (section === 'workroom' || section === 'workrooms') && workroomId
+    ? `${workspaceSlug ? `/${workspaceSlug}` : ''}/workroom/${encodeURIComponent(workroomId)}`
     : (workspaceSlug ? `/${workspaceSlug}/${page}` : `/${page}`);
 
   const searchParams = new URLSearchParams();
@@ -63,17 +64,17 @@ export function parseRouteLocation(href) {
     } else {
       workspaceSlug = segments[0];
     }
-  } else if (segments[0] === 'workrooms') {
+  } else if (segments[0] === 'workroom' || segments[0] === 'workrooms') {
     // Backward-compatible bare workroom detail route: /workrooms/<id>
-    section = 'status';
+    section = 'workroom';
     pathWorkroomId = segments[1] ? decodeURIComponent(segments[1]) : null;
   } else {
     // /<slug>/<page>
     workspaceSlug = segments[0];
     const mapped = pageToSection(segments[1]);
     if (mapped) section = mapped;
-    if (segments[1] === 'workrooms') {
-      section = 'status';
+    if (segments[1] === 'workroom' || segments[1] === 'workrooms') {
+      section = 'workroom';
       pathWorkroomId = segments[2] ? decodeURIComponent(segments[2]) : null;
     }
   }

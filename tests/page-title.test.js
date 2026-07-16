@@ -5,6 +5,7 @@ describe('page title', () => {
   it('builds task titles', () => {
     expect(buildFlightDeckDocumentTitle({ section: 'tasks' })).toBe('Tasks - Wingman: Deck');
     expect(buildFlightDeckDocumentTitle({ section: 'tasks', workspaceLabel: 'Pete' })).toBe('Tasks | Pete - Wingman: Deck');
+    expect(buildFlightDeckDocumentTitle({ section: 'workroom', workspaceLabel: 'Pete' })).toBe('Workroom | Pete - Wingman: Deck');
     expect(buildFlightDeckDocumentTitle({ section: 'opportunities' })).toBe('Opportunities - Wingman: Deck');
     expect(buildFlightDeckDocumentTitle({ section: 'settings' })).toBe('Setup - Wingman: Deck');
   });

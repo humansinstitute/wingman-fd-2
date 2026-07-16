@@ -135,17 +135,24 @@ describe('parseRouteLocation', () => {
     expect(route.workspaceSlug).toBe('be-free');
   });
 
-  it('parses workroom detail page routes as flight deck page state', () => {
-    const route = parseRouteLocation(`${base}/be-free/workrooms/room-123?scopeid=scope-1`);
-    expect(route.section).toBe('status');
+  it('parses workroom detail page routes as a dedicated workroom page', () => {
+    const route = parseRouteLocation(`${base}/be-free/workroom/room-123?scopeid=scope-1`);
+    expect(route.section).toBe('workroom');
     expect(route.workspaceSlug).toBe('be-free');
     expect(route.params.workroomid).toBe('room-123');
     expect(route.params.scopeid).toBe('scope-1');
   });
 
+  it('parses plural workroom detail routes for backward-compatible links', () => {
+    const route = parseRouteLocation(`${base}/be-free/workrooms/room-456`);
+    expect(route.section).toBe('workroom');
+    expect(route.workspaceSlug).toBe('be-free');
+    expect(route.params.workroomid).toBe('room-456');
+  });
+
   it('parses bare workroom detail routes for backward-compatible links', () => {
     const route = parseRouteLocation(`${base}/workrooms/room-456`);
-    expect(route.section).toBe('status');
+    expect(route.section).toBe('workroom');
     expect(route.workspaceSlug).toBeNull();
     expect(route.params.workroomid).toBe('room-456');
   });
@@ -274,11 +281,11 @@ describe('buildSectionUrl', () => {
   it('builds canonical workroom page routes without query-param workroom ids', () => {
     const url = buildSectionUrl({
       workspaceSlug: 'be-free',
-      section: 'status',
+      section: 'workroom',
       scopeid: 'scope-1',
       params: { workroomid: 'room-123' },
     });
 
-    expect(url).toBe('/be-free/workrooms/room-123?scopeid=scope-1');
+    expect(url).toBe('/be-free/workroom/room-123?scopeid=scope-1');
   });
 });
