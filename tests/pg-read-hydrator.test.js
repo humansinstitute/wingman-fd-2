@@ -165,6 +165,10 @@ describe('PG read hydrator', () => {
       branches: { integration: 'feature/x', production: 'main' },
       app_targets: { preview_url: 'https://preview.example' },
       approval_policy: { human_approver_npubs: ['npub1human'] },
+      metadata: {
+        announcement_message_id: 'message-1',
+        announcement_thread_id: 'thread-1',
+      },
       row_version: 4,
       created_at: '2026-07-16T01:00:00.000Z',
       updated_at: '2026-07-16T02:00:00.000Z',
@@ -174,6 +178,9 @@ describe('PG read hydrator', () => {
       channel_id: 'channel-1',
       status: 'waiting_approval',
       repo: { url: 'https://github.example/app' },
+      announcement_message_id: 'message-1',
+      announcement_thread_id: 'thread-1',
+      announcement_channel_id: 'channel-1',
       row_version: 4,
       pg_record_type: 'workroom',
     });

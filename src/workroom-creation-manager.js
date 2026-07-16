@@ -434,8 +434,12 @@ export const workroomCreationMixin = {
       }
       this.workroomCreationAnnouncement = started?.announcement_message || started?.announcement || null;
       this.workroomCreationNotice = 'Workroom started in this channel.';
+      this.workroomCreationOpen = false;
       if (typeof this.refreshMessages === 'function') await this.refreshMessages({ scrollToLatest: true });
       await this.refreshWorkrooms({ immediate: true });
+      if (startedRoom.record_id && typeof this.openWorkroomDetail === 'function') {
+        await this.openWorkroomDetail(startedRoom.record_id, { mode: 'view', openThread: true });
+      }
     } catch (error) {
       this.workroomError = 'Could not start this workroom. Retry when Tower is available.';
     } finally {

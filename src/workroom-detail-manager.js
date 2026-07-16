@@ -41,6 +41,27 @@ const FILTER_TERMS = Object.freeze({
 
 function text(value) { return String(value || '').trim(); }
 
+function workroomMetadata(room) {
+  return room?.metadata && typeof room.metadata === 'object' && !Array.isArray(room.metadata)
+    ? room.metadata
+    : {};
+}
+
+export function workroomAnnouncementMessageId(room) {
+  const metadata = workroomMetadata(room);
+  return text(room?.announcement_message_id || metadata.announcement_message_id);
+}
+
+export function workroomAnnouncementThreadId(room) {
+  const metadata = workroomMetadata(room);
+  return text(room?.announcement_thread_id || metadata.announcement_thread_id);
+}
+
+export function workroomAnnouncementChannelId(room) {
+  const metadata = workroomMetadata(room);
+  return text(room?.announcement_channel_id || metadata.announcement_channel_id || room?.channel_id);
+}
+
 function matchesEventFilter(event, filter) {
   if (!filter || filter === 'all') return true;
   if (filter === 'pr' && (text(event?.target_type).toLowerCase() === 'pull_request' || /^pr[-#]?\d+/i.test(text(event?.target_ref)))) return true;
@@ -130,6 +151,31 @@ export const workroomDetailMixin = {
   get selectedWorkroomAccessWarnings() {
     return this.selectedWorkroomParticipants.filter((participant) => participant.access_status === 'failed' || participant.status === 'failed');
   },
+  get selectedWorkroomAnnouncementMessageId() {
+    return workroomAnnouncementMessageId(this.selectedWorkroom);
+  },
+  get selectedWorkroomAnnouncementThreadId() {
+    return workroomAnnouncementThreadId(this.selectedWorkroom);
+  },
+  get selectedWorkroomAnnouncementChannelId() {
+    return workroomAnnouncementChannelId(this.selectedWorkroom);
+  },
+  get selectedWorkroomAnnouncementMessage() {
+    const messageId = this.selectedWorkroomAnnouncementMessageId;
+    const threadId = this.selectedWorkroomAnnouncementThreadId;
+    const roomId = text(this.selectedWorkroom?.record_id);
+    return (this.messages || []).find((message) => {
+      if (messageId && message?.record_id === messageId) return true;
+      if (threadId && message?.pg_thread_id === threadId && !message?.parent_message_id) return true;
+      const metadata = message?.pg_metadata || message?.metadata || {};
+      return roomId && metadata?.workroom_id === roomId && metadata?.kind === 'workroom_announcement';
+    }) || null;
+  },
+  get selectedWorkroomThreadReplies() {
+    const parent = this.selectedWorkroomAnnouncementMessage;
+    if (!parent?.record_id || typeof this.getThreadReplies !== 'function') return [];
+    return this.getThreadReplies(parent.record_id);
+  },
   applyWorkrooms(rows = []) { this.workrooms = mergeById(this.workrooms, rows); },
   applyWorkroomParticipants(rows = []) { this.workroomParticipants = mergeById(this.workroomParticipants, rows); },
   applyWorkroomEvents(rows = []) { this.workroomEvents = mergeById(this.workroomEvents, rows); },
@@ -167,10 +213,14 @@ export const workroomDetailMixin = {
     return this.workroomRefreshInFlight;
   },
 
-  async openWorkroomDetail(workroomId) {
+  async openWorkroomDetail(workroomId, options = {}) {
     const id = text(workroomId);
     if (!id) return;
     this.activeWorkroomId = id;
+    this.workroomDetailMode = options.mode || 'view';
+    if (this.workroomDetailMode === 'view' && options.switchView !== false) {
+      this.navSection = 'flight-deck';
+    }
     this.workroomDetailOpen = true;
     this.workroomDetailLoading = true;
     this.workroomError = '';
@@ -178,6 +228,8 @@ export const workroomDetailMixin = {
       const hydrated = await hydrateTowerPgWorkroom(this, id);
       if (hydrated) this.applyWorkrooms([hydrated]);
       this.workroomDetailNotice = '';
+      if (options.openThread !== false) await this.openSelectedWorkroomThread({ syncRoute: false, refreshMessages: true });
+      if (typeof this.syncRoute === 'function' && options.syncRoute !== false) this.syncRoute();
     } catch (error) {
       this.workroomError = error?.message || 'Could not load workroom history.';
     } finally {
@@ -188,8 +240,39 @@ export const workroomDetailMixin = {
   closeWorkroomDetail() {
     if (this.workroomDetailLoading) return;
     this.workroomDetailOpen = false;
+    this.workroomDetailMode = 'view';
     this.activeWorkroomId = '';
     this.workroomError = '';
+  },
+
+  async openSelectedWorkroomThread(options = {}) {
+    const room = this.selectedWorkroom;
+    const channelId = workroomAnnouncementChannelId(room);
+    const messageId = workroomAnnouncementMessageId(room);
+    if (!room?.record_id || !channelId || !messageId) {
+      this.workroomDetailNotice = 'This workroom does not have a chat thread yet.';
+      return null;
+    }
+    if (this.selectedChannelId !== channelId) {
+      if (typeof this.selectPgChannelContext === 'function') this.selectPgChannelContext(channelId);
+      else if (typeof this.selectChannel === 'function') await this.selectChannel(channelId, { syncRoute: false, scrollToLatest: false });
+    }
+    if (options.refreshMessages !== false && typeof this.refreshMessages === 'function') {
+      await this.refreshMessages({ scrollToLatest: false, scrollThreadToLatest: true }).catch(() => undefined);
+    }
+    const message = this.selectedWorkroomAnnouncementMessage || (this.messages || []).find((row) => row?.record_id === messageId);
+    if (!message) {
+      this.workroomDetailNotice = 'The workroom chat message is still loading.';
+      return null;
+    }
+    if (typeof this.openThread === 'function') this.openThread(message.record_id, { scrollToLatest: true, syncRoute: options.syncRoute !== false });
+    return message;
+  },
+
+  async sendSelectedWorkroomThreadReply() {
+    const parent = await this.openSelectedWorkroomThread({ syncRoute: false, refreshMessages: false });
+    if (!parent) return;
+    if (typeof this.sendThreadReply === 'function') await this.sendThreadReply();
   },
 
   async archiveSelectedWorkroom() {
@@ -280,6 +363,7 @@ export function createWorkroomDetailState() {
     workroomArchiveView: false,
     workroomListQuery: '',
     workroomDetailOpen: false,
+    workroomDetailMode: 'view',
     activeWorkroomId: '',
     workroomDetailLoading: false,
     workroomError: '',

@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   filterWorkroomEvents,
   isWorkroomApprovalApprover,
+  workroomAnnouncementChannelId,
+  workroomAnnouncementMessageId,
+  workroomAnnouncementThreadId,
   workroomApprovalDetails,
+  workroomDetailMixin,
 } from '../src/workroom-detail-manager.js';
 
 const events = [
@@ -61,5 +65,46 @@ describe('workroom production merge approvals', () => {
     expect(isWorkroomApprovalApprover(room, [], 'npub1contributor')).toBe(false);
     expect(isWorkroomApprovalApprover({ approval_policy: {} }, [{ actor_npub: 'npub1approver', role: 'human_approver', access_status: 'granted', status: 'active' }], 'npub1approver')).toBe(true);
     expect(isWorkroomApprovalApprover({ approval_policy: {} }, [{ actor_npub: 'npub1approver', role: 'human_approver', access_status: 'failed', status: 'active' }], 'npub1approver')).toBe(false);
+  });
+});
+
+describe('workroom announcement thread helpers', () => {
+  it('resolves durable announcement ids from workroom metadata', () => {
+    const room = {
+      channel_id: 'channel-1',
+      metadata: {
+        announcement_message_id: 'message-1',
+        announcement_thread_id: 'thread-1',
+      },
+    };
+    expect(workroomAnnouncementMessageId(room)).toBe('message-1');
+    expect(workroomAnnouncementThreadId(room)).toBe('thread-1');
+    expect(workroomAnnouncementChannelId(room)).toBe('channel-1');
+  });
+
+  it('activates the announcement message as the selected workroom thread', async () => {
+    const opened = [];
+    const store = {
+      activeWorkroomId: 'room-1',
+      selectedChannelId: 'old-channel',
+      workrooms: [{
+        record_id: 'room-1',
+        channel_id: 'channel-1',
+        metadata: {
+          announcement_message_id: 'message-1',
+          announcement_thread_id: 'thread-1',
+        },
+      }],
+      messages: [{ record_id: 'message-1', channel_id: 'channel-1', pg_thread_id: 'thread-1', metadata: { kind: 'workroom_announcement', workroom_id: 'room-1' } }],
+      selectPgChannelContext(channelId) { this.selectedChannelId = channelId; },
+      refreshMessages: async () => {},
+      openThread(recordId, options) { opened.push({ recordId, options }); },
+    };
+    Object.defineProperties(store, Object.getOwnPropertyDescriptors(workroomDetailMixin));
+
+    await store.openSelectedWorkroomThread({ syncRoute: false });
+
+    expect(store.selectedChannelId).toBe('channel-1');
+    expect(opened).toEqual([{ recordId: 'message-1', options: { scrollToLatest: true, syncRoute: false } }]);
   });
 });

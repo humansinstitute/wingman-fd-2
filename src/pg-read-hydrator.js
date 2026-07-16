@@ -1018,6 +1018,7 @@ function objectOrEmpty(value) {
 export function mapPgWorkroomToLocal(workroom) {
   const updatedAt = isoTimestamp(workroom?.updated_at || workroom?.created_at);
   const recordId = trimText(workroom?.id || workroom?.record_id);
+  const metadata = objectOrEmpty(workroom?.metadata);
   return {
     record_id: recordId,
     workspace_id: trimText(workroom?.workspace_id),
@@ -1032,7 +1033,11 @@ export function mapPgWorkroomToLocal(workroom) {
     app_targets: objectOrEmpty(workroom?.app_targets),
     approval_policy: objectOrEmpty(workroom?.approval_policy),
     archive_policy: objectOrEmpty(workroom?.archive_policy),
-    metadata: objectOrEmpty(workroom?.metadata),
+    metadata,
+    announcement_message_id: trimText(workroom?.announcement_message_id || metadata.announcement_message_id),
+    announcement_thread_id: trimText(workroom?.announcement_thread_id || metadata.announcement_thread_id),
+    announcement_channel_id: trimText(workroom?.announcement_channel_id || metadata.announcement_channel_id || workroom?.channel_id),
+    announcement_link: trimText(workroom?.announcement_link || metadata.announcement_link),
     created_by_actor_id: trimText(workroom?.created_by_actor_id),
     updated_by_actor_id: trimText(workroom?.updated_by_actor_id),
     row_version: rowVersion(workroom?.row_version || workroom?.version),
