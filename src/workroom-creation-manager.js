@@ -118,7 +118,8 @@ function channelWithDefaults(channel, defaults) {
 }
 
 export function workroomAnnouncementLink(announcement, baseUrl = '') {
-  const link = String(announcement?.metadata?.workroom_link || '').trim();
+  const metadata = announcement?.metadata || announcement?.pg_metadata || {};
+  const link = String(metadata.workroom_link || '').trim();
   if (!link) return '';
   if (/^https?:\/\//i.test(link)) return link;
   return `${String(baseUrl || '').replace(/\/$/, '')}${link}`;
@@ -132,6 +133,18 @@ export const workroomCreationMixin = {
   get workroomCreationAnnouncementHref() {
     const context = resolveTowerPgWorkspaceContext(this);
     return workroomAnnouncementLink(this.workroomCreationAnnouncement, context.baseUrl);
+  },
+  workroomMessageMetadata(message) {
+    const metadata = message?.pg_metadata || message?.metadata;
+    return metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {};
+  },
+  isWorkroomAnnouncement(message) {
+    const metadata = this.workroomMessageMetadata(message);
+    return Boolean(metadata.workroom_id || metadata.workroom_link || metadata.workroom_status);
+  },
+  workroomMessageLink(message) {
+    const context = resolveTowerPgWorkspaceContext(this);
+    return workroomAnnouncementLink({ metadata: this.workroomMessageMetadata(message) }, context.baseUrl);
   },
   openWorkroomCreation() {
     const channel = this.selectedChannel;
@@ -162,7 +175,7 @@ export const workroomCreationMixin = {
     this.workroomCreationForm.participants.splice(index, 1);
   },
 
-  async createAndStartWorkroom() {
+  async createWorkroom({ start = false } = {}) {
     const form = this.workroomCreationForm;
     const channel = this.selectedChannel;
     const context = resolveTowerPgWorkspaceContext(this);
@@ -195,19 +208,48 @@ export const workroomCreationMixin = {
         this.channels = this.channels.map((candidate) => candidate.record_id === localChannel.record_id ? localChannel : candidate);
       }
 
-      const started = await startTowerPgWorkroom(context.workspaceId, localWorkroom.record_id, {
-        row_version: localWorkroom.row_version || created?.workroom?.row_version || 1,
-      }, { baseUrl: context.baseUrl, appNpub: context.appNpub });
-      const startedRoom = mapPgWorkroomToLocal(started?.workroom || started);
-      if (startedRoom.record_id) await upsertWorkroom(startedRoom);
-      this.workroomCreationAnnouncement = started?.announcement_message || null;
-      this.workroomCreationNotice = 'Workroom started in this channel.';
-      this.workroomCreationOpen = this.workroomCreationFailedParticipants.length > 0;
-      if (typeof this.refreshMessages === 'function') await this.refreshMessages({ scrollToLatest: true });
+      this.workroomCreationDraftId = localWorkroom.record_id;
+      if (start) await this.startWorkroom(localWorkroom);
+      else {
+        this.workroomCreationNotice = 'Workroom draft created. Start it from the workroom browser.';
+        this.workroomCreationOpen = false;
+        await this.refreshWorkrooms({ immediate: true });
+      }
     } catch (error) {
       this.setWorkroomCreationError(error?.message || 'Failed to create workroom.');
     } finally {
       this.workroomCreationSubmitting = false;
+    }
+  },
+
+  async createAndStartWorkroom() {
+    return this.createWorkroom({ start: true });
+  },
+
+  async startWorkroom(room) {
+    const target = room?.record_id ? room : this.workrooms?.find((candidate) => candidate?.record_id === room);
+    const context = resolveTowerPgWorkspaceContext(this);
+    if (!target?.record_id || !context.workspaceId || !context.baseUrl) return this.setWorkroomCreationError('Workroom or Tower PG workspace is unavailable.');
+    if (this.workroomStartingId) return;
+    this.workroomStartingId = target.record_id;
+    this.workroomError = '';
+    try {
+      const started = await startTowerPgWorkroom(context.workspaceId, target.record_id, {
+        row_version: target.row_version || target.version || 1,
+      }, { baseUrl: context.baseUrl, appNpub: context.appNpub });
+      const startedRoom = mapPgWorkroomToLocal(started?.workroom || started);
+      if (startedRoom.record_id) {
+        await upsertWorkroom(startedRoom);
+        this.applyWorkrooms?.([startedRoom]);
+      }
+      this.workroomCreationAnnouncement = started?.announcement_message || started?.announcement || null;
+      this.workroomCreationNotice = 'Workroom started in this channel.';
+      if (typeof this.refreshMessages === 'function') await this.refreshMessages({ scrollToLatest: true });
+      await this.refreshWorkrooms({ immediate: true });
+    } catch (error) {
+      this.workroomError = 'Could not start this workroom. Retry when Tower is available.';
+    } finally {
+      this.workroomStartingId = '';
     }
   },
 
@@ -226,5 +268,7 @@ export function createWorkroomCreationState() {
     workroomCreationNotice: '',
     workroomCreationFailedParticipants: [],
     workroomCreationAnnouncement: null,
+    workroomCreationDraftId: '',
+    workroomStartingId: '',
   };
 }

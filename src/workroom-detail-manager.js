@@ -138,13 +138,33 @@ export const workroomDetailMixin = {
 
   async refreshWorkrooms(options = {}) {
     if (!this.isTowerPgMode) return [];
-    try {
-      const rows = await hydrateTowerPgWorkrooms(this, options);
-      return rows;
-    } catch (error) {
-      this.workroomError = error?.message || 'Could not load workrooms.';
-      return [];
-    }
+    if (this.workroomRefreshInFlight) return this.workroomRefreshInFlight;
+
+    const run = async () => {
+      try {
+        const rows = await hydrateTowerPgWorkrooms(this, options);
+        this.workroomError = '';
+        return rows;
+      } catch (error) {
+        // Workrooms are an enhancement to the status page. Do not surface a
+        // signer/fetch implementation error as a blocking page-level failure.
+        this.workroomError = 'Workrooms are temporarily unavailable.';
+        return [];
+      } finally {
+        this.workroomRefreshInFlight = null;
+      }
+    };
+
+    const delay = options.immediate ? 0 : Math.max(0, Number(options.debounceMs ?? 150));
+    this.workroomRefreshInFlight = new Promise((resolve) => {
+      const start = () => run().then(resolve);
+      if (delay === 0) start();
+      else this.workroomRefreshTimer = setTimeout(() => {
+        this.workroomRefreshTimer = null;
+        start();
+      }, delay);
+    });
+    return this.workroomRefreshInFlight;
   },
 
   async openWorkroomDetail(workroomId) {
@@ -263,6 +283,8 @@ export function createWorkroomDetailState() {
     activeWorkroomId: '',
     workroomDetailLoading: false,
     workroomError: '',
+    workroomRefreshInFlight: null,
+    workroomRefreshTimer: null,
     workroomDetailNotice: '',
     workroomApprovalDecisionNote: '',
     workroomApprovalSubmittingId: '',

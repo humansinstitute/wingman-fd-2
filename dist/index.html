@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-BPr1a-Ve.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-DEgmP46G.css">
+  <script type="module" crossorigin src="/assets/index-CC-CYhab.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-hmHMpiv4.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -1414,23 +1414,6 @@
           </section>
 
           <section class="flightdeck-summary-overview" data-testid="flightdeck-summary-overview">
-            <section class="workroom-browser" x-show="$store.chat.isTowerPgMode" x-init="$store.chat.refreshWorkrooms()" data-testid="workroom-browser">
-              <div class="workroom-browser-header">
-                <div><p class="workroom-eyebrow">Native delivery rooms</p><h2>Workrooms</h2><p>Review active and archived delivery history in one place.</p></div>
-                <div class="workroom-browser-actions"><input type="search" x-model="$store.chat.workroomListQuery" placeholder="Search rooms" aria-label="Search workrooms"><button type="button" :class="{ active: !$store.chat.workroomArchiveView }" @click="$store.chat.workroomArchiveView = false">Active</button><button type="button" :class="{ active: $store.chat.workroomArchiveView }" @click="$store.chat.workroomArchiveView = true">Archive</button></div>
-              </div>
-              <p class="workroom-error" x-show="$store.chat.workroomError" x-text="$store.chat.workroomError"></p>
-              <div class="workroom-card-grid" x-show="$store.chat.visibleWorkroomRows.length > 0">
-                <template x-for="room in $store.chat.visibleWorkroomRows" :key="room.record_id">
-                  <button type="button" class="workroom-summary-card" @click="$store.chat.openWorkroomDetail(room.record_id)">
-                    <span class="workroom-summary-card-top"><strong x-text="room.title"></strong><span class="workroom-status-chip" x-text="room.status"></span></span>
-                    <span class="workroom-summary-goal" x-text="room.goal || 'No goal recorded.'"></span>
-                    <span class="workroom-summary-meta" x-text="[room.repo?.name || room.repo?.url, room.branches?.integration, room.updated_at ? new Date(room.updated_at).toLocaleDateString() : ''].filter(Boolean).join(' · ')"></span>
-                  </button>
-                </template>
-              </div>
-              <p class="workroom-empty" x-show="$store.chat.visibleWorkroomRows.length === 0">No <span x-text="$store.chat.workroomArchiveView ? 'archived' : 'active'"></span> workrooms match.</p>
-            </section>
             <div class="flightdeck-summary-header">
               <div>
                 <h2 x-text="$store.chat.dashboardGreetingText"></h2>
@@ -1591,6 +1574,28 @@
                   </span>
                 </div>
               </div>
+            </section>
+
+            <section class="workroom-browser" x-show="$store.chat.isTowerPgMode" x-init="$store.chat.refreshWorkrooms({ debounceMs: 350 })" data-testid="workroom-browser">
+              <div class="workroom-browser-header">
+                <div><p class="workroom-eyebrow">Native delivery rooms</p><h2>Workrooms</h2><p>Review active and archived delivery history in one place.</p></div>
+                <div class="workroom-browser-actions"><input type="search" x-model="$store.chat.workroomListQuery" placeholder="Search rooms" aria-label="Search workrooms"><button type="button" :class="{ active: !$store.chat.workroomArchiveView }" @click="$store.chat.workroomArchiveView = false">Active</button><button type="button" :class="{ active: $store.chat.workroomArchiveView }" @click="$store.chat.workroomArchiveView = true">Archive</button></div>
+              </div>
+              <p class="workroom-error" x-show="$store.chat.workroomError" x-text="$store.chat.workroomError"></p>
+              <button type="button" class="workroom-retry" x-show="$store.chat.workroomError" @click="$store.chat.refreshWorkrooms({ immediate: true })">Retry workrooms</button>
+              <div class="workroom-card-grid" x-show="$store.chat.visibleWorkroomRows.length > 0">
+                <template x-for="room in $store.chat.visibleWorkroomRows" :key="room.record_id">
+                  <div class="workroom-summary-card">
+                    <button type="button" class="workroom-summary-card-main" @click="$store.chat.openWorkroomDetail(room.record_id)">
+                      <span class="workroom-summary-card-top"><strong x-text="room.title"></strong><span class="workroom-status-chip" x-text="room.status"></span></span>
+                      <span class="workroom-summary-goal" x-text="room.goal || 'No goal recorded.'"></span>
+                      <span class="workroom-summary-meta" x-text="[room.repo?.name || room.repo?.url, room.branches?.integration, room.updated_at ? new Date(room.updated_at).toLocaleDateString() : ''].filter(Boolean).join(' · ')"></span>
+                    </button>
+                    <button type="button" class="workroom-start-button" x-show="['draft', 'created'].includes(room.status)" @click="$store.chat.startWorkroom(room)" :disabled="$store.chat.workroomStartingId === room.record_id" x-text="$store.chat.workroomStartingId === room.record_id ? 'Starting…' : 'Start workroom'"></button>
+                  </div>
+                </template>
+              </div>
+              <p class="workroom-empty" x-show="$store.chat.visibleWorkroomRows.length === 0">No <span x-text="$store.chat.workroomArchiveView ? 'archived' : 'active'"></span> workrooms match.</p>
             </section>
 
             <div class="flightdeck-summary-grid">
@@ -3130,10 +3135,6 @@
 
         <template x-if="$store.chat.navSection === 'chat'">
           <div class="chat-section">
-            <section class="chat-workroom-strip" x-show="$store.chat.isTowerPgMode && $store.chat.selectedChannelId" x-init="$store.chat.refreshWorkrooms({ channelId: $store.chat.selectedChannelId })" aria-label="Workrooms in this channel">
-              <div class="chat-workroom-strip-heading"><strong>Workrooms in this channel</strong><button type="button" @click="$store.chat.navigateTo('status')">All workrooms</button></div>
-              <div class="chat-workroom-strip-list"><template x-for="room in $store.chat.workrooms.filter(row => row.channel_id === $store.chat.selectedChannelId)" :key="room.record_id"><button type="button" @click="$store.chat.openWorkroomDetail(room.record_id)"><span x-text="room.title"></span><small x-text="room.status"></small></button></template><span x-show="$store.chat.workrooms.filter(row => row.channel_id === $store.chat.selectedChannelId).length === 0">No workrooms yet.</span></div>
-            </section>
             <div
               class="chat-channel-header"
               :class="{ 'pg-all-scopes-context': $store.chat.pgContextAllScopesSelected }"
@@ -3362,6 +3363,16 @@
                       @keydown.enter.prevent="$store.chat.openThread(msg.record_id)"
                       @keydown.space.prevent="$store.chat.openThread(msg.record_id)"
                     >
+                      <template x-if="$store.chat.isWorkroomAnnouncement(msg)">
+                        <div class="chat-workroom-announcement-card">
+                          <div class="chat-workroom-announcement-heading">
+                            <strong x-text="$store.chat.workroomMessageMetadata(msg).title || 'Workroom started'"></strong>
+                            <span class="workroom-status-chip" x-text="$store.chat.workroomMessageMetadata(msg).workroom_status || 'started'"></span>
+                          </div>
+                          <a x-show="$store.chat.workroomMessageLink(msg)" :href="$store.chat.workroomMessageLink(msg)" target="_blank" rel="noreferrer" @click.stop x-text="$store.chat.workroomMessageLink(msg)"></a>
+                          <button type="button" x-show="$store.chat.workroomMessageMetadata(msg).workroom_id" @click.stop="$store.chat.openWorkroomDetail($store.chat.workroomMessageMetadata(msg).workroom_id)">Open workroom</button>
+                        </div>
+                      </template>
                       <div class="chat-post-markdown" x-html="$store.chat.renderMarkdown(msg.body)"></div>
                     </div>
                     <template x-if="$store.chat.isChatMessageTruncated(msg.record_id)">
@@ -5827,7 +5838,7 @@
             </div>
             <label class="workroom-defaults-check"><input type="checkbox" x-model="$store.chat.workroomCreationForm.save_choices_as_channel_defaults"> Save these integration choices as channel defaults</label>
             <div class="workroom-failed-warning" x-show="$store.chat.workroomCreationFailedParticipants.length > 0"><strong>Access warning</strong><span>Some intended participants could not be involved:</span><ul><template x-for="participant in $store.chat.workroomCreationFailedParticipants" :key="participant.id || participant.actor_npub"><li x-text="`${participant.actor_npub}: ${participant.access_issue || 'access failed'}`"></li></template></ul></div>
-            <div class="new-doc-modal-actions"><button type="button" class="btn-cancel" @click="$store.chat.closeWorkroomCreation()">Cancel</button><button type="button" class="btn-confirm" @click="$store.chat.createAndStartWorkroom()" :disabled="$store.chat.workroomCreationSubmitting" x-text="$store.chat.workroomCreationSubmitting ? 'Starting…' : 'Create and start'"></button></div>
+            <div class="new-doc-modal-actions"><button type="button" class="btn-cancel" @click="$store.chat.closeWorkroomCreation()">Cancel</button><button type="button" class="btn-secondary" @click="$store.chat.createWorkroom()" :disabled="$store.chat.workroomCreationSubmitting">Create draft</button><button type="button" class="btn-confirm" @click="$store.chat.createAndStartWorkroom()" :disabled="$store.chat.workroomCreationSubmitting" x-text="$store.chat.workroomCreationSubmitting ? 'Starting…' : 'Create and start'"></button></div>
           </section>
         </div>
 
