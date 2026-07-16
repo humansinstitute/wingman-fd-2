@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-DzOMRj_F.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-40eigcB3.css">
+  <script type="module" crossorigin src="/assets/index-YcNSMfH4.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-Co5cY-AP.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -3705,7 +3705,13 @@
                   @drop.prevent="$store.chat.handleChatFileDrop($event, 'thread')"
                 ></textarea>
                 <div class="thread-input-actions">
-                  <button class="audio-trigger-btn" type="button" @click="$store.chat.openAudioRecorder('thread')" title="Record voice note"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg></button>
+                  <div class="chat-composer-menu" x-data="{ open: false }" @click.outside="open = false">
+                    <button class="chat-composer-menu-trigger" type="button" @click="open = !open" :aria-expanded="open" aria-haspopup="menu">Menu</button>
+                    <div class="chat-composer-menu-popover" x-show="open" x-cloak x-transition role="menu">
+                      <button type="button" role="menuitem" @click="$store.chat.openAudioRecorder('thread'); open = false">Record Audio</button>
+                      <button type="button" role="menuitem" @click="$store.chat.openWorkroomCreation(); open = false" :disabled="!$store.chat.isTowerPgMode || !$store.chat.selectedChannelId">Start Workroom</button>
+                    </div>
+                  </div>
                   <button class="thread-reply-btn" @click="$store.chat.sendThreadReply()" :disabled="((!$store.chat.threadInput.trim() && $store.chat.threadAudioDrafts.length === 0) || $store.chat.threadImageUploadCount > 0)">Reply</button>
                 </div>
               </div>

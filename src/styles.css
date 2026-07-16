@@ -7103,7 +7103,7 @@ button:disabled {
   resize: none;
   outline: none;
   line-height: 1.4;
-  min-height: calc((2 * 42px) + 0.5rem);
+  min-height: calc((2 * 1.4em) + 1.2rem + 2px);
   max-height: calc((5 * 1.4em) + 1.2rem + 2px);
   overflow-y: hidden;
   background: var(--surface);
@@ -7541,6 +7541,7 @@ button:disabled {
 
 .thread-input-actions {
   display: flex;
+  flex-direction: column;
   gap: 0.5rem;
   align-items: flex-end;
   flex-shrink: 0;
@@ -7554,6 +7555,7 @@ button:disabled {
   font-size: 0.85rem;
   font-weight: 600;
   flex-shrink: 0;
+  height: 42px;
 }
 
 .thread-reply-btn:hover:not(:disabled) {
@@ -12653,7 +12655,7 @@ button:disabled {
   .chat-input-bar .chat-input {
     align-self: flex-end;
     min-width: 0;
-    min-height: calc((2 * 42px) + 0.5rem);
+    min-height: calc((2 * 1.4em) + 1.2rem + 2px);
     width: auto;
   }
 
@@ -12670,7 +12672,7 @@ button:disabled {
     justify-content: flex-end;
   }
 
-  .thread-input-actions .audio-trigger-btn,
+  .thread-input-actions .chat-composer-menu-trigger,
   .thread-input-actions .thread-reply-btn {
     min-height: 40px;
     min-width: 48px;
@@ -12681,6 +12683,7 @@ button:disabled {
   .thread-input-bar .chat-input {
     align-self: flex-end;
     min-width: 0;
+    min-height: calc((2 * 1.4em) + 1.2rem + 2px);
     width: auto;
   }
 
