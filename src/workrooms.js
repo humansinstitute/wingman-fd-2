@@ -16,7 +16,7 @@ export const ACTIVE_WORKROOM_STATUSES = new Set([
 
 export function isArchivedWorkroom(workroom = {}) {
   const status = String(workroom?.status || '').trim();
-  return status === 'archived' || Boolean(workroom?.archived_at);
+  return ['archived', 'completed', 'complete', 'done'].includes(status) || Boolean(workroom?.archived_at);
 }
 
 export function isActiveWorkroom(workroom = {}) {

@@ -115,6 +115,11 @@ describe('workroom selectors', () => {
     expect(filterArchivedWorkrooms(rows).map((row) => row.record_id)).toEqual(['archived']);
   });
 
+  it('keeps completed terminal rooms discoverable in the archive', () => {
+    expect(filterArchivedWorkrooms([room({ record_id: 'completed', status: 'completed' })]).map((row) => row.record_id)).toEqual(['completed']);
+    expect(filterActiveWorkrooms([room({ record_id: 'completed', status: 'completed' })])).toEqual([]);
+  });
+
   it('searches title, goal, repo, branches, app targets, and metadata', () => {
     const rows = [
       room({ record_id: 'repo-match', repo: { url: 'https://github.example/payments' } }),
