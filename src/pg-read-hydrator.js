@@ -7,9 +7,15 @@ import {
   getTowerPgChannelFileFolders,
   getTowerPgDailyNotes,
   getTowerPgPersonalWapps,
+  getTowerPgApprovals,
   getTowerPgDoc,
   getTowerPgDocBody,
   getTowerPgDocComments,
+  getTowerPgWorkroom,
+  getTowerPgWorkroomEvents,
+  getTowerPgWorkroomLinks,
+  getTowerPgWorkroomParticipants,
+  getTowerPgWorkrooms,
   getTowerPgChannelMessages,
   getTowerPgReactions,
   getTowerPgResponseActivities,
@@ -41,6 +47,13 @@ import {
   replacePgResponseActivitiesForChannel,
   replacePgResponseActivitiesForTarget,
   replacePgTasksForChannel,
+  replacePgWorkroomsForChannel,
+  replacePgWorkroomsForWorkspace,
+  replaceWorkroomApprovalsForRoom,
+  replaceWorkroomEventsForRoom,
+  replaceWorkroomLinksForRoom,
+  replaceWorkroomParticipantsForRoom,
+  upsertWorkroom,
   replaceTasksForOwner,
   replaceScopesForOwner,
   clearResponseActivity,
@@ -994,6 +1007,150 @@ export function mapPgReactionToLocal(reaction, {
   };
 }
 
+function objectOrEmpty(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+export function mapPgWorkroomToLocal(workroom) {
+  const updatedAt = isoTimestamp(workroom?.updated_at || workroom?.created_at);
+  const recordId = trimText(workroom?.id || workroom?.record_id);
+  return {
+    record_id: recordId,
+    workspace_id: trimText(workroom?.workspace_id),
+    scope_id: trimText(workroom?.scope_id),
+    channel_id: trimText(workroom?.channel_id),
+    title: trimText(workroom?.title) || 'Untitled workroom',
+    goal: trimText(workroom?.goal),
+    status: trimText(workroom?.status) || 'draft',
+    integration_autopilot_npub: trimText(workroom?.integration_autopilot_npub),
+    repo: objectOrEmpty(workroom?.repo),
+    branches: objectOrEmpty(workroom?.branches),
+    app_targets: objectOrEmpty(workroom?.app_targets),
+    approval_policy: objectOrEmpty(workroom?.approval_policy),
+    archive_policy: objectOrEmpty(workroom?.archive_policy),
+    metadata: objectOrEmpty(workroom?.metadata),
+    created_by_actor_id: trimText(workroom?.created_by_actor_id),
+    updated_by_actor_id: trimText(workroom?.updated_by_actor_id),
+    row_version: rowVersion(workroom?.row_version || workroom?.version),
+    version: rowVersion(workroom?.row_version || workroom?.version),
+    created_at: isoTimestamp(workroom?.created_at || updatedAt),
+    updated_at: updatedAt,
+    completed_at: trimText(workroom?.completed_at),
+    archived_at: trimText(workroom?.archived_at),
+    deleted_at: trimText(workroom?.deleted_at),
+    record_state: trimText(workroom?.deleted_at) ? 'deleted' : (trimText(workroom?.status) || 'draft'),
+    pg_backend: true,
+    pg_record_type: 'workroom',
+  };
+}
+
+export function mapPgWorkroomParticipantToLocal(participant) {
+  const updatedAt = isoTimestamp(participant?.updated_at || participant?.created_at);
+  return {
+    record_id: trimText(participant?.id || participant?.record_id),
+    workspace_id: trimText(participant?.workspace_id),
+    workroom_id: trimText(participant?.workroom_id),
+    actor_npub: trimText(participant?.actor_npub),
+    actor_id: trimText(participant?.actor_id),
+    kind: trimText(participant?.kind) || 'human',
+    role: trimText(participant?.role) || 'contributor',
+    label: trimText(participant?.label),
+    status: trimText(participant?.status) || 'active',
+    access_status: trimText(participant?.access_status) || 'pending',
+    access_issue: trimText(participant?.access_issue),
+    metadata: objectOrEmpty(participant?.metadata),
+    created_at: isoTimestamp(participant?.created_at || updatedAt),
+    updated_at: updatedAt,
+    record_state: trimText(participant?.status) === 'removed' ? 'deleted' : 'active',
+    pg_backend: true,
+    pg_record_type: 'workroom_participant',
+  };
+}
+
+export function mapPgWorkroomEventToLocal(event) {
+  return {
+    record_id: trimText(event?.id || event?.record_id),
+    workspace_id: trimText(event?.workspace_id),
+    workroom_id: trimText(event?.workroom_id),
+    scope_id: trimText(event?.scope_id),
+    channel_id: trimText(event?.channel_id),
+    event_type: trimText(event?.event_type) || 'note',
+    actor_npub: trimText(event?.actor_npub),
+    actor_id: trimText(event?.actor_id),
+    target_type: trimText(event?.target_type),
+    target_ref: trimText(event?.target_ref),
+    title: trimText(event?.title),
+    body: trimText(event?.body),
+    payload: objectOrEmpty(event?.payload),
+    visibility: trimText(event?.visibility) || 'room',
+    created_at: isoTimestamp(event?.created_at),
+    record_state: 'active',
+    pg_backend: true,
+    pg_record_type: 'workroom_event',
+  };
+}
+
+export function mapPgWorkroomLinkToLocal(link) {
+  const updatedAt = isoTimestamp(link?.updated_at || link?.created_at);
+  return {
+    record_id: trimText(link?.id || link?.record_id),
+    workspace_id: trimText(link?.workspace_id),
+    workroom_id: trimText(link?.workroom_id),
+    scope_id: trimText(link?.scope_id),
+    channel_id: trimText(link?.channel_id),
+    link_type: trimText(link?.link_type),
+    target_type: trimText(link?.target_type),
+    target_id: trimText(link?.target_id),
+    external_url: trimText(link?.external_url),
+    label: trimText(link?.label),
+    status: trimText(link?.status),
+    metadata: objectOrEmpty(link?.metadata),
+    created_by_actor_id: trimText(link?.created_by_actor_id),
+    created_at: isoTimestamp(link?.created_at || updatedAt),
+    updated_at: updatedAt,
+    record_state: 'active',
+    pg_backend: true,
+    pg_record_type: 'workroom_link',
+  };
+}
+
+export function mapPgWorkroomApprovalToLocal(approval) {
+  const updatedAt = isoTimestamp(approval?.updated_at || approval?.created_at || approval?.requested_at);
+  return {
+    record_id: trimText(approval?.id || approval?.record_id),
+    workspace_id: trimText(approval?.workspace_id),
+    scope_id: trimText(approval?.scope_id),
+    channel_id: trimText(approval?.channel_id),
+    target_type: trimText(approval?.target_type),
+    target_id: trimText(approval?.target_id),
+    action: trimText(approval?.action),
+    status: trimText(approval?.status) || 'requested',
+    title: trimText(approval?.title),
+    summary: trimText(approval?.summary),
+    requested_by_actor_id: trimText(approval?.requested_by_actor_id),
+    requested_by_npub: trimText(approval?.requested_by_npub),
+    reviewer_actor_id: trimText(approval?.reviewer_actor_id),
+    reviewer_npub: trimText(approval?.reviewer_npub),
+    approver_actor_id: trimText(approval?.approver_actor_id),
+    approver_npub: trimText(approval?.approver_npub),
+    decision_note: trimText(approval?.decision_note),
+    metadata: objectOrEmpty(approval?.metadata),
+    row_version: rowVersion(approval?.row_version || approval?.version),
+    version: rowVersion(approval?.row_version || approval?.version),
+    requested_at: isoTimestamp(approval?.requested_at || updatedAt),
+    reviewed_at: trimText(approval?.reviewed_at),
+    approved_at: trimText(approval?.approved_at),
+    rejected_at: trimText(approval?.rejected_at),
+    superseded_at: trimText(approval?.superseded_at),
+    cancelled_at: trimText(approval?.cancelled_at),
+    created_at: isoTimestamp(approval?.created_at || updatedAt),
+    updated_at: updatedAt,
+    record_state: ['superseded', 'cancelled'].includes(trimText(approval?.status)) ? 'archived' : 'active',
+    pg_backend: true,
+    pg_record_type: 'workroom_approval',
+  };
+}
+
 export async function hydrateTowerPgScopes(store, deps = {}) {
   const context = resolveTowerPgWorkspaceContext(store);
   if (!context.workspaceId || !context.workspaceOwnerNpub || !context.baseUrl) return [];
@@ -1474,6 +1631,160 @@ export async function hydrateTowerPgReactionTarget(store, targetType, targetId, 
   return reactions;
 }
 
+function mergeStoreWorkrooms(store, workrooms) {
+  if (typeof store.applyWorkrooms !== 'function') return;
+  const incoming = Array.isArray(workrooms) ? workrooms : [];
+  const incomingIds = new Set(incoming.map((row) => row?.record_id).filter(Boolean));
+  const existing = Array.isArray(store.workrooms) ? store.workrooms : [];
+  return store.applyWorkrooms([
+    ...existing.filter((row) => !incomingIds.has(row?.record_id)),
+    ...incoming,
+  ]);
+}
+
+export async function hydrateTowerPgWorkrooms(store, deps = {}) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  if (!context.workspaceId || !context.baseUrl) return [];
+  const channelId = trimText(deps.channelId);
+  const readWorkrooms = deps.getTowerPgWorkrooms || getTowerPgWorkrooms;
+  const replaceChannel = deps.replacePgWorkroomsForChannel || replacePgWorkroomsForChannel;
+  const replaceWorkspace = deps.replacePgWorkroomsForWorkspace || replacePgWorkroomsForWorkspace;
+  const result = await readWorkrooms(context.workspaceId, {
+    baseUrl: context.baseUrl,
+    appNpub: context.appNpub,
+    scopeId: deps.scopeId || null,
+    channelId: channelId || null,
+    status: deps.status || null,
+    limit: deps.limit || 100,
+  });
+  const workrooms = (Array.isArray(result?.workrooms) ? result.workrooms : [])
+    .map(mapPgWorkroomToLocal)
+    .filter((workroom) => workroom.record_id);
+  if (channelId) await replaceChannel(channelId, workrooms);
+  else await replaceWorkspace(context.workspaceId, workrooms);
+  await mergeStoreWorkrooms(store, workrooms);
+  return workrooms;
+}
+
+export async function hydrateTowerPgWorkroomApprovals(store, workroomId, deps = {}) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  const targetWorkroomId = trimText(workroomId);
+  if (!context.workspaceId || !context.baseUrl || !targetWorkroomId) return [];
+  const readApprovals = deps.getTowerPgApprovals || getTowerPgApprovals;
+  const replaceApprovals = deps.replaceWorkroomApprovalsForRoom || replaceWorkroomApprovalsForRoom;
+  const result = await readApprovals(context.workspaceId, {
+    baseUrl: context.baseUrl,
+    appNpub: context.appNpub,
+    targetType: 'workroom',
+    targetId: targetWorkroomId,
+    limit: deps.limit || 100,
+  });
+  const approvals = (Array.isArray(result?.approvals) ? result.approvals : [])
+    .map(mapPgWorkroomApprovalToLocal)
+    .filter((approval) => approval.record_id);
+  await replaceApprovals(targetWorkroomId, approvals);
+  if (typeof store.applyWorkroomApprovals === 'function') await store.applyWorkroomApprovals(approvals);
+  return approvals;
+}
+
+export async function hydrateTowerPgWorkroomParticipants(store, workroomId, deps = {}) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  const targetWorkroomId = trimText(workroomId);
+  if (!context.workspaceId || !context.baseUrl || !targetWorkroomId) return [];
+  const readParticipants = deps.getTowerPgWorkroomParticipants || getTowerPgWorkroomParticipants;
+  const replaceParticipants = deps.replaceWorkroomParticipantsForRoom || replaceWorkroomParticipantsForRoom;
+  const result = await readParticipants(context.workspaceId, targetWorkroomId, {
+    baseUrl: context.baseUrl,
+    appNpub: context.appNpub,
+  });
+  const participants = (Array.isArray(result?.participants) ? result.participants : [])
+    .map(mapPgWorkroomParticipantToLocal)
+    .filter((participant) => participant.record_id);
+  await replaceParticipants(targetWorkroomId, participants);
+  if (typeof store.applyWorkroomParticipants === 'function') await store.applyWorkroomParticipants(participants);
+  return participants;
+}
+
+export async function hydrateTowerPgWorkroomEvents(store, workroomId, deps = {}) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  const targetWorkroomId = trimText(workroomId);
+  if (!context.workspaceId || !context.baseUrl || !targetWorkroomId) return [];
+  const readEvents = deps.getTowerPgWorkroomEvents || getTowerPgWorkroomEvents;
+  const replaceEvents = deps.replaceWorkroomEventsForRoom || replaceWorkroomEventsForRoom;
+  const result = await readEvents(context.workspaceId, targetWorkroomId, {
+    baseUrl: context.baseUrl,
+    appNpub: context.appNpub,
+    limit: deps.limit || 200,
+  });
+  const events = (Array.isArray(result?.events) ? result.events : [])
+    .map(mapPgWorkroomEventToLocal)
+    .filter((event) => event.record_id);
+  await replaceEvents(targetWorkroomId, events);
+  if (typeof store.applyWorkroomEvents === 'function') await store.applyWorkroomEvents(events);
+  return events;
+}
+
+export async function hydrateTowerPgWorkroomLinks(store, workroomId, deps = {}) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  const targetWorkroomId = trimText(workroomId);
+  if (!context.workspaceId || !context.baseUrl || !targetWorkroomId) return [];
+  const readLinks = deps.getTowerPgWorkroomLinks || getTowerPgWorkroomLinks;
+  const replaceLinks = deps.replaceWorkroomLinksForRoom || replaceWorkroomLinksForRoom;
+  const result = await readLinks(context.workspaceId, targetWorkroomId, {
+    baseUrl: context.baseUrl,
+    appNpub: context.appNpub,
+    limit: deps.limit || 200,
+  });
+  const links = (Array.isArray(result?.links) ? result.links : [])
+    .map(mapPgWorkroomLinkToLocal)
+    .filter((link) => link.record_id);
+  await replaceLinks(targetWorkroomId, links);
+  if (typeof store.applyWorkroomLinks === 'function') await store.applyWorkroomLinks(links);
+  return links;
+}
+
+export async function hydrateTowerPgWorkroom(store, workroomId, deps = {}) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  const targetWorkroomId = trimText(workroomId);
+  if (!context.workspaceId || !context.baseUrl || !targetWorkroomId) return null;
+  const readWorkroom = deps.getTowerPgWorkroom || getTowerPgWorkroom;
+  const writeWorkroom = deps.upsertWorkroom || upsertWorkroom;
+  const replaceParticipants = deps.replaceWorkroomParticipantsForRoom || replaceWorkroomParticipantsForRoom;
+  const replaceEvents = deps.replaceWorkroomEventsForRoom || replaceWorkroomEventsForRoom;
+  const replaceLinks = deps.replaceWorkroomLinksForRoom || replaceWorkroomLinksForRoom;
+
+  const result = await readWorkroom(context.workspaceId, targetWorkroomId, {
+    baseUrl: context.baseUrl,
+    appNpub: context.appNpub,
+    limit: deps.limit || 200,
+  });
+  const workroom = mapPgWorkroomToLocal(result?.workroom || result);
+  if (!workroom.record_id) return null;
+
+  const participants = (Array.isArray(result?.participants) ? result.participants : [])
+    .map(mapPgWorkroomParticipantToLocal)
+    .filter((participant) => participant.record_id);
+  const events = (Array.isArray(result?.events) ? result.events : [])
+    .map(mapPgWorkroomEventToLocal)
+    .filter((event) => event.record_id);
+  const links = (Array.isArray(result?.links) ? result.links : [])
+    .map(mapPgWorkroomLinkToLocal)
+    .filter((link) => link.record_id);
+
+  await Promise.all([
+    writeWorkroom(workroom),
+    replaceParticipants(targetWorkroomId, participants),
+    replaceEvents(targetWorkroomId, events),
+    replaceLinks(targetWorkroomId, links),
+    hydrateTowerPgWorkroomApprovals(store, targetWorkroomId, deps),
+  ]);
+  await mergeStoreWorkrooms(store, [workroom]);
+  if (typeof store.applyWorkroomParticipants === 'function') await store.applyWorkroomParticipants(participants);
+  if (typeof store.applyWorkroomEvents === 'function') await store.applyWorkroomEvents(events);
+  if (typeof store.applyWorkroomLinks === 'function') await store.applyWorkroomLinks(links);
+  return workroom;
+}
+
 export async function hydrateTowerPgEventUpdates(store, events = [], deps = {}) {
   const pgEvents = Array.isArray(events) ? events : [];
   const messageChannels = new Set();
@@ -1488,6 +1799,11 @@ export async function hydrateTowerPgEventUpdates(store, events = [], deps = {}) 
   const personalWappOwnerIds = new Set();
   const responseActivityWrites = [];
   const responseActivityDeletes = [];
+  const workroomIds = new Set();
+  const workroomChannels = new Set();
+  const workroomEventIds = new Set();
+  const workroomLinkIds = new Set();
+  const workroomParticipantIds = new Set();
   let fallbackEvents = 0;
 
   for (const event of pgEvents) {
@@ -1533,6 +1849,23 @@ export async function hydrateTowerPgEventUpdates(store, events = [], deps = {}) 
       } else {
         fallbackEvents += 1;
       }
+    } else if (entityType === 'workroom') {
+      const workroomId = trimText(event?.entity_id || payload.workroom_id || payload.id);
+      if (workroomId) workroomIds.add(workroomId);
+      else if (channelId) workroomChannels.add(channelId);
+      else fallbackEvents += 1;
+    } else if (entityType === 'workroom_event') {
+      const workroomId = trimText(payload.workroom_id || payload.workroomId);
+      if (workroomId) workroomEventIds.add(workroomId);
+      else fallbackEvents += 1;
+    } else if (entityType === 'workroom_link') {
+      const workroomId = trimText(payload.workroom_id || payload.workroomId);
+      if (workroomId) workroomLinkIds.add(workroomId);
+      else fallbackEvents += 1;
+    } else if (entityType === 'workroom_participant') {
+      const workroomId = trimText(payload.workroom_id || payload.workroomId);
+      if (workroomId) workroomParticipantIds.add(workroomId);
+      else fallbackEvents += 1;
     } else {
       fallbackEvents += 1;
     }
@@ -1555,6 +1888,12 @@ export async function hydrateTowerPgEventUpdates(store, events = [], deps = {}) 
         : hydrateTowerPgChannelResponseActivities(store, activity.channel_id, deps)
     )),
     ...responseActivityDeletes.map((recordId) => clearResponseActivity(recordId)),
+    ...[...workroomIds].map((workroomId) => hydrateTowerPgWorkroom(store, workroomId, deps)),
+    ...[...workroomChannels].map((channelId) => hydrateTowerPgWorkrooms(store, { ...deps, channelId })),
+    ...[...workroomEventIds].map((workroomId) => hydrateTowerPgWorkroomEvents(store, workroomId, deps)),
+    ...[...workroomEventIds].map((workroomId) => hydrateTowerPgWorkroomApprovals(store, workroomId, deps)),
+    ...[...workroomLinkIds].map((workroomId) => hydrateTowerPgWorkroomLinks(store, workroomId, deps)),
+    ...[...workroomParticipantIds].map((workroomId) => hydrateTowerPgWorkroomParticipants(store, workroomId, deps)),
   ];
 
   await Promise.all(jobs);

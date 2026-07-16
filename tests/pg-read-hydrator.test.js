@@ -13,6 +13,8 @@ import {
   hydrateTowerPgTask,
   hydrateTowerPgTasks,
   hydrateTowerPgTaskComments,
+  hydrateTowerPgWorkroom,
+  hydrateTowerPgWorkrooms,
   mapPgChannelToLocal,
   mapPgAudioNoteToLocal,
   mapPgDocToLocal,
@@ -22,6 +24,11 @@ import {
   mapPgScopeToLocal,
   mapPgTaskToLocal,
   mapPgTaskCommentToLocal,
+  mapPgWorkroomApprovalToLocal,
+  mapPgWorkroomEventToLocal,
+  mapPgWorkroomLinkToLocal,
+  mapPgWorkroomParticipantToLocal,
+  mapPgWorkroomToLocal,
   mergePgHydratedTasksWithLocal,
   mapPgThreadToLocal,
   resolveTowerPgWorkspaceContext,
@@ -142,6 +149,160 @@ describe('PG read hydrator', () => {
       pg_backend: true,
       pg_record_type: 'scope',
     });
+  });
+
+  it('maps PG workroom rows into local Dexie rows', () => {
+    expect(mapPgWorkroomToLocal({
+      id: 'room-1',
+      workspace_id: 'workspace-1',
+      scope_id: 'scope-1',
+      channel_id: 'channel-1',
+      title: 'Release room',
+      goal: 'Ship production',
+      status: 'waiting_approval',
+      integration_autopilot_npub: 'npub1auto',
+      repo: { url: 'https://github.example/app' },
+      branches: { integration: 'feature/x', production: 'main' },
+      app_targets: { preview_url: 'https://preview.example' },
+      approval_policy: { human_approver_npubs: ['npub1human'] },
+      row_version: 4,
+      created_at: '2026-07-16T01:00:00.000Z',
+      updated_at: '2026-07-16T02:00:00.000Z',
+    })).toMatchObject({
+      record_id: 'room-1',
+      workspace_id: 'workspace-1',
+      channel_id: 'channel-1',
+      status: 'waiting_approval',
+      repo: { url: 'https://github.example/app' },
+      row_version: 4,
+      pg_record_type: 'workroom',
+    });
+    expect(mapPgWorkroomParticipantToLocal({
+      id: 'participant-1',
+      workroom_id: 'room-1',
+      actor_npub: 'npub1human',
+      role: 'human_approver',
+    })).toMatchObject({ record_id: 'participant-1', workroom_id: 'room-1', role: 'human_approver' });
+    expect(mapPgWorkroomEventToLocal({
+      id: 'event-1',
+      workroom_id: 'room-1',
+      event_type: 'approval_requested',
+      payload: { approval_id: 'approval-1' },
+    })).toMatchObject({ record_id: 'event-1', event_type: 'approval_requested' });
+    expect(mapPgWorkroomLinkToLocal({
+      id: 'link-1',
+      workroom_id: 'room-1',
+      link_type: 'pull_request',
+      external_url: 'https://github.example/pr/1',
+    })).toMatchObject({ record_id: 'link-1', link_type: 'pull_request' });
+    expect(mapPgWorkroomApprovalToLocal({
+      id: 'approval-1',
+      target_type: 'workroom',
+      target_id: 'room-1',
+      action: 'production_merge',
+      status: 'requested',
+    })).toMatchObject({ record_id: 'approval-1', target_id: 'room-1', status: 'requested' });
+  });
+
+  it('hydrates PG workroom lists into local stores and Alpine state', async () => {
+    const target = store({
+      workrooms: [{ record_id: 'old-room', channel_id: 'channel-1' }],
+      applyWorkrooms: vi.fn(async (workrooms) => {
+        target.workrooms = workrooms;
+      }),
+    });
+    const getTowerPgWorkrooms = vi.fn(async () => ({
+      workrooms: [{
+        id: 'room-1',
+        workspace_id: 'workspace-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        title: 'Release room',
+        status: 'active',
+        updated_at: '2026-07-16T02:00:00.000Z',
+      }],
+    }));
+    const replacePgWorkroomsForChannel = vi.fn(async () => 1);
+
+    const rows = await hydrateTowerPgWorkrooms(target, {
+      channelId: 'channel-1',
+      getTowerPgWorkrooms,
+      replacePgWorkroomsForChannel,
+    });
+
+    expect(rows).toEqual([expect.objectContaining({ record_id: 'room-1', channel_id: 'channel-1' })]);
+    expect(getTowerPgWorkrooms).toHaveBeenCalledWith('workspace-1', expect.objectContaining({
+      baseUrl: 'https://tower.example',
+      appNpub: 'flightdeck_pg',
+      channelId: 'channel-1',
+      limit: 100,
+    }));
+    expect(replacePgWorkroomsForChannel).toHaveBeenCalledWith('channel-1', [
+      expect.objectContaining({ record_id: 'room-1' }),
+    ]);
+    expect(target.applyWorkrooms).toHaveBeenCalledWith([
+      expect.objectContaining({ record_id: 'old-room' }),
+      expect.objectContaining({ record_id: 'room-1' }),
+    ]);
+  });
+
+  it('hydrates a PG workroom detail with participants, events, links, and approvals', async () => {
+    const target = store({
+      workrooms: [],
+      applyWorkrooms: vi.fn(async (workrooms) => {
+        target.workrooms = workrooms;
+      }),
+      applyWorkroomParticipants: vi.fn(),
+      applyWorkroomEvents: vi.fn(),
+      applyWorkroomLinks: vi.fn(),
+      applyWorkroomApprovals: vi.fn(),
+    });
+    const getTowerPgWorkroom = vi.fn(async () => ({
+      workroom: {
+        id: 'room-1',
+        workspace_id: 'workspace-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        title: 'Release room',
+        status: 'active',
+      },
+      participants: [{ id: 'participant-1', workroom_id: 'room-1', actor_npub: 'npub1human' }],
+      events: [{ id: 'event-1', workroom_id: 'room-1', event_type: 'started' }],
+      links: [{ id: 'link-1', workroom_id: 'room-1', link_type: 'pull_request' }],
+    }));
+    const getTowerPgApprovals = vi.fn(async () => ({
+      approvals: [{
+        id: 'approval-1',
+        target_type: 'workroom',
+        target_id: 'room-1',
+        action: 'production_merge',
+        status: 'requested',
+      }],
+    }));
+    const upsertWorkroom = vi.fn(async () => 'room-1');
+    const replaceWorkroomParticipantsForRoom = vi.fn(async () => 1);
+    const replaceWorkroomEventsForRoom = vi.fn(async () => 1);
+    const replaceWorkroomLinksForRoom = vi.fn(async () => 1);
+    const replaceWorkroomApprovalsForRoom = vi.fn(async () => 1);
+
+    const row = await hydrateTowerPgWorkroom(target, 'room-1', {
+      getTowerPgWorkroom,
+      getTowerPgApprovals,
+      upsertWorkroom,
+      replaceWorkroomParticipantsForRoom,
+      replaceWorkroomEventsForRoom,
+      replaceWorkroomLinksForRoom,
+      replaceWorkroomApprovalsForRoom,
+    });
+
+    expect(row).toMatchObject({ record_id: 'room-1', title: 'Release room' });
+    expect(upsertWorkroom).toHaveBeenCalledWith(expect.objectContaining({ record_id: 'room-1' }));
+    expect(replaceWorkroomParticipantsForRoom).toHaveBeenCalledWith('room-1', [expect.objectContaining({ record_id: 'participant-1' })]);
+    expect(replaceWorkroomEventsForRoom).toHaveBeenCalledWith('room-1', [expect.objectContaining({ record_id: 'event-1' })]);
+    expect(replaceWorkroomLinksForRoom).toHaveBeenCalledWith('room-1', [expect.objectContaining({ record_id: 'link-1' })]);
+    expect(replaceWorkroomApprovalsForRoom).toHaveBeenCalledWith('room-1', [expect.objectContaining({ record_id: 'approval-1' })]);
+    expect(target.applyWorkrooms).toHaveBeenCalledWith([expect.objectContaining({ record_id: 'room-1' })]);
+    expect(target.applyWorkroomApprovals).toHaveBeenCalledWith([expect.objectContaining({ record_id: 'approval-1' })]);
   });
 
   it('maps PG channels into existing local channel rows scoped to L1', () => {
@@ -1099,6 +1260,94 @@ describe('PG read hydrator', () => {
     expect(target.applyDocComments).toHaveBeenCalledWith([expect.objectContaining({ record_id: 'doc-comment-doc-1' })]);
     expect(replacePgDailyNotesForOwnerAndDate).toHaveBeenCalledWith('owner-actor-1', '2026-06-13', [expect.objectContaining({ record_id: 'daily-owner-actor-1' })]);
     expect(replacePgReactionsForTarget).toHaveBeenCalledWith(expect.any(String), 'message-1', [expect.objectContaining({ record_id: 'reaction-1' })]);
+  });
+
+  it('routes PG workroom visible events to targeted workroom hydrators', async () => {
+    const target = store({
+      workrooms: [],
+      applyWorkrooms: vi.fn(),
+      applyWorkroomParticipants: vi.fn(),
+      applyWorkroomEvents: vi.fn(),
+      applyWorkroomLinks: vi.fn(),
+      applyWorkroomApprovals: vi.fn(),
+    });
+    const getTowerPgWorkroom = vi.fn(async () => ({
+      workroom: {
+        id: 'room-1',
+        workspace_id: 'workspace-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        title: 'Release room',
+      },
+    }));
+    const getTowerPgWorkroomEvents = vi.fn(async () => ({
+      events: [{ id: 'event-1', workroom_id: 'room-1', event_type: 'approval_requested' }],
+    }));
+    const getTowerPgWorkroomLinks = vi.fn(async () => ({
+      links: [{ id: 'link-1', workroom_id: 'room-1', link_type: 'pull_request' }],
+    }));
+    const getTowerPgWorkroomParticipants = vi.fn(async () => ({
+      participants: [{ id: 'participant-1', workroom_id: 'room-1', actor_npub: 'npub1human' }],
+    }));
+    const getTowerPgApprovals = vi.fn(async () => ({
+      approvals: [{ id: 'approval-1', target_type: 'workroom', target_id: 'room-1', status: 'requested' }],
+    }));
+    const upsertWorkroom = vi.fn(async () => 'room-1');
+    const replaceWorkroomEventsForRoom = vi.fn(async () => 1);
+    const replaceWorkroomLinksForRoom = vi.fn(async () => 1);
+    const replaceWorkroomParticipantsForRoom = vi.fn(async () => 1);
+    const replaceWorkroomApprovalsForRoom = vi.fn(async () => 1);
+
+    const result = await hydrateTowerPgEventUpdates(target, [
+      { entity_type: 'workroom', entity_id: 'room-1', payload: {} },
+      { entity_type: 'workroom_event', payload: { workroom_id: 'room-1' } },
+      { entity_type: 'workroom_link', payload: { workroom_id: 'room-1' } },
+      { entity_type: 'workroom_participant', payload: { workroom_id: 'room-1' } },
+    ], {
+      getTowerPgWorkroom,
+      getTowerPgWorkroomEvents,
+      getTowerPgWorkroomLinks,
+      getTowerPgWorkroomParticipants,
+      getTowerPgApprovals,
+      upsertWorkroom,
+      replaceWorkroomEventsForRoom,
+      replaceWorkroomLinksForRoom,
+      replaceWorkroomParticipantsForRoom,
+      replaceWorkroomApprovalsForRoom,
+    });
+
+    expect(result).toEqual({ channels: 0, appliedTargets: 5, fallbackEvents: 0, events: 4 });
+    expect(upsertWorkroom).toHaveBeenCalledWith(expect.objectContaining({ record_id: 'room-1' }));
+    expect(replaceWorkroomEventsForRoom).toHaveBeenCalledWith('room-1', [expect.objectContaining({ record_id: 'event-1' })]);
+    expect(replaceWorkroomLinksForRoom).toHaveBeenCalledWith('room-1', [expect.objectContaining({ record_id: 'link-1' })]);
+    expect(replaceWorkroomParticipantsForRoom).toHaveBeenCalledWith('room-1', [expect.objectContaining({ record_id: 'participant-1' })]);
+    expect(replaceWorkroomApprovalsForRoom).toHaveBeenCalledWith('room-1', [expect.objectContaining({ record_id: 'approval-1' })]);
+  });
+
+  it('accepts camelCase workroom ids in visible child-event payloads', async () => {
+    const target = store({
+      applyWorkroomEvents: vi.fn(),
+    });
+    const getTowerPgWorkroomEvents = vi.fn(async () => ({ events: [] }));
+    const replaceWorkroomEventsForRoom = vi.fn(async () => 0);
+    const getTowerPgApprovals = vi.fn(async () => ({ approvals: [] }));
+    const replaceWorkroomApprovalsForRoom = vi.fn(async () => 0);
+
+    const result = await hydrateTowerPgEventUpdates(target, [
+      { entity_type: 'workroom_event', payload: { workroomId: 'room-1' } },
+    ], {
+      getTowerPgWorkroomEvents,
+      replaceWorkroomEventsForRoom,
+      getTowerPgApprovals,
+      replaceWorkroomApprovalsForRoom,
+    });
+
+    expect(result).toEqual({ channels: 0, appliedTargets: 2, fallbackEvents: 0, events: 1 });
+    expect(getTowerPgWorkroomEvents).toHaveBeenCalledWith('workspace-1', 'room-1', expect.objectContaining({
+      baseUrl: 'https://tower.example',
+      appNpub: 'flightdeck_pg',
+    }));
+    expect(replaceWorkroomEventsForRoom).toHaveBeenCalledWith('room-1', []);
   });
 
   it('treats missing PG reaction targets from SSE hydration as empty reactions', async () => {

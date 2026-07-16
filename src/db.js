@@ -90,6 +90,14 @@ const WORKSPACE_STORES_V15 = {
   ...WORKSPACE_STORES_V14,
   file_folders: 'record_id, workspace_id, scope_id, channel_id, parent_folder_id, updated_at',
 };
+const WORKSPACE_STORES_V16 = {
+  ...WORKSPACE_STORES_V15,
+  workrooms: 'record_id, workspace_id, scope_id, channel_id, status, updated_at, archived_at',
+  workroom_participants: 'record_id, workroom_id, actor_npub, actor_id, role, status, access_status, updated_at, &[workroom_id+actor_npub]',
+  workroom_events: 'record_id, workroom_id, channel_id, event_type, target_type, target_ref, created_at',
+  workroom_links: 'record_id, workroom_id, link_type, target_type, target_id, status, updated_at',
+  workroom_approvals: 'record_id, workspace_id, target_type, target_id, action, status, channel_id, reviewer_npub, requested_by_npub, updated_at',
+};
 
 function createWorkspaceDb(workspaceDbKey) {
   const db = new Dexie(`wingman-fd-ws-${workspaceDbKey}`);
@@ -164,6 +172,7 @@ function createWorkspaceDb(workspaceDbKey) {
   db.version(13).stores(WORKSPACE_STORES_V13);
   db.version(14).stores(WORKSPACE_STORES_V14);
   db.version(15).stores(WORKSPACE_STORES_V15);
+  db.version(16).stores(WORKSPACE_STORES_V16);
   return db;
 }
 
@@ -1547,6 +1556,157 @@ export async function getAllApprovals() {
 }
 
 // ---------------------------------------------------------------------------
+// workrooms — Tower PG workspace DB
+// ---------------------------------------------------------------------------
+
+function visibleWorkroomRow(row) {
+  return row && row.record_state !== 'deleted' && !row.deleted_at;
+}
+
+export async function upsertWorkroom(workroom) {
+  return wsDb().workrooms.put(sanitizeForStorage(workroom));
+}
+
+export async function getWorkroomById(recordId) {
+  return wsDb().workrooms.get(recordId);
+}
+
+export async function getWorkroomsByChannel(channelId) {
+  const rows = await wsDb().workrooms.where('channel_id').equals(channelId).toArray();
+  return rows.filter(visibleWorkroomRow);
+}
+
+export async function getWorkroomsByWorkspace(workspaceId) {
+  const rows = await wsDb().workrooms.where('workspace_id').equals(workspaceId).toArray();
+  return rows.filter(visibleWorkroomRow);
+}
+
+export async function replacePgWorkroomsForChannel(channelId, workrooms = []) {
+  if (!channelId) return 0;
+  const rows = (Array.isArray(workrooms) ? workrooms : [])
+    .map((workroom) => sanitizeForStorage(workroom))
+    .filter((workroom) => workroom?.record_id);
+  const db = wsDb();
+  return db.transaction('rw', db.workrooms, async () => {
+    const existingIds = await db.workrooms
+      .where('channel_id')
+      .equals(channelId)
+      .primaryKeys();
+    if (existingIds.length > 0) await db.workrooms.bulkDelete(existingIds);
+    if (rows.length > 0) await db.workrooms.bulkPut(rows);
+    return rows.length;
+  });
+}
+
+export async function replacePgWorkroomsForWorkspace(workspaceId, workrooms = []) {
+  if (!workspaceId) return 0;
+  const rows = (Array.isArray(workrooms) ? workrooms : [])
+    .map((workroom) => sanitizeForStorage(workroom))
+    .filter((workroom) => workroom?.record_id);
+  const db = wsDb();
+  return db.transaction('rw', db.workrooms, async () => {
+    const existingIds = await db.workrooms
+      .where('workspace_id')
+      .equals(workspaceId)
+      .primaryKeys();
+    if (existingIds.length > 0) await db.workrooms.bulkDelete(existingIds);
+    if (rows.length > 0) await db.workrooms.bulkPut(rows);
+    return rows.length;
+  });
+}
+
+export async function replaceWorkroomParticipantsForRoom(workroomId, participants = []) {
+  if (!workroomId) return 0;
+  const rows = (Array.isArray(participants) ? participants : [])
+    .map((participant) => sanitizeForStorage(participant))
+    .filter((participant) => participant?.record_id);
+  const db = wsDb();
+  return db.transaction('rw', db.workroom_participants, async () => {
+    await db.workroom_participants.where('workroom_id').equals(workroomId).delete();
+    if (rows.length > 0) await db.workroom_participants.bulkPut(rows);
+    return rows.length;
+  });
+}
+
+export async function getWorkroomParticipants(workroomId) {
+  const rows = await wsDb().workroom_participants.where('workroom_id').equals(workroomId).toArray();
+  return rows.filter((row) => row.record_state !== 'deleted' && row.status !== 'removed');
+}
+
+export async function replaceWorkroomEventsForRoom(workroomId, events = []) {
+  if (!workroomId) return 0;
+  const rows = (Array.isArray(events) ? events : [])
+    .map((event) => sanitizeForStorage(event))
+    .filter((event) => event?.record_id);
+  const db = wsDb();
+  return db.transaction('rw', db.workroom_events, async () => {
+    await db.workroom_events.where('workroom_id').equals(workroomId).delete();
+    if (rows.length > 0) await db.workroom_events.bulkPut(rows);
+    return rows.length;
+  });
+}
+
+export async function getWorkroomEvents(workroomId) {
+  const rows = await wsDb().workroom_events.where('workroom_id').equals(workroomId).toArray();
+  return rows.sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
+}
+
+export async function replaceWorkroomLinksForRoom(workroomId, links = []) {
+  if (!workroomId) return 0;
+  const rows = (Array.isArray(links) ? links : [])
+    .map((link) => sanitizeForStorage(link))
+    .filter((link) => link?.record_id);
+  const db = wsDb();
+  return db.transaction('rw', db.workroom_links, async () => {
+    await db.workroom_links.where('workroom_id').equals(workroomId).delete();
+    if (rows.length > 0) await db.workroom_links.bulkPut(rows);
+    return rows.length;
+  });
+}
+
+export async function getWorkroomLinks(workroomId) {
+  const rows = await wsDb().workroom_links.where('workroom_id').equals(workroomId).toArray();
+  return rows.sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
+}
+
+export async function upsertWorkroomApproval(approval) {
+  return wsDb().workroom_approvals.put(sanitizeForStorage(approval));
+}
+
+export async function getWorkroomApprovalById(recordId) {
+  return wsDb().workroom_approvals.get(recordId);
+}
+
+export async function replaceWorkroomApprovalsForRoom(workroomId, approvals = []) {
+  if (!workroomId) return 0;
+  const rows = (Array.isArray(approvals) ? approvals : [])
+    .map((approval) => sanitizeForStorage(approval))
+    .filter((approval) => approval?.record_id);
+  const db = wsDb();
+  return db.transaction('rw', db.workroom_approvals, async () => {
+    await db.workroom_approvals
+      .where('target_id')
+      .equals(workroomId)
+      .and((approval) => approval.target_type === 'workroom')
+      .delete();
+    if (rows.length > 0) await db.workroom_approvals.bulkPut(rows);
+    return rows.length;
+  });
+}
+
+export async function getPendingWorkroomApprovals({ workroomId = null, channelId = null } = {}) {
+  let rows = await wsDb().workroom_approvals.where('status').anyOf(['requested', 'in_review']).toArray();
+  rows = rows.filter((row) => (
+    row.target_type === 'workroom'
+    && row.record_state !== 'deleted'
+    && !row.deleted_at
+  ));
+  if (workroomId) rows = rows.filter((row) => row.target_id === workroomId);
+  if (channelId) rows = rows.filter((row) => row.channel_id === channelId);
+  return rows.sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
+}
+
+// ---------------------------------------------------------------------------
 // persons — workspace DB
 // ---------------------------------------------------------------------------
 
@@ -1621,6 +1781,11 @@ export async function clearRuntimeData() {
     db.scopes.clear(),
     db.flows.clear(),
     db.approvals.clear(),
+    db.workrooms.clear(),
+    db.workroom_participants.clear(),
+    db.workroom_events.clear(),
+    db.workroom_links.clear(),
+    db.workroom_approvals.clear(),
     db.persons.clear(),
     db.organisations.clear(),
     db.opportunities.clear(),

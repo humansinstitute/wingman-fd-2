@@ -142,6 +142,216 @@ describe('Tower PG API helpers', () => {
     expect(createNip98AuthHeaderForSecret).not.toHaveBeenCalled();
   });
 
+  it('calls Tower PG workroom list, create, detail, and lifecycle routes', async () => {
+    const api = await import('../src/api.js');
+    api.setBaseUrl('https://tower.example');
+
+    await api.searchTowerPgWorkrooms('workspace-1', {
+      query: 'release',
+      scopeId: 'scope-1',
+      channelId: 'channel-1',
+      limit: 20,
+      appNpub: 'flightdeck_pg',
+    });
+    await api.getTowerPgWorkrooms('workspace-1', {
+      channelId: 'channel-1',
+      status: 'active',
+      limit: 25,
+      appNpub: 'flightdeck_pg',
+    });
+    await api.createTowerPgWorkroom('workspace-1', {
+      channel_id: 'channel-1',
+      title: 'Release room',
+      goal: 'Ship safely',
+    }, { appNpub: 'flightdeck_pg' });
+    await api.getTowerPgWorkroom('workspace-1', 'room-1', { limit: 50, appNpub: 'flightdeck_pg' });
+    await api.updateTowerPgWorkroom('workspace-1', 'room-1', {
+      title: 'Release room v2',
+      row_version: 1,
+    }, { appNpub: 'flightdeck_pg' });
+    await api.startTowerPgWorkroom('workspace-1', 'room-1', { row_version: 2 }, { appNpub: 'flightdeck_pg' });
+    await api.archiveTowerPgWorkroom('workspace-1', 'room-1', { row_version: 3 }, { appNpub: 'flightdeck_pg' });
+
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      1,
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/workrooms/search?q=release&scope_id=scope-1&channel_id=channel-1&limit=20',
+      expect.objectContaining({ method: 'GET' }),
+    );
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      2,
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/workrooms?channel_id=channel-1&status=active&limit=25',
+      expect.objectContaining({ method: 'GET' }),
+    );
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      3,
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/workrooms',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          channel_id: 'channel-1',
+          title: 'Release room',
+          goal: 'Ship safely',
+        }),
+      }),
+    );
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      4,
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/workrooms/room-1?limit=50',
+      expect.objectContaining({ method: 'GET' }),
+    );
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      5,
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/workrooms/room-1',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ title: 'Release room v2', row_version: 1 }),
+      }),
+    );
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      6,
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/workrooms/room-1/start',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ row_version: 2 }) }),
+    );
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      7,
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/workrooms/room-1/archive',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ row_version: 3 }) }),
+    );
+  });
+
+  it('calls Tower PG workroom child and approval routes', async () => {
+    const api = await import('../src/api.js');
+    api.setBaseUrl('https://tower.example');
+
+    await api.getTowerPgWorkroomParticipants('workspace-1', 'room-1', { appNpub: 'flightdeck_pg' });
+    await api.createTowerPgWorkroomParticipant('workspace-1', 'room-1', {
+      actor_npub: 'npub1reviewer',
+      role: 'human_approver',
+    }, { appNpub: 'flightdeck_pg' });
+    await api.updateTowerPgWorkroomParticipant('workspace-1', 'room-1', 'participant-1', {
+      access_status: 'granted',
+    }, { appNpub: 'flightdeck_pg' });
+    await api.getTowerPgWorkroomEvents('workspace-1', 'room-1', { limit: 10, appNpub: 'flightdeck_pg' });
+    await api.createTowerPgWorkroomEvent('workspace-1', 'room-1', {
+      event_type: 'note',
+      title: 'Ready',
+    }, { appNpub: 'flightdeck_pg' });
+    await api.getTowerPgWorkroomLinks('workspace-1', 'room-1', { limit: 15, appNpub: 'flightdeck_pg' });
+    await api.createTowerPgWorkroomLink('workspace-1', 'room-1', {
+      link_type: 'pull_request',
+      target_type: 'external',
+      external_url: 'https://github.example/pr/1',
+    }, { appNpub: 'flightdeck_pg' });
+    await api.createTowerPgWorkroomApproval('workspace-1', 'room-1', {
+      action: 'production_merge',
+      metadata: { to_branch: 'main', commit: 'abc123' },
+    }, { appNpub: 'flightdeck_pg' });
+    await api.getTowerPgApprovals('workspace-1', {
+      targetType: 'workroom',
+      targetId: 'room-1',
+      status: 'requested',
+      appNpub: 'flightdeck_pg',
+    });
+    await api.getTowerPgApproval('workspace-1', 'approval-1', { appNpub: 'flightdeck_pg' });
+    await api.decideTowerPgApproval('workspace-1', 'approval-1', {
+      status: 'approved',
+      row_version: 1,
+    }, { appNpub: 'flightdeck_pg' });
+    await api.checkTowerPgProductionMergeApproval('workspace-1', 'room-1', {
+      to_branch: 'main',
+      commit: 'abc123',
+    }, { appNpub: 'flightdeck_pg' });
+
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      1,
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/workrooms/room-1/participants',
+      expect.objectContaining({ method: 'GET' }),
+    );
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      2,
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/workrooms/room-1/participants',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ actor_npub: 'npub1reviewer', role: 'human_approver' }),
+      }),
+    );
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      3,
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/workrooms/room-1/participants/participant-1',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ access_status: 'granted' }),
+      }),
+    );
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      4,
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/workrooms/room-1/events?limit=10',
+      expect.objectContaining({ method: 'GET' }),
+    );
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      5,
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/workrooms/room-1/events',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ event_type: 'note', title: 'Ready' }),
+      }),
+    );
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      6,
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/workrooms/room-1/links?limit=15',
+      expect.objectContaining({ method: 'GET' }),
+    );
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      7,
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/workrooms/room-1/links',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          link_type: 'pull_request',
+          target_type: 'external',
+          external_url: 'https://github.example/pr/1',
+        }),
+      }),
+    );
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      8,
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/workrooms/room-1/approvals',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'production_merge',
+          metadata: { to_branch: 'main', commit: 'abc123' },
+        }),
+      }),
+    );
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      9,
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/approvals?target_type=workroom&target_id=room-1&status=requested&limit=100',
+      expect.objectContaining({ method: 'GET' }),
+    );
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      10,
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/approvals/approval-1',
+      expect.objectContaining({ method: 'GET' }),
+    );
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      11,
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/approvals/approval-1/decision',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ status: 'approved', row_version: 1 }),
+      }),
+    );
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      12,
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/workrooms/room-1/production-merge/check',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ to_branch: 'main', commit: 'abc123' }),
+      }),
+    );
+  });
+
   it('reads Tower PG document metadata and body with browser NIP-98 auth', async () => {
     const { createNip98AuthHeader, createNip98AuthHeaderForSecret } = await import('../src/auth/nostr.js');
     const api = await import('../src/api.js');
