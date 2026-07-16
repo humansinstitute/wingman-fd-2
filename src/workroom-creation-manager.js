@@ -5,12 +5,14 @@ import {
 } from './api.js';
 import {
   mapPgChannelToLocal,
+  mapPgMessageToLocal,
   mapPgWorkroomToLocal,
   resolveTowerPgWorkspaceContext,
 } from './pg-read-hydrator.js';
 import {
   replaceWorkroomParticipantsForRoom,
   upsertChannel,
+  upsertMessage,
   upsertWorkroom,
 } from './db.js';
 
@@ -216,6 +218,50 @@ async function hydrateWorkroomCreationVisibility(store) {
     jobs.push(store.refreshChannelGrants().catch(() => store.channelGrants || []));
   }
   if (jobs.length > 0) await Promise.all(jobs);
+}
+
+function workroomWithAnnouncement(workroom, started = {}) {
+  const announcement = started?.announcement_message || started?.announcement || null;
+  const thread = started?.announcement_thread || started?.thread || null;
+  if (!announcement?.id && !thread?.id) return workroom;
+  const metadata = workroom?.metadata && typeof workroom.metadata === 'object' && !Array.isArray(workroom.metadata)
+    ? workroom.metadata
+    : {};
+  return {
+    ...workroom,
+    metadata: {
+      ...metadata,
+      ...(announcement?.id ? { announcement_message_id: announcement.id } : {}),
+      ...(thread?.id ? { announcement_thread_id: thread.id } : {}),
+      announcement_channel_id: workroom?.channel_id || announcement?.channel_id || thread?.channel_id || metadata.announcement_channel_id,
+      ...(announcement?.metadata?.workroom_link || metadata.announcement_link
+        ? { announcement_link: announcement?.metadata?.workroom_link || metadata.announcement_link }
+        : {}),
+    },
+  };
+}
+
+async function applyWorkroomAnnouncementMessage(store, started = {}, context = {}) {
+  const announcement = started?.announcement_message || started?.announcement || null;
+  if (!announcement?.id) return null;
+  const thread = started?.announcement_thread || started?.thread || null;
+  const threadById = new Map();
+  if (thread?.id) {
+    threadById.set(thread.id, {
+      ...thread,
+      source_message_id: thread.source_message_id || announcement.id,
+    });
+  }
+  const localMessage = mapPgMessageToLocal(announcement, {
+    workspaceOwnerNpub: context.workspaceOwnerNpub,
+    senderNpub: store?.session?.npub,
+    threadById,
+  });
+  if (!localMessage.record_id) return null;
+  await upsertMessage(localMessage);
+  if (typeof store.patchMessageLocal === 'function') store.patchMessageLocal(localMessage);
+  else store.messages = [...(store.messages || []).filter((message) => message?.record_id !== localMessage.record_id), localMessage];
+  return localMessage;
 }
 
 export function workroomRepoSuggestions(channel, workrooms = []) {
@@ -471,11 +517,12 @@ export const workroomCreationMixin = {
       const started = await startTowerPgWorkroom(context.workspaceId, target.record_id, {
         row_version: target.row_version || target.version || 1,
       }, { baseUrl: context.baseUrl, appNpub: context.appNpub });
-      const startedRoom = mapPgWorkroomToLocal(started?.workroom || started);
+      const startedRoom = mapPgWorkroomToLocal(workroomWithAnnouncement(started?.workroom || started, started));
       if (startedRoom.record_id) {
         await upsertWorkroom(startedRoom);
         this.applyWorkrooms?.([startedRoom]);
       }
+      await applyWorkroomAnnouncementMessage(this, started, context);
       this.workroomCreationAnnouncement = started?.announcement_message || started?.announcement || null;
       this.workroomCreationNotice = 'Workroom started in this channel.';
       this.workroomCreationOpen = false;

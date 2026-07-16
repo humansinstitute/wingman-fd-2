@@ -62,6 +62,20 @@ export function workroomAnnouncementChannelId(room) {
   return text(room?.announcement_channel_id || metadata.announcement_channel_id || room?.channel_id);
 }
 
+function workroomAnnouncementMessage(messages = [], room = {}) {
+  const messageId = workroomAnnouncementMessageId(room);
+  const threadId = workroomAnnouncementThreadId(room);
+  const roomId = text(room?.record_id);
+  return (Array.isArray(messages) ? messages : []).find((message) => {
+    if (messageId && message?.record_id === messageId) return true;
+    if (threadId && message?.pg_thread_id === threadId && !message?.parent_message_id) return true;
+    const metadata = message?.pg_metadata || message?.metadata || {};
+    if (!roomId || metadata?.workroom_id !== roomId) return false;
+    if (metadata?.kind === 'workroom_announcement') return true;
+    return threadId && metadata?.workroom_thread_id === threadId;
+  }) || null;
+}
+
 function matchesEventFilter(event, filter) {
   if (!filter || filter === 'all') return true;
   if (filter === 'pr' && (text(event?.target_type).toLowerCase() === 'pull_request' || /^pr[-#]?\d+/i.test(text(event?.target_ref)))) return true;
@@ -152,7 +166,9 @@ export const workroomDetailMixin = {
     return this.selectedWorkroomParticipants.filter((participant) => participant.access_status === 'failed' || participant.status === 'failed');
   },
   get selectedWorkroomAnnouncementMessageId() {
-    return workroomAnnouncementMessageId(this.selectedWorkroom);
+    return workroomAnnouncementMessageId(this.selectedWorkroom)
+      || workroomAnnouncementMessage(this.messages, this.selectedWorkroom)?.record_id
+      || '';
   },
   get selectedWorkroomAnnouncementThreadId() {
     return workroomAnnouncementThreadId(this.selectedWorkroom);
@@ -161,15 +177,7 @@ export const workroomDetailMixin = {
     return workroomAnnouncementChannelId(this.selectedWorkroom);
   },
   get selectedWorkroomAnnouncementMessage() {
-    const messageId = this.selectedWorkroomAnnouncementMessageId;
-    const threadId = this.selectedWorkroomAnnouncementThreadId;
-    const roomId = text(this.selectedWorkroom?.record_id);
-    return (this.messages || []).find((message) => {
-      if (messageId && message?.record_id === messageId) return true;
-      if (threadId && message?.pg_thread_id === threadId && !message?.parent_message_id) return true;
-      const metadata = message?.pg_metadata || message?.metadata || {};
-      return roomId && metadata?.workroom_id === roomId && metadata?.kind === 'workroom_announcement';
-    }) || null;
+    return workroomAnnouncementMessage(this.messages, this.selectedWorkroom);
   },
   get selectedWorkroomThreadReplies() {
     const parent = this.selectedWorkroomAnnouncementMessage;
@@ -247,7 +255,9 @@ export const workroomDetailMixin = {
     const room = this.selectedWorkroom;
     const channelId = workroomAnnouncementChannelId(room);
     const messageId = workroomAnnouncementMessageId(room);
-    if (!room?.record_id || !channelId || !messageId) {
+    const threadId = workroomAnnouncementThreadId(room);
+    const existingMessage = workroomAnnouncementMessage(this.messages, room);
+    if (!room?.record_id || !channelId || (!messageId && !threadId && !existingMessage)) {
       this.workroomDetailNotice = 'This workroom does not have a chat thread yet.';
       return null;
     }
@@ -258,11 +268,12 @@ export const workroomDetailMixin = {
     if (options.refreshMessages !== false && typeof this.refreshMessages === 'function') {
       await this.refreshMessages({ scrollToLatest: false, scrollThreadToLatest: true }).catch(() => undefined);
     }
-    const message = this.selectedWorkroomAnnouncementMessage || (this.messages || []).find((row) => row?.record_id === messageId);
+    const message = this.selectedWorkroomAnnouncementMessage || existingMessage || (this.messages || []).find((row) => row?.record_id === messageId);
     if (!message) {
       this.workroomDetailNotice = 'The workroom chat message is still loading.';
       return null;
     }
+    this.workroomDetailNotice = '';
     if (typeof this.openThread === 'function') this.openThread(message.record_id, { scrollToLatest: true, syncRoute: options.syncRoute !== false });
     return message;
   },
