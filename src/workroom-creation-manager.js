@@ -31,14 +31,76 @@ export function createWorkroomForm(overrides = {}) {
     integration_autopilot_npub: '',
     repo_url: '',
     repo_name: '',
-    integration_branch: '',
-    production_branch: 'main',
+    integration_branch: 'staging',
+    production_branch: 'deployed',
     preview_app_target: '',
     production_app_target: '',
     approval_policy: 'human_required',
     save_choices_as_channel_defaults: false,
     ...overrides,
   };
+}
+
+export function inferWorkroomRepo(value, current = {}) {
+  const input = String(value || '').trim().replace(/\/$/, '');
+  const currentUrl = String(current?.url || '').trim();
+  const currentName = String(current?.name || '').trim();
+  let url = currentUrl;
+  let name = currentName;
+  const github = input.match(/^(?:https?:\/\/)?(?:www\.)?github\.com\/([^/]+\/[^/?#]+?)(?:\.git)?(?:[/?#].*)?$/i);
+  if (github) {
+    name = github[1];
+    url = `https://github.com/${name}`;
+  } else if (/^[^/\s]+\/[^/\s]+$/.test(input)) {
+    name = input.replace(/\.git$/, '');
+    url = `https://github.com/${name}`;
+  } else if (/^https?:\/\//i.test(input)) {
+    url = input;
+    try {
+      const parsed = new URL(input);
+      if (parsed.hostname.toLowerCase().endsWith('github.com')) {
+        const parts = parsed.pathname.split('/').filter(Boolean);
+        if (parts.length >= 2) name = `${parts[0]}/${parts[1].replace(/\.git$/, '')}`;
+      }
+    } catch { /* keep the typed URL as-is */ }
+  } else if (input) {
+    name = input;
+  }
+  return { url, name };
+}
+
+export function channelParticipantFormRows(channel, getChannelParticipants, getSenderName) {
+  const npubs = typeof getChannelParticipants === 'function' ? getChannelParticipants(channel) : [];
+  const rows = [...new Set((Array.isArray(npubs) ? npubs : []).map((npub) => String(npub || '').trim()).filter(Boolean))]
+    .map((actor_npub) => ({
+      actor_npub,
+      role: 'contributor',
+      label: typeof getSenderName === 'function' ? String(getSenderName(actor_npub) || '').trim() : '',
+      lookup_query: typeof getSenderName === 'function' ? String(getSenderName(actor_npub) || '').trim() : actor_npub,
+    }));
+  return rows.length > 0 ? rows : [{ actor_npub: '', role: 'contributor', label: '', lookup_query: '' }];
+}
+
+function workroomPersonSuggestion(person, getSenderName, getSenderSecondaryLabel, getSenderAvatar) {
+  const npub = String(person || '').trim();
+  return {
+    npub,
+    label: typeof getSenderName === 'function' ? getSenderName(npub) : npub,
+    subtitle: typeof getSenderSecondaryLabel === 'function' ? getSenderSecondaryLabel(npub) : npub,
+    avatarUrl: typeof getSenderAvatar === 'function' ? getSenderAvatar(npub) : null,
+  };
+}
+
+export function workroomRepoSuggestions(channel, workrooms = []) {
+  const values = [];
+  const defaults = objectOrEmpty(channel?.metadata)?.[WORKROOM_DEFAULTS_KEY];
+  for (const source of [defaults?.repo, defaults, ...(Array.isArray(workrooms) ? workrooms : [])]) {
+    const repo = source?.repo || source;
+    const repoUrl = repo?.url || repo?.repo_url;
+    const repoName = repo?.name || repo?.repo_name;
+    if (repoUrl || repoName) values.push(inferWorkroomRepo(repoUrl || repoName, { url: repoUrl, name: repoName }));
+  }
+  return values.filter((repo, index, all) => repo.url || repo.name ? all.findIndex((candidate) => candidate.url === repo.url && candidate.name === repo.name) === index : false);
 }
 
 function objectOrEmpty(value) {
@@ -152,7 +214,17 @@ export const workroomCreationMixin = {
       this.error = 'Select a channel before creating a workroom.';
       return;
     }
-    this.workroomCreationForm = mergeWorkroomFormWithChannelDefaults(channel);
+    const form = mergeWorkroomFormWithChannelDefaults(channel);
+    form.participants = channelParticipantFormRows(channel, this.getChannelParticipants?.bind(this), this.getSenderName?.bind(this));
+    const channelMembers = new Set(form.participants.map((participant) => participant.actor_npub));
+    if (!channelMembers.has(form.integration_autopilot_npub)) form.integration_autopilot_npub = '';
+    if (form.integration_autopilot_npub) {
+      const integrationParticipant = form.participants.find((participant) => participant.actor_npub === form.integration_autopilot_npub);
+      if (integrationParticipant) integrationParticipant.role = 'integration';
+    }
+    form.integration_autopilot_query = form.integration_autopilot_npub ? this.getSenderName(form.integration_autopilot_npub) : '';
+    form.repo_query = form.repo_name || form.repo_url || '';
+    this.workroomCreationForm = form;
     this.workroomCreationError = '';
     this.workroomCreationNotice = '';
     this.workroomCreationFailedParticipants = [];
@@ -167,12 +239,74 @@ export const workroomCreationMixin = {
   },
 
   addWorkroomParticipant() {
-    this.workroomCreationForm.participants.push({ actor_npub: '', role: 'contributor', label: '' });
+    this.workroomCreationForm.participants.push({ actor_npub: '', role: 'contributor', label: '', lookup_query: '' });
   },
 
   removeWorkroomParticipant(index) {
     if (this.workroomCreationForm.participants.length <= 1) return;
     this.workroomCreationForm.participants.splice(index, 1);
+  },
+
+  workroomPeopleSuggestions(query, excludeNpubs = []) {
+    const channelNpubs = this.getChannelParticipants?.(this.selectedChannel) || [];
+    const excluded = new Set((excludeNpubs || []).filter(Boolean));
+    const needle = String(query || '').trim().toLowerCase();
+    return channelNpubs
+      .filter((npub) => !excluded.has(npub))
+      .map((npub) => workroomPersonSuggestion(npub, this.getSenderName?.bind(this), this.getSenderSecondaryLabel?.bind(this), this.getSenderAvatar?.bind(this)))
+      .filter((person) => !needle || `${person.label} ${person.subtitle} ${person.npub}`.toLowerCase().includes(needle))
+      .slice(0, 8);
+  },
+
+  workroomParticipantSuggestions(query, excludeNpubs = []) {
+    const channelSuggestions = this.workroomPeopleSuggestions(query, excludeNpubs);
+    const known = new Set(channelSuggestions.map((person) => person.npub));
+    const addressBookSuggestions = typeof this.findPeopleSuggestions === 'function'
+      ? this.findPeopleSuggestions(query, [...excludeNpubs, ...known])
+      : [];
+    return [...channelSuggestions, ...addressBookSuggestions].slice(0, 8);
+  },
+
+  selectWorkroomParticipant(index, suggestion) {
+    const participant = this.workroomCreationForm.participants[index];
+    if (!participant || !suggestion?.npub) return;
+    participant.actor_npub = suggestion.npub;
+    participant.label = suggestion.label || this.getSenderName?.(suggestion.npub) || '';
+    participant.lookup_query = participant.label;
+  },
+
+  selectWorkroomIntegration(suggestion) {
+    const npub = String(suggestion?.npub || '').trim();
+    if (!npub) return;
+    this.workroomCreationForm.integration_autopilot_npub = npub;
+    this.workroomCreationForm.integration_autopilot_query = suggestion.label || this.getSenderName?.(npub) || npub;
+    let participant = this.workroomCreationForm.participants.find((row) => row.actor_npub === npub);
+    if (!participant) {
+      participant = { actor_npub: npub, role: 'integration', label: suggestion.label || '', lookup_query: suggestion.label || '' };
+      this.workroomCreationForm.participants.push(participant);
+    }
+    participant.role = 'integration';
+    participant.label = participant.label || suggestion.label || this.getSenderName?.(npub) || '';
+  },
+
+  get workroomCreationRepoSuggestions() {
+    return workroomRepoSuggestions(this.selectedChannel, this.workrooms);
+  },
+
+  selectWorkroomRepo(value) {
+    const repo = inferWorkroomRepo(value);
+    this.workroomCreationForm.repo_url = repo.url;
+    this.workroomCreationForm.repo_name = repo.name;
+    this.workroomCreationForm.repo_query = repo.name || repo.url || '';
+  },
+
+  get workroomCreationAppTargets() {
+    const rows = typeof this.visiblePersonalWapps !== 'undefined' ? this.visiblePersonalWapps : this.wapps;
+    return (Array.isArray(rows) ? rows : []).filter((wapp) => wapp?.launch_url).map((wapp) => ({
+      value: wapp.launch_url || wapp.record_id,
+      label: wapp.title || wapp.launch_url || wapp.record_id,
+      subtitle: wapp.launch_url,
+    }));
   },
 
   async createWorkroom({ start = false } = {}) {

@@ -19145,16 +19145,26 @@ button:disabled {
 .workroom-create-trigger:disabled { opacity: 0.45; cursor: default; }
 .workroom-started-notice { display: flex; flex-wrap: wrap; gap: 0.25rem 0.55rem; align-items: center; padding: 0.55rem 0.8rem; border-bottom: 1px solid #bfdbfe; background: #eff6ff; color: #1e3a8a; font-size: 0.8rem; }
 .workroom-started-notice a { color: #1d4ed8; overflow-wrap: anywhere; }
-.workroom-create-modal { width: min(760px, calc(100vw - 2rem)); max-height: min(90vh, 780px); overflow-y: auto; }
+.workroom-create-modal { width: min(80vw, 1180px); max-height: min(90vh, 900px); overflow-y: auto; padding: 1.35rem 1.5rem 1.15rem; box-sizing: border-box; }
 .workroom-create-header { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
 .workroom-create-header h2 { margin: 0; }
 .workroom-create-header p { margin: 0.25rem 0 0; color: #64748b; font-size: 0.8rem; }
 .workroom-create-error { padding: 0.6rem 0.75rem; border-radius: 6px; background: #fef2f2; color: #b91c1c; font-size: 0.82rem; }
-.workroom-create-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.8rem; margin-top: 1rem; }
+.workroom-create-sections { display: grid; gap: 1rem; margin-top: 1.2rem; }
+.workroom-create-section { padding: 1rem; border: 1px solid var(--border); border-radius: 10px; background: #f8fafc; }
+.workroom-create-section h3 { margin: 0 0 0.8rem; color: #1e293b; font-size: 0.9rem; }
+.workroom-create-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.8rem; }
 .workroom-create-grid label, .workroom-participants { display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; }
 .workroom-create-grid label > span, .workroom-field-heading > span { color: #475569; font-size: 0.74rem; font-weight: 700; }
 .workroom-create-grid input, .workroom-create-grid textarea, .workroom-create-grid select, .workroom-participant-row input, .workroom-participant-row select { width: 100%; min-height: 36px; box-sizing: border-box; border: 1px solid var(--border); border-radius: 6px; padding: 0.45rem 0.55rem; background: #fff; color: var(--text); font: inherit; }
 .workroom-create-grid textarea { resize: vertical; }
+.workroom-create-help, .workroom-inferred-value { margin: -0.35rem 0 0.75rem; color: #64748b; font-size: 0.76rem; }
+.workroom-create-section small { color: #64748b; font-weight: 400; }
+.workroom-typeahead-field { position: relative; }
+.workroom-typeahead-menu { position: absolute; z-index: 5; top: calc(100% + 2px); left: 0; right: 0; display: grid; gap: 2px; max-height: 220px; overflow-y: auto; padding: 0.25rem; border: 1px solid var(--border); border-radius: 7px; background: #fff; box-shadow: 0 8px 20px rgb(15 23 42 / 14%); }
+.workroom-typeahead-menu button { display: grid; gap: 0.1rem; padding: 0.45rem 0.55rem; border: 0; border-radius: 5px; background: transparent; text-align: left; color: var(--text); }
+.workroom-typeahead-menu button:hover { background: #eff6ff; }
+.workroom-typeahead-menu small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workroom-create-wide { grid-column: 1 / -1; }
 .workroom-field-heading { display: flex; justify-content: space-between; align-items: center; }
 .workroom-participant-row { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(130px, 0.8fr) minmax(0, 1fr) 30px; gap: 0.45rem; }
@@ -19236,6 +19246,7 @@ button:disabled {
 .workroom-blockers-panel p { display: grid; gap: .15rem; margin: .35rem 0; color: #9a3412; font-size: .78rem; }
 @media (max-width: 720px) { .workroom-browser-header, .workroom-detail-header { align-items: flex-start; flex-direction: column; } .workroom-browser-actions { flex-wrap: wrap; width: 100%; } .workroom-browser-actions input { flex: 1; min-width: 150px; } .workroom-detail-grid, .workroom-detail-overview dl { grid-template-columns: 1fr; } .workroom-detail-overview, .workroom-timeline-panel, .workroom-blockers-panel { grid-column: auto; } }
 @media (max-width: 620px) {
+  .workroom-create-modal { width: calc(100vw - 1rem); padding: 1rem; }
   .workroom-create-grid { grid-template-columns: 1fr; }
   .workroom-create-wide { grid-column: auto; }
   .workroom-participant-row { grid-template-columns: 1fr 1fr 30px; }
