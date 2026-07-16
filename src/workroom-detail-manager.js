@@ -217,10 +217,7 @@ export const workroomDetailMixin = {
     const id = text(workroomId);
     if (!id) return;
     this.activeWorkroomId = id;
-    this.workroomDetailMode = options.mode || 'view';
-    if (this.workroomDetailMode === 'view' && options.switchView !== false) {
-      this.navSection = 'flight-deck';
-    }
+    if (options.switchView !== false) this.navSection = 'status';
     this.workroomDetailOpen = true;
     this.workroomDetailLoading = true;
     this.workroomError = '';
@@ -237,12 +234,12 @@ export const workroomDetailMixin = {
     }
   },
 
-  closeWorkroomDetail() {
+  closeWorkroomDetail(options = {}) {
     if (this.workroomDetailLoading) return;
     this.workroomDetailOpen = false;
-    this.workroomDetailMode = 'view';
     this.activeWorkroomId = '';
     this.workroomError = '';
+    if (typeof this.syncRoute === 'function' && options.syncRoute !== false) this.syncRoute();
   },
 
   async openSelectedWorkroomThread(options = {}) {
@@ -363,7 +360,6 @@ export function createWorkroomDetailState() {
     workroomArchiveView: false,
     workroomListQuery: '',
     workroomDetailOpen: false,
-    workroomDetailMode: 'view',
     activeWorkroomId: '',
     workroomDetailLoading: false,
     workroomError: '',

@@ -3,10 +3,11 @@ import { normalizeEnabledFlightDeckSection } from './disabled-surfaces.js';
 export const KNOWN_PAGES = new Set([
   'flight-deck', 'notifications', 'status', 'tasks',
   'chat', 'docs', 'files', 'reports', 'opportunities', 'people', 'settings',
+  'workrooms',
 ]);
 
 export function pageToSection(page) {
-  if (page === 'flight-deck' || page === 'notifications' || page === 'status') return 'status';
+  if (page === 'flight-deck' || page === 'notifications' || page === 'status' || page === 'workrooms') return 'status';
   if (KNOWN_PAGES.has(page)) return normalizeEnabledFlightDeckSection(page);
   return null;
 }
@@ -21,13 +22,17 @@ export function pageToSection(page) {
  * @returns {string} pathname + search string
  */
 export function buildSectionUrl({ workspaceSlug, section, scopeid, params } = {}) {
+  const workroomId = params?.workroomid || params?.workroomId || null;
   const page = section === 'status' ? 'flight-deck' : section;
-  const pathname = workspaceSlug ? `/${workspaceSlug}/${page}` : `/${page}`;
+  const pathname = workroomId && (section === 'status' || section === 'flight-deck')
+    ? `${workspaceSlug ? `/${workspaceSlug}` : ''}/workrooms/${encodeURIComponent(workroomId)}`
+    : (workspaceSlug ? `/${workspaceSlug}/${page}` : `/${page}`);
 
   const searchParams = new URLSearchParams();
   if (scopeid) searchParams.set('scopeid', scopeid);
   if (params) {
     for (const [key, value] of Object.entries(params)) {
+      if (key === 'workroomid' || key === 'workroomId') continue;
       if (value) searchParams.set(key, value);
     }
   }
@@ -46,6 +51,7 @@ export function parseRouteLocation(href) {
 
   let workspaceSlug = null;
   let section = 'status';
+  let pathWorkroomId = null;
 
   if (segments.length === 0) {
     // Root path: /
@@ -57,11 +63,19 @@ export function parseRouteLocation(href) {
     } else {
       workspaceSlug = segments[0];
     }
+  } else if (segments[0] === 'workrooms') {
+    // Backward-compatible bare workroom detail route: /workrooms/<id>
+    section = 'status';
+    pathWorkroomId = segments[1] ? decodeURIComponent(segments[1]) : null;
   } else {
     // /<slug>/<page>
     workspaceSlug = segments[0];
     const mapped = pageToSection(segments[1]);
     if (mapped) section = mapped;
+    if (segments[1] === 'workrooms') {
+      section = 'status';
+      pathWorkroomId = segments[2] ? decodeURIComponent(segments[2]) : null;
+    }
   }
 
   return {
@@ -80,6 +94,7 @@ export function parseRouteLocation(href) {
       reportid: url.searchParams.get('reportid') || null,
       opportunityid: url.searchParams.get('opportunityid') || null,
       taskid: url.searchParams.get('taskid') || null,
+      workroomid: pathWorkroomId || url.searchParams.get('workroomid') || null,
       view: url.searchParams.get('view') || null,
       sort: url.searchParams.get('sort') || null,
       workspacekey: url.searchParams.get('workspacekey') || null,

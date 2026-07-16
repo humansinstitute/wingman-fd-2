@@ -628,6 +628,13 @@ export function createShellState(options = {}) {
     getRoutePath(section = this.navSection) {
       const slug = this.currentWorkspaceSlug;
       const enabledSection = normalizeEnabledFlightDeckSection(section);
+      if (
+        enabledSection === 'status'
+        && this.workroomDetailOpen
+        && this.activeWorkroomId
+      ) {
+        return `/${slug}/workrooms/${encodeURIComponent(this.activeWorkroomId)}`;
+      }
       const page = (() => {
         switch (enabledSection) {
           case 'status': return 'flight-deck';
@@ -659,10 +666,6 @@ export function createShellState(options = {}) {
       if (this.navSection === 'chat') {
         if (this.selectedChannelId) url.searchParams.set('channelid', this.selectedChannelId);
         if (this.activeThreadId) url.searchParams.set('threadid', this.activeThreadId);
-      } else if (this.navSection === 'flight-deck') {
-        if (this.activeWorkroomId && this.workroomDetailOpen && this.workroomDetailMode === 'view') {
-          url.searchParams.set('workroomid', this.activeWorkroomId);
-        }
       } else if (this.navSection === 'docs') {
         if (this.currentFolderId) url.searchParams.set('folderid', this.currentFolderId);
         if (this.selectedDocType === 'document' && this.selectedDocId) {
@@ -756,11 +759,11 @@ export function createShellState(options = {}) {
             this.selectedChannelId = null;
             this.closeThread({ syncRoute: false });
           }
-        } else if (this.navSection === 'flight-deck') {
+        } else if (this.navSection === 'status') {
           if (route.params.workroomid && typeof this.openWorkroomDetail === 'function') {
-            await this.openWorkroomDetail(route.params.workroomid, { mode: 'view', syncRoute: false });
-          } else if (this.workroomDetailOpen && this.workroomDetailMode === 'view') {
-            this.closeWorkroomDetail();
+            await this.openWorkroomDetail(route.params.workroomid, { syncRoute: false });
+          } else if (this.workroomDetailOpen) {
+            this.closeWorkroomDetail({ syncRoute: false });
           }
         } else if (this.navSection === 'docs') {
           this.selectedDocCommentId = route.params.commentid || null;
@@ -810,6 +813,9 @@ export function createShellState(options = {}) {
         this.clearInactiveSectionData(section);
       }
       this.navSection = section;
+      if (section === 'status' && this.workroomDetailOpen && options.preserveWorkroom !== true) {
+        this.closeWorkroomDetail?.({ syncRoute: false });
+      }
       this.mobileNavOpen = false;
       this.showWorkspaceSwitcherMenu = false;
       if (section === 'chat' || section === 'docs') {

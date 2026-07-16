@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { slugify, findWorkspaceById, findWorkspaceBySlug, normalizeWorkspaceEntry } from '../src/workspaces.js';
-import { parseRouteLocation } from '../src/route-helpers.js';
+import { buildSectionUrl, parseRouteLocation } from '../src/route-helpers.js';
 
 describe('slugify', () => {
   it('converts a workspace name to a URL-safe slug', () => {
@@ -135,6 +135,21 @@ describe('parseRouteLocation', () => {
     expect(route.workspaceSlug).toBe('be-free');
   });
 
+  it('parses workroom detail page routes as flight deck page state', () => {
+    const route = parseRouteLocation(`${base}/be-free/workrooms/room-123?scopeid=scope-1`);
+    expect(route.section).toBe('status');
+    expect(route.workspaceSlug).toBe('be-free');
+    expect(route.params.workroomid).toBe('room-123');
+    expect(route.params.scopeid).toBe('scope-1');
+  });
+
+  it('parses bare workroom detail routes for backward-compatible links', () => {
+    const route = parseRouteLocation(`${base}/workrooms/room-456`);
+    expect(route.section).toBe('status');
+    expect(route.workspaceSlug).toBeNull();
+    expect(route.params.workroomid).toBe('room-456');
+  });
+
   it('maps notifications page to status section', () => {
     const route = parseRouteLocation(`${base}/be-free/notifications`);
     expect(route.section).toBe('status');
@@ -252,5 +267,18 @@ describe('parseRouteLocation', () => {
     const route = parseRouteLocation(`${base}/be-free/docs/`);
     expect(route.workspaceSlug).toBe('be-free');
     expect(route.section).toBe('docs');
+  });
+});
+
+describe('buildSectionUrl', () => {
+  it('builds canonical workroom page routes without query-param workroom ids', () => {
+    const url = buildSectionUrl({
+      workspaceSlug: 'be-free',
+      section: 'status',
+      scopeid: 'scope-1',
+      params: { workroomid: 'room-123' },
+    });
+
+    expect(url).toBe('/be-free/workrooms/room-123?scopeid=scope-1');
   });
 });

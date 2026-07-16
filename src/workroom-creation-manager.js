@@ -438,7 +438,7 @@ export const workroomCreationMixin = {
       if (typeof this.refreshMessages === 'function') await this.refreshMessages({ scrollToLatest: true });
       await this.refreshWorkrooms({ immediate: true });
       if (startedRoom.record_id && typeof this.openWorkroomDetail === 'function') {
-        await this.openWorkroomDetail(startedRoom.record_id, { mode: 'view', openThread: true });
+        await this.openWorkroomDetail(startedRoom.record_id, { openThread: true });
       }
     } catch (error) {
       this.workroomError = 'Could not start this workroom. Retry when Tower is available.';
