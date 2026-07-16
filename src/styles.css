@@ -7103,7 +7103,7 @@ button:disabled {
   resize: none;
   outline: none;
   line-height: 1.4;
-  min-height: calc(1.4em + 1.2rem + 2px);
+  min-height: calc((2 * 42px) + 0.5rem);
   max-height: calc((5 * 1.4em) + 1.2rem + 2px);
   overflow-y: hidden;
   background: var(--surface);
@@ -7132,6 +7132,7 @@ button:disabled {
 
 .chat-input-actions {
   display: flex;
+  flex-direction: column;
   gap: 0.5rem;
   align-items: flex-end;
   flex-shrink: 0;
@@ -12652,7 +12653,7 @@ button:disabled {
   .chat-input-bar .chat-input {
     align-self: flex-end;
     min-width: 0;
-    min-height: calc((2 * 40px) + 0.5rem);
+    min-height: calc((2 * 42px) + 0.5rem);
     width: auto;
   }
 
