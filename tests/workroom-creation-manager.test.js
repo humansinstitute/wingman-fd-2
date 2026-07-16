@@ -48,7 +48,10 @@ describe('workroom creation flow helpers', () => {
       preview_app_target: 'preview-123',
       production_app_target: 'prod-123',
       approval_policy: 'human_required',
-      participants: [{ actor_npub: 'npub-human', role: 'human_approver', label: 'Pete' }],
+      participants: [
+        { actor_npub: 'npub-human', role: 'human_approver', label: 'Pete' },
+        { actor_npub: 'npub-integration', role: 'integration', label: 'Autopilot' },
+      ],
     }), { scopeId: 'scope-1', channelId: 'channel-1' });
     expect(payload).toMatchObject({
       scope_id: 'scope-1',
@@ -57,7 +60,11 @@ describe('workroom creation flow helpers', () => {
       branches: { integration: 'feature/release', production: 'main' },
       app_targets: { preview: 'preview-123', production: 'prod-123' },
       approval_policy: { mode: 'human_required' },
-      participants: [{ actor_npub: 'npub-human', role: 'human_approver', kind: 'human' }],
+      integration_autopilot_npub: 'npub-integration',
+      participants: [
+        { actor_npub: 'npub-human', role: 'human_approver', kind: 'human' },
+        { actor_npub: 'npub-integration', role: 'integration', kind: 'human' },
+      ],
     });
   });
 
@@ -79,28 +86,31 @@ describe('workroom creation flow helpers', () => {
       (npub) => npub === 'npub-a' ? 'Alice' : 'Bob',
     );
     expect(rows).toEqual([
-      { actor_npub: 'npub-a', role: 'contributor', label: 'Alice', lookup_query: 'Alice' },
-      { actor_npub: 'npub-b', role: 'contributor', label: 'Bob', lookup_query: 'Bob' },
+      { actor_npub: 'npub-a', role: 'contributor', label: 'Alice' },
+      { actor_npub: 'npub-b', role: 'contributor', label: 'Bob' },
     ]);
+    expect(channelParticipantFormRows({}, () => [])).toEqual([]);
   });
 
-  it('limits integration selection to channel members and assigns the integration role', () => {
+  it('prefills the channel roster and assigns one integration role', () => {
     const store = {
       selectedChannel: { record_id: 'channel-1', participant_npubs: ['npub-a', 'npub-b'] },
-      workroomCreationForm: createWorkroomForm({ participants: [
-        { actor_npub: 'npub-a', role: 'contributor', label: 'Alice' },
-      ] }),
+      workroomCreationForm: createWorkroomForm(),
       getChannelParticipants: (channel) => channel.participant_npubs,
       getSenderName: (npub) => npub === 'npub-b' ? 'Bob' : 'Alice',
-      getSenderSecondaryLabel: () => '',
-      getSenderAvatar: () => null,
     };
     Object.assign(store, workroomCreationMixin);
-    const suggestions = store.workroomPeopleSuggestions('Bob');
-    expect(suggestions.map((person) => person.npub)).toEqual(['npub-b']);
-    store.selectWorkroomIntegration(suggestions[0]);
-    expect(store.workroomCreationForm).toMatchObject({ integration_autopilot_npub: 'npub-b' });
-    expect(store.workroomCreationForm.participants).toContainEqual(expect.objectContaining({ actor_npub: 'npub-b', role: 'integration' }));
+    store.openWorkroomCreation();
+    expect(store.workroomCreationForm.participants).toEqual([
+      { actor_npub: 'npub-a', role: 'contributor', label: 'Alice' },
+      { actor_npub: 'npub-b', role: 'contributor', label: 'Bob' },
+    ]);
+    store.setWorkroomParticipantRole(1, 'integration');
+    expect(store.workroomCreationForm.integration_autopilot_npub).toBe('npub-b');
+    store.setWorkroomParticipantRole(0, 'integration');
+    expect(store.workroomCreationForm.participants[0].role).toBe('integration');
+    expect(store.workroomCreationForm.participants[1].role).toBe('contributor');
+    expect(store.workroomCreationForm.integration_autopilot_npub).toBe('npub-a');
   });
 
   it('prioritizes channel defaults and existing workroom repositories', () => {

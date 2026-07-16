@@ -76,19 +76,8 @@ export function channelParticipantFormRows(channel, getChannelParticipants, getS
       actor_npub,
       role: 'contributor',
       label: typeof getSenderName === 'function' ? String(getSenderName(actor_npub) || '').trim() : '',
-      lookup_query: typeof getSenderName === 'function' ? String(getSenderName(actor_npub) || '').trim() : actor_npub,
     }));
-  return rows.length > 0 ? rows : [{ actor_npub: '', role: 'contributor', label: '', lookup_query: '' }];
-}
-
-function workroomPersonSuggestion(person, getSenderName, getSenderSecondaryLabel, getSenderAvatar) {
-  const npub = String(person || '').trim();
-  return {
-    npub,
-    label: typeof getSenderName === 'function' ? getSenderName(npub) : npub,
-    subtitle: typeof getSenderSecondaryLabel === 'function' ? getSenderSecondaryLabel(npub) : npub,
-    avatarUrl: typeof getSenderAvatar === 'function' ? getSenderAvatar(npub) : null,
-  };
+  return rows;
 }
 
 export function workroomRepoSuggestions(channel, workrooms = []) {
@@ -136,12 +125,13 @@ export function buildWorkroomCreatePayload(form, { scopeId, channelId } = {}) {
       label: String(participant?.label || '').trim() || null,
     }))
     .filter((participant) => participant.actor_npub);
+  const integrationParticipant = participants.find((participant) => participant.role === 'integration');
   return {
     scope_id: scopeId || null,
     channel_id: channelId || null,
     title: String(form?.title || '').trim(),
     goal: String(form?.goal || '').trim(),
-    integration_autopilot_npub: String(form?.integration_autopilot_npub || '').trim() || null,
+    integration_autopilot_npub: integrationParticipant?.actor_npub || null,
     repo: {
       url: String(form?.repo_url || '').trim() || null,
       name: String(form?.repo_name || '').trim() || null,
@@ -216,13 +206,7 @@ export const workroomCreationMixin = {
     }
     const form = mergeWorkroomFormWithChannelDefaults(channel);
     form.participants = channelParticipantFormRows(channel, this.getChannelParticipants?.bind(this), this.getSenderName?.bind(this));
-    const channelMembers = new Set(form.participants.map((participant) => participant.actor_npub));
-    if (!channelMembers.has(form.integration_autopilot_npub)) form.integration_autopilot_npub = '';
-    if (form.integration_autopilot_npub) {
-      const integrationParticipant = form.participants.find((participant) => participant.actor_npub === form.integration_autopilot_npub);
-      if (integrationParticipant) integrationParticipant.role = 'integration';
-    }
-    form.integration_autopilot_query = form.integration_autopilot_npub ? this.getSenderName(form.integration_autopilot_npub) : '';
+    form.integration_autopilot_npub = '';
     form.repo_query = form.repo_name || form.repo_url || '';
     this.workroomCreationForm = form;
     this.workroomCreationError = '';
@@ -238,55 +222,18 @@ export const workroomCreationMixin = {
     this.workroomCreationError = '';
   },
 
-  addWorkroomParticipant() {
-    this.workroomCreationForm.participants.push({ actor_npub: '', role: 'contributor', label: '', lookup_query: '' });
-  },
-
-  removeWorkroomParticipant(index) {
-    if (this.workroomCreationForm.participants.length <= 1) return;
-    this.workroomCreationForm.participants.splice(index, 1);
-  },
-
-  workroomPeopleSuggestions(query, excludeNpubs = []) {
-    const channelNpubs = this.getChannelParticipants?.(this.selectedChannel) || [];
-    const excluded = new Set((excludeNpubs || []).filter(Boolean));
-    const needle = String(query || '').trim().toLowerCase();
-    return channelNpubs
-      .filter((npub) => !excluded.has(npub))
-      .map((npub) => workroomPersonSuggestion(npub, this.getSenderName?.bind(this), this.getSenderSecondaryLabel?.bind(this), this.getSenderAvatar?.bind(this)))
-      .filter((person) => !needle || `${person.label} ${person.subtitle} ${person.npub}`.toLowerCase().includes(needle))
-      .slice(0, 8);
-  },
-
-  workroomParticipantSuggestions(query, excludeNpubs = []) {
-    const channelSuggestions = this.workroomPeopleSuggestions(query, excludeNpubs);
-    const known = new Set(channelSuggestions.map((person) => person.npub));
-    const addressBookSuggestions = typeof this.findPeopleSuggestions === 'function'
-      ? this.findPeopleSuggestions(query, [...excludeNpubs, ...known])
-      : [];
-    return [...channelSuggestions, ...addressBookSuggestions].slice(0, 8);
-  },
-
-  selectWorkroomParticipant(index, suggestion) {
-    const participant = this.workroomCreationForm.participants[index];
-    if (!participant || !suggestion?.npub) return;
-    participant.actor_npub = suggestion.npub;
-    participant.label = suggestion.label || this.getSenderName?.(suggestion.npub) || '';
-    participant.lookup_query = participant.label;
-  },
-
-  selectWorkroomIntegration(suggestion) {
-    const npub = String(suggestion?.npub || '').trim();
-    if (!npub) return;
-    this.workroomCreationForm.integration_autopilot_npub = npub;
-    this.workroomCreationForm.integration_autopilot_query = suggestion.label || this.getSenderName?.(npub) || npub;
-    let participant = this.workroomCreationForm.participants.find((row) => row.actor_npub === npub);
-    if (!participant) {
-      participant = { actor_npub: npub, role: 'integration', label: suggestion.label || '', lookup_query: suggestion.label || '' };
-      this.workroomCreationForm.participants.push(participant);
+  setWorkroomParticipantRole(index, role) {
+    const participant = this.workroomCreationForm.participants?.[index];
+    if (!participant) return;
+    participant.role = String(role || 'contributor');
+    if (participant.role === 'integration') {
+      for (const [candidateIndex, candidate] of this.workroomCreationForm.participants.entries()) {
+        if (candidateIndex !== index && candidate.role === 'integration') candidate.role = 'contributor';
+      }
+      this.workroomCreationForm.integration_autopilot_npub = participant.actor_npub;
+    } else if (this.workroomCreationForm.integration_autopilot_npub === participant.actor_npub) {
+      this.workroomCreationForm.integration_autopilot_npub = '';
     }
-    participant.role = 'integration';
-    participant.label = participant.label || suggestion.label || this.getSenderName?.(npub) || '';
   },
 
   get workroomCreationRepoSuggestions() {

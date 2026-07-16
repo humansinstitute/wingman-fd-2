@@ -19222,8 +19222,11 @@ button:disabled {
 .workroom-typeahead-menu small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workroom-create-wide { grid-column: 1 / -1; }
 .workroom-field-heading { display: flex; justify-content: space-between; align-items: center; }
-.workroom-participant-row { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(130px, 0.8fr) minmax(0, 1fr) 30px; gap: 0.45rem; }
-.workroom-remove-participant { border: 0; background: transparent; color: #64748b; font-size: 1.2rem; }
+.workroom-participant-roster { display: grid; gap: 0.45rem; }
+.workroom-participant-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, 0.45fr); gap: 0.65rem; align-items: center; padding: 0.5rem 0.6rem; border: 1px solid var(--border); border-radius: 7px; background: #fff; }
+.workroom-participant-identity { display: grid; gap: 0.1rem; min-width: 0; }
+.workroom-participant-identity strong, .workroom-participant-identity small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workroom-participant-identity small { color: #64748b; font-size: 0.72rem; }
 .workroom-defaults-check { display: flex; flex-direction: row !important; align-items: center; margin-top: 1rem; color: #475569; font-size: 0.82rem; }
 .workroom-failed-warning { display: grid; gap: 0.2rem; margin-top: 0.85rem; padding: 0.7rem 0.8rem; border: 1px solid #fbbf24; border-radius: 6px; background: #fffbeb; color: #92400e; font-size: 0.8rem; }
 .workroom-failed-warning ul { margin: 0.25rem 0 0 1.1rem; padding: 0; }
