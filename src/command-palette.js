@@ -19,6 +19,7 @@ const COMMAND_GROUP_LABELS = Object.freeze({
   thread: 'Chat threads',
   command: 'Commands',
   report: 'Flight Deck',
+  workroom: 'Workrooms',
 });
 
 const COMMAND_GROUP_ORDER = Object.freeze([
@@ -30,6 +31,7 @@ const COMMAND_GROUP_ORDER = Object.freeze([
   'thread',
   'command',
   'report',
+  'workroom',
 ]);
 
 const MAX_GROUP_RESULTS = 8;
@@ -458,6 +460,9 @@ export const commandPaletteMixin = {
       const [reports] = await Promise.all([
         isFlightDeckSurfaceDisabled('reports') ? [] : getReportsByOwner(ownerNpub),
       ]);
+      const workrooms = typeof this.loadWorkroomRowsForPalette === 'function'
+        ? await this.loadWorkroomRowsForPalette()
+        : [];
       const channelMessages = await Promise.all(
         channels.map((channel) => getMessagesByChannel(channel.record_id)),
       );
@@ -469,6 +474,7 @@ export const commandPaletteMixin = {
         reports,
         scopes,
         messages: channelMessages.flat(),
+        workrooms,
       });
     } finally {
       this.commandPaletteLoading = false;
@@ -547,6 +553,25 @@ export const commandPaletteMixin = {
         scopeId: scopeIdFromRecord(channel),
         updatedTs: recordUpdatedTs(channel),
         searchText: compactText([channel.description, channel.label]),
+      }));
+    }
+
+    for (const entry of records.workrooms || []) {
+      const room = entry.room || entry;
+      const participants = entry.participants || [];
+      const events = entry.events || [];
+      const links = entry.links || [];
+      items.push(buildItem({
+        id: `workroom:${room.record_id}`,
+        group: 'workroom',
+        title: room.title || 'Untitled workroom',
+        subtitle: `${room.status || 'draft'}${room.repo?.name ? ` · ${room.repo.name}` : ''}`,
+        action: 'open-workroom',
+        recordId: room.record_id,
+        scopeId: scopeIdFromRecord(room),
+        updatedTs: recordUpdatedTs(room),
+        icon: 'flightdeck',
+        searchText: JSON.stringify({ room, participants, events, links }),
       }));
     }
 
@@ -679,6 +704,9 @@ export const commandPaletteMixin = {
         this.navigateTo('status', { syncRoute: false });
         this.openReportModalById?.(item.recordId);
         this.syncRoute();
+        return;
+      case 'open-workroom':
+        await this.openWorkroomDetail?.(item.recordId);
         return;
       default:
     }
