@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-sclVII32.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-BotMfn9J.css">
+  <script type="module" crossorigin src="/assets/index-D9mx4iTX.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-DaGeN5VD.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -3261,6 +3261,11 @@
 
           <div class="chat-layout" :class="{ 'chat-layout-thread-full': $store.chat.activeThreadId && $store.chat.threadSize === 'full', 'chat-layout-thread-open': !!$store.chat.activeThreadId }">
             <div class="chat-main">
+              <div class="workroom-started-notice" x-show="$store.chat.workroomCreationNotice" x-cloak>
+                <span x-text="$store.chat.workroomCreationNotice"></span>
+                <span x-show="$store.chat.workroomCreationAnnouncement?.body" x-text="$store.chat.workroomCreationAnnouncement?.body"></span>
+                <a x-show="$store.chat.workroomCreationAnnouncementHref" :href="$store.chat.workroomCreationAnnouncementHref" target="_blank" rel="noreferrer" x-text="$store.chat.workroomCreationAnnouncementHref"></a>
+              </div>
               <div class="chat-feed" data-chat-feed @scroll.passive="$store.chat.updateChatFeedLoadMoreVisibility($event.target)">
                 <template x-if="!$store.chat.selectedChannelId">
                   <div class="chat-empty">Select or create a channel to start chatting.</div>
@@ -3424,6 +3429,7 @@
                   @drop.prevent="$store.chat.handleChatFileDrop($event, 'message')"
                 ></textarea>
                 <div class="chat-input-actions">
+                  <button class="workroom-create-trigger" type="button" @click="$store.chat.openWorkroomCreation()" :disabled="!$store.chat.isTowerPgMode || !$store.chat.selectedChannelId" title="Create native workroom">Workroom</button>
                   <button class="audio-trigger-btn" type="button" @click="$store.chat.openAudioRecorder('chat')" title="Record voice note"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg></button>
                   <button class="chat-send-btn-text" @click="$store.chat.sendMessage()" :disabled="((!$store.chat.messageInput.trim() && $store.chat.messageAudioDrafts.length === 0) || $store.chat.messageImageUploadCount > 0)">Send</button>
                 </div>
@@ -5760,6 +5766,29 @@
               </div>
             </form>
           </div>
+        </div>
+
+        <div class="doc-modal-backdrop" x-show="$store.chat.workroomCreationOpen" x-cloak @click.self="$store.chat.closeWorkroomCreation()" @keydown.escape.window="$store.chat.workroomCreationOpen && $store.chat.closeWorkroomCreation()">
+          <section class="doc-modal-card workroom-create-modal" role="dialog" aria-modal="true" aria-labelledby="workroom-create-title">
+            <div class="workroom-create-header"><div><h2 id="workroom-create-title">Create native workroom</h2><p x-text="$store.chat.selectedChannel ? `From #${$store.chat.getChannelLabel($store.chat.selectedChannel)}` : ''"></p></div><button type="button" class="doc-modal-close" @click="$store.chat.closeWorkroomCreation()" aria-label="Close">&times;</button></div>
+            <p class="workroom-create-error" x-show="$store.chat.workroomCreationError" x-text="$store.chat.workroomCreationError"></p>
+            <div class="workroom-create-grid">
+              <label><span>Title</span><input type="text" x-model="$store.chat.workroomCreationForm.title" placeholder="Release workroom"></label>
+              <label class="workroom-create-wide"><span>Goal</span><textarea rows="2" x-model="$store.chat.workroomCreationForm.goal" placeholder="What should this room deliver?"></textarea></label>
+              <label><span>Integration Autopilot</span><input type="text" x-model="$store.chat.workroomCreationForm.integration_autopilot_npub" placeholder="npub…"></label>
+              <label><span>GitHub repo URL</span><input type="url" x-model="$store.chat.workroomCreationForm.repo_url" placeholder="https://github.com/org/repo"></label>
+              <label><span>Repo name</span><input type="text" x-model="$store.chat.workroomCreationForm.repo_name" placeholder="org/repo"></label>
+              <label><span>Integration branch</span><input type="text" x-model="$store.chat.workroomCreationForm.integration_branch" placeholder="feature/workroom"></label>
+              <label><span>Production branch</span><input type="text" x-model="$store.chat.workroomCreationForm.production_branch" placeholder="main"></label>
+              <label><span>Preview app target</span><input type="text" x-model="$store.chat.workroomCreationForm.preview_app_target" placeholder="Autopilot app or URL"></label>
+              <label><span>Production app target</span><input type="text" x-model="$store.chat.workroomCreationForm.production_app_target" placeholder="Autopilot app or URL"></label>
+              <label><span>Approval policy</span><select x-model="$store.chat.workroomCreationForm.approval_policy"><option value="human_required">Human approval required</option><option value="team_required">Team approval required</option><option value="none">No approval</option></select></label>
+              <div class="workroom-participants workroom-create-wide"><div class="workroom-field-heading"><span>Participants and roles</span><button type="button" class="btn-secondary" @click="$store.chat.addWorkroomParticipant()">Add participant</button></div><template x-for="(participant, index) in $store.chat.workroomCreationForm.participants" :key="index"><div class="workroom-participant-row"><input type="text" x-model="participant.actor_npub" placeholder="Participant npub"><select x-model="participant.role"><template x-for="role in $store.chat.workroomRoleOptions" :key="role.value"><option :value="role.value" x-text="role.label"></option></template></select><input type="text" x-model="participant.label" placeholder="Label (optional)"><button type="button" class="workroom-remove-participant" @click="$store.chat.removeWorkroomParticipant(index)" aria-label="Remove participant">&times;</button></div></template></div>
+            </div>
+            <label class="workroom-defaults-check"><input type="checkbox" x-model="$store.chat.workroomCreationForm.save_choices_as_channel_defaults"> Save these integration choices as channel defaults</label>
+            <div class="workroom-failed-warning" x-show="$store.chat.workroomCreationFailedParticipants.length > 0"><strong>Access warning</strong><span>Some intended participants could not be involved:</span><ul><template x-for="participant in $store.chat.workroomCreationFailedParticipants" :key="participant.id || participant.actor_npub"><li x-text="`${participant.actor_npub}: ${participant.access_issue || 'access failed'}`"></li></template></ul></div>
+            <div class="new-doc-modal-actions"><button type="button" class="btn-cancel" @click="$store.chat.closeWorkroomCreation()">Cancel</button><button type="button" class="btn-confirm" @click="$store.chat.createAndStartWorkroom()" :disabled="$store.chat.workroomCreationSubmitting" x-text="$store.chat.workroomCreationSubmitting ? 'Starting…' : 'Create and start'"></button></div>
+          </section>
         </div>
 
 

@@ -285,6 +285,7 @@ import {
   parsePgTaskBoardId,
 } from './pg-record-context.js';
 import { createTowerPgFileFromLocal } from './pg-write-adapter.js';
+import { createWorkroomCreationState, workroomCreationMixin } from './workroom-creation-manager.js';
 
 // Constants UNSCOPED_TASK_BOARD_ID, WEEKDAY_OPTIONS imported from task-board-state.js
 
@@ -487,6 +488,7 @@ export function initApp() {
     ? { section: 'status' }
     : parseRouteLocation();
   const storeObj = {
+    ...createWorkroomCreationState(),
     FAST_SYNC_MS: 15000,
     IDLE_SYNC_MS: 30000,
     SSE_HEARTBEAT_CADENCE_MS: 120000,
@@ -8672,6 +8674,7 @@ export function initApp() {
     unreadStoreMixin,
     reportsManagerMixin,
     commandPaletteMixin,
+    workroomCreationMixin,
   );
 
   if (typeof window !== 'undefined') {
