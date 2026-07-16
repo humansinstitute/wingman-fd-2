@@ -132,6 +132,35 @@ describe('workroom announcement thread helpers', () => {
     expect(opened).toEqual([{ recordId: 'message-1', options: { scrollToLatest: true, syncRoute: false, preserveComposer: false } }]);
   });
 
+  it('ignores stale unthreaded announcement duplicates when a durable thread id exists', async () => {
+    const opened = [];
+    const store = {
+      activeWorkroomId: 'room-1',
+      selectedChannelId: 'channel-1',
+      workroomDetailNotice: '',
+      workrooms: [{
+        record_id: 'room-1',
+        channel_id: 'channel-1',
+        metadata: {
+          announcement_thread_id: 'thread-1',
+        },
+      }],
+      messages: [
+        { record_id: 'stale-message', channel_id: 'channel-1', pg_thread_id: null, parent_message_id: null, pg_metadata: { kind: 'workroom_announcement', workroom_id: 'room-1' } },
+        { record_id: 'message-1', channel_id: 'channel-1', pg_thread_id: 'thread-1', parent_message_id: null, pg_metadata: { kind: 'workroom_announcement', workroom_id: 'room-1' } },
+      ],
+      refreshMessages: async () => {},
+      openThread(recordId, options) { opened.push({ recordId, options }); },
+    };
+    Object.defineProperties(store, Object.getOwnPropertyDescriptors(workroomDetailMixin));
+
+    await store.openSelectedWorkroomThread({ syncRoute: false });
+
+    expect(store.selectedWorkroomAnnouncementMessageId).toBe('message-1');
+    expect(store.workroomDetailNotice).toBe('');
+    expect(opened).toEqual([{ recordId: 'message-1', options: { scrollToLatest: true, syncRoute: false, preserveComposer: false } }]);
+  });
+
   it('uses a metadata-tagged announcement message even before durable ids are hydrated', async () => {
     const opened = [];
     const store = {

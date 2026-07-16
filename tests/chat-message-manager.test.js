@@ -37,6 +37,7 @@ import {
   clearRuntimeData,
   deleteWorkspaceDb,
   getMessageById,
+  getMessagesByChannel,
   openWorkspaceDb,
   upsertMessage,
 } from '../src/db.js';
@@ -1354,6 +1355,47 @@ describe('sendThreadReply', () => {
     });
     await fn();
     expect(store.error).toBe('Wait for image upload to finish.');
+  });
+
+  it('does not create a new PG thread when a reply root lacks thread metadata', async () => {
+    const workspaceDbKey = 'chat-message-manager-send-thread-reply-missing-pg-thread';
+    openWorkspaceDb(workspaceDbKey);
+    await clearRuntimeData();
+    isTowerPgBackendMode.mockReturnValue(true);
+
+    try {
+      const staleRoot = {
+        record_id: 'stale-root',
+        channel_id: 'ch1',
+        parent_message_id: null,
+        body: 'Unthreaded root',
+        sender_npub: 'npub1viewer',
+        sync_status: 'synced',
+        record_state: 'active',
+        updated_at: '2026-06-06T01:00:00.000Z',
+        pg_backend: true,
+        pg_thread_id: null,
+      };
+      await upsertMessage(staleRoot);
+      const { fn, store } = bindMethod('sendThreadReply', {
+        session: { npub: 'npub1viewer' },
+        workspaceOwnerNpub: 'npub1owner',
+        selectedChannelId: 'ch1',
+        activeThreadId: 'stale-root',
+        threadInput: 'reply pg',
+        channels: [{ record_id: 'ch1', owner_npub: 'npub1owner', group_ids: [] }],
+        messages: [staleRoot],
+        getPreferredChannelWriteGroup: vi.fn().mockReturnValue(null),
+      });
+
+      await fn();
+
+      expect(store.error).toBe('Thread is still loading. Try again in a moment.');
+      expect(createTowerPgMessageFromLocal).not.toHaveBeenCalled();
+      expect((await getMessagesByChannel('ch1')).map((message) => message.record_id)).toEqual(['stale-root']);
+    } finally {
+      await deleteWorkspaceDb(workspaceDbKey);
+    }
   });
 
   it('replaces optimistic PG thread replies without promoting them to the main channel', async () => {

@@ -790,6 +790,23 @@ describe('PG write adapter', () => {
     });
   });
 
+  it('rejects PG replies before writing when no thread id can be resolved', async () => {
+    const api = await import('../src/api.js');
+
+    await expect(createTowerPgMessageFromLocal(store(), {
+      record_id: 'local-reply-1',
+      channel_id: 'channel-1',
+      parent_message_id: 'root-message-1',
+      body: 'Reply',
+    }, {
+      parentMessage: {
+        record_id: 'root-message-1',
+      },
+    })).rejects.toThrow('Tower PG reply thread id is missing');
+
+    expect(api.createTowerPgChannelMessage).not.toHaveBeenCalled();
+  });
+
   it('retries message delete against the accepted PG row when a stale client id is missing', async () => {
     const api = await import('../src/api.js');
     const missing = new Error('Flight Deck PG message not found');

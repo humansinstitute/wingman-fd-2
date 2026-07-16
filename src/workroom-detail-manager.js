@@ -66,14 +66,29 @@ function workroomAnnouncementMessage(messages = [], room = {}) {
   const messageId = workroomAnnouncementMessageId(room);
   const threadId = workroomAnnouncementThreadId(room);
   const roomId = text(room?.record_id);
-  return (Array.isArray(messages) ? messages : []).find((message) => {
-    if (messageId && message?.record_id === messageId) return true;
-    if (threadId && message?.pg_thread_id === threadId && !message?.parent_message_id) return true;
+  const rows = Array.isArray(messages) ? messages : [];
+  if (messageId) {
+    const exactMessage = rows.find((message) => message?.record_id === messageId);
+    if (exactMessage) return exactMessage;
+  }
+  if (threadId) {
+    const exactThreadRoot = rows.find((message) => message?.pg_thread_id === threadId && !message?.parent_message_id);
+    if (exactThreadRoot) return exactThreadRoot;
+  }
+  const taggedMessages = rows.filter((message) => {
     const metadata = message?.pg_metadata || message?.metadata || {};
     if (!roomId || metadata?.workroom_id !== roomId) return false;
-    if (metadata?.kind === 'workroom_announcement') return true;
-    return threadId && metadata?.workroom_thread_id === threadId;
-  }) || null;
+    return metadata?.kind === 'workroom_announcement'
+      || (threadId && metadata?.workroom_thread_id === threadId);
+  });
+  if (threadId) {
+    return taggedMessages.find((message) => message?.pg_thread_id === threadId && !message?.parent_message_id) || null;
+  }
+  if (messageId) return null;
+  return taggedMessages.find((message) => message?.pg_thread_id && !message?.parent_message_id)
+    || taggedMessages.find((message) => !message?.parent_message_id)
+    || taggedMessages[0]
+    || null;
 }
 
 function matchesEventFilter(event, filter) {

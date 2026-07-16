@@ -1260,6 +1260,16 @@ export const chatMessageManagerMixin = {
     const body = this.threadInput.trim();
     const pgMode = isTowerPgBackendMode();
     if (pgMode && !(await ensureTowerPgAgentDmAccess(this, channel))) return;
+    let pgParentMessage = null;
+    let pgParentThreadId = null;
+    if (pgMode) {
+      pgParentMessage = this.getThreadParentMessage();
+      pgParentThreadId = pgParentMessage?.pg_thread_id || pgParentMessage?.thread_id || null;
+      if (!pgParentMessage?.record_id || !pgParentThreadId) {
+        this.error = 'Thread is still loading. Try again in a moment.';
+        return;
+      }
+    }
 
     let channelWriteFields = null;
     let attachments = [];
@@ -1287,6 +1297,7 @@ export const chatMessageManagerMixin = {
       version: 1,
       updated_at: now,
       ...(pgMode ? { pg_backend: true } : {}),
+      ...(pgParentThreadId ? { pg_thread_id: pgParentThreadId } : {}),
     };
     await upsertMessage(localRow);
     this.patchMessageLocal(localRow);
@@ -1297,7 +1308,7 @@ export const chatMessageManagerMixin = {
 
     if (pgMode) {
       try {
-        const parentMessage = this.getThreadParentMessage();
+        const parentMessage = pgParentMessage || this.getThreadParentMessage();
         const accepted = await createTowerPgMessageFromLocal(this, localRow, { parentMessage });
         await replaceMessageRecord(localRow.record_id, accepted);
         this.messages = this.messages.filter((message) => message.record_id !== localRow.record_id);
