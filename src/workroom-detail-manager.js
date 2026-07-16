@@ -1,5 +1,6 @@
 import {
   archiveTowerPgWorkroom,
+  decideTowerPgApproval,
 } from './api.js';
 import {
   getWorkroomEvents,
@@ -10,6 +11,8 @@ import {
 import {
   hydrateTowerPgWorkrooms,
   hydrateTowerPgWorkroom,
+  mapPgWorkroomApprovalToLocal,
+  mapPgWorkroomEventToLocal,
   mapPgWorkroomToLocal,
   resolveTowerPgWorkspaceContext,
 } from './pg-read-hydrator.js';
@@ -64,6 +67,40 @@ function mergeById(rows, incoming) {
   return [...map.values()];
 }
 
+function approvalMetadata(approval) {
+  return approval?.metadata && typeof approval.metadata === 'object' && !Array.isArray(approval.metadata)
+    ? approval.metadata
+    : {};
+}
+
+export function workroomApprovalDetails(approval, room = {}) {
+  const metadata = approvalMetadata(approval);
+  return {
+    repo: metadata.repo || room.repo?.name || room.repo?.url || '',
+    fromBranch: metadata.from_branch || room.branches?.integration || '',
+    productionBranch: metadata.to_branch || metadata.production_branch || room.branches?.production || '',
+    commit: metadata.commit || '',
+    previewUrl: metadata.preview_url || room.app_targets?.preview_url || room.app_targets?.preview || '',
+    integrationAutopilot: metadata.integration_autopilot_npub || room.integration_autopilot_npub || '',
+    validationEvidence: metadata.validation_evidence ?? metadata.validation ?? metadata.evidence ?? '',
+  };
+}
+
+export function isWorkroomApprovalApprover(room, participants = [], viewerNpub = '') {
+  const viewer = text(viewerNpub);
+  if (!viewer) return false;
+  const policyApprovers = Array.isArray(room?.approval_policy?.human_approver_npubs)
+    ? room.approval_policy.human_approver_npubs.map(text).filter(Boolean)
+    : [];
+  if (policyApprovers.includes(viewer)) return true;
+  return participants.some((participant) => (
+    text(participant?.actor_npub) === viewer
+    && participant?.role === 'human_approver'
+    && participant?.access_status === 'granted'
+    && participant?.status !== 'removed'
+  ));
+}
+
 export const workroomDetailMixin = {
   get activeWorkrooms() { return filterActiveWorkrooms(this.workrooms); },
   get archivedWorkrooms() { return filterArchivedWorkrooms(this.workrooms); },
@@ -75,6 +112,12 @@ export const workroomDetailMixin = {
   get selectedWorkroomParticipants() { return this.workroomParticipants.filter((row) => row.workroom_id === this.activeWorkroomId); },
   get selectedWorkroomLinks() { return this.workroomLinks.filter((row) => row.workroom_id === this.activeWorkroomId); },
   get selectedWorkroomApprovals() { return this.workroomApprovals.filter((row) => row.target_id === this.activeWorkroomId); },
+  get selectedWorkroomPendingApprovals() {
+    return this.selectedWorkroomApprovals.filter((approval) => ['requested', 'in_review'].includes(approval.status));
+  },
+  get canDecideSelectedWorkroomApproval() {
+    return isWorkroomApprovalApprover(this.selectedWorkroom, this.selectedWorkroomParticipants, this.currentViewerNpub);
+  },
   get selectedWorkroomEvents() {
     return filterWorkroomEvents(this.workroomEvents.filter((row) => row.workroom_id === this.activeWorkroomId), this.workroomEventFilters);
   },
@@ -150,6 +193,50 @@ export const workroomDetailMixin = {
     }
   },
 
+  workroomApprovalDetails(approval) {
+    return workroomApprovalDetails(approval, this.selectedWorkroom || {});
+  },
+
+  workroomApprovalEvidence(approval) {
+    const evidence = this.workroomApprovalDetails(approval).validationEvidence;
+    if (typeof evidence === 'string') return evidence;
+    if (Array.isArray(evidence)) return evidence.join(' · ');
+    if (evidence && typeof evidence === 'object') return Object.entries(evidence).map(([key, value]) => `${key}: ${typeof value === 'string' ? value : JSON.stringify(value)}`).join(' · ');
+    return 'Not recorded';
+  },
+
+  async decideWorkroomApproval(approval, status) {
+    if (!approval?.record_id || !this.canDecideSelectedWorkroomApproval) {
+      this.workroomError = 'Only an assigned human approver can decide this production merge.';
+      return;
+    }
+    if (!['approved', 'rejected'].includes(status)) return;
+    const context = resolveTowerPgWorkspaceContext(this);
+    if (!context.workspaceId || !context.baseUrl) return;
+    this.workroomApprovalSubmittingId = approval.record_id;
+    this.workroomError = '';
+    try {
+      const result = await decideTowerPgApproval(context.workspaceId, approval.record_id, {
+        status,
+        row_version: approval.row_version || approval.version || 1,
+        decision_note: String(this.workroomApprovalDecisionNote || '').trim() || null,
+      }, context);
+      const decided = mapPgWorkroomApprovalToLocal(result?.approval || result);
+      if (decided.record_id) this.applyWorkroomApprovals([decided]);
+      const event = mapPgWorkroomEventToLocal(result?.event);
+      if (event.record_id) this.applyWorkroomEvents([event]);
+      this.workroomApprovalDecisionNote = '';
+      await hydrateTowerPgWorkroom(this, this.activeWorkroomId);
+      this.workroomDetailNotice = status === 'approved' ? 'Production merge approved.' : 'Production merge rejected.';
+    } catch (error) {
+      this.workroomError = error?.status === 403
+        ? 'Tower rejected this decision: you are not an allowed human approver.'
+        : error?.message || 'Could not record the production merge decision.';
+    } finally {
+      this.workroomApprovalSubmittingId = '';
+    }
+  },
+
   async loadWorkroomRowsForPalette() {
     const refreshed = await this.refreshWorkrooms();
     const rows = refreshed.length > 0 ? refreshed : this.workrooms;
@@ -177,6 +264,8 @@ export function createWorkroomDetailState() {
     workroomDetailLoading: false,
     workroomError: '',
     workroomDetailNotice: '',
+    workroomApprovalDecisionNote: '',
+    workroomApprovalSubmittingId: '',
     workroomEventFilterOptions: WORKROOM_EVENT_FILTERS,
     workroomEventFilters: { type: 'all', actor: '', pr: '', task: '', artifact: '', from: '', to: '' },
     workroomRoleOptions: [],

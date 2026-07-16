@@ -19203,8 +19203,24 @@ button:disabled {
 .workroom-detail-list small { color: #64748b; }
 .workroom-warning { display: grid; gap: .2rem; margin-top: .65rem; padding: .55rem; border: 1px solid #fbbf24; border-radius: 6px; background: #fffbeb; color: #92400e; font-size: .74rem; }
 .workroom-warning-text { color: #b45309; font-weight: 700; }
-.workroom-approval-placeholder { background: #fefce8; border-color: #fde68a; }
-.workroom-approval-placeholder p { margin: .35rem 0; color: #854d0e; font-size: .78rem; }
+.workroom-approval-panel { background: #fefce8; border-color: #fde68a; }
+.workroom-approval-panel h3 { color: #854d0e; }
+.workroom-approval-card { display: grid; gap: .65rem; padding: .7rem; border: 1px solid #fde68a; border-radius: 7px; background: #fff; }
+.workroom-approval-card + .workroom-approval-card { margin-top: .65rem; }
+.workroom-approval-card-heading { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.workroom-approval-summary, .workroom-approval-note, .workroom-approval-contract-note { margin: 0; color: #475569; font-size: .78rem; }
+.workroom-approval-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem .8rem; margin: 0; }
+.workroom-approval-details dt { color: #64748b; font-size: .68rem; font-weight: 700; text-transform: uppercase; }
+.workroom-approval-details dd { margin: .15rem 0 0; overflow-wrap: anywhere; font-size: .78rem; }
+.workroom-approval-details a { color: #2563eb; }
+.workroom-commit { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.workroom-approval-evidence { grid-column: 1 / -1; }
+.workroom-approval-actions { display: grid; gap: .45rem; }
+.workroom-approval-actions textarea { width: 100%; box-sizing: border-box; resize: vertical; border: 1px solid var(--border); border-radius: 6px; padding: .45rem .55rem; font: inherit; }
+.workroom-approval-actions > div { display: flex; flex-wrap: wrap; gap: .45rem; }
+.workroom-reject-button { color: #b91c1c; border-color: #fecaca; }
+.workroom-approval-permission { margin: 0; color: #b45309; font-size: .74rem; }
+.workroom-approval-contract-note { color: #854d0e; }
 .workroom-timeline-panel { grid-column: 1 / -1; }
 .workroom-panel-heading span { color: #64748b; font-size: .75rem; }
 .workroom-timeline-filters { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: .8rem; }
