@@ -770,7 +770,7 @@ export const chatMessageManagerMixin = {
     }
     this.activeThreadId = recordId;
     this.threadResponseActivities = [];
-    this.threadInput = '';
+    if (options.preserveComposer !== true) this.threadInput = '';
     this.threadVisibleReplyCount = this.THREAD_REPLY_PAGE_SIZE;
     this.pendingThreadScrollToLatest = options.scrollToLatest !== false;
     if (typeof this.startWorkspaceLiveQueries === 'function') this.startWorkspaceLiveQueries();

@@ -412,6 +412,16 @@ describe('thread lifecycle', () => {
     expect(store.syncRoute).toHaveBeenCalled();
   });
 
+  it('openThread can preserve the composer while switching context', () => {
+    const { fn, store } = bindMethod('openThread', {
+      activeThreadId: null,
+      threadInput: 'workroom reply',
+    });
+    fn('m1', { preserveComposer: true });
+    expect(store.activeThreadId).toBe('m1');
+    expect(store.threadInput).toBe('workroom reply');
+  });
+
   it('openThread selects the owning PG channel when opened from an aggregate feed', () => {
     isTowerPgBackendMode.mockReturnValue(true);
     const selectPgChannelContext = vi.fn();

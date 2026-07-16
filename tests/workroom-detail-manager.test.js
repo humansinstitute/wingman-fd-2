@@ -105,7 +105,7 @@ describe('workroom announcement thread helpers', () => {
     await store.openSelectedWorkroomThread({ syncRoute: false });
 
     expect(store.selectedChannelId).toBe('channel-1');
-    expect(opened).toEqual([{ recordId: 'message-1', options: { scrollToLatest: true, syncRoute: false } }]);
+    expect(opened).toEqual([{ recordId: 'message-1', options: { scrollToLatest: true, syncRoute: false, preserveComposer: false } }]);
   });
 
   it('opens the announcement root when only the thread id is persisted on the workroom', async () => {
@@ -129,7 +129,7 @@ describe('workroom announcement thread helpers', () => {
 
     expect(store.selectedWorkroomAnnouncementMessageId).toBe('message-1');
     expect(store.workroomDetailNotice).toBe('');
-    expect(opened).toEqual([{ recordId: 'message-1', options: { scrollToLatest: true, syncRoute: false } }]);
+    expect(opened).toEqual([{ recordId: 'message-1', options: { scrollToLatest: true, syncRoute: false, preserveComposer: false } }]);
   });
 
   it('uses a metadata-tagged announcement message even before durable ids are hydrated', async () => {
@@ -148,6 +148,38 @@ describe('workroom announcement thread helpers', () => {
     await store.openSelectedWorkroomThread({ syncRoute: false });
 
     expect(store.selectedWorkroomAnnouncementMessageId).toBe('message-1');
-    expect(opened).toEqual([{ recordId: 'message-1', options: { scrollToLatest: true, syncRoute: false } }]);
+    expect(opened).toEqual([{ recordId: 'message-1', options: { scrollToLatest: true, syncRoute: false, preserveComposer: false } }]);
+  });
+
+  it('preserves the typed room reply while activating the announcement thread for send', async () => {
+    const sent = [];
+    const opened = [];
+    const store = {
+      activeWorkroomId: 'room-1',
+      selectedChannelId: 'channel-1',
+      threadInput: 'Reply from the workroom',
+      workrooms: [{
+        record_id: 'room-1',
+        channel_id: 'channel-1',
+        metadata: {
+          announcement_message_id: 'message-1',
+          announcement_thread_id: 'thread-1',
+        },
+      }],
+      messages: [{ record_id: 'message-1', channel_id: 'channel-1', pg_thread_id: 'thread-1', parent_message_id: null, pg_metadata: { kind: 'workroom_announcement', workroom_id: 'room-1' } }],
+      refreshMessages: async () => {},
+      openThread(recordId, options) {
+        opened.push({ recordId, options });
+        if (options?.preserveComposer !== true) this.threadInput = '';
+        this.activeThreadId = recordId;
+      },
+      sendThreadReply() { sent.push({ activeThreadId: this.activeThreadId, body: this.threadInput }); },
+    };
+    Object.defineProperties(store, Object.getOwnPropertyDescriptors(workroomDetailMixin));
+
+    await store.sendSelectedWorkroomThreadReply();
+
+    expect(opened).toEqual([{ recordId: 'message-1', options: { scrollToLatest: true, syncRoute: false, preserveComposer: true } }]);
+    expect(sent).toEqual([{ activeThreadId: 'message-1', body: 'Reply from the workroom' }]);
   });
 });

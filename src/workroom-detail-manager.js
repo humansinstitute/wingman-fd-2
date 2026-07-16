@@ -274,12 +274,16 @@ export const workroomDetailMixin = {
       return null;
     }
     this.workroomDetailNotice = '';
-    if (typeof this.openThread === 'function') this.openThread(message.record_id, { scrollToLatest: true, syncRoute: options.syncRoute !== false });
+    if (typeof this.openThread === 'function') this.openThread(message.record_id, {
+      scrollToLatest: true,
+      syncRoute: options.syncRoute !== false,
+      preserveComposer: options.preserveComposer === true,
+    });
     return message;
   },
 
   async sendSelectedWorkroomThreadReply() {
-    const parent = await this.openSelectedWorkroomThread({ syncRoute: false, refreshMessages: false });
+    const parent = await this.openSelectedWorkroomThread({ syncRoute: false, refreshMessages: false, preserveComposer: true });
     if (!parent) return;
     if (typeof this.sendThreadReply === 'function') await this.sendThreadReply();
   },
