@@ -124,12 +124,22 @@ function groupRefsForChannelAndScope(store, channel) {
   const refs = new Set([
     ...valuesFrom(channel?.group_ids || channel?.groupIds || channel?.channel_group_ids || channel?.visible_group_ids),
   ]);
-  const scopeId = text(channel?.scope_id || channel?.scope_l1_id);
-  const scope = scopeId
-    ? (store?.scopesMap?.get?.(scopeId)
-      || (Array.isArray(store?.scopes) ? store.scopes.find((candidate) => text(candidate?.record_id || candidate?.id) === scopeId) : null))
-    : null;
-  for (const groupId of valuesFrom(scope?.group_ids || scope?.groupIds || scope?.scope_policy_group_ids)) refs.add(groupId);
+  const scopeIds = [
+    channel?.scope_id,
+    channel?.scope_l1_id,
+    store?.currentConcretePgScopeId,
+    store?.pgContextScope?.record_id,
+    store?.selectedBoardScope?.record_id,
+    store?.selectedBoardId,
+  ].map(text).filter(Boolean);
+  const findScope = (scopeId) =>
+    store?.scopesMap?.get?.(scopeId)
+    || (Array.isArray(store?.scopes) ? store.scopes.find((candidate) => text(candidate?.record_id || candidate?.id) === scopeId) : null);
+  for (const scopeId of scopeIds) {
+    const scope = findScope(scopeId);
+    if (!scope) continue;
+    for (const groupId of valuesFrom(scope?.group_ids || scope?.groupIds || scope?.scope_policy_group_ids || scope?.owner_group_id)) refs.add(groupId);
+  }
   return [...refs];
 }
 

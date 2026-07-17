@@ -221,6 +221,34 @@ describe('workroom creation flow helpers', () => {
     ]);
   });
 
+  it('uses the selected scope context when the channel row lacks a scope id', async () => {
+    const store = {
+      selectedChannelId: 'channel-1',
+      selectedChannel: { record_id: 'channel-1', title: 'Features', channel_type: 'channel' },
+      selectedBoardScope: { record_id: 'scope-feature', group_ids: ['group-agents'] },
+      scopesMap: new Map([['scope-feature', { record_id: 'scope-feature', group_ids: ['group-agents'] }]]),
+      groups: [{ group_id: 'group-agents', name: 'Agents', member_npubs: ['npub-rick'] }],
+      currentWorkspaceGroups: [],
+      channelGrants: [],
+      pgWorkspaceMembers: [{ actor_id: 'actor-rick', npub: 'npub-rick' }],
+      session: { npub: 'npub-pete' },
+      workroomCreationForm: createWorkroomForm(),
+      getChannelParticipants: () => ['npub-pete'],
+      getSenderName: (npub) => npub === 'npub-rick' ? 'Rick' : 'Pete',
+      refreshGroups: vi.fn(async function refreshGroups() { return this.groups; }),
+      refreshTowerPgWorkspaceMembers: vi.fn(async function refreshTowerPgWorkspaceMembers() { return this.pgWorkspaceMembers; }),
+      refreshChannelGrants: vi.fn(async function refreshChannelGrants() { return this.channelGrants; }),
+    };
+    Object.assign(store, workroomCreationMixin);
+
+    await store.openWorkroomCreation();
+
+    expect(store.workroomCreationForm.participants).toEqual([
+      { actor_npub: 'npub-pete', role: 'contributor', label: 'Pete' },
+      { actor_npub: 'npub-rick', role: 'contributor', label: 'Rick' },
+    ]);
+  });
+
   it('expands group grants through known group members', () => {
     expect(workroomVisibleParticipantNpubs({ record_id: 'channel-1' }, {
       channelGrants: [{ principal_type: 'group', principal_id: 'group-team' }],
