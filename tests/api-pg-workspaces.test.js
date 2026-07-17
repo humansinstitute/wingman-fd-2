@@ -956,4 +956,29 @@ describe('Tower PG API helpers', () => {
     await assertion;
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
+
+  it('allows longer NIP-98 signing for Tower PG channel grant reads', async () => {
+    vi.useFakeTimers();
+    const { createNip98AuthHeader } = await import('../src/auth/nostr.js');
+    const api = await import('../src/api.js');
+    api.setBaseUrl('https://tower.example');
+    createNip98AuthHeader.mockImplementationOnce(() => new Promise(() => {}));
+
+    const read = api.getTowerPgChannelGrants('workspace-1', 'channel-1', { appNpub: 'flightdeck_pg' });
+    const early = vi.fn();
+    read.catch(early);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(early).not.toHaveBeenCalled();
+
+    const assertion = expect(read).rejects.toMatchObject({
+      code: 'auth_timeout',
+      message: expect.stringContaining('NIP-98 signing timed out for GET'),
+    });
+
+    await vi.advanceTimersByTimeAsync(20_000);
+
+    await assertion;
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
 });

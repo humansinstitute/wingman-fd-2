@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-Dp_MOFMD.js"></script>
+  <script type="module" crossorigin src="/assets/index-KXGFA1rg.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-C38_HHx-.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
@@ -8276,7 +8276,8 @@
 
               <p class="settings-success" x-show="$store.chat.channelGrantsNotice" x-text="$store.chat.channelGrantsNotice"></p>
               <p class="groups-subtitle channel-access-error" x-show="$store.chat.channelGrantsError" x-text="$store.chat.channelGrantsError"></p>
-              <p class="groups-empty channel-grants-empty" x-show="!$store.chat.channelGrantsLoading && $store.chat.channelGrantRows.length === 0">No channel grants loaded.</p>
+              <p class="groups-empty channel-grants-empty" x-show="!$store.chat.channelGrantsLoading && !$store.chat.channelGrantsError && $store.chat.channelGrantRows.length === 0">No channel grants loaded.</p>
+              <p class="groups-empty channel-grants-empty" x-show="!$store.chat.channelGrantsLoading && $store.chat.channelGrantsError && $store.chat.channelGrantRows.length === 0">Channel grants could not be loaded. Retry refresh when signing is available.</p>
 
               <div class="channel-grants-list" x-show="$store.chat.channelGrantRows.length > 0">
                 <template x-for="grant in $store.chat.channelGrantRows" :key="grant.key">

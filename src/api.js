@@ -15,6 +15,7 @@ let _baseUrl = '';
 const DEFAULT_FETCH_TIMEOUT_MS = 20_000;
 const UPLOAD_FETCH_TIMEOUT_MS = 60_000;
 const AUTH_HEADER_TIMEOUT_MS = 10_000;
+const CHANNEL_GRANTS_AUTH_HEADER_TIMEOUT_MS = 30_000;
 const MUTATION_AUTH_HEADER_TIMEOUT_MS = 45_000;
 
 function bytesToBase64(bytes) {
@@ -202,10 +203,10 @@ function resolveTowerPgUrl(pathOrUrl, baseUrl = _baseUrl) {
   return `${base}${value.startsWith('/') ? value : `/${value}`}`;
 }
 
-async function signedTowerPgFetch(pathOrUrl, { method = 'GET', body, baseUrl = _baseUrl, appNpub = FLIGHT_DECK_PG_APP_NPUB } = {}) {
+async function signedTowerPgFetch(pathOrUrl, { method = 'GET', body, baseUrl = _baseUrl, appNpub = FLIGHT_DECK_PG_APP_NPUB, authTimeoutMs } = {}) {
   const requestUrl = resolveTowerPgUrl(pathOrUrl, baseUrl);
   const headers = {
-    Authorization: await createApiAuthHeader(requestUrl, method, body ?? null),
+    Authorization: await createApiAuthHeader(requestUrl, method, body ?? null, { authTimeoutMs }),
   };
   const cleanAppNpub = String(appNpub || '').trim();
   if (cleanAppNpub) headers['x-flightdeck-pg-app-npub'] = cleanAppNpub;
@@ -559,7 +560,11 @@ export async function getTowerPgChannelGrants(workspaceId, channelId, { baseUrl 
   if (!encodedChannelId) throw new Error('Tower PG channel id is required');
   const requestPath = `/api/v4/flightdeck-pg/workspaces/${encodedWorkspaceId}/channels/${encodedChannelId}/grants`;
   const requestUrl = resolveTowerPgUrl(requestPath, baseUrl);
-  const resp = await signedTowerPgFetch(requestPath, { baseUrl, appNpub });
+  const resp = await signedTowerPgFetch(requestPath, {
+    baseUrl,
+    appNpub,
+    authTimeoutMs: CHANNEL_GRANTS_AUTH_HEADER_TIMEOUT_MS,
+  });
   return json(resp, { requestUrl, method: 'GET', prefix: 'Tower PG API' });
 }
 

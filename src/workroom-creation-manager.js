@@ -230,6 +230,24 @@ function buildWorkroomParticipantRows(store, channel) {
   );
 }
 
+function mergeWorkroomParticipantRows(existingRows = [], nextRows = []) {
+  const rows = [];
+  const seen = new Set();
+  const add = (row) => {
+    const actorNpub = text(row?.actor_npub);
+    if (!actorNpub || seen.has(actorNpub)) return;
+    seen.add(actorNpub);
+    rows.push({
+      actor_npub: actorNpub,
+      role: text(row?.role) || 'contributor',
+      label: text(row?.label),
+    });
+  };
+  for (const row of Array.isArray(existingRows) ? existingRows : []) add(row);
+  for (const row of Array.isArray(nextRows) ? nextRows : []) add(row);
+  return rows;
+}
+
 async function hydrateWorkroomCreationVisibility(store) {
   const jobs = [];
   if (typeof store.refreshGroups === 'function') {
@@ -430,7 +448,10 @@ export const workroomCreationMixin = {
       await hydrateWorkroomCreationVisibility(this);
       const previousRoles = new Map((this.workroomCreationForm.participants || [])
         .map((participant) => [participant.actor_npub, participant.role]));
-      this.workroomCreationForm.participants = buildWorkroomParticipantRows(this, channel)
+      this.workroomCreationForm.participants = mergeWorkroomParticipantRows(
+        this.workroomCreationForm.participants,
+        buildWorkroomParticipantRows(this, channel),
+      )
         .map((participant) => ({
           ...participant,
           role: previousRoles.get(participant.actor_npub) || participant.role,
