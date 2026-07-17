@@ -5,6 +5,7 @@ export const NOTIFICATION_CLICK_MESSAGE_TYPE = 'flightdeck:notification-click';
 let registrationPromise = null;
 let reloadOnControllerChange = false;
 let controllerListenerRegistered = false;
+let controllerReloadFallbackId = null;
 
 function ensureControllerReloadListener() {
   if (controllerListenerRegistered || typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
@@ -12,6 +13,10 @@ function ensureControllerReloadListener() {
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (!reloadOnControllerChange) return;
     reloadOnControllerChange = false;
+    if (controllerReloadFallbackId) {
+      window.clearTimeout(controllerReloadFallbackId);
+      controllerReloadFallbackId = null;
+    }
     window.location.reload();
   });
 }
@@ -20,6 +25,15 @@ async function requestWaitingWorkerActivation(registration) {
   if (!registration?.waiting) return false;
   reloadOnControllerChange = true;
   registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+  if (typeof window !== 'undefined') {
+    if (controllerReloadFallbackId) window.clearTimeout(controllerReloadFallbackId);
+    controllerReloadFallbackId = window.setTimeout(() => {
+      if (!reloadOnControllerChange) return;
+      reloadOnControllerChange = false;
+      controllerReloadFallbackId = null;
+      window.location.reload();
+    }, 1500);
+  }
   return true;
 }
 
