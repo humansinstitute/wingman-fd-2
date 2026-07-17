@@ -19292,20 +19292,16 @@ button:disabled {
 .workroom-defaults-check { display: flex; flex-direction: row !important; align-items: center; margin-top: 1rem; color: #475569; font-size: 0.82rem; }
 .workroom-failed-warning { display: grid; gap: 0.2rem; margin-top: 0.85rem; padding: 0.7rem 0.8rem; border: 1px solid #fbbf24; border-radius: 6px; background: #fffbeb; color: #92400e; font-size: 0.8rem; }
 .workroom-failed-warning ul { margin: 0.25rem 0 0 1.1rem; padding: 0; }
-.workroom-browser { position: relative; margin: 0 0 1rem; padding: 1.15rem 1.15rem 1rem; border: 1px solid #bfdbfe; border-radius: 12px; background: #f8fbff; box-shadow: 0 8px 24px rgba(30, 64, 175, .06); overflow: hidden; }
-.workroom-browser::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 4px; background: #2563eb; }
+.workroom-browser { margin: 0 0 1rem; padding: 1.15rem 1.15rem 1rem; border: 1px solid #dbe3ef; border-radius: 12px; background: #fff; }
 .workroom-browser-header, .workroom-panel-heading, .workroom-summary-card-top, .workroom-detail-header, .workroom-detail-header-actions, .workroom-browser-actions, .workroom-browser-title { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
-.workroom-browser-title { justify-content: flex-start; align-items: flex-start; }
-.workroom-mark { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 2rem; width: 2rem; height: 2rem; margin-top: .1rem; border-radius: 8px; background: #dbeafe; color: #2563eb; font-size: 1.05rem; }
-.workroom-eyebrow { margin: 0; color: #2563eb; font-size: .7rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.workroom-browser-title { justify-content: flex-start; }
 .workroom-browser h2, .workroom-detail-header h2 { margin: .15rem 0; color: #111827; letter-spacing: -.02em; }
-.workroom-browser-header p:not(.workroom-eyebrow), .workroom-detail-header p { margin: 0; color: #64748b; font-size: .82rem; }
+.workroom-detail-header p { margin: 0; color: #64748b; font-size: .82rem; }
 .workroom-browser-actions { flex-wrap: wrap; justify-content: flex-end; }
 .workroom-browser-actions input, .workroom-timeline-filters input, .workroom-timeline-filters select { min-height: 34px; border: 1px solid #dbe3ef; border-radius: 7px; padding: .35rem .6rem; background: #fff; color: var(--text); font: inherit; box-shadow: 0 1px 2px rgba(15, 23, 42, .03); }
 .workroom-view-toggle { display: inline-flex; padding: 2px; border: 1px solid #bfdbfe; border-radius: 999px; background: #fff; }
 .workroom-view-toggle button { border: 0; border-radius: 999px; padding: .35rem .7rem; background: transparent; color: #1d4ed8; cursor: pointer; }
 .workroom-view-toggle button.active { background: #2563eb; color: #fff; box-shadow: 0 2px 5px rgba(37, 99, 235, .2); }
-.workroom-browser-rule { height: 1px; margin: 1rem 0 0; background: linear-gradient(90deg, #bfdbfe, transparent); }
 .workroom-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: .65rem; margin-top: .85rem; }
 .workroom-summary-card { display: grid; gap: .55rem; text-align: left; border: 1px solid #dbe3ef; border-radius: 9px; padding: .8rem; background: #fff; color: var(--text); box-shadow: 0 4px 12px rgba(15, 23, 42, .04); transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease; }
 .workroom-summary-card-main { display: grid; gap: .45rem; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
