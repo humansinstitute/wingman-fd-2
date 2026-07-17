@@ -9,6 +9,7 @@ const {
   upsertTowerPgDailyNoteMock,
   upsertTowerPgDailyScopeAgentAccessMock,
   createTiptapEditorAdapterMock,
+  createDailyNoteTiptapToolbarMock,
 } = vi.hoisted(() => ({
   alpineStartMock: vi.fn(),
   alpineStoreMock: vi.fn(),
@@ -18,6 +19,7 @@ const {
   upsertTowerPgDailyNoteMock: vi.fn(),
   upsertTowerPgDailyScopeAgentAccessMock: vi.fn(),
   createTiptapEditorAdapterMock: vi.fn(),
+  createDailyNoteTiptapToolbarMock: vi.fn(),
 }));
 
 vi.mock('alpinejs', () => ({
@@ -44,6 +46,10 @@ vi.mock('../src/docs/editor/tiptap-editor-adapter.js', () => ({
   createTiptapEditorAdapter: createTiptapEditorAdapterMock,
 }));
 
+vi.mock('../src/docs/editor/tiptap-toolbar.js', () => ({
+  createDailyNoteTiptapToolbar: createDailyNoteTiptapToolbarMock,
+}));
+
 beforeEach(() => {
   vi.resetModules();
   alpineStartMock.mockClear();
@@ -55,8 +61,13 @@ beforeEach(() => {
   upsertTowerPgDailyScopeAgentAccessMock.mockReset();
   createTiptapEditorAdapterMock.mockReset();
   createTiptapEditorAdapterMock.mockImplementation(({ onUpdate }) => ({
+    editor: {},
     destroy: vi.fn(),
     emitUpdate: onUpdate,
+  }));
+  createDailyNoteTiptapToolbarMock.mockImplementation(() => ({
+    element: {},
+    destroy: vi.fn(),
   }));
 });
 
@@ -89,15 +100,24 @@ describe('app Daily Scope behavior', () => {
       dailyNoteEditorMode: 'edit',
       dailyNoteEditorBody: 'Existing narrative',
     });
-    const element = {};
+    const element = {
+      replaceChildren: vi.fn(),
+      prepend: vi.fn(),
+    };
 
-    store.mountDailyNoteRichEditor(element);
+    const previousDocument = globalThis.document;
+    globalThis.document = { createElement: () => ({ className: '' }) };
+    try {
+      store.mountDailyNoteRichEditor(element);
+    } finally {
+      globalThis.document = previousDocument;
+    }
 
     expect(createTiptapEditorAdapterMock).toHaveBeenCalledWith(expect.objectContaining({
-      element,
       document: { content: 'Existing narrative' },
       editable: true,
     }));
+    expect(createDailyNoteTiptapToolbarMock).toHaveBeenCalledWith(expect.anything());
     const adapter = store.dailyNoteRichEditorAdapter;
     adapter.emitUpdate({ content: 'Updated **narrative**' });
     expect(store.dailyNoteEditorBody).toBe('Updated **narrative**');

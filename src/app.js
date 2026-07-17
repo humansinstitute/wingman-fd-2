@@ -123,6 +123,7 @@ import { buildAttentionFeed, buildTimingFeed, summarizeAttentionFeed } from './a
 import { avatarStatusMixin } from './components/avatar-status.js';
 import { createDocumentEditorState } from './docs/editor/document-editor-store.js';
 import { createTiptapEditorAdapter } from './docs/editor/tiptap-editor-adapter.js';
+import { createDailyNoteTiptapToolbar } from './docs/editor/tiptap-toolbar.js';
 import {
   toRaw,
   normalizeBackendUrl,
@@ -648,6 +649,7 @@ export function initApp() {
     dailyNoteEditorRecordId: '',
     dailyNoteEditorMode: 'preview',
     dailyNoteRichEditorAdapter: null,
+    dailyNoteRichEditorToolbar: null,
     dailyNoteRichEditorMountEl: null,
     dailyNoteVersioningOpen: false,
     dailyNoteVersionHistory: [],
@@ -3514,7 +3516,7 @@ export function initApp() {
       this.dailyNoteEditorBody = note.body || '';
       this.dailyNoteEditorFocus = note.focus || '';
       this.dailyNoteEditorItems = this.normalizeDailyNoteEditorItems(note.items);
-      this.dailyNoteEditorMode = 'preview';
+      this.dailyNoteEditorMode = 'edit';
       this.destroyDailyNoteRichEditor();
       this.dailyNoteEditorOpen = true;
     },
@@ -3538,8 +3540,10 @@ export function initApp() {
 
     destroyDailyNoteRichEditor() {
       if (!this.dailyNoteRichEditorAdapter) return;
+      this.dailyNoteRichEditorToolbar?.destroy?.();
       this.dailyNoteRichEditorAdapter.destroy();
       this.dailyNoteRichEditorAdapter = null;
+      this.dailyNoteRichEditorToolbar = null;
       this.dailyNoteRichEditorMountEl = null;
     },
 
@@ -3547,9 +3551,12 @@ export function initApp() {
       if (!element || this.dailyNoteEditorMode !== 'edit') return;
       if (this.dailyNoteRichEditorAdapter && this.dailyNoteRichEditorMountEl === element) return;
       this.destroyDailyNoteRichEditor();
+      const editorMount = document.createElement('div');
+      editorMount.className = 'daily-note-rich-editor-surface doc-rich-editor';
+      element.replaceChildren(editorMount);
       this.dailyNoteRichEditorMountEl = element;
       this.dailyNoteRichEditorAdapter = createTiptapEditorAdapter({
-        element,
+        element: editorMount,
         document: { content: this.dailyNoteEditorBody || '' },
         editable: true,
         placeholder: 'Write the plan, progress, blockers, or anything the AI should track today.',
@@ -3557,6 +3564,8 @@ export function initApp() {
           this.dailyNoteEditorBody = contentModel?.content || '';
         },
       });
+      this.dailyNoteRichEditorToolbar = createDailyNoteTiptapToolbar(this.dailyNoteRichEditorAdapter.editor);
+      element.prepend(this.dailyNoteRichEditorToolbar.element);
     },
 
     normalizeDailyNoteEditorItems(items = []) {

@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-CKqIemJq.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-Bo2myP94.css">
+  <script type="module" crossorigin src="/assets/index-DFC-gfU9.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-C5AIpjyg.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -9059,22 +9059,17 @@
                 <button type="button" class="btn-secondary btn-compact" @click="$store.chat.addDailyNoteEditorItem()" :disabled="$store.chat.dailyNoteEditorItems.length >= 5">Add item</button>
               </div>
             </div>
-            <div class="daily-note-field daily-note-narrative-field">
-              <div class="daily-note-field-heading">
-                <span>Narrative</span>
-                <div class="daily-note-mode-tabs" role="tablist" aria-label="Narrative mode">
-                  <button type="button" role="tab" :aria-selected="$store.chat.dailyNoteEditorMode !== 'edit'" :class="{ 'daily-note-mode-tab-active': $store.chat.dailyNoteEditorMode !== 'edit' }" @click="$store.chat.setDailyNoteEditorMode('preview')">Preview</button>
-                  <button type="button" role="tab" :aria-selected="$store.chat.dailyNoteEditorMode === 'edit'" :class="{ 'daily-note-mode-tab-active': $store.chat.dailyNoteEditorMode === 'edit' }" @click="$store.chat.setDailyNoteEditorMode('edit')">Edit</button>
+              <div class="daily-note-field daily-note-narrative-field">
+                <div class="daily-note-field-heading">
+                  <span>Narrative</span>
                 </div>
+                <div
+                  class="daily-note-rich-editor"
+                  x-show="$store.chat.dailyNoteEditorMode === 'edit'"
+                  x-init="$nextTick(() => $store.chat.mountDailyNoteRichEditor($el))"
+                  x-effect="$store.chat.dailyNoteEditorMode; if ($store.chat.dailyNoteEditorMode === 'edit') $nextTick(() => $store.chat.mountDailyNoteRichEditor($el))"
+                ></div>
               </div>
-              <div class="daily-note-narrative-preview chat-post-markdown" x-show="$store.chat.dailyNoteEditorMode !== 'edit'" x-html="$store.chat.dailyNoteEditorPreviewHtml"></div>
-              <div
-                class="daily-note-rich-editor doc-rich-editor"
-                x-show="$store.chat.dailyNoteEditorMode === 'edit'"
-                x-init="$nextTick(() => $store.chat.mountDailyNoteRichEditor($el))"
-                x-effect="$store.chat.dailyNoteEditorMode; if ($store.chat.dailyNoteEditorMode === 'edit') $nextTick(() => $store.chat.mountDailyNoteRichEditor($el))"
-              ></div>
-            </div>
             <template x-if="$store.chat.dailyNoteEditorError">
               <p class="error-text" x-text="$store.chat.dailyNoteEditorError"></p>
             </template>

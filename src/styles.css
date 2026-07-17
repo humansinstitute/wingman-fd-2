@@ -9584,13 +9584,9 @@ button:disabled {
 }
 
 .daily-note-rich-editor {
-  min-height: 16rem;
-  max-height: 34rem;
-  overflow: auto;
   border: 1px solid rgba(15, 23, 42, 0.12);
   border-radius: 8px;
   background: #f8fafc;
-  padding: 0.9rem 1rem;
   color: #0f172a;
   line-height: 1.55;
 }
@@ -9598,6 +9594,49 @@ button:disabled {
 .daily-note-rich-editor:focus-within {
   border-color: rgba(37, 99, 235, 0.5);
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.daily-note-tiptap-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.12);
+  background: #f1f5f9;
+}
+
+.daily-note-tiptap-toolbar-button {
+  min-width: 2rem;
+  height: 2rem;
+  padding: 0 0.55rem;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 0.35rem;
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 0.78rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.daily-note-tiptap-toolbar-button:hover,
+.daily-note-tiptap-toolbar-button.is-active {
+  border-color: #7c9cff;
+  background: #e0e7ff;
+}
+
+.daily-note-tiptap-toolbar-button:focus-visible {
+  outline: 2px solid #7c9cff;
+  outline-offset: 2px;
+}
+
+.daily-note-rich-editor-surface {
+  min-height: 16rem;
+  max-height: 34rem;
+  overflow: auto;
+  border: 0;
+  border-radius: 0;
+  padding: 0.9rem 1rem;
 }
 
 .daily-note-progress {
