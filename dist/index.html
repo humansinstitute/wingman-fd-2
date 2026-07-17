@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-BUbBxifc.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-Bx4RITr1.css">
+  <script type="module" crossorigin src="/assets/index-CHhtlZj-.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-B3xPIjQx.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -1578,9 +1578,10 @@
 
             <section class="workroom-browser" x-show="$store.chat.isTowerPgMode" x-init="$store.chat.refreshWorkrooms({ debounceMs: 350 })" data-testid="workroom-browser">
               <div class="workroom-browser-header">
-                <div><p class="workroom-eyebrow">Native delivery rooms</p><h2>Workrooms</h2><p>Review active and archived delivery history in one place.</p></div>
-                <div class="workroom-browser-actions"><input type="search" x-model="$store.chat.workroomListQuery" placeholder="Search rooms" aria-label="Search workrooms"><button type="button" :class="{ active: !$store.chat.workroomArchiveView }" @click="$store.chat.workroomArchiveView = false">Active</button><button type="button" :class="{ active: $store.chat.workroomArchiveView }" @click="$store.chat.workroomArchiveView = true">Archive</button></div>
+                <div class="workroom-browser-title"><span class="workroom-mark" aria-hidden="true">✦</span><div><p class="workroom-eyebrow">Native delivery rooms</p><h2>Workrooms</h2><p>Review active and archived delivery history in one place.</p></div></div>
+                <div class="workroom-browser-actions"><button type="button" class="workroom-create-trigger" @click="$store.chat.openWorkroomCreation()" :disabled="!$store.chat.selectedChannelId" title="Choose a channel to create a workroom">＋ New workroom</button><input type="search" x-model="$store.chat.workroomListQuery" placeholder="Search rooms" aria-label="Search workrooms"><div class="workroom-view-toggle" role="group" aria-label="Workroom view"><button type="button" :class="{ active: !$store.chat.workroomArchiveView }" @click="$store.chat.workroomArchiveView = false">Active</button><button type="button" :class="{ active: $store.chat.workroomArchiveView }" @click="$store.chat.workroomArchiveView = true">Archive</button></div></div>
               </div>
+              <div class="workroom-browser-rule" aria-hidden="true"></div>
               <p class="workroom-error" x-show="$store.chat.workroomError" x-text="$store.chat.workroomError"></p>
               <button type="button" class="workroom-retry" x-show="$store.chat.workroomError" @click="$store.chat.refreshWorkrooms({ immediate: true })">Retry workrooms</button>
               <div class="workroom-card-grid" x-show="$store.chat.visibleWorkroomRows.length > 0">
