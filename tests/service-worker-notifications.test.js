@@ -3,9 +3,10 @@ import { describe, expect, it } from 'vitest';
 
 import { buildServiceWorkerSource } from '../vite.config.js';
 
-function loadServiceWorkerHarness({ clients } = {}) {
+function loadServiceWorkerHarness({ clients, cacheNames = [] } = {}) {
   const handlers = new Map();
   const shownNotifications = [];
+  const deletedCaches = [];
   const context = {
     URL,
     Response,
@@ -18,8 +19,11 @@ function loadServiceWorkerHarness({ clients } = {}) {
           put() {},
         };
       },
-      async keys() { return []; },
-      async delete() { return true; },
+      async keys() { return cacheNames; },
+      async delete(name) {
+        deletedCaches.push(name);
+        return true;
+      },
     },
     self: {
       location: { origin: 'https://flightdeck.example' },
@@ -30,6 +34,7 @@ function loadServiceWorkerHarness({ clients } = {}) {
         },
       },
       clients: {
+        async claim() {},
         async matchAll() { return clients || []; },
         async openWindow() {},
       },
@@ -41,7 +46,7 @@ function loadServiceWorkerHarness({ clients } = {}) {
   };
   context.globalThis = context;
   vm.runInNewContext(buildServiceWorkerSource('test-build'), context);
-  return { handlers, shownNotifications };
+  return { deletedCaches, handlers, shownNotifications };
 }
 
 async function dispatchPush(payload) {
@@ -58,6 +63,32 @@ async function dispatchPush(payload) {
 }
 
 describe('generated notification service worker', () => {
+  it('reloads app windows when a new build replaces an older Flight Deck cache', async () => {
+    const navigations = [];
+    const client = {
+      url: 'https://flightdeck.example/pete/workroom/room-1',
+      async navigate(url) {
+        navigations.push(url);
+        return null;
+      },
+    };
+    const { deletedCaches, handlers } = loadServiceWorkerHarness({
+      cacheNames: ['wingman-fd-old-build', 'unrelated-cache'],
+      clients: [client],
+    });
+    const waits = [];
+
+    handlers.get('activate')({
+      waitUntil(promise) {
+        waits.push(promise);
+      },
+    });
+    await Promise.all(waits);
+
+    expect(deletedCaches).toEqual(['wingman-fd-old-build']);
+    expect(navigations).toEqual(['https://flightdeck.example/pete/workroom/room-1']);
+  });
+
   it('routes chat thread notifications to channel and thread params', async () => {
     const notification = await dispatchPush({
       title: 'Flight Deck: Pete',

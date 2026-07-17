@@ -72,12 +72,23 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     const cacheNames = await caches.keys();
+    const previousCacheNames = cacheNames.filter((name) => name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME);
     await Promise.all(
-      cacheNames
-        .filter((name) => name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME)
-        .map((name) => caches.delete(name))
+      previousCacheNames.map((name) => caches.delete(name))
     );
     await self.clients.claim();
+    if (previousCacheNames.length > 0) {
+      const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      await Promise.all(clients.map((client) => {
+        try {
+          const url = new URL(client.url);
+          if (url.origin !== self.location.origin) return null;
+          return client.navigate?.(client.url);
+        } catch {
+          return null;
+        }
+      }));
+    }
   })());
 });
 
