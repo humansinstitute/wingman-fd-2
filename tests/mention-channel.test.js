@@ -69,7 +69,7 @@ describe('channel mention lookup', () => {
 
   it('finds people from workspace members and workroom participants', async () => {
     const store = await createStore();
-    store.currentWorkspaceGroups = [];
+    store.groups = [];
     store.pgWorkspaceMembers = [{ actor_id: 'actor-rick', npub: 'npub-rick', display_name: 'Rick' }];
     store.workroomParticipants = [{ actor_npub: 'npub-agent', label: 'Integrator Agent', role: 'integration' }];
     store.addressBookPeople = [];

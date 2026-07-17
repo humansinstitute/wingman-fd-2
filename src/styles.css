@@ -19326,7 +19326,12 @@ button:disabled {
 .workroom-detail-header-actions { align-items: flex-start; }
 .workroom-detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem; margin-top: .9rem; }
 .workroom-view-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 380px); gap: .9rem; margin-top: .9rem; align-items: start; }
-.workroom-view-main { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem; min-width: 0; }
+.workroom-view-layout > .workroom-thread-panel { grid-column: 1; grid-row: 1; min-height: 34rem; }
+.workroom-view-layout > .workroom-view-main { grid-column: 2; grid-row: 1; display: grid; grid-template-columns: 1fr; gap: .8rem; }
+.workroom-thread-primary { background: #fff; border-color: #cbd5e1; }
+.workroom-thread-primary .workroom-thread-replies { max-height: none; min-height: 16rem; }
+.workroom-room-details-modal { width: min(720px, calc(100vw - 2rem)); }
+.workroom-room-details-metadata { max-height: 18rem; overflow: auto; padding: .75rem; border-radius: 6px; background: #f8fafc; font-size: .75rem; white-space: pre-wrap; overflow-wrap: anywhere; }
 .workroom-detail-panel { min-width: 0; padding: .85rem; border: 1px solid #e2e8f0; border-radius: 9px; background: #f8fafc; }
 .workroom-detail-panel h3 { margin: 0 0 .65rem; font-size: .9rem; }
 .workroom-detail-overview { grid-column: 1 / -1; }
@@ -19377,7 +19382,7 @@ button:disabled {
 .workroom-timeline p { margin: .2rem 0; color: #475569; font-size: .78rem; }
 .workroom-blockers-panel { grid-column: 1 / -1; border-color: #fecaca; background: #fff7ed; }
 .workroom-blockers-panel p { display: grid; gap: .15rem; margin: .35rem 0; color: #9a3412; font-size: .78rem; }
-@media (max-width: 920px) { .workroom-view-layout, .workroom-view-main { grid-template-columns: 1fr; } }
+@media (max-width: 920px) { .workroom-view-layout, .workroom-view-main { grid-template-columns: 1fr; } .workroom-view-layout > .workroom-thread-panel, .workroom-view-layout > .workroom-view-main { grid-column: 1; grid-row: auto; } }
 @media (max-width: 720px) { .workroom-browser-header, .workroom-detail-header { align-items: flex-start; flex-direction: column; } .workroom-browser-actions { flex-wrap: wrap; width: 100%; } .workroom-browser-actions input { flex: 1; min-width: 150px; } .workroom-detail-grid, .workroom-detail-overview dl { grid-template-columns: 1fr; } .workroom-detail-overview, .workroom-timeline-panel, .workroom-blockers-panel { grid-column: auto; } }
 @media (max-width: 620px) {
   .workroom-create-modal { width: calc(100vw - 1rem); padding: 1rem; }

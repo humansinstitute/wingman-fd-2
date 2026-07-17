@@ -165,6 +165,12 @@ export const workroomDetailMixin = {
   get selectedWorkroom() { return this.workrooms.find((row) => row?.record_id === this.activeWorkroomId) || null; },
   get selectedWorkroomParticipants() { return this.workroomParticipants.filter((row) => row.workroom_id === this.activeWorkroomId); },
   get selectedWorkroomLinks() { return this.workroomLinks.filter((row) => row.workroom_id === this.activeWorkroomId); },
+  get selectedWorkroomDocLinks() {
+    return this.selectedWorkroomLinks.filter((link) => /doc|document|artifact|file/i.test(`${link?.link_type || ''} ${link?.target_type || ''}`));
+  },
+  get selectedWorkroomTaskLinks() {
+    return this.selectedWorkroomLinks.filter((link) => /task|work.?item/i.test(`${link?.link_type || ''} ${link?.target_type || ''}`));
+  },
   get selectedWorkroomApprovals() { return this.workroomApprovals.filter((row) => row.target_id === this.activeWorkroomId); },
   get selectedWorkroomPendingApprovals() {
     return this.selectedWorkroomApprovals.filter((approval) => ['requested', 'in_review'].includes(approval.status));
@@ -203,6 +209,24 @@ export const workroomDetailMixin = {
     if (!parent?.record_id || typeof this.getThreadReplies !== 'function') return [];
     return this.getThreadReplies(parent.record_id);
   },
+  get selectedWorkroomRoomDetails() {
+    const room = this.selectedWorkroom || {};
+    return {
+      repo: room.repo || {},
+      branches: room.branches || {},
+      appTargets: room.app_targets || {},
+      approvalPolicy: room.approval_policy || {},
+      archivePolicy: room.archive_policy || {},
+      metadata: room.metadata || {},
+      announcement: {
+        messageId: workroomAnnouncementMessageId(room),
+        threadId: workroomAnnouncementThreadId(room),
+        channelId: workroomAnnouncementChannelId(room),
+      },
+    };
+  },
+  openWorkroomRoomDetails() { this.workroomRoomDetailsOpen = true; },
+  closeWorkroomRoomDetails() { this.workroomRoomDetailsOpen = false; },
   isWorkroomArchived(room) { return isArchivedWorkroom(room); },
   canArchiveWorkroom(room) {
     return Boolean(room?.record_id) && !isArchivedWorkroom(room);
@@ -254,7 +278,9 @@ export const workroomDetailMixin = {
     this.workroomDetailLoading = !hasCachedRoom;
     this.workroomError = '';
     try {
-      const hydrated = await hydrateTowerPgWorkroom(this, id);
+      const hydrated = hasCachedRoom && options.refreshRoom !== true
+        ? this.selectedWorkroom
+        : await hydrateTowerPgWorkroom(this, id);
       if (hydrated) this.applyWorkrooms([hydrated]);
       this.workroomDetailNotice = '';
       await this.hydrateSelectedWorkroomThread();
@@ -270,6 +296,7 @@ export const workroomDetailMixin = {
   closeWorkroomDetail(options = {}) {
     if (this.workroomDetailLoading) return;
     this.workroomDetailOpen = false;
+    this.workroomRoomDetailsOpen = false;
     this.activeWorkroomId = '';
     this.workroomError = '';
     if (this.navSection === 'workroom' && options.switchView !== false) this.navSection = 'status';
@@ -321,13 +348,16 @@ export const workroomDetailMixin = {
     const readThreads = this.getTowerPgChannelThreads || getTowerPgChannelThreads;
     const readMessages = this.getTowerPgChannelMessages || getTowerPgChannelMessages;
     const persistMessage = this.upsertMessage || upsertMessage;
-    const threadResult = await readThreads(context.workspaceId, channelId, {
-      baseUrl: context.baseUrl,
-      appNpub: context.appNpub,
-      includeArchived: true,
-      limit: 100,
-    });
-    const rawThreads = Array.isArray(threadResult?.threads) ? threadResult.threads : [];
+    const messageId = workroomAnnouncementMessageId(room);
+    const threadResult = messageId ? null : await readThreads(context.workspaceId, channelId, {
+        baseUrl: context.baseUrl,
+        appNpub: context.appNpub,
+        includeArchived: true,
+        limit: 100,
+      });
+    const rawThreads = messageId
+      ? [{ id: threadId, source_message_id: messageId, channel_id: channelId }]
+      : (Array.isArray(threadResult?.threads) ? threadResult.threads : []);
     const threadById = new Map(rawThreads.map((thread) => [text(thread?.id), thread]).filter(([id]) => id));
     const messagesResult = await readMessages(context.workspaceId, channelId, {
       baseUrl: context.baseUrl,
@@ -459,6 +489,7 @@ export function createWorkroomDetailState() {
     workroomRefreshInFlight: null,
     workroomRefreshTimer: null,
     workroomDetailNotice: '',
+    workroomRoomDetailsOpen: false,
     workroomArchivingId: '',
     workroomApprovalDecisionNote: '',
     workroomApprovalSubmittingId: '',

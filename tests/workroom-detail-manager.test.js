@@ -69,6 +69,19 @@ describe('workroom production merge approvals', () => {
 });
 
 describe('workroom announcement thread helpers', () => {
+  it('separates linked docs and tasks for the derived room rail', () => {
+    const store = {
+      activeWorkroomId: 'room-1',
+      workroomLinks: [
+        { record_id: 'doc-1', workroom_id: 'room-1', target_type: 'document', label: 'Brief' },
+        { record_id: 'task-1', workroom_id: 'room-1', target_type: 'task', label: 'Implement' },
+      ],
+    };
+    Object.defineProperties(store, Object.getOwnPropertyDescriptors(workroomDetailMixin));
+    expect(store.selectedWorkroomDocLinks.map((link) => link.record_id)).toEqual(['doc-1']);
+    expect(store.selectedWorkroomTaskLinks.map((link) => link.record_id)).toEqual(['task-1']);
+  });
+
   it('resolves durable announcement ids from workroom metadata', () => {
     const room = {
       channel_id: 'channel-1',
