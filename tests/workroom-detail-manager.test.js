@@ -180,6 +180,62 @@ describe('workroom announcement thread helpers', () => {
     expect(opened).toEqual([{ recordId: 'message-1', options: { scrollToLatest: true, syncRoute: false, preserveComposer: false } }]);
   });
 
+  it('hydrates the announcement thread from Tower when the local message cache is empty', async () => {
+    const opened = [];
+    const persisted = [];
+    const patched = [];
+    const store = {
+      currentWorkspace: {
+        workspaceId: 'workspace-1',
+        workspaceOwnerNpub: 'npub-owner',
+        directHttpsUrl: 'https://tower.example',
+        appNpub: 'flightdeck_pg',
+      },
+      activeWorkroomId: 'room-1',
+      selectedChannelId: 'channel-1',
+      workroomDetailNotice: '',
+      workrooms: [{
+        record_id: 'room-1',
+        channel_id: 'channel-1',
+        metadata: {
+          announcement_message_id: 'message-1',
+          announcement_thread_id: 'thread-1',
+        },
+      }],
+      messages: [],
+      getTowerPgChannelThreads: async () => ({
+        threads: [{ id: 'thread-1', source_message_id: 'message-1', channel_id: 'channel-1' }],
+      }),
+      getTowerPgChannelMessages: async (_workspaceId, _channelId, options) => {
+        expect(options.threadId).toBe('thread-1');
+        return {
+          messages: [
+            { id: 'message-1', channel_id: 'channel-1', thread_id: 'thread-1', body: 'Room started', sender_npub: 'npub-pete', metadata: { kind: 'workroom_announcement', workroom_id: 'room-1' } },
+            { id: 'reply-1', channel_id: 'channel-1', thread_id: 'thread-1', body: 'Reply', sender_npub: 'npub-rick' },
+          ],
+        };
+      },
+      upsertMessage: async (row) => { persisted.push(row); },
+      patchMessageLocal(row) {
+        patched.push(row);
+        this.messages = [...this.messages.filter((message) => message.record_id !== row.record_id), row];
+      },
+      getThreadReplies(recordId) {
+        return this.messages.filter((message) => message.parent_message_id === recordId);
+      },
+      openThread(recordId, options) { opened.push({ recordId, options }); },
+    };
+    Object.defineProperties(store, Object.getOwnPropertyDescriptors(workroomDetailMixin));
+
+    await store.openSelectedWorkroomThread({ syncRoute: false, refreshMessages: false });
+
+    expect(persisted.map((row) => row.record_id)).toEqual(['message-1', 'reply-1']);
+    expect(patched.map((row) => row.record_id)).toEqual(['message-1', 'reply-1']);
+    expect(store.selectedWorkroomAnnouncementMessageId).toBe('message-1');
+    expect(store.selectedWorkroomThreadReplies.map((reply) => reply.record_id)).toEqual(['reply-1']);
+    expect(opened).toEqual([{ recordId: 'message-1', options: { scrollToLatest: true, syncRoute: false, preserveComposer: false } }]);
+  });
+
   it('preserves the typed room reply while activating the announcement thread for send', async () => {
     const sent = [];
     const opened = [];

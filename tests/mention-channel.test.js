@@ -67,6 +67,28 @@ describe('channel mention lookup', () => {
     }]);
   });
 
+  it('finds people from workspace members and workroom participants', async () => {
+    const store = await createStore();
+    store.currentWorkspaceGroups = [];
+    store.pgWorkspaceMembers = [{ actor_id: 'actor-rick', npub: 'npub-rick', display_name: 'Rick' }];
+    store.workroomParticipants = [{ actor_npub: 'npub-agent', label: 'Integrator Agent', role: 'integration' }];
+    store.addressBookPeople = [];
+    store.getSenderName = (npub) => ({ 'npub-rick': 'Rick', 'npub-agent': 'Integrator Agent' }[npub] || npub);
+
+    expect(store.searchMentions('rick')).toEqual([{
+      type: 'person',
+      id: 'npub-rick',
+      label: 'Rick',
+      sublabel: 'Workspace member',
+    }]);
+    expect(store.searchMentions('integrator')).toEqual([{
+      type: 'person',
+      id: 'npub-agent',
+      label: 'Integrator Agent',
+      sublabel: 'Workroom integration',
+    }]);
+  });
+
   it('finds locally indexed docs that are not in the visible docs list yet', async () => {
     const store = await createStore();
     store.documents = [];

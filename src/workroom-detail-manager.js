@@ -1,16 +1,20 @@
 import {
   archiveTowerPgWorkroom,
   decideTowerPgApproval,
+  getTowerPgChannelMessages,
+  getTowerPgChannelThreads,
 } from './api.js';
 import {
   getWorkroomEvents,
   getWorkroomLinks,
   getWorkroomParticipants,
+  upsertMessage,
   upsertWorkroom,
 } from './db.js';
 import {
   hydrateTowerPgWorkrooms,
   hydrateTowerPgWorkroom,
+  mapPgMessageToLocal,
   mapPgWorkroomApprovalToLocal,
   mapPgWorkroomEventToLocal,
   mapPgWorkroomToLocal,
@@ -243,16 +247,18 @@ export const workroomDetailMixin = {
   async openWorkroomDetail(workroomId, options = {}) {
     const id = text(workroomId);
     if (!id) return;
+    const hasCachedRoom = this.workrooms.some((row) => row?.record_id === id);
     this.activeWorkroomId = id;
     if (options.switchView !== false) this.navSection = 'workroom';
     this.workroomDetailOpen = true;
-    this.workroomDetailLoading = true;
+    this.workroomDetailLoading = !hasCachedRoom;
     this.workroomError = '';
     try {
       const hydrated = await hydrateTowerPgWorkroom(this, id);
       if (hydrated) this.applyWorkrooms([hydrated]);
       this.workroomDetailNotice = '';
-      if (options.openThread !== false) await this.openSelectedWorkroomThread({ syncRoute: false, refreshMessages: true });
+      await this.hydrateSelectedWorkroomThread();
+      if (options.openThread !== false) await this.openSelectedWorkroomThread({ syncRoute: false, refreshMessages: false });
       if (typeof this.syncRoute === 'function' && options.syncRoute !== false) this.syncRoute();
     } catch (error) {
       this.workroomError = error?.message || 'Could not load workroom history.';
@@ -275,7 +281,7 @@ export const workroomDetailMixin = {
     const channelId = workroomAnnouncementChannelId(room);
     const messageId = workroomAnnouncementMessageId(room);
     const threadId = workroomAnnouncementThreadId(room);
-    const existingMessage = workroomAnnouncementMessage(this.messages, room);
+    let existingMessage = workroomAnnouncementMessage(this.messages, room);
     if (!room?.record_id || !channelId || (!messageId && !threadId && !existingMessage)) {
       this.workroomDetailNotice = 'This workroom does not have a chat thread yet.';
       return null;
@@ -286,6 +292,10 @@ export const workroomDetailMixin = {
     }
     if (options.refreshMessages !== false && typeof this.refreshMessages === 'function') {
       await this.refreshMessages({ scrollToLatest: false, scrollThreadToLatest: true }).catch(() => undefined);
+    }
+    if (!this.selectedWorkroomAnnouncementMessage && !existingMessage) {
+      await this.hydrateSelectedWorkroomThread();
+      existingMessage = workroomAnnouncementMessage(this.messages, room);
     }
     const message = this.selectedWorkroomAnnouncementMessage || existingMessage || (this.messages || []).find((row) => row?.record_id === messageId);
     if (!message) {
@@ -299,6 +309,45 @@ export const workroomDetailMixin = {
       preserveComposer: options.preserveComposer === true,
     });
     return message;
+  },
+
+  async hydrateSelectedWorkroomThread() {
+    const room = this.selectedWorkroom;
+    const context = resolveTowerPgWorkspaceContext(this);
+    const channelId = workroomAnnouncementChannelId(room);
+    const threadId = workroomAnnouncementThreadId(room);
+    if (!room?.record_id || !channelId || !threadId || !context.workspaceId || !context.workspaceOwnerNpub || !context.baseUrl) return [];
+
+    const readThreads = this.getTowerPgChannelThreads || getTowerPgChannelThreads;
+    const readMessages = this.getTowerPgChannelMessages || getTowerPgChannelMessages;
+    const persistMessage = this.upsertMessage || upsertMessage;
+    const threadResult = await readThreads(context.workspaceId, channelId, {
+      baseUrl: context.baseUrl,
+      appNpub: context.appNpub,
+      includeArchived: true,
+      limit: 100,
+    });
+    const rawThreads = Array.isArray(threadResult?.threads) ? threadResult.threads : [];
+    const threadById = new Map(rawThreads.map((thread) => [text(thread?.id), thread]).filter(([id]) => id));
+    const messagesResult = await readMessages(context.workspaceId, channelId, {
+      baseUrl: context.baseUrl,
+      appNpub: context.appNpub,
+      threadId,
+      limit: 200,
+    });
+    const rows = (Array.isArray(messagesResult?.messages) ? messagesResult.messages : [])
+      .map((message) => mapPgMessageToLocal(message, {
+        workspaceOwnerNpub: context.workspaceOwnerNpub,
+        senderNpub: '',
+        threadById,
+      }))
+      .filter((message) => message.record_id && message.channel_id);
+    for (const row of rows) {
+      await persistMessage(row);
+      if (typeof this.patchMessageLocal === 'function') this.patchMessageLocal(row);
+      else this.messages = mergeById(this.messages || [], [row]);
+    }
+    return rows;
   },
 
   async sendSelectedWorkroomThreadReply() {

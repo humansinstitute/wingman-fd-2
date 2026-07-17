@@ -7617,6 +7617,32 @@ export function initApp() {
         });
     },
 
+    getMentionPeople() {
+      const byNpub = new Map();
+      const add = (npub, fallbackLabel = '', sublabel = '') => {
+        const clean = String(npub || '').trim();
+        if (!clean || byNpub.has(clean)) return;
+        const label = this.getSenderName?.(clean) || String(fallbackLabel || '').trim() || clean;
+        byNpub.set(clean, { type: 'person', id: clean, label, sublabel });
+      };
+
+      for (const group of (this.currentWorkspaceGroups || [])) {
+        const groupLabel = group?.name ? `Group: ${group.name}` : '';
+        for (const npub of (group?.member_npubs || [])) add(npub, '', groupLabel);
+      }
+      for (const member of (this.pgWorkspaceMembers || [])) {
+        add(member?.npub || member?.user_npub || member?.member_npub, member?.display_name || member?.label || member?.name, 'Workspace member');
+      }
+      for (const participant of (this.workroomParticipants || [])) {
+        add(participant?.actor_npub, participant?.label, participant?.role ? `Workroom ${participant.role}` : 'Workroom participant');
+      }
+      for (const person of (this.addressBookPeople || [])) {
+        add(person?.npub, person?.label || person?.name, 'Person');
+      }
+
+      return Array.from(byNpub.values());
+    },
+
     searchMentions(rawQuery) {
       if (!rawQuery) return [];
 
@@ -7635,15 +7661,14 @@ export function initApp() {
 
       // People from groups
       if (!typeFilter || typeFilter === 'person') {
-        const seenNpubs = new Set();
-        for (const group of this.currentWorkspaceGroups) {
-          for (const npub of (group.member_npubs || [])) {
-            if (seenNpubs.has(npub)) continue;
-            seenNpubs.add(npub);
-            const name = this.getSenderName(npub);
-            if (!needle || name.toLowerCase().includes(needle) || npub.toLowerCase().includes(needle)) {
-              results.push({ type: 'person', id: npub, label: name, sublabel: '' });
-            }
+        for (const person of this.getMentionPeople()) {
+          if (
+            !needle
+            || person.label.toLowerCase().includes(needle)
+            || person.id.toLowerCase().includes(needle)
+            || String(person.sublabel || '').toLowerCase().includes(needle)
+          ) {
+            results.push(person);
           }
         }
       }
@@ -7736,11 +7761,8 @@ export function initApp() {
         results.push(result);
       };
 
-      for (const group of this.currentWorkspaceGroups) {
-        for (const npub of (group.member_npubs || [])) {
-          add({ type: 'person', id: npub, label: this.getSenderName(npub), sublabel: '' });
-          if (results.length >= 2) break;
-        }
+      for (const person of this.getMentionPeople()) {
+        add(person);
         if (results.length >= 2) break;
       }
 
