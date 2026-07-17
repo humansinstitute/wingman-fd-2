@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-DUV1t7D9.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-9NrzLqck.css">
+  <script type="module" crossorigin src="/assets/index-D1USviNu.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-CY7sUWO4.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -1591,7 +1591,10 @@
                       <span class="workroom-summary-goal" x-text="room.goal || 'No goal recorded.'"></span>
                       <span class="workroom-summary-meta" x-text="[room.repo?.name || room.repo?.url, room.branches?.integration, room.updated_at ? new Date(room.updated_at).toLocaleDateString() : ''].filter(Boolean).join(' · ')"></span>
                     </button>
-                    <button type="button" class="workroom-start-button" x-show="['draft', 'created'].includes(room.status)" @click="$store.chat.startWorkroom(room)" :disabled="$store.chat.workroomStartingId === room.record_id" x-text="$store.chat.workroomStartingId === room.record_id ? 'Starting…' : 'Start workroom'"></button>
+                    <div class="workroom-card-actions">
+                      <button type="button" class="workroom-start-button" x-show="['draft', 'created'].includes(room.status)" @click="$store.chat.startWorkroom(room)" :disabled="$store.chat.workroomStartingId === room.record_id" x-text="$store.chat.workroomStartingId === room.record_id ? 'Starting…' : 'Start workroom'"></button>
+                      <button type="button" class="workroom-archive-button" x-show="$store.chat.canArchiveWorkroom(room)" @click="$store.chat.archiveWorkroom(room)" :disabled="$store.chat.workroomArchivingId === room.record_id" x-text="$store.chat.workroomArchivingId === room.record_id ? 'Archiving…' : 'Archive'"></button>
+                    </div>
                   </div>
                 </template>
               </div>
@@ -5016,7 +5019,7 @@
             <section class="workroom-native-view" x-show="$store.chat.workroomDetailOpen" x-cloak>
               <header class="workroom-detail-header">
                 <div><p class="workroom-eyebrow">Workroom</p><h2 x-text="$store.chat.selectedWorkroom?.title || 'Workroom'"></h2><p x-text="$store.chat.selectedWorkroom?.goal || 'No goal recorded.'"></p></div>
-                <div class="workroom-detail-header-actions"><span class="workroom-status-chip" x-text="$store.chat.selectedWorkroom?.status || 'loading'"></span><button type="button" class="btn-secondary" x-show="$store.chat.selectedWorkroomAnnouncementMessageId" @click="$store.chat.openSelectedWorkroomThread()">Open room thread</button><button type="button" class="doc-modal-close" @click="$store.chat.closeWorkroomDetail()" aria-label="Close workroom page">&times;</button></div>
+                <div class="workroom-detail-header-actions"><span class="workroom-status-chip" x-text="$store.chat.selectedWorkroom?.status || 'loading'"></span><button type="button" class="btn-secondary" x-show="$store.chat.selectedWorkroomAnnouncementMessageId" @click="$store.chat.openSelectedWorkroomThread()">Open room thread</button><button type="button" class="workroom-archive-button" x-show="$store.chat.canArchiveWorkroom($store.chat.selectedWorkroom)" @click="$store.chat.archiveSelectedWorkroom()" :disabled="$store.chat.workroomArchivingId === $store.chat.selectedWorkroom?.record_id" x-text="$store.chat.workroomArchivingId === $store.chat.selectedWorkroom?.record_id ? 'Archiving…' : 'Archive'"></button><button type="button" class="doc-modal-close" @click="$store.chat.closeWorkroomDetail()" aria-label="Close workroom page">&times;</button></div>
               </header>
               <p class="workroom-error" x-show="$store.chat.workroomError" x-text="$store.chat.workroomError"></p>
               <p class="workroom-notice" x-show="$store.chat.workroomDetailNotice" x-text="$store.chat.workroomDetailNotice"></p>

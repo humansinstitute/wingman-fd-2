@@ -16,7 +16,7 @@ import {
   mapPgWorkroomToLocal,
   resolveTowerPgWorkspaceContext,
 } from './pg-read-hydrator.js';
-import { filterActiveWorkrooms, filterArchivedWorkrooms, searchWorkroomRows } from './workrooms.js';
+import { filterActiveWorkrooms, filterArchivedWorkrooms, isArchivedWorkroom, searchWorkroomRows } from './workrooms.js';
 
 export const WORKROOM_EVENT_FILTERS = Object.freeze([
   { value: 'all', label: 'All history' },
@@ -199,6 +199,10 @@ export const workroomDetailMixin = {
     if (!parent?.record_id || typeof this.getThreadReplies !== 'function') return [];
     return this.getThreadReplies(parent.record_id);
   },
+  isWorkroomArchived(room) { return isArchivedWorkroom(room); },
+  canArchiveWorkroom(room) {
+    return Boolean(room?.record_id) && !isArchivedWorkroom(room);
+  },
   applyWorkrooms(rows = []) { this.workrooms = mergeById(this.workrooms, rows); },
   applyWorkroomParticipants(rows = []) { this.workroomParticipants = mergeById(this.workroomParticipants, rows); },
   applyWorkroomEvents(rows = []) { this.workroomEvents = mergeById(this.workroomEvents, rows); },
@@ -304,15 +308,23 @@ export const workroomDetailMixin = {
   },
 
   async archiveSelectedWorkroom() {
-    const room = this.selectedWorkroom;
+    return this.archiveWorkroom(this.selectedWorkroom);
+  },
+
+  async archiveWorkroom(room) {
     const context = resolveTowerPgWorkspaceContext(this);
     if (!room?.record_id || !context.workspaceId || !context.baseUrl) return;
-    this.workroomDetailLoading = true;
+    if (this.workroomArchivingId) return;
+    this.workroomArchivingId = room.record_id;
+    if (this.activeWorkroomId === room.record_id) this.workroomDetailLoading = true;
+    this.workroomError = '';
     try {
-      const result = await archiveTowerPgWorkroom(context.workspaceId, room.record_id, { row_version: room.row_version || 1 }, context);
+      const archiveRequest = this.archiveTowerPgWorkroom || archiveTowerPgWorkroom;
+      const result = await archiveRequest(context.workspaceId, room.record_id, { row_version: room.row_version || 1 }, context);
       const archived = mapPgWorkroomToLocal(result?.workroom || result);
       if (archived.record_id) {
-        await upsertWorkroom(archived);
+        const persistWorkroom = this.upsertWorkroom || upsertWorkroom;
+        await persistWorkroom(archived);
         this.applyWorkrooms([archived]);
       }
       this.workroomDetailNotice = 'Workroom archived.';
@@ -320,7 +332,8 @@ export const workroomDetailMixin = {
     } catch (error) {
       this.workroomError = error?.message || 'Could not archive workroom.';
     } finally {
-      this.workroomDetailLoading = false;
+      this.workroomArchivingId = '';
+      if (this.activeWorkroomId === room.record_id) this.workroomDetailLoading = false;
     }
   },
 
@@ -397,6 +410,7 @@ export function createWorkroomDetailState() {
     workroomRefreshInFlight: null,
     workroomRefreshTimer: null,
     workroomDetailNotice: '',
+    workroomArchivingId: '',
     workroomApprovalDecisionNote: '',
     workroomApprovalSubmittingId: '',
     workroomEventFilterOptions: WORKROOM_EVENT_FILTERS,

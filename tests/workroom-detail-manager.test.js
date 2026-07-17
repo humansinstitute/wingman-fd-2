@@ -212,3 +212,41 @@ describe('workroom announcement thread helpers', () => {
     expect(sent).toEqual([{ activeThreadId: 'message-1', body: 'Reply from the workroom' }]);
   });
 });
+
+describe('workroom archive actions', () => {
+  it('archives a room from the browser and moves the list to archive view', async () => {
+    const archiveCalls = [];
+    const persisted = [];
+    const store = {
+      currentWorkspace: {
+        workspaceId: 'workspace-1',
+        directHttpsUrl: 'https://tower.example',
+        appNpub: 'flightdeck_pg',
+      },
+      workrooms: [{ record_id: 'room-1', title: 'Old room', status: 'active', row_version: 7 }],
+      activeWorkroomId: '',
+      workroomArchiveView: false,
+      workroomArchivingId: '',
+      workroomDetailLoading: false,
+      workroomDetailNotice: '',
+      workroomError: '',
+      archiveTowerPgWorkroom: async (...args) => {
+        archiveCalls.push(args);
+        return { workroom: { id: 'room-1', title: 'Old room', status: 'archived', row_version: 8, archived_at: '2026-07-17T01:00:00Z' } };
+      },
+      upsertWorkroom: async (row) => { persisted.push(row); },
+    };
+    Object.defineProperties(store, Object.getOwnPropertyDescriptors(workroomDetailMixin));
+
+    await store.archiveWorkroom(store.workrooms[0]);
+
+    expect(archiveCalls).toEqual([
+      ['workspace-1', 'room-1', { row_version: 7 }, expect.objectContaining({ workspaceId: 'workspace-1', baseUrl: 'https://tower.example' })],
+    ]);
+    expect(persisted).toEqual([expect.objectContaining({ record_id: 'room-1', status: 'archived' })]);
+    expect(store.workrooms).toEqual([expect.objectContaining({ record_id: 'room-1', status: 'archived' })]);
+    expect(store.workroomArchiveView).toBe(true);
+    expect(store.workroomArchivingId).toBe('');
+    expect(store.canArchiveWorkroom(store.workrooms[0])).toBe(false);
+  });
+});
