@@ -528,6 +528,7 @@ export function initApp() {
     showChannelSettingsModal: false,
     channelDeleteConfirmArmed: false,
     channelGrants: [],
+    channelGrantsChannelId: null,
     channelGrantsLoading: false,
     channelGrantsSaving: false,
     channelGrantsError: null,
@@ -7657,7 +7658,9 @@ export function initApp() {
           ...(Array.isArray(this.currentWorkspaceGroups) ? this.currentWorkspaceGroups : []),
           ...(Array.isArray(this.groups) ? this.groups : []),
         ],
-        channelGrants: this.channelGrantRows || this.channelGrants || [],
+        channelGrants: typeof this.getSelectedChannelGrantRows === 'function'
+          ? this.getSelectedChannelGrantRows(channelId)
+          : (this.channelGrantRows || this.channelGrants || []),
         workspaceMembers: this.pgWorkspaceMembers,
         sessionNpub: this.session?.npub,
         currentViewerNpub: this.currentPgActorNpub,

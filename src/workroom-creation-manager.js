@@ -206,9 +206,12 @@ function buildWorkroomParticipantRows(store, channel) {
   const baseParticipants = typeof store.getChannelParticipants === 'function'
     ? store.getChannelParticipants(channel)
     : [];
-  const cachedChannelGrants = store.selectedChannelId === channel.record_id
-    ? (store.channelGrantRows || store.channelGrants || [])
-    : [];
+  const channelId = text(channel?.record_id);
+  const cachedChannelGrants = typeof store.getSelectedChannelGrantRows === 'function'
+    ? store.getSelectedChannelGrantRows(channelId)
+    : (store.selectedChannelId === channelId && (!store.channelGrantsChannelId || store.channelGrantsChannelId === channelId)
+      ? (store.channelGrantRows || store.channelGrants || [])
+      : []);
   const channelWithScopeGroups = {
     ...channel,
     group_ids: groupRefsForChannelAndScope(store, channel),

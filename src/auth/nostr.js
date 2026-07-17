@@ -20,6 +20,7 @@ let memoryPubkey = null;
 let memoryBunkerSigner = null;
 let memoryBunkerUri = null;
 let extensionSignerBridge = null;
+const DEFAULT_EXTENSION_SIGN_TIMEOUT_MS = 10_000;
 
 function extensionSignerReady() {
   return typeof window !== 'undefined'
@@ -109,18 +110,48 @@ function buildHttpAuthEvent(url, method, payloadHash) {
 let nip07SignQueue = Promise.resolve();
 let extensionBridgeSignQueue = Promise.resolve();
 
-function serialNip07SignEvent(event) {
-  nip07SignQueue = nip07SignQueue
-    .then(() => window.nostr.signEvent(event))
-    .catch(() => window.nostr.signEvent(event));
-  return nip07SignQueue;
+function normalizeSignTimeoutMs(timeoutMs) {
+  const parsed = Number(timeoutMs);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_EXTENSION_SIGN_TIMEOUT_MS;
 }
 
-function serialBridgeSignEvent(event) {
-  extensionBridgeSignQueue = extensionBridgeSignQueue
-    .then(() => extensionSignerBridge.signEvent(event))
-    .catch(() => extensionSignerBridge.signEvent(event));
-  return extensionBridgeSignQueue;
+function signerTimeout(promise, timeoutMs, message) {
+  let timer = null;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const error = new Error(message);
+      error.code = 'sign_timeout';
+      reject(error);
+    }, normalizeSignTimeoutMs(timeoutMs));
+  });
+  return Promise.race([
+    Promise.resolve(promise).finally(() => {
+      if (timer) clearTimeout(timer);
+    }),
+    timeout,
+  ]);
+}
+
+function serialNip07SignEvent(event, options = {}) {
+  const run = () => signerTimeout(
+    window.nostr.signEvent(event),
+    options.timeoutMs,
+    'NIP-07 signing timed out.',
+  );
+  const next = nip07SignQueue.then(run, run);
+  nip07SignQueue = next.catch(() => undefined);
+  return next;
+}
+
+function serialBridgeSignEvent(event, options = {}) {
+  const run = () => signerTimeout(
+    extensionSignerBridge.signEvent(event),
+    options.timeoutMs,
+    'Extension bridge signing timed out.',
+  );
+  const next = extensionBridgeSignQueue.then(run, run);
+  extensionBridgeSignQueue = next.catch(() => undefined);
+  return next;
 }
 
 async function sha256Hex(input) {
@@ -209,12 +240,12 @@ export async function getExtensionPublicKey() {
   throw new Error('No NIP-07 browser extension found.');
 }
 
-export async function signEventWithExtension(event) {
+export async function signEventWithExtension(event, options = {}) {
   if (typeof window !== 'undefined' && window.nostr?.signEvent) {
-    return serialNip07SignEvent(event);
+    return serialNip07SignEvent(event, options);
   }
   if (extensionSignerBridge?.signEvent) {
-    return serialBridgeSignEvent(event);
+    return serialBridgeSignEvent(event, options);
   }
   throw new Error('No NIP-07 browser extension found.');
 }
@@ -314,7 +345,7 @@ export async function signLoginEvent(method, supplemental = null) {
   throw new Error(`Unsupported login method: ${method}`);
 }
 
-export async function createNip98AuthHeader(url, method, body = null) {
+export async function createNip98AuthHeader(url, method, body = null, options = {}) {
   const creds = await getStoredCredentials();
   const authMethod = creds?.method;
   if (!authMethod) throw new Error('No Nostr session available for NIP-98 auth.');
@@ -350,7 +381,7 @@ export async function createNip98AuthHeader(url, method, body = null) {
       throw new Error('NIP-07 signer pubkey changed since login. Sign in again.');
     }
     const pubkey = currentPubkey;
-    const signedEvent = await signEventWithExtension({ ...eventTemplate, pubkey });
+    const signedEvent = await signEventWithExtension({ ...eventTemplate, pubkey }, { timeoutMs: options.signTimeoutMs || options.timeoutMs });
     if (signedEvent?.pubkey !== pubkey) {
       throw new Error('NIP-07 signer returned a different pubkey than the active session. Sign in again.');
     }

@@ -569,6 +569,8 @@ export function aggregatePgChannelGrants(grants = []) {
     const principalId = String(
       grant?.principal_id
       || grant?.principal?.actor_id
+      || grant?.principal?.group_id
+      || grant?.principal?.group_npub
       || grant?.principal?.id
       || ''
     ).trim();
@@ -603,6 +605,14 @@ export function aggregatePgChannelGrants(grants = []) {
     ...entry,
     capacity: capacityForPgChannelPermissions(entry.permissions),
   }));
+}
+
+function embeddedChannelGrants(channel = {}) {
+  return [
+    ...(Array.isArray(channel?.channel_grants) ? channel.channel_grants : []),
+    ...(Array.isArray(channel?.grants) ? channel.grants : []),
+    ...(Array.isArray(channel?.access_grants) ? channel.access_grants : []),
+  ];
 }
 
 function pgChannelGrantPermissionNames(grant) {
@@ -950,7 +960,18 @@ export const channelsManagerMixin = {
   },
 
   get channelGrantRows() {
-    return aggregatePgChannelGrants(this.channelGrants || []);
+    return this.getSelectedChannelGrantRows();
+  },
+
+  getSelectedChannelGrantRows(channelId = this.selectedChannelId) {
+    const selectedId = String(channelId || '').trim();
+    const selectedChannel = (this.channels || []).find((channel) => channel?.record_id === selectedId) || null;
+    const loadedChannelId = String(this.channelGrantsChannelId || '').trim();
+    const hasLoadedRowsForChannel = selectedId && (!loadedChannelId || loadedChannelId === selectedId);
+    const source = hasLoadedRowsForChannel
+      ? (this.channelGrants || [])
+      : embeddedChannelGrants(selectedChannel);
+    return aggregatePgChannelGrants(source);
   },
 
   get pgChannelBulkGrantChannelOptions() {
@@ -1150,7 +1171,7 @@ export const channelsManagerMixin = {
     if (!isTowerPgBackendMode()) return Boolean(this.canAdminWorkspace);
     const workspace = this.currentWorkspace || {};
     return canManagePgChannelGrantsFromRows({
-      grants: this.channelGrants || [],
+      grants: this.channelGrantRows || [],
       actorId: pgMeActorId(workspace),
       viewerNpub: pgMeActorNpub(workspace) || this.session?.npub || '',
       groups: Array.isArray(this.currentWorkspaceGroups) && this.currentWorkspaceGroups.length > 0
@@ -1275,11 +1296,33 @@ export const channelsManagerMixin = {
       if (this.canAttemptSelectedPgChannelGrantRead) {
         await this.refreshChannelGrants();
       } else {
-        this.channelGrants = [];
+        this.channelGrantsChannelId = String(this.selectedChannelId || '').trim() || null;
+        this.channelGrants = embeddedChannelGrants(this.selectedChannel || {});
       }
     } catch (error) {
       this.channelGrantsError = error?.message || 'Failed to load channel access';
     }
+  },
+
+  async cacheSelectedChannelGrants(channelId, grants = []) {
+    const cleanChannelId = String(channelId || '').trim();
+    if (!cleanChannelId) return;
+    const channel = (this.channels || []).find((candidate) => candidate?.record_id === cleanChannelId);
+    if (!channel) return;
+    const nextChannel = {
+      ...channel,
+      channel_grants: Array.isArray(grants) ? grants : [],
+    };
+    try {
+      await upsertChannel(nextChannel);
+    } catch (cacheError) {
+      flightDeckLog('warn', 'settings', 'PG channel grant cache write failed after refresh', {
+        error: cacheError?.message || String(cacheError),
+      });
+    }
+    this.channels = (this.channels || []).map((candidate) =>
+      candidate?.record_id === cleanChannelId ? nextChannel : candidate
+    );
   },
 
   async refreshChannelGrants() {
@@ -1293,11 +1336,15 @@ export const channelsManagerMixin = {
       if (!workspaceId || !baseUrl) throw new Error('Flight Deck PG workspace is not connected');
       const result = await getTowerPgChannelGrants(workspaceId, channelId, { baseUrl, appNpub });
       this.channelGrants = Array.isArray(result?.grants) ? result.grants : [];
+      this.channelGrantsChannelId = channelId;
+      await this.cacheSelectedChannelGrants(channelId, this.channelGrants);
       await this.materializeSelectedDmParticipantsFromChannelGrants();
       return this.channelGrants;
     } catch (error) {
       this.channelGrantsError = error?.message || 'Failed to load channel grants';
-      return this.channelGrants || [];
+      return this.channelGrantsChannelId === channelId
+        ? (this.channelGrants || [])
+        : embeddedChannelGrants(this.selectedChannel || {});
     } finally {
       this.channelGrantsLoading = false;
     }

@@ -157,6 +157,32 @@ describe('auth/nostr helpers', () => {
     expect(refreshCredentialExpiryMock).toHaveBeenCalledTimes(1);
   });
 
+  it('recovers the extension signing queue after a hung signing request times out', async () => {
+    vi.useFakeTimers();
+    window.nostr = {
+      getPublicKey: vi.fn(async () => 'c'.repeat(64)),
+      signEvent: vi.fn(async (event) => ({ ...event, id: 'login-id', sig: 'login-sig' })),
+    };
+    await signLoginEvent('extension');
+
+    let signCount = 0;
+    window.nostr.signEvent = vi.fn((event) => {
+      signCount += 1;
+      if (signCount === 1) return new Promise(() => {});
+      return Promise.resolve({ ...event, id: `ext-id-${signCount}`, sig: `ext-sig-${signCount}` });
+    });
+
+    const first = createNip98AuthHeader('https://example.test/api/v4/slow', 'GET', null, { signTimeoutMs: 20 });
+    const firstAssertion = expect(first).rejects.toThrow('NIP-07 signing timed out.');
+    await vi.advanceTimersByTimeAsync(20);
+    await firstAssertion;
+
+    const second = createNip98AuthHeader('https://example.test/api/v4/grants', 'GET', null, { signTimeoutMs: 20 });
+    await expect(second).resolves.toMatch(/^Nostr /);
+    expect(window.nostr.signEvent).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
+
   it('pubkeyToNpub returns an npub string', async () => {
     setMemoryPubkey('a'.repeat(64));
     expect(getMemoryPubkey()).toBe('a'.repeat(64));

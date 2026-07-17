@@ -75,12 +75,13 @@ async function createApiAuthHeader(requestUrl, method, body = null, options = {}
   const workspaceSecret = options.useWorkspaceKey === false
     ? null
     : getActiveWorkspaceKeySecretForAuth();
+  const authTimeoutMs = getAuthHeaderTimeoutMs(method, options);
   const authPromise = workspaceSecret
     ? createNip98AuthHeaderForSecret(requestUrl, method, body ?? null, workspaceSecret)
-    : createNip98AuthHeader(requestUrl, method, body ?? null);
+    : createNip98AuthHeader(requestUrl, method, body ?? null, { signTimeoutMs: authTimeoutMs });
   return withTimeout(
     authPromise,
-    getAuthHeaderTimeoutMs(method, options),
+    authTimeoutMs,
     `NIP-98 signing timed out for ${String(method || 'GET').toUpperCase()} ${requestUrl}`,
   );
 }

@@ -155,6 +155,31 @@ describe('workroom creation flow helpers', () => {
     ]);
   });
 
+  it('uses channel-aware grant rows when opening the Workroom Creation modal', () => {
+    const store = {
+      selectedChannelId: 'channel-2',
+      selectedChannel: { record_id: 'channel-2', channel_type: 'channel' },
+      channelGrantsChannelId: 'channel-1',
+      channelGrants: [{ principal_type: 'actor', principal_id: 'actor-stale' }],
+      currentWorkspaceGroups: [{ group_id: 'group-agents', name: 'Agents', member_npubs: ['npub-rick'] }],
+      pgWorkspaceMembers: [{ actor_id: 'actor-rick', npub: 'npub-rick' }],
+      session: { npub: 'npub-pete' },
+      workroomCreationForm: createWorkroomForm(),
+      getSelectedChannelGrantRows: vi.fn(() => [{ principal_type: 'group', principal_id: 'group-agents' }]),
+      getChannelParticipants: () => [],
+      getSenderName: (npub) => npub === 'npub-rick' ? 'Rick' : 'Pete',
+    };
+    Object.assign(store, workroomCreationMixin);
+
+    store.openWorkroomCreation();
+
+    expect(store.getSelectedChannelGrantRows).toHaveBeenCalledWith('channel-2');
+    expect(store.workroomCreationForm.participants).toEqual([
+      { actor_npub: 'npub-rick', role: 'contributor', label: 'Rick' },
+      { actor_npub: 'npub-pete', role: 'contributor', label: 'Pete' },
+    ]);
+  });
+
   it('refreshes PG groups, members, and channel grants before finalizing the Workroom Creation roster', async () => {
     const store = {
       selectedChannelId: 'channel-1',

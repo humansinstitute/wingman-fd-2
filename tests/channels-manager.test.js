@@ -1798,6 +1798,26 @@ describe('channels-manager pure utilities', () => {
       expect(grants[0].capacity).toBe('manager');
     });
 
+    it('aggregates grant rows with nested group principals', () => {
+      const grants = aggregatePgChannelGrants([
+        {
+          id: 'grant-nested-group',
+          principal_type: 'group',
+          principal: { group_id: 'group-agents', name: 'Agents' },
+          permissions: ['channel.read'],
+        },
+      ]);
+
+      expect(grants).toEqual([
+        expect.objectContaining({
+          key: 'group:group-agents',
+          principal_type: 'group',
+          principal_id: 'group-agents',
+          permissions: ['channel.read'],
+        }),
+      ]);
+    });
+
     it('aggregates Tower grant rows by principal and detects the matching capacity', () => {
       const rows = aggregatePgChannelGrants([
         {
@@ -1863,6 +1883,58 @@ describe('channels-manager pure utilities', () => {
           effective_member_npubs: ['npub1nested'],
         }],
       })).toBe(true);
+    });
+
+    it('uses selected channel grant cache instead of stale grants from another channel', () => {
+      const store = createPgGrantStore({
+        selectedChannelId: 'channel-2',
+        channelGrantsChannelId: 'channel-1',
+        channelGrants: [{
+          principal_type: 'actor',
+          principal_id: 'actor-stale',
+          permissions: ['channel.read'],
+        }],
+        channels: [{
+          record_id: 'channel-2',
+          channel_grants: [{
+            principal_type: 'group',
+            principal_id: 'group-agents',
+            permissions: ['channel.read'],
+          }],
+        }],
+      });
+
+      expect(store.channelGrantRows).toEqual([
+        expect.objectContaining({
+          key: 'group:group-agents',
+          principal_type: 'group',
+          principal_id: 'group-agents',
+        }),
+      ]);
+    });
+
+    it('caches successful selected-channel grant reads on the channel row', async () => {
+      getTowerPgChannelGrants.mockResolvedValueOnce({
+        grants: [{
+          principal_type: 'group',
+          principal_id: 'group-agents',
+          permissions: ['channel.read'],
+        }],
+      });
+      const store = createPgGrantStore({
+        selectedChannelId: 'channel-2',
+        channelGrants: [],
+        channels: [{ record_id: 'channel-2', title: 'Feature' }],
+      });
+
+      await store.refreshChannelGrants();
+
+      expect(store.channelGrantsChannelId).toBe('channel-2');
+      expect(store.channels.find((channel) => channel.record_id === 'channel-2')?.channel_grants).toEqual([{
+        principal_type: 'group',
+        principal_id: 'group-agents',
+        permissions: ['channel.read'],
+      }]);
     });
 
     it('labels actor grants through resolved npubs and profile names', () => {

@@ -102,6 +102,7 @@ describe('workspace API host binding', () => {
       'https://sb.example/api/v4/workspaces?member_npub=npub1member',
       'GET',
       null,
+      { signTimeoutMs: 10000 },
     );
     expect(createNip98AuthHeaderForSecret).not.toHaveBeenCalled();
   });
@@ -135,6 +136,7 @@ describe('workspace API host binding', () => {
       'https://sb.example/api/v4/workspaces',
       'POST',
       payload,
+      { signTimeoutMs: 45000 },
     );
     expect(createNip98AuthHeaderForSecret).not.toHaveBeenCalled();
   });
