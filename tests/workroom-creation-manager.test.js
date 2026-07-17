@@ -1,4 +1,14 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('../src/api.js', async () => {
+  const actual = await vi.importActual('../src/api.js');
+  return {
+    ...actual,
+    startTowerPgWorkroom: vi.fn(),
+  };
+});
+
+import { startTowerPgWorkroom } from '../src/api.js';
 import {
   buildWorkroomCreatePayload,
   channelParticipantFormRows,
@@ -11,6 +21,10 @@ import {
   workroomDefaultsFromChannel,
   workroomVisibleParticipantNpubs,
 } from '../src/workroom-creation-manager.js';
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 describe('workroom creation flow helpers', () => {
   it('uses conventional branch defaults', () => {
@@ -180,6 +194,33 @@ describe('workroom creation flow helpers', () => {
     ]);
   });
 
+  it('includes members from enclosing scope groups when creating a channel workroom', async () => {
+    const store = {
+      selectedChannelId: 'channel-1',
+      selectedChannel: { record_id: 'channel-1', scope_id: 'scope-feature', channel_type: 'channel' },
+      scopesMap: new Map([['scope-feature', { record_id: 'scope-feature', group_ids: ['group-agents'] }]]),
+      groups: [{ group_id: 'group-agents', name: 'Agents', member_npubs: ['npub-rick'] }],
+      currentWorkspaceGroups: [],
+      channelGrants: [],
+      pgWorkspaceMembers: [{ actor_id: 'actor-rick', npub: 'npub-rick' }],
+      session: { npub: 'npub-pete' },
+      workroomCreationForm: createWorkroomForm(),
+      getChannelParticipants: () => ['npub-pete'],
+      getSenderName: (npub) => npub === 'npub-rick' ? 'Rick' : 'Pete',
+      refreshGroups: vi.fn(async function refreshGroups() { return this.groups; }),
+      refreshTowerPgWorkspaceMembers: vi.fn(async function refreshTowerPgWorkspaceMembers() { return this.pgWorkspaceMembers; }),
+      refreshChannelGrants: vi.fn(async function refreshChannelGrants() { return this.channelGrants; }),
+    };
+    Object.assign(store, workroomCreationMixin);
+
+    await store.openWorkroomCreation();
+
+    expect(store.workroomCreationForm.participants).toEqual([
+      { actor_npub: 'npub-pete', role: 'contributor', label: 'Pete' },
+      { actor_npub: 'npub-rick', role: 'contributor', label: 'Rick' },
+    ]);
+  });
+
   it('expands group grants through known group members', () => {
     expect(workroomVisibleParticipantNpubs({ record_id: 'channel-1' }, {
       channelGrants: [{ principal_type: 'group', principal_id: 'group-team' }],
@@ -226,5 +267,27 @@ describe('workroom creation flow helpers', () => {
       { actor_npub: 'npub-ok', access_status: 'granted' },
       { actor_npub: 'npub-failed', access_status: 'failed', access_issue: 'workspace_membership_missing' },
     ])).toEqual([{ actor_npub: 'npub-failed', access_status: 'failed', access_issue: 'workspace_membership_missing' }]);
+  });
+
+  it('shows start failures in the creation modal after creating the draft', async () => {
+    startTowerPgWorkroom.mockRejectedValueOnce(new Error('integration autopilot is missing'));
+    const store = {
+      workrooms: [],
+      messages: [],
+      selectedChannel: { record_id: 'channel-1', scope_id: 'scope-1' },
+      workroomCreationOpen: true,
+      workroomCreationForm: createWorkroomForm({ title: 'Quick', goal: 'Updates' }),
+      workroomError: '',
+      workroomCreationError: '',
+      workroomStartingId: '',
+      currentWorkspace: { pgBackendMode: true, workspaceId: 'workspace-1', directHttpsUrl: 'https://tower.example', appNpub: 'flightdeck-app' },
+      backendUrl: 'https://tower.example',
+    };
+    Object.assign(store, workroomCreationMixin);
+
+    await store.startWorkroom({ record_id: 'room-1', row_version: 1 });
+
+    expect(store.workroomCreationError).toBe('Workroom draft created but not started: integration autopilot is missing');
+    expect(store.workroomError).toBe('integration autopilot is missing');
   });
 });

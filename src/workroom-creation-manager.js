@@ -120,6 +120,19 @@ function grantRowsForChannel(channel, channelGrants = []) {
   return [...embedded, ...(Array.isArray(channelGrants) ? channelGrants : [])];
 }
 
+function groupRefsForChannelAndScope(store, channel) {
+  const refs = new Set([
+    ...valuesFrom(channel?.group_ids || channel?.groupIds || channel?.channel_group_ids || channel?.visible_group_ids),
+  ]);
+  const scopeId = text(channel?.scope_id || channel?.scope_l1_id);
+  const scope = scopeId
+    ? (store?.scopesMap?.get?.(scopeId)
+      || (Array.isArray(store?.scopes) ? store.scopes.find((candidate) => text(candidate?.record_id || candidate?.id) === scopeId) : null))
+    : null;
+  for (const groupId of valuesFrom(scope?.group_ids || scope?.groupIds || scope?.scope_policy_group_ids)) refs.add(groupId);
+  return [...refs];
+}
+
 /**
  * Resolve the people who can see a channel from materialized visibility data.
  * This intentionally does not fetch: opening the modal must remain usable when
@@ -186,9 +199,13 @@ function buildWorkroomParticipantRows(store, channel) {
   const cachedChannelGrants = store.selectedChannelId === channel.record_id
     ? (store.channelGrantRows || store.channelGrants || [])
     : [];
+  const channelWithScopeGroups = {
+    ...channel,
+    group_ids: groupRefsForChannelAndScope(store, channel),
+  };
   return channelParticipantFormRows(
-    channel,
-    () => workroomVisibleParticipantNpubs(channel, {
+    channelWithScopeGroups,
+    () => workroomVisibleParticipantNpubs(channelWithScopeGroups, {
       baseParticipants,
       groups: [
         ...(Array.isArray(store.currentWorkspaceGroups) ? store.currentWorkspaceGroups : []),
@@ -532,7 +549,11 @@ export const workroomCreationMixin = {
         await this.openWorkroomDetail(startedRoom.record_id, { openThread: true });
       }
     } catch (error) {
-      this.workroomError = 'Could not start this workroom. Retry when Tower is available.';
+      const message = error?.message || 'Could not start this workroom. Retry when Tower is available.';
+      this.workroomError = message;
+      this.workroomCreationError = this.workroomCreationOpen
+        ? `Workroom draft created but not started: ${message}`
+        : message;
     } finally {
       this.workroomStartingId = '';
     }
