@@ -89,6 +89,29 @@ describe('channel mention lookup', () => {
     }]);
   });
 
+  it('scopes workroom mentions to channel-visible members through assigned groups', async () => {
+    const store = await createStore();
+    store.selectedChannelId = 'channel-ops';
+    store.channels = [{ record_id: 'channel-ops', group_ids: ['group-agents'], record_state: 'active' }];
+    store.currentWorkspaceOwnerNpub = 'npub-owner';
+    store.groups = [
+      { group_id: 'group-agents', owner_npub: 'npub-owner', name: 'Agents', member_npubs: ['npub-rick'] },
+      { group_id: 'group-other', owner_npub: 'npub-owner', name: 'Other', member_npubs: ['npub-sam'] },
+    ];
+    store.pgWorkspaceMembers = [
+      { npub: 'npub-rick', display_name: 'Rick' },
+      { npub: 'npub-sam', display_name: 'Sam' },
+    ];
+    store.addressBookPeople = [];
+    store.getSenderName = (npub) => ({ 'npub-rick': 'Rick', 'npub-sam': 'Sam' }[npub] || npub);
+    store.getChannelParticipants = () => [];
+
+    expect(store.searchMentions('r', { visibleOnly: true })).toEqual([{
+      type: 'person', id: 'npub-rick', label: 'Rick', sublabel: 'Group: Agents',
+    }]);
+    expect(store.searchMentions('sam', { visibleOnly: true })).toEqual([]);
+  });
+
   it('finds locally indexed docs that are not in the visible docs list yet', async () => {
     const store = await createStore();
     store.documents = [];

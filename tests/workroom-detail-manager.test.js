@@ -280,6 +280,28 @@ describe('workroom announcement thread helpers', () => {
     expect(opened).toEqual([{ recordId: 'message-1', options: { scrollToLatest: true, syncRoute: false, preserveComposer: true } }]);
     expect(sent).toEqual([{ activeThreadId: 'message-1', body: 'Reply from the workroom' }]);
   });
+
+  it('exposes the canonical root and replies through the shared thread message model', () => {
+    const store = {
+      activeWorkroomId: 'room-1',
+      workrooms: [{
+        record_id: 'room-1',
+        channel_id: 'channel-1',
+        announcement_message_id: 'message-1',
+        announcement_thread_id: 'thread-1',
+      }],
+      messages: [
+        { record_id: 'message-1', channel_id: 'channel-1', pg_thread_id: 'thread-1', parent_message_id: null },
+        { record_id: 'reply-1', channel_id: 'channel-1', pg_thread_id: 'thread-1', parent_message_id: 'message-1' },
+      ],
+      activeThreadId: 'message-1',
+      visibleThreadMessages: [{ record_id: 'reply-1', parent_message_id: 'message-1' }],
+      getThreadReplies: () => [{ record_id: 'reply-1', parent_message_id: 'message-1' }],
+    };
+    Object.defineProperties(store, Object.getOwnPropertyDescriptors(workroomDetailMixin));
+
+    expect(store.selectedWorkroomThreadMessages.map((message) => message.record_id)).toEqual(['message-1', 'reply-1']);
+  });
 });
 
 describe('workroom archive actions', () => {

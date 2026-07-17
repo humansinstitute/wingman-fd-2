@@ -286,7 +286,11 @@ import {
   parsePgTaskBoardId,
 } from './pg-record-context.js';
 import { createTowerPgFileFromLocal } from './pg-write-adapter.js';
-import { createWorkroomCreationState, workroomCreationMixin } from './workroom-creation-manager.js';
+import {
+  createWorkroomCreationState,
+  workroomCreationMixin,
+  workroomVisibleParticipantNpubs,
+} from './workroom-creation-manager.js';
 import { createWorkroomDetailState, workroomDetailMixin } from './workroom-detail-manager.js';
 
 // Constants UNSCOPED_TASK_BOARD_ID, WEEKDAY_OPTIONS imported from task-board-state.js
@@ -7607,17 +7611,18 @@ export function initApp() {
 
     refreshMentionResultsFromLocalIndex(query, targetEl) {
       const normalizedQuery = String(query || '');
+      const mentionOptions = { visibleOnly: targetEl?.dataset?.workroomComposer === 'true' };
       this.refreshMentionDocumentIndex()
         .then(() => {
           if (!this.mentionActive || this._mentionTargetEl !== targetEl || this.mentionQuery !== normalizedQuery) return;
           this.mentionResults = normalizedQuery.length === 0
-            ? this.getDefaultMentionResults(8)
-            : this.searchMentions(normalizedQuery);
+            ? this.getDefaultMentionResults(8, mentionOptions)
+            : this.searchMentions(normalizedQuery, mentionOptions);
           this.mentionSelectedIndex = 0;
         });
     },
 
-    getMentionPeople() {
+    getMentionPeople({ visibleOnly = false, channelId = this.selectedChannelId } = {}) {
       const byNpub = new Map();
       const add = (npub, fallbackLabel = '', sublabel = '') => {
         const clean = String(npub || '').trim();
@@ -7640,10 +7645,33 @@ export function initApp() {
         add(person?.npub, person?.label || person?.name, 'Person');
       }
 
-      return Array.from(byNpub.values());
+      if (!visibleOnly) return Array.from(byNpub.values());
+
+      const channel = (this.channels || []).find((row) => row?.record_id === channelId);
+      if (!channel) return Array.from(byNpub.values());
+      const visibleNpubs = new Set(workroomVisibleParticipantNpubs(channel, {
+        baseParticipants: typeof this.getChannelParticipants === 'function'
+          ? this.getChannelParticipants(channel)
+          : [],
+        groups: [
+          ...(Array.isArray(this.currentWorkspaceGroups) ? this.currentWorkspaceGroups : []),
+          ...(Array.isArray(this.groups) ? this.groups : []),
+        ],
+        channelGrants: this.channelGrantRows || this.channelGrants || [],
+        workspaceMembers: this.pgWorkspaceMembers,
+        sessionNpub: this.session?.npub,
+        currentViewerNpub: this.currentPgActorNpub,
+      }));
+      for (const participant of (this.workroomParticipants || [])) {
+        if (!this.activeWorkroomId || participant?.workroom_id === this.activeWorkroomId) {
+          const npub = String(participant?.actor_npub || '').trim();
+          if (npub) visibleNpubs.add(npub);
+        }
+      }
+      return Array.from(byNpub.values()).filter((person) => visibleNpubs.has(person.id));
     },
 
-    searchMentions(rawQuery) {
+    searchMentions(rawQuery, options = {}) {
       if (!rawQuery) return [];
 
       // Parse type prefix: @scope:, @task:, @doc:, @channel:
@@ -7661,7 +7689,7 @@ export function initApp() {
 
       // People from groups
       if (!typeFilter || typeFilter === 'person') {
-        for (const person of this.getMentionPeople()) {
+        for (const person of this.getMentionPeople(options)) {
           if (
             !needle
             || person.label.toLowerCase().includes(needle)
@@ -7751,7 +7779,7 @@ export function initApp() {
       return results.slice(0, limit);
     },
 
-    getDefaultMentionResults(limit = 8) {
+    getDefaultMentionResults(limit = 8, options = {}) {
       const results = [];
       const seen = new Set();
       const add = (result) => {
@@ -7761,7 +7789,7 @@ export function initApp() {
         results.push(result);
       };
 
-      for (const person of this.getMentionPeople()) {
+      for (const person of this.getMentionPeople(options)) {
         add(person);
         if (results.length >= 2) break;
       }
@@ -7830,13 +7858,14 @@ export function initApp() {
       }
 
       const query = value.slice(atPos + 1, cursorPos);
+      const mentionOptions = { visibleOnly: el.dataset.workroomComposer === 'true' };
       if (query.length === 0) {
         // Show all results on bare @
         this.mentionActive = true;
         this._mentionTargetEl = el;
         this._mentionStartPos = atPos;
         this.mentionQuery = '';
-        this.mentionResults = this.getDefaultMentionResults(8);
+        this.mentionResults = this.getDefaultMentionResults(8, mentionOptions);
         this.mentionSelectedIndex = 0;
         this.refreshMentionResultsFromLocalIndex('', el);
         return;
@@ -7846,7 +7875,7 @@ export function initApp() {
       this._mentionTargetEl = el;
       this._mentionStartPos = atPos;
       this.mentionQuery = query;
-      this.mentionResults = this.searchMentions(query);
+      this.mentionResults = this.searchMentions(query, mentionOptions);
       this.mentionSelectedIndex = 0;
       this.refreshMentionResultsFromLocalIndex(query, el);
     },

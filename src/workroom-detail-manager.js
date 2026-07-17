@@ -209,6 +209,14 @@ export const workroomDetailMixin = {
     if (!parent?.record_id || typeof this.getThreadReplies !== 'function') return [];
     return this.getThreadReplies(parent.record_id);
   },
+  get selectedWorkroomThreadMessages() {
+    const parent = this.selectedWorkroomAnnouncementMessage;
+    if (!parent?.record_id) return [];
+    const replies = this.activeThreadId === parent.record_id && Array.isArray(this.visibleThreadMessages)
+      ? this.visibleThreadMessages
+      : this.selectedWorkroomThreadReplies;
+    return [parent, ...replies];
+  },
   get selectedWorkroomRoomDetails() {
     const room = this.selectedWorkroom || {};
     return {
