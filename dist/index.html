@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-D1USviNu.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-CY7sUWO4.css">
+  <script type="module" crossorigin src="/assets/index-CKqIemJq.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-Bo2myP94.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -9068,12 +9068,12 @@
                 </div>
               </div>
               <div class="daily-note-narrative-preview chat-post-markdown" x-show="$store.chat.dailyNoteEditorMode !== 'edit'" x-html="$store.chat.dailyNoteEditorPreviewHtml"></div>
-              <textarea
+              <div
+                class="daily-note-rich-editor doc-rich-editor"
                 x-show="$store.chat.dailyNoteEditorMode === 'edit'"
-                x-model="$store.chat.dailyNoteEditorBody"
-                rows="12"
-                placeholder="Write the plan, progress, blockers, or anything the AI should track today."
-              ></textarea>
+                x-init="$nextTick(() => $store.chat.mountDailyNoteRichEditor($el))"
+                x-effect="$store.chat.dailyNoteEditorMode; if ($store.chat.dailyNoteEditorMode === 'edit') $nextTick(() => $store.chat.mountDailyNoteRichEditor($el))"
+              ></div>
             </div>
             <template x-if="$store.chat.dailyNoteEditorError">
               <p class="error-text" x-text="$store.chat.dailyNoteEditorError"></p>

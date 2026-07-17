@@ -8,6 +8,7 @@ const {
   upsertDailyNoteMock,
   upsertTowerPgDailyNoteMock,
   upsertTowerPgDailyScopeAgentAccessMock,
+  createTiptapEditorAdapterMock,
 } = vi.hoisted(() => ({
   alpineStartMock: vi.fn(),
   alpineStoreMock: vi.fn(),
@@ -16,6 +17,7 @@ const {
   upsertDailyNoteMock: vi.fn(),
   upsertTowerPgDailyNoteMock: vi.fn(),
   upsertTowerPgDailyScopeAgentAccessMock: vi.fn(),
+  createTiptapEditorAdapterMock: vi.fn(),
 }));
 
 vi.mock('alpinejs', () => ({
@@ -38,6 +40,10 @@ vi.mock('../src/db.js', async (importOriginal) => ({
   upsertDailyNote: upsertDailyNoteMock,
 }));
 
+vi.mock('../src/docs/editor/tiptap-editor-adapter.js', () => ({
+  createTiptapEditorAdapter: createTiptapEditorAdapterMock,
+}));
+
 beforeEach(() => {
   vi.resetModules();
   alpineStartMock.mockClear();
@@ -47,6 +53,11 @@ beforeEach(() => {
   upsertDailyNoteMock.mockReset();
   upsertTowerPgDailyNoteMock.mockReset();
   upsertTowerPgDailyScopeAgentAccessMock.mockReset();
+  createTiptapEditorAdapterMock.mockReset();
+  createTiptapEditorAdapterMock.mockImplementation(({ onUpdate }) => ({
+    destroy: vi.fn(),
+    emitUpdate: onUpdate,
+  }));
 });
 
 async function createStore() {
@@ -72,6 +83,30 @@ async function createStore() {
 }
 
 describe('app Daily Scope behavior', () => {
+  it('mounts the Daily Note narrative as a live Tiptap editor and syncs updates', async () => {
+    const store = await createStore();
+    Object.assign(store, {
+      dailyNoteEditorMode: 'edit',
+      dailyNoteEditorBody: 'Existing narrative',
+    });
+    const element = {};
+
+    store.mountDailyNoteRichEditor(element);
+
+    expect(createTiptapEditorAdapterMock).toHaveBeenCalledWith(expect.objectContaining({
+      element,
+      document: { content: 'Existing narrative' },
+      editable: true,
+    }));
+    const adapter = store.dailyNoteRichEditorAdapter;
+    adapter.emitUpdate({ content: 'Updated **narrative**' });
+    expect(store.dailyNoteEditorBody).toBe('Updated **narrative**');
+
+    store.destroyDailyNoteRichEditor();
+    expect(adapter.destroy).toHaveBeenCalled();
+    expect(store.dailyNoteRichEditorAdapter).toBeNull();
+  });
+
   it('caps checklist editor items at five and saves checklist plus narrative', async () => {
     const store = await createStore();
     Object.assign(store, {

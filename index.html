@@ -9066,12 +9066,12 @@
                 </div>
               </div>
               <div class="daily-note-narrative-preview chat-post-markdown" x-show="$store.chat.dailyNoteEditorMode !== 'edit'" x-html="$store.chat.dailyNoteEditorPreviewHtml"></div>
-              <textarea
+              <div
+                class="daily-note-rich-editor doc-rich-editor"
                 x-show="$store.chat.dailyNoteEditorMode === 'edit'"
-                x-model="$store.chat.dailyNoteEditorBody"
-                rows="12"
-                placeholder="Write the plan, progress, blockers, or anything the AI should track today."
-              ></textarea>
+                x-init="$nextTick(() => $store.chat.mountDailyNoteRichEditor($el))"
+                x-effect="$store.chat.dailyNoteEditorMode; if ($store.chat.dailyNoteEditorMode === 'edit') $nextTick(() => $store.chat.mountDailyNoteRichEditor($el))"
+              ></div>
             </div>
             <template x-if="$store.chat.dailyNoteEditorError">
               <p class="error-text" x-text="$store.chat.dailyNoteEditorError"></p>

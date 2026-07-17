@@ -647,6 +647,8 @@ export function initApp() {
     dailyNoteEditorItems: [],
     dailyNoteEditorRecordId: '',
     dailyNoteEditorMode: 'preview',
+    dailyNoteRichEditorAdapter: null,
+    dailyNoteRichEditorMountEl: null,
     dailyNoteVersioningOpen: false,
     dailyNoteVersionHistory: [],
     dailyNoteVersioningLoading: false,
@@ -3513,10 +3515,12 @@ export function initApp() {
       this.dailyNoteEditorFocus = note.focus || '';
       this.dailyNoteEditorItems = this.normalizeDailyNoteEditorItems(note.items);
       this.dailyNoteEditorMode = 'preview';
+      this.destroyDailyNoteRichEditor();
       this.dailyNoteEditorOpen = true;
     },
 
     closeDailyNoteEditor() {
+      this.destroyDailyNoteRichEditor();
       this.dailyNoteEditorOpen = false;
       this.dailyNoteEditorSaving = false;
       this.dailyNoteEditorError = '';
@@ -3528,7 +3532,31 @@ export function initApp() {
         const saved = await this.saveDailyNoteEditor({ close: false });
         if (!saved) return;
       }
+      if (nextMode !== 'edit') this.destroyDailyNoteRichEditor();
       this.dailyNoteEditorMode = nextMode;
+    },
+
+    destroyDailyNoteRichEditor() {
+      if (!this.dailyNoteRichEditorAdapter) return;
+      this.dailyNoteRichEditorAdapter.destroy();
+      this.dailyNoteRichEditorAdapter = null;
+      this.dailyNoteRichEditorMountEl = null;
+    },
+
+    mountDailyNoteRichEditor(element = null) {
+      if (!element || this.dailyNoteEditorMode !== 'edit') return;
+      if (this.dailyNoteRichEditorAdapter && this.dailyNoteRichEditorMountEl === element) return;
+      this.destroyDailyNoteRichEditor();
+      this.dailyNoteRichEditorMountEl = element;
+      this.dailyNoteRichEditorAdapter = createTiptapEditorAdapter({
+        element,
+        document: { content: this.dailyNoteEditorBody || '' },
+        editable: true,
+        placeholder: 'Write the plan, progress, blockers, or anything the AI should track today.',
+        onUpdate: (contentModel) => {
+          this.dailyNoteEditorBody = contentModel?.content || '';
+        },
+      });
     },
 
     normalizeDailyNoteEditorItems(items = []) {

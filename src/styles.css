@@ -9583,6 +9583,23 @@ button:disabled {
   line-height: 1.55;
 }
 
+.daily-note-rich-editor {
+  min-height: 16rem;
+  max-height: 34rem;
+  overflow: auto;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 0.9rem 1rem;
+  color: #0f172a;
+  line-height: 1.55;
+}
+
+.daily-note-rich-editor:focus-within {
+  border-color: rgba(37, 99, 235, 0.5);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
 .daily-note-progress {
   margin: 0.15rem 0 0.35rem;
   font-size: 0.78rem;
