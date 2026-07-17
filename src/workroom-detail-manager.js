@@ -71,11 +71,18 @@ function workroomAnnouncementMessage(messages = [], room = {}) {
   const threadId = workroomAnnouncementThreadId(room);
   const roomId = text(room?.record_id);
   const rows = Array.isArray(messages) ? messages : [];
-  if (messageId) {
+  if (messageId && !threadId) {
     const exactMessage = rows.find((message) => message?.record_id === messageId);
     if (exactMessage) return exactMessage;
   }
   if (threadId) {
+    if (messageId) {
+      const exactThreadedMessage = rows.find((message) =>
+        message?.record_id === messageId
+        && text(message?.pg_thread_id || message?.thread_id) === threadId
+      );
+      if (exactThreadedMessage) return exactThreadedMessage;
+    }
     const exactThreadRoot = rows.find((message) => message?.pg_thread_id === threadId && !message?.parent_message_id);
     if (exactThreadRoot) return exactThreadRoot;
   }
@@ -119,6 +126,14 @@ function mergeById(rows, incoming) {
   const map = new Map((Array.isArray(rows) ? rows : []).map((row) => [row?.record_id, row]));
   for (const row of incoming || []) if (row?.record_id) map.set(row.record_id, row);
   return [...map.values()];
+}
+
+function workroomThreadMessageReady(message, room = {}) {
+  if (!message?.record_id) return false;
+  const expectedThreadId = workroomAnnouncementThreadId(room);
+  const messageThreadId = text(message?.pg_thread_id || message?.thread_id);
+  if (!expectedThreadId) return Boolean(messageThreadId);
+  return messageThreadId === expectedThreadId;
 }
 
 function approvalMetadata(approval) {
@@ -328,15 +343,17 @@ export const workroomDetailMixin = {
     if (options.refreshMessages !== false && typeof this.refreshMessages === 'function') {
       await this.refreshMessages({ scrollToLatest: false, scrollThreadToLatest: true }).catch(() => undefined);
     }
-    if (!this.selectedWorkroomAnnouncementMessage && !existingMessage) {
+    let candidateMessage = this.selectedWorkroomAnnouncementMessage || existingMessage || (this.messages || []).find((row) => row?.record_id === messageId);
+    if (!workroomThreadMessageReady(candidateMessage, room)) {
       await this.hydrateSelectedWorkroomThread();
       existingMessage = workroomAnnouncementMessage(this.messages, room);
+      candidateMessage = this.selectedWorkroomAnnouncementMessage || existingMessage || (this.messages || []).find((row) => row?.record_id === messageId);
     }
-    const message = this.selectedWorkroomAnnouncementMessage || existingMessage || (this.messages || []).find((row) => row?.record_id === messageId);
-    if (!message) {
+    if (!workroomThreadMessageReady(candidateMessage, room)) {
       this.workroomDetailNotice = 'The workroom chat message is still loading.';
       return null;
     }
+    const message = candidateMessage;
     this.workroomDetailNotice = '';
     if (typeof this.openThread === 'function') this.openThread(message.record_id, {
       scrollToLatest: true,

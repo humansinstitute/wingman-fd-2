@@ -422,6 +422,28 @@ export const workroomCreationMixin = {
     const metadata = message?.pg_metadata || message?.metadata;
     return metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {};
   },
+  workroomMessageTitle(message) {
+    const metadata = this.workroomMessageMetadata(message);
+    const body = String(message?.body || '');
+    const bodyTitle = body.match(/^Workroom started:\s*(.+)$/im)?.[1]
+      || body.match(/^Workroom Started:\s*(.+?)(?:,\s*by\s+.+)?\.?$/im)?.[1]
+      || '';
+    return String(metadata.workroom_title || metadata.title || bodyTitle || '').trim() || 'Workroom';
+  },
+  workroomMessageGoal(message) {
+    const metadata = this.workroomMessageMetadata(message);
+    const body = String(message?.body || '');
+    const bodyGoal = body.match(/^Goal:\s*(.+)$/im)?.[1] || '';
+    return String(metadata.workroom_goal || metadata.goal || bodyGoal || '').trim();
+  },
+  workroomMessageStarter(message) {
+    const metadata = this.workroomMessageMetadata(message);
+    const npub = String(metadata.started_by_npub || message?.sender_npub || '').trim();
+    return String(metadata.started_by_label || '').trim()
+      || (npub && typeof this.getSenderName === 'function' ? this.getSenderName(npub) : '')
+      || npub
+      || 'Someone';
+  },
   isWorkroomAnnouncement(message) {
     const metadata = this.workroomMessageMetadata(message);
     return Boolean(metadata.workroom_id || metadata.workroom_link || metadata.workroom_status);
