@@ -353,6 +353,35 @@ describe('workroom creation flow helpers', () => {
     ])).toEqual([{ actor_npub: 'npub-failed', access_status: 'failed', access_issue: 'workspace_membership_missing' }]);
   });
 
+  it('renders legacy workroom announcements as enter cards instead of raw API links', () => {
+    const store = {
+      currentWorkspace: { directHttpsUrl: 'https://tower.example', workspaceId: 'workspace-1' },
+      getSenderName: (npub) => npub === 'npub-pete' ? 'Pete' : npub,
+    };
+    Object.assign(store, workroomCreationMixin);
+    const message = {
+      sender_npub: 'npub-pete',
+      body: [
+        'Workroom started: Quick Updates',
+        '',
+        'Goal: Quick updates',
+        '',
+        '/api/v4/flightdeck-pg/workspaces/workspace-1/workrooms/room-1',
+      ].join('\n'),
+      metadata: {},
+    };
+
+    expect(store.isWorkroomAnnouncement(message)).toBe(true);
+    expect(store.workroomMessageCard(message)).toEqual({
+      title: 'Quick Updates',
+      goal: 'Quick updates',
+      starter: 'Pete',
+      roomId: 'room-1',
+      link: 'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/workrooms/room-1',
+      status: 'started',
+    });
+  });
+
   it('shows start failures in the creation modal after creating the draft', async () => {
     startTowerPgWorkroom.mockRejectedValueOnce(new Error('integration autopilot is missing'));
     const store = {

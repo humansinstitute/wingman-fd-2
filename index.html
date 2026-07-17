@@ -3365,13 +3365,14 @@
                       @keydown.space.prevent="$store.chat.openThread(msg.record_id)"
                     >
                       <template x-if="$store.chat.isWorkroomAnnouncement(msg)">
-                        <div class="chat-workroom-announcement-card">
+                        <div class="chat-workroom-announcement-card" x-data="{ card: $store.chat.workroomMessageCard(msg) }">
                           <div class="chat-workroom-announcement-heading">
-                            <strong x-text="`Workroom Started: ${$store.chat.workroomMessageTitle(msg)}, by ${$store.chat.workroomMessageStarter(msg)}.`"></strong>
-                            <span class="workroom-status-chip" x-text="$store.chat.workroomMessageMetadata(msg).workroom_status || 'started'"></span>
+                            <strong x-text="`Workroom Started: ${card.title}, by ${card.starter}.`"></strong>
+                            <span class="workroom-status-chip" x-text="card.status"></span>
                           </div>
-                          <p class="chat-workroom-announcement-goal" x-show="$store.chat.workroomMessageGoal(msg)" x-text="`Goal: ${$store.chat.workroomMessageGoal(msg)}`"></p>
-                          <button type="button" class="chat-workroom-enter-card" x-show="$store.chat.workroomMessageMetadata(msg).workroom_id" @click.stop="$store.chat.openWorkroomDetail($store.chat.workroomMessageMetadata(msg).workroom_id)" x-text="`Enter: ${$store.chat.workroomMessageTitle(msg)}`"></button>
+                          <p class="chat-workroom-announcement-goal" x-show="card.goal" x-text="`Goal: ${card.goal}`"></p>
+                          <button type="button" class="chat-workroom-enter-card" x-show="card.roomId" @click.stop="$store.chat.openWorkroomDetail(card.roomId)"><span>Enter</span><strong x-text="card.title"></strong></button>
+                          <a class="chat-workroom-enter-card" x-show="!card.roomId && card.link" :href="card.link" target="_blank" rel="noreferrer" @click.stop><span>Enter</span><strong x-text="card.title"></strong></a>
                         </div>
                       </template>
                       <div class="chat-post-markdown" x-show="!$store.chat.isWorkroomAnnouncement(msg)" x-html="$store.chat.renderMarkdown(msg.body)"></div>
@@ -5043,7 +5044,7 @@
                         <div class="thread-msg-body">
                           <div class="thread-msg-header"><span class="chat-sender" x-text="$store.chat.getSenderName(message.sender_npub)"></span><span class="chat-time" x-text="message.updated_at ? new Date(message.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''"></span></div>
                           <div class="thread-msg-text">
-                            <template x-if="$store.chat.isWorkroomAnnouncement(message)"><div class="chat-workroom-announcement-card"><div class="chat-workroom-announcement-heading"><strong x-text="`Workroom Started: ${$store.chat.workroomMessageTitle(message)}, by ${$store.chat.workroomMessageStarter(message)}.`"></strong><span class="workroom-status-chip" x-text="$store.chat.workroomMessageMetadata(message).workroom_status || 'started'"></span></div><p class="chat-workroom-announcement-goal" x-show="$store.chat.workroomMessageGoal(message)" x-text="`Goal: ${$store.chat.workroomMessageGoal(message)}`"></p><button type="button" class="chat-workroom-enter-card" x-show="$store.chat.workroomMessageMetadata(message).workroom_id" @click.stop="$store.chat.openWorkroomDetail($store.chat.workroomMessageMetadata(message).workroom_id)" x-text="`Enter: ${$store.chat.workroomMessageTitle(message)}`"></button></div></template>
+                            <template x-if="$store.chat.isWorkroomAnnouncement(message)"><div class="chat-workroom-announcement-card" x-data="{ card: $store.chat.workroomMessageCard(message) }"><div class="chat-workroom-announcement-heading"><strong x-text="`Workroom Started: ${card.title}, by ${card.starter}.`"></strong><span class="workroom-status-chip" x-text="card.status"></span></div><p class="chat-workroom-announcement-goal" x-show="card.goal" x-text="`Goal: ${card.goal}`"></p><button type="button" class="chat-workroom-enter-card" x-show="card.roomId" @click.stop="$store.chat.openWorkroomDetail(card.roomId)"><span>Enter</span><strong x-text="card.title"></strong></button><a class="chat-workroom-enter-card" x-show="!card.roomId && card.link" :href="card.link" target="_blank" rel="noreferrer" @click.stop><span>Enter</span><strong x-text="card.title"></strong></a></div></template>
                             <div class="chat-post-markdown" x-show="!$store.chat.isWorkroomAnnouncement(message)" x-html="$store.chat.renderMarkdown(message.body || '')"></div>
                           </div>
                           <div class="audio-attachment-list" x-show="(message.attachments || []).length > 0"><template x-for="attachment in (message.attachments || []).filter(item => item.kind === 'audio')" :key="attachment.audio_note_record_id"><button type="button" class="audio-card" @click="$store.chat.playAudioAttachment(attachment)"><div class="audio-card-main"><div class="audio-card-title" x-text="$store.chat.getAudioAttachmentPreview(attachment)"></div><div class="audio-card-meta"><span>Voice note</span><span x-text="$store.chat.getAudioAttachmentNote(attachment)?.duration_seconds ? $store.chat.formatAudioDuration($store.chat.getAudioAttachmentNote(attachment).duration_seconds) : ''"></span></div></div></button></template></div>

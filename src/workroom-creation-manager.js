@@ -401,9 +401,22 @@ function channelWithDefaults(channel, defaults) {
   };
 }
 
+function workroomIdFromLink(value) {
+  const raw = text(value);
+  if (!raw) return '';
+  const match = raw.match(/\/workrooms\/([^/?#\s)]+)/i);
+  return text(match?.[1]);
+}
+
+function workroomLinkFromBody(value) {
+  const body = String(value || '');
+  const match = body.match(/(?:https?:\/\/[^\s]+)?\/api\/v4\/flightdeck-pg\/workspaces\/[^\s/]+\/workrooms\/[^\s)]+/i);
+  return text(match?.[0]);
+}
+
 export function workroomAnnouncementLink(announcement, baseUrl = '') {
   const metadata = announcement?.metadata || announcement?.pg_metadata || {};
-  const link = String(metadata.workroom_link || '').trim();
+  const link = String(metadata.workroom_link || metadata.announcement_link || '').trim();
   if (!link) return '';
   if (/^https?:\/\//i.test(link)) return link;
   return `${String(baseUrl || '').replace(/\/$/, '')}${link}`;
@@ -422,6 +435,12 @@ export const workroomCreationMixin = {
     const metadata = message?.pg_metadata || message?.metadata;
     return metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {};
   },
+  workroomMessageRoomId(message) {
+    const metadata = this.workroomMessageMetadata(message);
+    return String(metadata.workroom_id || metadata.workroomId || '').trim()
+      || workroomIdFromLink(metadata.workroom_link || metadata.announcement_link)
+      || workroomIdFromLink(workroomLinkFromBody(message?.body));
+  },
   workroomMessageTitle(message) {
     const metadata = this.workroomMessageMetadata(message);
     const body = String(message?.body || '');
@@ -439,18 +458,44 @@ export const workroomCreationMixin = {
   workroomMessageStarter(message) {
     const metadata = this.workroomMessageMetadata(message);
     const npub = String(metadata.started_by_npub || message?.sender_npub || '').trim();
+    const bodyStarter = String(message?.body || '').match(/^Workroom Started:\s*.+?,\s*by\s+(.+?)\.?$/im)?.[1] || '';
     return String(metadata.started_by_label || '').trim()
+      || String(bodyStarter).trim()
       || (npub && typeof this.getSenderName === 'function' ? this.getSenderName(npub) : '')
       || npub
       || 'Someone';
   },
   isWorkroomAnnouncement(message) {
     const metadata = this.workroomMessageMetadata(message);
-    return Boolean(metadata.workroom_id || metadata.workroom_link || metadata.workroom_status);
+    const body = String(message?.body || '');
+    return Boolean(
+      metadata.workroom_id
+      || metadata.workroom_link
+      || metadata.announcement_link
+      || metadata.workroom_status
+      || /^Workroom started:/im.test(body)
+      || /^Workroom Started:/im.test(body)
+      || workroomLinkFromBody(body)
+    );
   },
   workroomMessageLink(message) {
     const context = resolveTowerPgWorkspaceContext(this);
-    return workroomAnnouncementLink({ metadata: this.workroomMessageMetadata(message) }, context.baseUrl);
+    const metadataLink = workroomAnnouncementLink({ metadata: this.workroomMessageMetadata(message) }, context.baseUrl);
+    if (metadataLink) return metadataLink;
+    const bodyLink = workroomLinkFromBody(message?.body);
+    if (!bodyLink) return '';
+    if (/^https?:\/\//i.test(bodyLink)) return bodyLink;
+    return `${String(context.baseUrl || '').replace(/\/$/, '')}${bodyLink}`;
+  },
+  workroomMessageCard(message) {
+    return {
+      title: this.workroomMessageTitle(message),
+      goal: this.workroomMessageGoal(message),
+      starter: this.workroomMessageStarter(message),
+      roomId: this.workroomMessageRoomId(message),
+      link: this.workroomMessageLink(message),
+      status: this.workroomMessageMetadata(message).workroom_status || 'started',
+    };
   },
   async openWorkroomCreation() {
     const channel = this.selectedChannel;

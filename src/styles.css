@@ -19317,7 +19317,9 @@ button:disabled {
 .chat-workroom-announcement-card { display: grid; gap: .45rem; margin-bottom: .55rem; padding: .7rem; border: 1px solid #bfdbfe; border-radius: 8px; background: #eff6ff; }
 .chat-workroom-announcement-heading { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
 .chat-workroom-announcement-goal { margin: 0; color: #334155; font-size: .82rem; line-height: 1.35; }
-.chat-workroom-enter-card { width: 100%; border: 1px solid #93c5fd; border-radius: 8px; padding: .65rem .75rem; background: #fff; color: #1d4ed8; cursor: pointer; font: inherit; font-size: .84rem; font-weight: 800; text-align: left; }
+.chat-workroom-enter-card { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: .55rem; width: 100%; border: 1px solid #93c5fd; border-radius: 8px; padding: .65rem .75rem; background: #fff; color: #1d4ed8; cursor: pointer; font: inherit; font-size: .84rem; font-weight: 800; text-align: left; text-decoration: none; }
+.chat-workroom-enter-card span { display: inline-flex; align-items: center; justify-content: center; min-height: 1.45rem; border-radius: 6px; padding: .15rem .45rem; background: #dbeafe; color: #1e40af; font-size: .7rem; text-transform: uppercase; }
+.chat-workroom-enter-card strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #0f172a; }
 .chat-workroom-enter-card:hover { border-color: #2563eb; box-shadow: 0 4px 14px rgba(37, 99, 235, .12); }
 .workroom-page-section { min-height: 100%; padding: 1rem; background: #f8fafc; }
 .workroom-native-view { margin: .9rem 0 1rem; padding: 1rem; border: 1px solid #cbd5e1; border-radius: 10px; background: #fff; }
