@@ -19357,6 +19357,25 @@ button:disabled {
 .workroom-thread-composer .chat-input { min-height: 68px; background: #fff; }
 .workroom-warning { display: grid; gap: .2rem; margin-top: .65rem; padding: .55rem; border: 1px solid #fbbf24; border-radius: 6px; background: #fffbeb; color: #92400e; font-size: .74rem; }
 .workroom-warning-text { color: #b45309; font-weight: 700; }
+.workroom-inline-details { padding: .2rem .45rem; border: 1px solid #bfdbfe; border-radius: 5px; background: #fff; color: #1d4ed8; font-size: .7rem; }
+.workroom-readiness-actions { display: inline-flex; align-items: center; gap: .35rem; }
+.workroom-readiness-chip { display: inline-flex; align-items: center; min-height: 1.35rem; padding: .12rem .42rem; border-radius: 999px; font-size: .67rem; font-weight: 800; text-transform: capitalize; }
+.workroom-readiness-valid { background: #dcfce7; color: #166534; }
+.workroom-readiness-missing { background: #fef3c7; color: #92400e; }
+.workroom-readiness-invalid { background: #fee2e2; color: #b91c1c; }
+.workroom-integration-note { margin: .65rem 0 0; color: #64748b; font-size: .72rem; }
+.workroom-details-subtitle { margin: -.35rem 0 1rem; color: #64748b; font-size: .78rem; }
+.workroom-details-section { margin-top: 1rem; padding-top: .85rem; border-top: 1px solid #e2e8f0; }
+.workroom-details-section h4 { margin: 0 0 .55rem; color: #334155; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; }
+.workroom-details-participants, .workroom-app-targets { display: grid; gap: .55rem; }
+.workroom-details-participants article, .workroom-app-targets article { padding: .65rem; border: 1px solid #e2e8f0; border-radius: 7px; background: #f8fafc; }
+.workroom-details-participants article p, .workroom-app-targets article p { margin: .2rem 0; color: #64748b; font-size: .75rem; }
+.workroom-details-participants article small, .workroom-app-targets article small { display: block; margin-top: .35rem; color: #64748b; font-size: .72rem; overflow-wrap: anywhere; }
+.workroom-app-targets article a { color: #2563eb; font-size: .75rem; overflow-wrap: anywhere; }
+.workroom-runbook-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .35rem .75rem; margin: .6rem 0 0; }
+.workroom-runbook-list dt { color: #64748b; font-size: .65rem; text-transform: uppercase; }
+.workroom-runbook-list dd { margin: .08rem 0 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .7rem; overflow-wrap: anywhere; }
+.workroom-details-compact { margin-bottom: .2rem; }
 .workroom-approval-panel { background: #fefce8; border-color: #fde68a; }
 .workroom-approval-panel h3 { color: #854d0e; }
 .workroom-approval-card { display: grid; gap: .65rem; padding: .7rem; border: 1px solid #fde68a; border-radius: 7px; background: #fff; }

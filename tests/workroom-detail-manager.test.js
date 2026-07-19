@@ -6,8 +6,42 @@ import {
   workroomAnnouncementMessageId,
   workroomAnnouncementThreadId,
   workroomApprovalDetails,
+  workroomAppTargetDetails,
   workroomDetailMixin,
+  workroomParticipantMetadata,
+  workroomParticipantMetadataStatus,
 } from '../src/workroom-detail-manager.js';
+
+describe('workroom typed readiness metadata', () => {
+  it('classifies participant metadata as missing, invalid, or valid', () => {
+    expect(workroomParticipantMetadataStatus({ role: 'integration', metadata: {} })).toBe('missing');
+    expect(workroomParticipantMetadataStatus({
+      role: 'integration',
+      metadata: { capabilities: ['tests'], localWorkspace: { repoPath: '/repo' } },
+    })).toBe('invalid');
+    const participant = {
+      metadata: {
+        capabilities: ['github_pr', 'tests'],
+        localWorkspace: { repoPath: '/repo', defaultBranch: 'main', canRunTests: true },
+        constraints: { canMergeIntegration: false, canMergeProduction: false, canRestartManagedApps: false },
+      },
+    };
+    expect(workroomParticipantMetadataStatus(participant)).toBe('valid');
+    expect(workroomParticipantMetadata(participant).localWorkspace.repoPath).toBe('/repo');
+  });
+
+  it('normalizes app targets and reports incomplete runbooks', () => {
+    expect(workroomAppTargetDetails({ preview_url: 'https://preview.example' })[0]).toMatchObject({
+      kind: 'preview',
+      url: 'https://preview.example',
+      runbookStatus: 'missing',
+    });
+    expect(workroomAppTargetDetails([{
+      id: 'local', kind: 'local', label: 'Local',
+      runbook: { repoPath: '/repo', install: 'bun install', test: 'bun test', build: 'bun run build', start: 'managed', deploy: 'manual' },
+    }])[0].runbookStatus).toBe('valid');
+  });
+});
 
 const events = [
   { record_id: 'goal', event_type: 'goal_created', title: 'Initial goal', actor_npub: 'npub-human', created_at: '2026-07-10T01:00:00Z' },

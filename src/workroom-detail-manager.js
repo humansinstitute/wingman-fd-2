@@ -19,6 +19,7 @@ import {
   mapPgWorkroomEventToLocal,
   mapPgWorkroomToLocal,
   resolveTowerPgWorkspaceContext,
+  hydrateTowerPgWorkroomParticipants,
 } from './pg-read-hydrator.js';
 import { filterActiveWorkrooms, filterArchivedWorkrooms, isArchivedWorkroom, searchWorkroomRows } from './workrooms.js';
 
@@ -44,6 +45,80 @@ const FILTER_TERMS = Object.freeze({
 });
 
 function text(value) { return String(value || '').trim(); }
+
+const PARTICIPANT_METADATA_STATUS = Object.freeze(['missing', 'valid', 'invalid']);
+const RUNBOOK_FIELDS = Object.freeze(['repoPath', 'install', 'test', 'build', 'start', 'deploy']);
+
+function objectValue(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+function arrayValue(value) { return Array.isArray(value) ? value : []; }
+
+function boolField(value) { return typeof value === 'boolean'; }
+
+export function workroomParticipantMetadataStatus(participant = {}) {
+  const metadata = objectValue(participant.metadata);
+  const explicit = text(metadata.metadataStatus || metadata.metadata_status || participant.metadata_status).toLowerCase();
+  if (PARTICIPANT_METADATA_STATUS.includes(explicit)) return explicit;
+  if (Object.keys(metadata).length === 0) return 'missing';
+
+  const localWorkspace = objectValue(metadata.localWorkspace || metadata.local_workspace);
+  const constraints = objectValue(metadata.constraints);
+  const hasCapabilities = arrayValue(metadata.capabilities).length > 0;
+  const hasWorkspace = text(localWorkspace.repoPath || localWorkspace.repo_path)
+    && text(localWorkspace.defaultBranch || localWorkspace.default_branch)
+    && boolField(localWorkspace.canRunTests ?? localWorkspace.can_run_tests);
+  const hasConstraints = ['canMergeIntegration', 'canMergeProduction', 'canRestartManagedApps'].every((key) => (
+    boolField(constraints[key]) || boolField(constraints[key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)])
+  ));
+  return hasCapabilities && hasWorkspace && hasConstraints ? 'valid' : 'invalid';
+}
+
+export function workroomParticipantMetadata(participant = {}) {
+  const metadata = objectValue(participant.metadata);
+  const localWorkspace = objectValue(metadata.localWorkspace || metadata.local_workspace);
+  const constraints = objectValue(metadata.constraints);
+  return {
+    capabilities: arrayValue(metadata.capabilities),
+    localWorkspace: {
+      repoPath: text(localWorkspace.repoPath || localWorkspace.repo_path),
+      defaultBranch: text(localWorkspace.defaultBranch || localWorkspace.default_branch),
+      canRunTests: localWorkspace.canRunTests ?? localWorkspace.can_run_tests,
+    },
+    constraints,
+  };
+}
+
+function appTargetRows(value) {
+  if (Array.isArray(value)) return value;
+  const source = objectValue(value);
+  if (Array.isArray(source.targets)) return source.targets;
+  const rows = Object.entries(source)
+    .filter(([, target]) => target && typeof target === 'object' && !Array.isArray(target))
+    .map(([kind, target]) => ({ kind, ...target }));
+  if (rows.length) return rows;
+  const legacyUrl = text(source.preview_url || source.preview || source.url);
+  return legacyUrl ? [{ kind: source.kind || 'preview', label: source.label || 'Preview', url: legacyUrl, runbook: source.runbook }] : [];
+}
+
+export function workroomAppTargetDetails(value) {
+  return appTargetRows(value).map((target, index) => {
+    const runbook = objectValue(target.runbook || target.run_book);
+    const missingRunbookFields = RUNBOOK_FIELDS.filter((field) => !text(runbook[field] || runbook[field.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)]));
+    return {
+      ...target,
+      id: text(target.id) || `app-target-${index}`,
+      kind: text(target.kind) || 'app',
+      label: text(target.label) || text(target.kind) || 'App target',
+      url: text(target.url),
+      branch: text(target.branch),
+      runbook,
+      runbookStatus: Object.keys(runbook).length === 0 ? 'missing' : (missingRunbookFields.length ? 'invalid' : 'valid'),
+      missingRunbookFields,
+    };
+  });
+}
 
 function workroomMetadata(room) {
   return room?.metadata && typeof room.metadata === 'object' && !Array.isArray(room.metadata)
@@ -205,6 +280,31 @@ export const workroomDetailMixin = {
   get selectedWorkroomAccessWarnings() {
     return this.selectedWorkroomParticipants.filter((participant) => participant.access_status === 'failed' || participant.status === 'failed');
   },
+  get selectedWorkroomParticipantReadiness() {
+    return this.selectedWorkroomParticipants.map((participant) => ({
+      ...participant,
+      metadataStatus: workroomParticipantMetadataStatus(participant),
+      metadataDetails: workroomParticipantMetadata(participant),
+    }));
+  },
+  get selectedWorkroomIntegrationParticipant() {
+    return this.selectedWorkroomParticipantReadiness.find((participant) => participant.role === 'integration') || null;
+  },
+  get selectedWorkroomMetadataWarnings() {
+    const warnings = [];
+    const integration = this.selectedWorkroomIntegrationParticipant;
+    if (!integration) warnings.push('No integration participant is assigned to this workroom.');
+    else if (integration.metadataStatus === 'missing') warnings.push(`${integration.label || integration.actor_npub || 'Integration participant'} has not supplied typed self metadata.`);
+    else if (integration.metadataStatus === 'invalid') warnings.push(`${integration.label || integration.actor_npub || 'Integration participant'} has incomplete or invalid typed self metadata.`);
+    const targets = this.selectedWorkroomAppTargets;
+    if (targets.length === 0) warnings.push('No app targets are configured for this workroom.');
+    targets.forEach((target) => {
+      if (target.runbookStatus === 'missing') warnings.push(`${target.label} has no runbook data.`);
+      else if (target.runbookStatus === 'invalid') warnings.push(`${target.label} runbook is incomplete: ${target.missingRunbookFields.join(', ')}.`);
+    });
+    return warnings;
+  },
+  get selectedWorkroomAppTargets() { return workroomAppTargetDetails(this.selectedWorkroom?.app_targets); },
   get selectedWorkroomAnnouncementMessageId() {
     return workroomAnnouncementMessageId(this.selectedWorkroom)
       || workroomAnnouncementMessage(this.messages, this.selectedWorkroom)?.record_id
@@ -250,6 +350,27 @@ export const workroomDetailMixin = {
   },
   openWorkroomRoomDetails() { this.workroomRoomDetailsOpen = true; },
   closeWorkroomRoomDetails() { this.workroomRoomDetailsOpen = false; },
+  async refreshWorkroomParticipantMetadata(participant) {
+    const room = this.selectedWorkroom;
+    const context = resolveTowerPgWorkspaceContext(this);
+    if (!room?.record_id || !participant?.record_id || !context.workspaceId || !context.baseUrl) {
+      this.workroomDetailNotice = 'Participant self-metadata refresh is unavailable: no Tower participant integration is configured.';
+      return [];
+    }
+    if (this.workroomParticipantRefreshingId) return [];
+    this.workroomParticipantRefreshingId = participant.record_id;
+    this.workroomError = '';
+    try {
+      const rows = await hydrateTowerPgWorkroomParticipants(this, room.record_id);
+      this.workroomDetailNotice = 'Participant metadata refreshed from Tower.';
+      return rows;
+    } catch (error) {
+      this.workroomError = error?.message || 'Could not refresh participant metadata from Tower.';
+      return [];
+    } finally {
+      this.workroomParticipantRefreshingId = '';
+    }
+  },
   isWorkroomArchived(room) { return isArchivedWorkroom(room); },
   canArchiveWorkroom(room) {
     return Boolean(room?.record_id) && !isArchivedWorkroom(room);
@@ -515,6 +636,7 @@ export function createWorkroomDetailState() {
     workroomRefreshTimer: null,
     workroomDetailNotice: '',
     workroomRoomDetailsOpen: false,
+    workroomParticipantRefreshingId: '',
     workroomArchivingId: '',
     workroomApprovalDecisionNote: '',
     workroomApprovalSubmittingId: '',
