@@ -422,9 +422,15 @@ export const workroomDetailMixin = {
     this.workroomDetailLoading = !hasCachedRoom;
     this.workroomError = '';
     try {
-      const hydrated = hasCachedRoom && options.refreshRoom !== true
-        ? this.selectedWorkroom
-        : await hydrateTowerPgWorkroom(this, id);
+      const hydrated = await hydrateTowerPgWorkroom(this, id, {
+        getTowerPgWorkroom: this.getTowerPgWorkroom,
+        upsertWorkroom: this.upsertWorkroom,
+        replaceWorkroomParticipantsForRoom: this.replaceWorkroomParticipantsForRoom,
+        replaceWorkroomEventsForRoom: this.replaceWorkroomEventsForRoom,
+        replaceWorkroomLinksForRoom: this.replaceWorkroomLinksForRoom,
+        replaceWorkroomApprovalsForRoom: this.replaceWorkroomApprovalsForRoom,
+        getTowerPgApprovals: this.getTowerPgApprovals,
+      });
       if (hydrated) this.applyWorkrooms([hydrated]);
       this.workroomDetailNotice = '';
       await this.hydrateSelectedWorkroomThread();

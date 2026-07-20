@@ -349,13 +349,21 @@ export function mergeWorkroomFormWithChannelDefaults(channel, overrides = {}) {
 }
 
 export function buildWorkroomCreatePayload(form, { scopeId, channelId } = {}) {
+  const requestedIntegrationNpub = String(form?.integration_autopilot_npub || '').trim();
   const participants = (Array.isArray(form?.participants) ? form.participants : [])
-    .map((participant) => ({
-      actor_npub: String(participant?.actor_npub || '').trim(),
-      kind: participant?.kind || 'human',
-      role: participant?.role || 'contributor',
-      label: String(participant?.label || '').trim() || null,
-    }))
+    .map((participant) => {
+      const actorNpub = String(participant?.actor_npub || '').trim();
+      const requestedRole = String(participant?.role || 'contributor').trim() || 'contributor';
+      const role = requestedIntegrationNpub && actorNpub === requestedIntegrationNpub
+        ? 'integration'
+        : requestedRole;
+      return {
+        actor_npub: actorNpub,
+        kind: participant?.kind || (role === 'integration' ? 'autopilot' : 'human'),
+        role,
+        label: String(participant?.label || '').trim() || null,
+      };
+    })
     .filter((participant) => participant.actor_npub);
   const integrationParticipant = participants.find((participant) => participant.role === 'integration');
   return {
@@ -363,7 +371,7 @@ export function buildWorkroomCreatePayload(form, { scopeId, channelId } = {}) {
     channel_id: channelId || null,
     title: String(form?.title || '').trim(),
     goal: String(form?.goal || '').trim(),
-    integration_autopilot_npub: integrationParticipant?.actor_npub || null,
+    integration_autopilot_npub: integrationParticipant?.actor_npub || requestedIntegrationNpub || null,
     repo: {
       url: String(form?.repo_url || '').trim() || null,
       name: String(form?.repo_name || '').trim() || null,
@@ -591,10 +599,12 @@ export const workroomCreationMixin = {
       const localWorkroom = mapPgWorkroomToLocal(created?.workroom || created);
       if (localWorkroom.record_id) await upsertWorkroom(localWorkroom);
       if (localWorkroom.record_id && Array.isArray(created?.participants)) {
-        await replaceWorkroomParticipantsForRoom(localWorkroom.record_id, created.participants.map((participant) => ({
+        const localParticipants = created.participants.map((participant) => ({
           ...participant,
           record_id: participant.id || participant.record_id,
-        })));
+        }));
+        await replaceWorkroomParticipantsForRoom(localWorkroom.record_id, localParticipants);
+        if (typeof this.applyWorkroomParticipants === 'function') this.applyWorkroomParticipants(localParticipants);
       }
       this.workroomCreationFailedParticipants = failedWorkroomParticipants(created?.participants);
 

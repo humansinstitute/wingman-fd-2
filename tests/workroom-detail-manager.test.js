@@ -103,6 +103,84 @@ describe('workroom production merge approvals', () => {
 });
 
 describe('workroom announcement thread helpers', () => {
+  it('hydrates participants when opening a cached workroom detail', async () => {
+    const hydratedIds = [];
+    const opened = [];
+    const store = {
+      currentWorkspace: {
+        workspaceId: 'workspace-1',
+        workspaceOwnerNpub: 'npub-owner',
+        directHttpsUrl: 'https://tower.example',
+        appNpub: 'flightdeck_pg',
+      },
+      activeWorkroomId: '',
+      selectedChannelId: 'channel-1',
+      workroomDetailOpen: false,
+      workroomDetailLoading: false,
+      workroomError: '',
+      workroomDetailNotice: '',
+      workrooms: [{
+        record_id: 'room-1',
+        channel_id: 'channel-1',
+        metadata: {
+          announcement_message_id: 'message-1',
+          announcement_thread_id: 'thread-1',
+        },
+      }],
+      workroomParticipants: [],
+      workroomEvents: [],
+      workroomLinks: [],
+      workroomApprovals: [],
+      messages: [{ record_id: 'message-1', channel_id: 'channel-1', pg_thread_id: 'thread-1', parent_message_id: null }],
+      getTowerPgWorkroom: async (_workspaceId, workroomId) => {
+        hydratedIds.push(workroomId);
+        return {
+          workroom: {
+            id: 'room-1',
+            channel_id: 'channel-1',
+            title: 'Cached room',
+            metadata: {
+              announcement_message_id: 'message-1',
+              announcement_thread_id: 'thread-1',
+            },
+          },
+          participants: [{ id: 'participant-1', workroom_id: 'room-1', actor_npub: 'npub-rick', kind: 'autopilot', role: 'integration', access_status: 'granted' }],
+          events: [],
+          links: [],
+        };
+      },
+      upsertWorkroom: async () => {},
+      replaceWorkroomParticipantsForRoom: async () => {},
+      replaceWorkroomEventsForRoom: async () => {},
+      replaceWorkroomLinksForRoom: async () => {},
+      replaceWorkroomApprovalsForRoom: async () => {},
+      getTowerPgApprovals: async () => ({ approvals: [] }),
+      getTowerPgChannelMessages: async () => ({
+        messages: [{
+          id: 'message-1',
+          channel_id: 'channel-1',
+          thread_id: 'thread-1',
+          parent_message_id: null,
+          body: 'Workroom started',
+          created_at: '2026-07-20T00:00:00.000Z',
+        }],
+      }),
+      upsertMessage: async () => {},
+      refreshMessages: async () => {},
+      openThread(recordId, options) { opened.push({ recordId, options }); },
+      syncRoute() {},
+    };
+    Object.defineProperties(store, Object.getOwnPropertyDescriptors(workroomDetailMixin));
+
+    await store.openWorkroomDetail('room-1', { syncRoute: false });
+
+    expect(hydratedIds).toEqual(['room-1']);
+    expect(store.selectedWorkroomParticipants).toEqual([
+      expect.objectContaining({ record_id: 'participant-1', actor_npub: 'npub-rick', kind: 'autopilot', role: 'integration' }),
+    ]);
+    expect(opened).toEqual([{ recordId: 'message-1', options: { scrollToLatest: true, syncRoute: false, preserveComposer: false } }]);
+  });
+
   it('separates linked docs and tasks for the derived room rail', () => {
     const store = {
       activeWorkroomId: 'room-1',

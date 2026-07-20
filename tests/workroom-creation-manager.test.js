@@ -78,9 +78,27 @@ describe('workroom creation flow helpers', () => {
       integration_autopilot_npub: 'npub-integration',
       participants: [
         { actor_npub: 'npub-human', role: 'human_approver', kind: 'human' },
-        { actor_npub: 'npub-integration', role: 'integration', kind: 'human' },
+        { actor_npub: 'npub-integration', role: 'integration', kind: 'autopilot' },
       ],
     });
+  });
+
+  it('normalizes the selected integration npub even if the role row is stale', () => {
+    const payload = buildWorkroomCreatePayload(createWorkroomForm({
+      title: 'Release',
+      goal: 'Ship it',
+      integration_autopilot_npub: 'npub-rick',
+      participants: [
+        { actor_npub: 'npub-pete', role: 'contributor', label: 'Pete' },
+        { actor_npub: 'npub-rick', role: 'contributor', label: 'Rick' },
+      ],
+    }), { scopeId: 'scope-1', channelId: 'channel-1' });
+
+    expect(payload.integration_autopilot_npub).toBe('npub-rick');
+    expect(payload.participants).toEqual([
+      { actor_npub: 'npub-pete', role: 'contributor', kind: 'human', label: 'Pete' },
+      { actor_npub: 'npub-rick', role: 'integration', kind: 'autopilot', label: 'Rick' },
+    ]);
   });
 
   it('infers repository name and URL in either direction', () => {
