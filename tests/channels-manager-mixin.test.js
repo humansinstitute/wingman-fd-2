@@ -100,7 +100,7 @@ describe('channelsManagerMixin', () => {
   });
 
   it('keeps bottom-scroll intent when navigating back to an already selected chat channel', () => {
-    expect(appSource).toMatch(/else if \(this\.selectedChannelId\) \{\s*this\.pendingChatScrollToLatest = true;\s*this\.scheduleChatFeedScrollToBottom\(\);/);
+    expect(appSource).toMatch(/else \{\s*this\.pendingChatScrollToLatest = true;\s*this\.scheduleChatFeedScrollToBottom\(\);/);
   });
 
   it('refreshGroups supports a max-age guard for group key refreshes', () => {

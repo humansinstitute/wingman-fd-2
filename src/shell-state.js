@@ -840,7 +840,11 @@ export function createShellState(options = {}) {
         if (!selectedVisible && !pgScopeHome) {
           this.ensureSelectedChatChannelInScope();
         } else if (this.selectedChannelId) {
-          this.scheduleChatFeedScrollToBottom();
+          if (previousSection !== 'chat' && typeof this.selectChannel === 'function') {
+            void this.selectChannel(this.selectedChannelId, { syncRoute: false });
+          } else {
+            this.scheduleChatFeedScrollToBottom();
+          }
         }
       }
       if (section === 'status') {

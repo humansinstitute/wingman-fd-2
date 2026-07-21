@@ -317,6 +317,27 @@ describe('shell state default values', () => {
     shell.session = { npub: 'npub1abc', pubkey: 'abc', method: 'extension' };
     expect(shell.isLoggedIn).toBe(true);
   });
+
+  it('loads an already selected channel when entering chat from another scope quick app', () => {
+    const shell = createShellState({ initialSection: 'status' });
+    Object.assign(shell, {
+      selectedChannelId: 'channel-book-of-sand',
+      selectedBoardId: 'pg:channel:channel-book-of-sand',
+      scopeFilteredChannels: [{ record_id: 'channel-book-of-sand' }],
+      currentWorkspace: { pgBackendMode: true },
+      clearInactiveSectionData: vi.fn(),
+      markSectionRead: vi.fn(),
+      cancelEditSchedule: vi.fn(),
+      selectChannel: vi.fn(),
+      syncRoute: vi.fn(),
+      startWorkspaceLiveQueries: vi.fn(),
+      ensureBackgroundSync: vi.fn(),
+    });
+
+    shell.navigateTo('chat');
+
+    expect(shell.selectChannel).toHaveBeenCalledWith('channel-book-of-sand', { syncRoute: false });
+  });
 });
 
 describe('shell lifecycle methods', () => {
