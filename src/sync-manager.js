@@ -94,6 +94,22 @@ const PG_FULL_SYNC_STEPS = Object.freeze([
   { id: 'pg-daily-notes', label: 'Daily Scope' },
   { id: 'pg-personal-wapps', label: 'Personal apps' },
 ]);
+const PG_FULL_SYNC_CHILD_CONCURRENCY = 4;
+
+async function mapWithConcurrency(items, concurrency, mapper) {
+  const rows = Array.isArray(items) ? items : [];
+  if (rows.length === 0) return [];
+  const results = new Array(rows.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(Math.max(1, Number(concurrency) || 1), rows.length);
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (nextIndex < rows.length) {
+      const index = nextIndex++;
+      results[index] = await mapper(rows[index], index);
+    }
+  }));
+  return results;
+}
 
 // ---------------------------------------------------------------------------
 // Mixin — methods and getters that use `this` (the Alpine store)
@@ -2163,21 +2179,7 @@ export const syncManagerMixin = {
 
     if (status === 'pull-complete') {
       if (this.isEncryptedRecordSyncDisabled) {
-        hydrateTowerPgEventUpdates(this, message?.pgEvents || [])
-          .then((result) => {
-            if (result?.appliedTargets > 0) return;
-            if (typeof this.refreshChannels !== 'function') return;
-            return this.refreshChannels();
-          })
-          .catch((error) => {
-            flightDeckLog('warn', 'sse', 'failed to refresh PG records after SSE event', {
-              error: error?.message || String(error),
-            });
-            if (typeof this.refreshChannels === 'function') {
-              this.refreshChannels().catch(() => {});
-            }
-          });
-        return;
+        return this.queueTowerPgSSEHydration(message?.pgEvents || []);
       }
       this.refreshStateForSyncFamilyHashes(message?.families || [], {
         refreshSyncStatus: false,
@@ -2216,6 +2218,43 @@ export const syncManagerMixin = {
       // SSE gave up reconnecting — tighten polling back to normal cadence
       this.scheduleBackgroundSync();
       return;
+    }
+  },
+
+  queueTowerPgSSEHydration(pgEvents = []) {
+    if (!Array.isArray(this.pendingTowerPgSSEEvents)) this.pendingTowerPgSSEEvents = [];
+    const events = Array.isArray(pgEvents) ? pgEvents : [];
+    this.pendingTowerPgSSEEvents.push(...events);
+    if (events.length === 0) this.towerPgSSEFallbackRefreshPending = true;
+    if (this.towerPgSSEHydrationPromise) return this.towerPgSSEHydrationPromise;
+
+    this.towerPgSSEHydrationPromise = this.drainTowerPgSSEHydrationQueue()
+      .finally(() => {
+        this.towerPgSSEHydrationPromise = null;
+        if (this.pendingTowerPgSSEEvents?.length || this.towerPgSSEFallbackRefreshPending) {
+          this.queueTowerPgSSEHydration();
+        }
+      });
+    return this.towerPgSSEHydrationPromise;
+  },
+
+  async drainTowerPgSSEHydrationQueue() {
+    while (this.pendingTowerPgSSEEvents?.length || this.towerPgSSEFallbackRefreshPending) {
+      const events = this.pendingTowerPgSSEEvents.splice(0);
+      const fallbackRefreshRequested = this.towerPgSSEFallbackRefreshPending;
+      this.towerPgSSEFallbackRefreshPending = false;
+      try {
+        const result = await hydrateTowerPgEventUpdates(this, events);
+        if (result?.appliedTargets > 0 && !fallbackRefreshRequested) continue;
+        if (typeof this.refreshChannels === 'function') await this.refreshChannels();
+      } catch (error) {
+        flightDeckLog('warn', 'sse', 'failed to refresh PG records after SSE event', {
+          error: error?.message || String(error),
+        });
+        if (typeof this.refreshChannels === 'function') {
+          await this.refreshChannels().catch(() => {});
+        }
+      }
     }
   },
 
@@ -2594,9 +2633,9 @@ export const syncManagerMixin = {
       case 'pg-task-comments': {
         const tasks = (Array.isArray(this.tasks) ? this.tasks : [])
           .filter((task) => task?.record_id && task.record_state !== 'deleted');
-        for (const task of tasks) {
-          await hydrateTowerPgTaskComments(this, task.record_id);
-        }
+        await mapWithConcurrency(tasks, PG_FULL_SYNC_CHILD_CONCURRENCY, (task) => (
+          hydrateTowerPgTaskComments(this, task.record_id)
+        ));
         return tasks;
       }
       case 'pg-documents':
@@ -2608,9 +2647,9 @@ export const syncManagerMixin = {
             const pgType = String(document.pg_record_type || '').trim();
             return pgType === '' || pgType === 'document';
           });
-        for (const document of documents) {
-          await hydrateTowerPgDocComments(this, document.record_id);
-        }
+        await mapWithConcurrency(documents, PG_FULL_SYNC_CHILD_CONCURRENCY, (document) => (
+          hydrateTowerPgDocComments(this, document.record_id)
+        ));
         return documents;
       }
       case 'pg-audio-notes':
@@ -2658,7 +2697,7 @@ export const syncManagerMixin = {
     try {
       for (const [index, step] of PG_FULL_SYNC_STEPS.entries()) {
         this.markSyncFamilyProgress(step.id, 'active');
-        this.handleSyncProgressUpdate({
+        this.updateSyncSession({
           phase: 'pulling',
           currentFamily: step.label,
           currentFamilyHash: step.id,
@@ -2668,7 +2707,8 @@ export const syncManagerMixin = {
         });
         const result = await this.runPgFullSyncStep(step.id);
         pulled += Array.isArray(result) ? result.length : 0;
-        this.handleSyncProgressUpdate({
+        this.markSyncFamilyProgress(step.id, 'done');
+        this.updateSyncSession({
           phase: 'pulling',
           currentFamily: step.label,
           currentFamilyHash: step.id,

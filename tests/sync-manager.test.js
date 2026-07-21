@@ -1383,12 +1383,10 @@ describe('sync family progress helpers', () => {
       refreshChannels,
     });
 
-    fn({
+    await fn({
       status: 'pull-complete',
       families: [getSyncFamilyHash('chat_message')],
     });
-    await Promise.resolve();
-    await Promise.resolve();
 
     expect(refreshChannels).toHaveBeenCalledTimes(1);
   });
@@ -1402,17 +1400,37 @@ describe('sync family progress helpers', () => {
       refreshChannels,
     });
 
-    fn({
+    await fn({
       status: 'pull-complete',
       families: ['flightdeck_pg'],
       pgEvents,
     });
-    await Promise.resolve();
-    await Promise.resolve();
 
     expect(hydrateTowerPgEventUpdates).toHaveBeenCalledWith(expect.any(Object), pgEvents);
     expect(hydrateTowerPgEventUpdates.mock.calls.at(-1)[0]).toBe(store);
     expect(refreshChannels).not.toHaveBeenCalled();
+  });
+
+  it('serializes PG SSE hydration so an older refresh cannot overwrite a newer one', async () => {
+    isTowerPgBackendMode.mockReturnValue(true);
+    let resolveFirst;
+    hydrateTowerPgEventUpdates
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }))
+      .mockResolvedValueOnce({ appliedTargets: 1, fallbackEvents: 0, events: 1 });
+    const { fn } = bindMethod('handleSSEStatus');
+    const firstEvent = { entity_type: 'message', channel_id: 'channel-1', entity_id: 'message-1' };
+    const secondEvent = { entity_type: 'message', channel_id: 'channel-1', entity_id: 'message-2' };
+
+    const firstHydration = fn({ status: 'pull-complete', families: ['flightdeck_pg'], pgEvents: [firstEvent] });
+    fn({ status: 'pull-complete', families: ['flightdeck_pg'], pgEvents: [secondEvent] });
+    await Promise.resolve();
+    expect(hydrateTowerPgEventUpdates).toHaveBeenCalledTimes(1);
+
+    resolveFirst({ appliedTargets: 1, fallbackEvents: 0, events: 1 });
+    await firstHydration;
+    expect(hydrateTowerPgEventUpdates).toHaveBeenCalledTimes(2);
+    expect(hydrateTowerPgEventUpdates.mock.calls[0][1]).toEqual([firstEvent]);
+    expect(hydrateTowerPgEventUpdates.mock.calls[1][1]).toEqual([secondEvent]);
   });
 });
 
@@ -1819,6 +1837,23 @@ describe('performTowerPgFullSync', () => {
     expect(store.syncSession.phase).toBe('error');
     expect(store.syncSession.error).toBe('PG is offline');
     expect(store.syncFamilyProgress[0].status).toBe('error');
+  });
+
+  it('keeps the current PG step active until its hydration resolves', async () => {
+    let resolveGroups;
+    const refreshGroups = vi.fn(() => new Promise((resolve) => { resolveGroups = resolve; }));
+    const { fn, store } = bindMethod('performTowerPgFullSync', {
+      session: { npub: 'npub1me' },
+      backendUrl: 'https://backend.example.com',
+      refreshGroups,
+    });
+
+    const syncing = fn();
+    await vi.waitFor(() => expect(refreshGroups).toHaveBeenCalled());
+    expect(store.syncSession.completedFamilies).toBe(0);
+    expect(store.syncFamilyProgress[0].status).toBe('active');
+    resolveGroups([]);
+    await syncing;
   });
 });
 

@@ -499,8 +499,7 @@ describe('handleSSEStatus', () => {
       refreshChannels,
     });
 
-    fn({ status: 'pull-complete', families: ['family:channel'] });
-    await flushMicrotasks();
+    await fn({ status: 'pull-complete', families: ['family:channel'] });
 
     expect(refreshChannels).toHaveBeenCalledTimes(1);
     expect(store.sseStatus).toBe('pull-complete');
