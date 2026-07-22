@@ -306,7 +306,9 @@ describe('channels-manager pure utilities', () => {
     expect(store.selectedBoardId).toBe(buildPgChannelTaskBoardId('ch-b'));
     expect(persistSelectedBoardId).toHaveBeenCalledWith(buildPgChannelTaskBoardId('ch-b'));
     expect(hydrateTowerPgChannelMessages).toHaveBeenCalledWith(store, 'ch-b');
-    expect(store.refreshMessages).not.toHaveBeenCalled();
+    expect(store.refreshMessages).toHaveBeenCalledWith({ scrollToLatest: undefined });
+    expect(store.refreshMessages.mock.invocationCallOrder[0])
+      .toBeLessThan(hydrateTowerPgChannelMessages.mock.invocationCallOrder[0]);
   });
 
   it('saves and closes an open docs editor before selecting another docs channel', async () => {

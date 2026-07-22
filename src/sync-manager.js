@@ -2287,6 +2287,7 @@ export const syncManagerMixin = {
     }
     if (this.visibilityHandler && typeof document !== 'undefined') {
       document.removeEventListener('visibilitychange', this.visibilityHandler);
+      window.removeEventListener('focus', this.visibilityHandler);
       this.visibilityHandler = null;
     }
     this.disconnectSSEStream('stop-background-sync');
@@ -2308,8 +2309,12 @@ export const syncManagerMixin = {
 
   ensureBackgroundSync(runSoon = false) {
     if (!this.visibilityHandler && typeof document !== 'undefined') {
-      this.visibilityHandler = () => this.ensureBackgroundSync(true);
+      this.visibilityHandler = () => {
+        if (document.hidden) return;
+        this.ensureBackgroundSync(true);
+      };
       document.addEventListener('visibilitychange', this.visibilityHandler);
+      window.addEventListener('focus', this.visibilityHandler, { passive: true });
     }
     if (this.isEncryptedRecordSyncDisabled) {
       this.markEncryptedRecordSyncDisabled();

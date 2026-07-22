@@ -1948,6 +1948,45 @@ describe('PG mode encrypted record sync startup guard', () => {
     expect(store.connectSSEStream).toHaveBeenCalledWith({ reason: 'ensure-background-sync' });
   });
 
+  it('requests an immediate refresh when the browser tab regains focus', () => {
+    const previousDocument = globalThis.document;
+    const previousWindow = globalThis.window;
+    const documentStub = {
+      hidden: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    };
+    const windowStub = {
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    };
+    Object.defineProperty(globalThis, 'document', { configurable: true, value: documentStub });
+    Object.defineProperty(globalThis, 'window', { configurable: true, value: windowStub });
+
+    try {
+      const { fn, store } = bindMethod('ensureBackgroundSync', {
+        session: { npub: 'npub1me' },
+        backendUrl: 'https://backend.example.com',
+        workspaceOwnerNpub: 'npub1owner',
+        connectSSEStream: vi.fn(),
+      });
+      fn();
+      const focusHandler = windowStub.addEventListener.mock.calls
+        .find(([eventName]) => eventName === 'focus')?.[1];
+      const ensureBackgroundSync = vi.fn();
+      store.ensureBackgroundSync = ensureBackgroundSync;
+
+      focusHandler();
+
+      expect(ensureBackgroundSync).toHaveBeenCalledWith(true);
+    } finally {
+      if (previousDocument === undefined) delete globalThis.document;
+      else Object.defineProperty(globalThis, 'document', { configurable: true, value: previousDocument });
+      if (previousWindow === undefined) delete globalThis.window;
+      else Object.defineProperty(globalThis, 'window', { configurable: true, value: previousWindow });
+    }
+  });
+
   it('skips the encrypted worker timer but keeps SSE in Tower PG mode', () => {
     isTowerPgBackendMode.mockReturnValue(true);
     const { fn, store } = bindMethod('ensureBackgroundSync', {

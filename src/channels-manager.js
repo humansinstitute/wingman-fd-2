@@ -2173,6 +2173,7 @@ export const channelsManagerMixin = {
     await this.applyMessages?.([], { scrollToLatest: false });
     this.pendingChatScrollToLatest = options.scrollToLatest !== false;
     this.startSelectedChannelLiveQuery();
+    await this.refreshMessages?.({ scrollToLatest: options.scrollToLatest });
     if (isPgWorkspace) {
       try {
         await hydrateTowerPgChannelMessages(this, recordId);
@@ -2181,10 +2182,7 @@ export const channelsManagerMixin = {
           channelId: recordId || null,
           error: error?.message || String(error),
         });
-        await this.refreshMessages?.({ scrollToLatest: options.scrollToLatest });
       }
-    } else {
-      await this.refreshMessages?.({ scrollToLatest: options.scrollToLatest });
     }
     await this.refreshDailyNotes?.();
     if (options.syncRoute !== false) this.syncRoute();
