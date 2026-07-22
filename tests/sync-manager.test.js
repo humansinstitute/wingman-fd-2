@@ -26,6 +26,7 @@ import { createNip98AuthHeader, createNip98AuthHeaderForSecret } from '../src/au
 import { getActiveWorkspaceKeySecretForAuth } from '../src/crypto/workspace-keys.js';
 import { isTowerPgBackendMode } from '../src/backend-mode.js';
 import {
+  hydrateTowerPgChannelMessages,
   hydrateTowerPgDocComments,
   hydrateTowerPgEventUpdates,
   hydrateTowerPgTaskComments,
@@ -36,6 +37,7 @@ vi.mock('../src/backend-mode.js', () => ({
 }));
 
 vi.mock('../src/pg-read-hydrator.js', () => ({
+  hydrateTowerPgChannelMessages: vi.fn(async () => []),
   hydrateTowerPgDocComments: vi.fn(async () => []),
   hydrateTowerPgEventUpdates: vi.fn(async () => ({ appliedTargets: 0, fallbackEvents: 0, events: 0 })),
   hydrateTowerPgTaskComments: vi.fn(async () => []),
@@ -1269,7 +1271,7 @@ describe('backgroundSyncTick', () => {
     expect(store.catchUpSyncActive).toBe(false);
   });
 
-  it('refreshes PG channels during background tick when chat is active', async () => {
+  it('refreshes the active PG chat channel before broad channel reconciliation', async () => {
     isTowerPgBackendMode.mockReturnValue(true);
     const refreshChannels = vi.fn().mockResolvedValue(undefined);
     const { fn } = bindMethod('backgroundSyncTick', {
@@ -1284,7 +1286,10 @@ describe('backgroundSyncTick', () => {
 
     await fn();
 
+    expect(hydrateTowerPgChannelMessages).toHaveBeenCalledWith(expect.any(Object), 'ch1');
     expect(refreshChannels).toHaveBeenCalledTimes(1);
+    expect(hydrateTowerPgChannelMessages.mock.invocationCallOrder[0])
+      .toBeLessThan(refreshChannels.mock.invocationCallOrder[0]);
   });
 });
 

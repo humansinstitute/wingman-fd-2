@@ -28,6 +28,7 @@ vi.mock('../src/pg-read-hydrator.js', async () => {
   return {
     ...actual,
     hydrateTowerPgAudioNotes: vi.fn(),
+    hydrateTowerPgChannelMessages: vi.fn(),
     hydrateTowerPgChannels: vi.fn(),
     hydrateTowerPgDocumentsAndFiles: vi.fn(),
     hydrateTowerPgScopes: vi.fn(),
@@ -50,6 +51,7 @@ import {
 import { isTowerPgBackendMode } from '../src/backend-mode.js';
 import {
   hydrateTowerPgAudioNotes,
+  hydrateTowerPgChannelMessages,
   hydrateTowerPgChannels,
   hydrateTowerPgDocumentsAndFiles,
   hydrateTowerPgScopes,
@@ -103,6 +105,7 @@ beforeEach(() => {
   });
   updateTowerPgChannelGrant.mockResolvedValue({ grants: [] });
   hydrateTowerPgAudioNotes.mockResolvedValue(undefined);
+  hydrateTowerPgChannelMessages.mockResolvedValue(undefined);
   hydrateTowerPgChannels.mockResolvedValue(undefined);
   hydrateTowerPgDocumentsAndFiles.mockResolvedValue(undefined);
   hydrateTowerPgScopes.mockResolvedValue(undefined);
@@ -302,6 +305,8 @@ describe('channels-manager pure utilities', () => {
     expect(store.selectedChannelId).toBe('ch-b');
     expect(store.selectedBoardId).toBe(buildPgChannelTaskBoardId('ch-b'));
     expect(persistSelectedBoardId).toHaveBeenCalledWith(buildPgChannelTaskBoardId('ch-b'));
+    expect(hydrateTowerPgChannelMessages).toHaveBeenCalledWith(store, 'ch-b');
+    expect(store.refreshMessages).not.toHaveBeenCalled();
   });
 
   it('saves and closes an open docs editor before selecting another docs channel', async () => {
@@ -340,6 +345,7 @@ describe('channels-manager pure utilities', () => {
     expect(resetOpenDocumentForContextChange).toHaveBeenCalledWith(openDoc, { syncRoute: false });
     expect(store.selectedChannelId).toBe('ch-b');
     expect(store.selectedBoardId).toBe(buildPgChannelTaskBoardId('ch-b'));
+    expect(hydrateTowerPgChannelMessages).toHaveBeenCalledWith(store, 'ch-b');
   });
 
   it('reconciles the selected chat channel when channels hydrate for the active scope', async () => {

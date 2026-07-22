@@ -68,6 +68,7 @@ import { decryptRecordPayload } from './translators/record-crypto.js';
 import { hasGroupKey } from './crypto/group-keys.js';
 import { outboundComment } from './translators/comments.js';
 import {
+  hydrateTowerPgChannelMessages,
   hydrateTowerPgDocComments,
   hydrateTowerPgEventUpdates,
   hydrateTowerPgTaskComments,
@@ -2361,7 +2362,10 @@ export const syncManagerMixin = {
     try {
       if (this.isEncryptedRecordSyncDisabled) {
         this.markEncryptedRecordSyncDisabled();
-        if (this.navSection === 'chat' && this.selectedChannelId && typeof this.refreshChannels === 'function') {
+        if (this.navSection === 'chat' && this.selectedChannelId) {
+          await hydrateTowerPgChannelMessages(this, this.selectedChannelId);
+        }
+        if (typeof this.refreshChannels === 'function') {
           await this.refreshChannels();
         }
       } else {
