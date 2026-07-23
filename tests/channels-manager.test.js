@@ -20,6 +20,7 @@ vi.mock('../src/api.js', async () => {
     getTowerPgWorkspaceMembers: vi.fn(),
     updateTowerPgChannel: vi.fn(),
     updateTowerPgChannelGrant: vi.fn(),
+    updateTowerPgWorkspaceMemberProfile: vi.fn(),
   };
 });
 
@@ -47,6 +48,7 @@ import {
   getTowerPgWorkspaceMembers,
   updateTowerPgChannel,
   updateTowerPgChannelGrant,
+  updateTowerPgWorkspaceMemberProfile,
 } from '../src/api.js';
 import { isTowerPgBackendMode } from '../src/backend-mode.js';
 import {
@@ -104,6 +106,10 @@ beforeEach(() => {
     },
   });
   updateTowerPgChannelGrant.mockResolvedValue({ grants: [] });
+  updateTowerPgWorkspaceMemberProfile.mockResolvedValue({
+    actor: { actor_id: 'actor-target', npub: 'npub1target', kind: 'human', display_name: 'Renamed User' },
+    membership: { workspace_id: 'workspace-1', actor_id: 'actor-target', role: 'member', joined_at: null },
+  });
   hydrateTowerPgAudioNotes.mockResolvedValue(undefined);
   hydrateTowerPgChannelMessages.mockResolvedValue(undefined);
   hydrateTowerPgChannels.mockResolvedValue(undefined);
@@ -1157,6 +1163,38 @@ describe('channels-manager pure utilities', () => {
     });
     expect(store.channelSettingsNotice).toBe('Agent Direct Chat settings saved.');
     expect(store.scheduleChannelsRefresh).toHaveBeenCalledWith('PG channel metadata update');
+  });
+
+  it('persists a People directory rename and refreshes mention identity state', async () => {
+    const refreshTowerPgWorkspaceMembers = vi.fn().mockResolvedValue([]);
+    const store = createPgGrantStore({
+      canAdminWorkspace: true,
+      pgWorkspaceMembers: [{ actor_id: 'actor-target', id: 'actor-target', npub: 'npub1target', display_name: null, role: 'member' }],
+      pgWorkspaceMemberProfileEditingActorId: 'actor-target',
+      pgWorkspaceMemberProfileDraft: 'Renamed User',
+      pgWorkspaceMemberProfileSaving: false,
+      pgWorkspaceMemberProfileError: '',
+      chatProfiles: {},
+      addressBookPeople: [],
+      refreshTowerPgWorkspaceMembers,
+    });
+
+    await store.savePgWorkspaceMemberProfile(store.pgWorkspaceMembers[0]);
+
+    expect(updateTowerPgWorkspaceMemberProfile).toHaveBeenCalledWith(
+      'workspace-1',
+      'actor-target',
+      { display_name: 'Renamed User' },
+      { baseUrl: 'https://tower.example', appNpub: 'flightdeck-app' },
+    );
+    expect(store.pgWorkspaceMembers[0].display_name).toBe('Renamed User');
+    expect(store.chatProfiles.npub1target.name).toBe('Renamed User');
+    expect(store.addressBookPeople).toEqual(expect.arrayContaining([
+      expect.objectContaining({ npub: 'npub1target', label: 'Renamed User' }),
+    ]));
+    expect(refreshTowerPgWorkspaceMembers).toHaveBeenCalledWith({ force: true, limit: 200 });
+    expect(store.pgWorkspaceMemberProfileSaving).toBe(false);
+    expect(store.pgWorkspaceMemberProfileEditingActorId).toBe('');
   });
 
   it('clears saving and exposes the Tower error when Agent Direct settings fail', async () => {

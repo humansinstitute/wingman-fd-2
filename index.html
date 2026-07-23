@@ -7799,8 +7799,23 @@
                     </template>
                   </button>
                   <div class="group-member-info">
-                    <span x-text="$store.chat.getSenderName(member.npub)"></span>
-                    <small x-text="(member.role || 'member') + ' · ' + $store.chat.getSenderSecondaryLabel(member.npub)"></small>
+                    <template x-if="$store.chat.pgWorkspaceMemberProfileEditingActorId !== (member.actor_id || member.id)">
+                      <div>
+                        <span x-text="member.display_name || $store.chat.getSenderName(member.npub)"></span>
+                        <small x-text="'User · ' + $store.chat.getSenderSecondaryLabel(member.npub)"></small>
+                      </div>
+                    </template>
+                    <template x-if="$store.chat.pgWorkspaceMemberProfileEditingActorId === (member.actor_id || member.id)">
+                      <div>
+                        <input class="new-group-input" type="text" x-model="$store.chat.pgWorkspaceMemberProfileDraft" @keydown.enter.prevent="$store.chat.savePgWorkspaceMemberProfile(member)" @keydown.escape.prevent="$store.chat.cancelPgWorkspaceMemberProfileEdit()" :disabled="$store.chat.pgWorkspaceMemberProfileSaving" aria-label="Workspace member display name" />
+                        <small class="channel-access-error" x-show="$store.chat.pgWorkspaceMemberProfileError" x-text="$store.chat.pgWorkspaceMemberProfileError"></small>
+                      </div>
+                    </template>
+                  </div>
+                  <button type="button" class="btn-secondary btn-compact" x-show="$store.chat.pgWorkspaceMemberProfileEditingActorId !== (member.actor_id || member.id) && $store.chat.canEditPgWorkspaceMemberProfile(member)" @click="$store.chat.startPgWorkspaceMemberProfileEdit(member)">Edit name</button>
+                  <div class="settings-actions" x-show="$store.chat.pgWorkspaceMemberProfileEditingActorId === (member.actor_id || member.id)">
+                    <button type="button" class="btn-secondary btn-compact" @click="$store.chat.cancelPgWorkspaceMemberProfileEdit()" :disabled="$store.chat.pgWorkspaceMemberProfileSaving">Cancel</button>
+                    <button type="button" class="btn-confirm btn-compact" @click="$store.chat.savePgWorkspaceMemberProfile(member)" :disabled="$store.chat.pgWorkspaceMemberProfileSaving" x-text="$store.chat.pgWorkspaceMemberProfileSaving ? 'Saving…' : 'Save'"></button>
                   </div>
                 </div>
               </template>

@@ -31,5 +31,8 @@ describe('settings sharing template', () => {
     expect(html).toContain('@click="$store.chat.addPgChildGroup(group.group_id)"');
     expect(html).toContain('@click="$store.chat.removePgChildGroup(group.group_id, childGroupId)"');
     expect(html).toContain('group.effective_member_npubs');
+    expect(html).toContain('@click="$store.chat.startPgWorkspaceMemberProfileEdit(member)"');
+    expect(html).toContain('@click="$store.chat.savePgWorkspaceMemberProfile(member)"');
+    expect(html).toContain("'User · ' + $store.chat.getSenderSecondaryLabel(member.npub)");
   });
 });

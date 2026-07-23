@@ -79,7 +79,7 @@ describe('channel mention lookup', () => {
       type: 'agent',
       id: 'npub-rick',
       label: 'Rick',
-      sublabel: 'Workspace agent',
+      sublabel: 'User',
     }]);
     expect(store.searchMentions('integrator')).toEqual([{
       type: 'person',
@@ -102,7 +102,7 @@ describe('channel mention lookup', () => {
 
     const results = store.searchMentions('Rick');
     expect(results[0]).toEqual({
-      type: 'person', id: rickNpub, label: 'Rick', sublabel: 'Workspace member',
+      type: 'person', id: rickNpub, label: 'Rick', sublabel: 'User',
     });
 
     const target = {
@@ -125,6 +125,26 @@ describe('channel mention lookup', () => {
     )).toEqual([{ type: 'person', npub: rickNpub, label: 'Rick' }]);
   });
 
+  it('updates lookahead immediately when the People directory member is renamed', async () => {
+    const store = await createStore();
+    const rickNpub = 'npub1s4658awhcachmhzk5jhsg256gzdl7e4gh5a9zq8skjyt7g3k2axql224qz';
+    store.channels = [{ record_id: 'channel-rick', title: 'Rick', record_state: 'active' }];
+    store.pgWorkspaceMembers = [{ actor_id: 'actor-rick', npub: rickNpub, display_name: '', kind: 'human' }];
+    store.workroomParticipants = [];
+    store.addressBookPeople = [];
+    store.groups = [];
+    store.getSenderName = () => 'Legacy Alias';
+    store.getChannelLabel = (channel) => channel.title;
+
+    expect(store.searchMentions('Rick')[0].type).toBe('channel');
+
+    store.pgWorkspaceMembers = [{ actor_id: 'actor-rick', npub: rickNpub, display_name: 'Rick', kind: 'human' }];
+
+    expect(store.searchMentions('Rick')[0]).toEqual({
+      type: 'person', id: rickNpub, label: 'Rick', sublabel: 'User',
+    });
+  });
+
   it('keeps a configured integration agent visible before grants and groups hydrate', async () => {
     const store = await createStore();
     const rickNpub = 'npub1s4658awhcachmhzk5jhsg256gzdl7e4gh5a9zq8skjyt7g3k2axql224qz';
@@ -144,7 +164,7 @@ describe('channel mention lookup', () => {
       { record_id: 'channel-rick-dm', title: 'Rick', record_state: 'active' },
     ];
     store.groups = [];
-    store.pgWorkspaceMembers = [{ npub: rickNpub, display_name: '', kind: 'human' }];
+    store.pgWorkspaceMembers = [{ npub: rickNpub, display_name: 'Rick', kind: 'human' }];
     store.workroomParticipants = [];
     store.addressBookPeople = [];
     store.channelGrantsChannelId = 'channel-features';
@@ -154,7 +174,7 @@ describe('channel mention lookup', () => {
     store.getChannelParticipants = () => [];
 
     expect(store.searchMentions('Ric', { visibleOnly: true })).toEqual([
-      { type: 'agent', id: rickNpub, label: 'Rick', sublabel: 'Channel integration agent' },
+      { type: 'person', id: rickNpub, label: 'Rick', sublabel: 'User' },
       { type: 'channel', id: 'channel-rick-dm', label: 'Rick', sublabel: 'Channel' },
     ]);
 
@@ -171,15 +191,15 @@ describe('channel mention lookup', () => {
     store.selectedAgentMentionsByComposer = {};
     store.selectMention(store.searchMentions('Ric', { visibleOnly: true })[0]);
 
-    expect(target.value).toBe(`@[Rick](mention:agent:${rickNpub}) `);
+    expect(target.value).toBe(`@[Rick](mention:person:${rickNpub}) `);
     expect(store.selectedAgentMentionsByComposer.message).toEqual([
-      { type: 'agent', npub: rickNpub, label: 'Rick' },
+      { type: 'person', npub: rickNpub, label: 'Rick' },
     ]);
     const { canonicalAgentMentionsFromSelection } = await import('../src/agent-direct-chat.js');
     expect(canonicalAgentMentionsFromSelection(
       target.value,
       store.selectedAgentMentionsByComposer.message,
-    )).toEqual([{ type: 'agent', npub: rickNpub, label: 'Rick' }]);
+    )).toEqual([{ type: 'person', npub: rickNpub, label: 'Rick' }]);
   });
 
   it('keeps a durable workspace agent visible in a default-enabled ordinary channel', async () => {
@@ -214,7 +234,7 @@ describe('channel mention lookup', () => {
     // only honest searchable identity until Tower normalizes its actor profile.
     const results = store.searchMentions(rickNpub, { visibleOnly: true });
     expect(results[0]).toEqual({
-      type: 'agent', id: rickNpub, label: rickNpub, sublabel: 'Group: Agents',
+      type: 'person', id: rickNpub, label: rickNpub, sublabel: 'User',
     });
 
     const target = {
@@ -225,9 +245,9 @@ describe('channel mention lookup', () => {
     store._mentionStartPos = 0;
     store.selectedAgentMentionsByComposer = {};
     store.selectMention(results[0]);
-    expect(target.value).toBe(`@[${rickNpub}](mention:agent:${rickNpub}) `);
+    expect(target.value).toBe(`@[${rickNpub}](mention:person:${rickNpub}) `);
     expect(store.selectedAgentMentionsByComposer.message).toEqual([
-      { type: 'agent', npub: rickNpub, label: rickNpub },
+      { type: 'person', npub: rickNpub, label: rickNpub },
     ]);
   });
 
@@ -272,7 +292,7 @@ describe('channel mention lookup', () => {
     store.getChannelParticipants = () => [];
 
     expect(store.searchMentions('r', { visibleOnly: true })).toEqual([{
-      type: 'agent', id: 'npub-rick', label: 'Rick', sublabel: 'Group: Agents',
+      type: 'person', id: 'npub-rick', label: 'Rick', sublabel: 'User',
     }]);
     expect(store.searchMentions('sam', { visibleOnly: true })).toEqual([]);
   });

@@ -383,6 +383,17 @@ export async function updateTowerPgWorkspace(workspaceId, body, { baseUrl = _bas
   return json(resp, { requestUrl, method: 'PATCH', prefix: 'Tower PG API' });
 }
 
+export async function updateTowerPgWorkspaceMemberProfile(workspaceId, actorId, body, { baseUrl = _baseUrl, appNpub = FLIGHT_DECK_PG_APP_NPUB } = {}) {
+  const encodedWorkspaceId = encodeURIComponent(String(workspaceId || '').trim());
+  const encodedActorId = encodeURIComponent(String(actorId || '').trim());
+  if (!encodedWorkspaceId) throw new Error('Tower PG workspace id is required');
+  if (!encodedActorId) throw new Error('Tower PG actor id is required');
+  const requestPath = `/api/v4/flightdeck-pg/workspaces/${encodedWorkspaceId}/members/${encodedActorId}/profile`;
+  const requestUrl = resolveTowerPgUrl(requestPath, baseUrl);
+  const resp = await signedTowerPgFetch(requestPath, { method: 'PATCH', body, baseUrl, appNpub });
+  return json(resp, { requestUrl, method: 'PATCH', prefix: 'Tower PG API' });
+}
+
 export async function getTowerPgWorkspaceDescriptor(workspaceId, { baseUrl = _baseUrl, appNpub = FLIGHT_DECK_PG_APP_NPUB, path = null } = {}) {
   const encodedWorkspaceId = encodeURIComponent(String(workspaceId || '').trim());
   if (!encodedWorkspaceId && !path) throw new Error('Tower PG workspace id is required');

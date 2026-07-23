@@ -66,6 +66,30 @@ describe('Tower PG API helpers', () => {
     expect(createNip98AuthHeaderForSecret).not.toHaveBeenCalled();
   });
 
+  it('updates a canonical workspace member display name through the typed profile route', async () => {
+    const api = await import('../src/api.js');
+    api.setBaseUrl('https://tower.example');
+
+    await api.updateTowerPgWorkspaceMemberProfile(
+      'workspace-1',
+      'actor-rick',
+      { display_name: 'Rick' },
+      { appNpub: 'flightdeck_pg' },
+    );
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/members/actor-rick/profile',
+      expect.objectContaining({
+        method: 'PATCH',
+        headers: expect.objectContaining({
+          Authorization: 'NIP98 PATCH https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/members/actor-rick/profile',
+          'x-flightdeck-pg-app-npub': 'flightdeck_pg',
+        }),
+        body: JSON.stringify({ display_name: 'Rick' }),
+      }),
+    );
+  });
+
   it('updates Tower PG file metadata with PATCH auth', async () => {
     const api = await import('../src/api.js');
     api.setBaseUrl('https://tower.example');

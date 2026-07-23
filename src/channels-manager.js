@@ -12,6 +12,7 @@ import {
   upsertGroup,
   deleteGroupById,
   getAddressBookPeople,
+  upsertAddressBookPerson,
   addPendingWrite,
 } from './db.js';
 import {
@@ -38,6 +39,7 @@ import {
   removeTowerPgWorkspaceGroupMember,
   updateTowerPgChannel,
   updateTowerPgChannelGrant,
+  updateTowerPgWorkspaceMemberProfile,
 } from './api.js';
 import {
   outboundChannel,
@@ -910,6 +912,76 @@ export const channelsManagerMixin = {
       await this.rememberPeople(members.map((member) => member.npub), 'pg-workspace-member');
     }
     return members;
+  },
+
+  canEditPgWorkspaceMemberProfile(member) {
+    const actorId = String(member?.actor_id || member?.id || '').trim();
+    return Boolean(actorId && (this.canAdminWorkspace || actorId === this.currentPgActorId));
+  },
+
+  startPgWorkspaceMemberProfileEdit(member) {
+    if (!this.canEditPgWorkspaceMemberProfile(member)) return;
+    this.pgWorkspaceMemberProfileEditingActorId = String(member.actor_id || member.id || '').trim();
+    this.pgWorkspaceMemberProfileDraft = String(member.display_name || '').trim();
+    this.pgWorkspaceMemberProfileError = '';
+  },
+
+  cancelPgWorkspaceMemberProfileEdit() {
+    this.pgWorkspaceMemberProfileEditingActorId = '';
+    this.pgWorkspaceMemberProfileDraft = '';
+    this.pgWorkspaceMemberProfileError = '';
+  },
+
+  async savePgWorkspaceMemberProfile(member) {
+    const actorId = String(member?.actor_id || member?.id || '').trim();
+    const displayName = String(this.pgWorkspaceMemberProfileDraft || '').trim();
+    if (!actorId || !this.canEditPgWorkspaceMemberProfile(member)) return;
+    if (!displayName) {
+      this.pgWorkspaceMemberProfileError = 'Enter a display name.';
+      return;
+    }
+    this.pgWorkspaceMemberProfileSaving = true;
+    this.pgWorkspaceMemberProfileError = '';
+    try {
+      const { workspaceId, baseUrl, appNpub } = resolveTowerPgWorkspaceContext(this);
+      if (!workspaceId || !baseUrl) throw new Error('Flight Deck PG workspace is not connected');
+      const result = await updateTowerPgWorkspaceMemberProfile(
+        workspaceId,
+        actorId,
+        { display_name: displayName },
+        { baseUrl, appNpub },
+      );
+      const actor = mapTowerPgActor(result?.actor || result?.member?.actor || {});
+      if (!actor?.npub) throw new Error('Tower did not return the updated workspace actor');
+      const membership = result?.membership || result?.member?.membership || {};
+      const updatedMember = {
+        ...member,
+        ...actor,
+        role: String(membership.role || member.role || 'member'),
+        joined_at: membership.joined_at || member.joined_at || null,
+      };
+      this.pgWorkspaceMembers = (this.pgWorkspaceMembers || []).map((candidate) =>
+        String(candidate?.actor_id || candidate?.id || '') === actorId ? updatedMember : candidate
+      );
+      this.chatProfiles = {
+        ...(this.chatProfiles || {}),
+        [actor.npub]: { ...(this.chatProfiles?.[actor.npub] || {}), name: actor.display_name },
+      };
+      await upsertAddressBookPerson({
+        npub: actor.npub,
+        label: actor.display_name,
+        source: 'tower-pg-member-profile',
+        last_used_at: new Date().toISOString(),
+      });
+      this.addressBookPeople = await getAddressBookPeople();
+      await this.refreshTowerPgWorkspaceMembers({ force: true, limit: 200 });
+      this.pgWorkspaceMemberProfileEditingActorId = '';
+      this.pgWorkspaceMemberProfileDraft = '';
+    } catch (error) {
+      this.pgWorkspaceMemberProfileError = error?.message || 'Failed to update workspace member name.';
+    } finally {
+      this.pgWorkspaceMemberProfileSaving = false;
+    }
   },
 
   get pgChannelGrantCapacityOptions() {

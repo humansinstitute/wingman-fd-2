@@ -1818,6 +1818,7 @@ export async function hydrateTowerPgEventUpdates(store, events = [], deps = {}) 
   const workroomEventIds = new Set();
   const workroomLinkIds = new Set();
   const workroomParticipantIds = new Set();
+  let workspaceMembersChanged = false;
   let fallbackEvents = 0;
 
   for (const event of pgEvents) {
@@ -1825,7 +1826,12 @@ export async function hydrateTowerPgEventUpdates(store, events = [], deps = {}) 
     const channelId = trimText(event?.channel_id || event?.payload?.channel_id);
     const payload = event?.payload && typeof event.payload === 'object' ? event.payload : {};
 
-    if (['message', 'thread'].includes(entityType) && channelId) {
+    if (
+      ['workspace_member', 'workspace_member_profile', 'actor_profile', 'actor'].includes(entityType)
+      || trimText(event?.event_type) === 'actor.profile.updated'
+    ) {
+      workspaceMembersChanged = true;
+    } else if (['message', 'thread'].includes(entityType) && channelId) {
       messageChannels.add(channelId);
     } else if (['task', 'task_assignment'].includes(entityType)) {
       const taskId = trimText(event?.entity_id || payload.task_id || payload.id);
@@ -1886,6 +1892,9 @@ export async function hydrateTowerPgEventUpdates(store, events = [], deps = {}) 
   }
 
   const jobs = [
+    ...(workspaceMembersChanged && typeof store?.refreshTowerPgWorkspaceMembers === 'function'
+      ? [store.refreshTowerPgWorkspaceMembers({ force: true, limit: 200 })]
+      : []),
     ...[...messageChannels].map((channelId) => hydrateTowerPgChannelMessages(store, channelId, deps)),
     ...[...taskIds].map((taskId) => hydrateTowerPgTask(store, taskId, deps)),
     ...[...taskChannels].map((channelId) => hydrateTowerPgChannelTasks(store, channelId, deps)),

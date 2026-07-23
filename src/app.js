@@ -1085,6 +1085,10 @@ export function initApp() {
     shareInviteError: null,
     shareInviteCopied: false,
     pgWorkspaceMembers: [],
+    pgWorkspaceMemberProfileEditingActorId: '',
+    pgWorkspaceMemberProfileDraft: '',
+    pgWorkspaceMemberProfileSaving: false,
+    pgWorkspaceMemberProfileError: '',
     pgWorkspaceMemberNpub: '',
     pgGroupMemberDrafts: {},
     pgChildGroupDrafts: {},
@@ -7666,12 +7670,15 @@ export function initApp() {
           if (cleanNpub && !cleanLabel.includes(cleanNpub)) rememberLabel(cleanNpub, cleanLabel);
         }
       }
-      const add = (npub, fallbackLabel = '', sublabel = '', kind = 'human') => {
+      const add = (npub, fallbackLabel = '', sublabel = '', kind = 'human', preferFallbackLabel = false) => {
         const clean = String(npub || '').trim();
         if (!clean) return;
         const senderLabel = String(this.getSenderName?.(clean) || '').trim();
         const fallback = String(fallbackLabel || '').trim() || durableLabels.get(clean) || '';
-        const label = (senderLabel && senderLabel !== clean ? senderLabel : '') || fallback || clean;
+        const label = (preferFallbackLabel ? fallback : '')
+          || (senderLabel && senderLabel !== clean ? senderLabel : '')
+          || fallback
+          || clean;
         const type = String(kind || '').toLowerCase() === 'agent' ? 'agent' : 'person';
         const existing = byNpub.get(clean);
         if (existing && existing.type === 'agent') {
@@ -7692,7 +7699,6 @@ export function initApp() {
         ...(Array.isArray(this.groups) ? this.groups : []),
       ];
       for (const group of mentionGroups) {
-        const groupLabel = group?.name ? `Group: ${group.name}` : '';
         const groupIdentity = String(group?.name || group?.label || group?.group_kind || '')
           .toLowerCase().replace(/[^a-z0-9]/g, '');
         const groupActorKind = ['agent', 'agents', 'aiagent', 'aiagents', 'wingmen'].includes(groupIdentity)
@@ -7700,7 +7706,6 @@ export function initApp() {
           : 'human';
         for (const npub of (group?.effective_member_npubs || group?.member_npubs || [])) {
           if (groupActorKind === 'agent') workspaceAgentNpubs.add(String(npub || '').trim());
-          add(npub, durableLabels.get(String(npub || '').trim()), groupLabel, groupActorKind);
         }
       }
       for (const member of (this.pgWorkspaceMembers || [])) {
@@ -7708,48 +7713,37 @@ export function initApp() {
         add(
           member?.npub || member?.user_npub || member?.member_npub,
           member?.display_name || member?.label || member?.name,
-          String(kind || '').toLowerCase() === 'agent' ? 'Workspace agent' : 'Workspace member',
+          'User',
           kind,
+          true,
         );
       }
       // The channel's workroom integration configuration is authoritative for
-      // agent identity. Tower may retain an older `human` actor kind for the
-      // same npub, especially when access is inherited through a group.
+      // channel visibility. The People directory supplies identity and labels.
       const workroomDefaults = channel?.metadata?.workroom_defaults;
       if (workroomDefaults && typeof workroomDefaults === 'object') {
-        const integrationNpubs = new Map([
+        const integrationNpubs = new Set([
           workroomDefaults.integration_autopilot_npub,
           channel?.metadata?.integration_autopilot_npub,
-        ].map((value) => [String(value || '').trim(), '']).filter(([npub]) => Boolean(npub)));
+        ].map((value) => String(value || '').trim()).filter(Boolean));
         for (const participant of (Array.isArray(workroomDefaults.participants) ? workroomDefaults.participants : [])) {
           const role = String(participant?.role || '').toLowerCase();
           const kind = String(participant?.kind || '').toLowerCase();
           if (role !== 'integration' && !['agent', 'autopilot'].includes(kind)) continue;
           const npub = String(participant?.actor_npub || participant?.npub || participant?.actor?.npub || '').trim();
-          if (npub) integrationNpubs.set(npub, String(participant?.label || participant?.actor?.display_name || '').trim());
+          if (npub) integrationNpubs.add(npub);
         }
-        for (const [npub, label] of integrationNpubs) {
+        for (const npub of integrationNpubs) {
           authoritativeIntegrationNpubs.add(npub);
-          add(npub, label, 'Channel integration agent', 'agent');
         }
       }
       for (const participant of (this.workroomParticipants || [])) {
         add(participant?.actor_npub, participant?.label, participant?.role ? `Workroom ${participant.role}` : 'Workroom participant');
       }
-      // Channel access is also a source of configured agents. This matters
-      // when the workspace member directory has not been hydrated yet (the
-      // common path immediately after opening a channel).
+      // Channel access contributes visibility only. Mention identity and
+      // labels remain sourced from the People directory.
       const channelAgentGrants = (this.channelGrantRows || this.channelGrants || [])
         .flatMap((grant) => Array.isArray(grant?.grants) && grant.grants.length > 0 ? grant.grants : [grant]);
-      for (const grant of channelAgentGrants) {
-        const capacity = String(grant?.capacity || grant?.access_level || '').toLowerCase();
-        const kind = String(grant?.principal?.kind || grant?.principal_actor_kind || '').toLowerCase();
-        if (capacity !== 'agent' && kind !== 'agent') continue;
-        const npub = String(
-          grant?.principal_npub || grant?.actor_npub || grant?.npub || grant?.principal?.npub || '',
-        ).trim();
-        add(npub, grant?.principal?.display_name || grant?.display_name, 'Channel agent', 'agent');
-      }
       for (const person of (this.addressBookPeople || [])) {
         add(person?.npub, person?.label || person?.name, 'Person');
       }

@@ -1360,6 +1360,24 @@ describe('PG read hydrator', () => {
     expect(replaceWorkroomApprovalsForRoom).toHaveBeenCalledWith('room-1', [expect.objectContaining({ record_id: 'approval-1' })]);
   });
 
+  it('refreshes the canonical People directory for workspace member profile events', async () => {
+    const refreshTowerPgWorkspaceMembers = vi.fn().mockResolvedValue([
+      { actor_id: 'actor-rick', npub: 'npub1rick', display_name: 'Rick' },
+    ]);
+    const target = store({ refreshTowerPgWorkspaceMembers });
+
+    const result = await hydrateTowerPgEventUpdates(target, [{
+      event_type: 'actor.profile.updated',
+      entity_type: 'actor',
+      entity_id: 'actor-rick',
+      operation: 'updated',
+      payload: { display_name: 'Rick' },
+    }]);
+
+    expect(refreshTowerPgWorkspaceMembers).toHaveBeenCalledWith({ force: true, limit: 200 });
+    expect(result).toEqual({ channels: 0, appliedTargets: 1, fallbackEvents: 0, events: 1 });
+  });
+
   it('accepts camelCase workroom ids in visible child-event payloads', async () => {
     const target = store({
       applyWorkroomEvents: vi.fn(),
