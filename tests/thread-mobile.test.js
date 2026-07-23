@@ -248,7 +248,7 @@ describe('Thread mobile responsive behavior', () => {
   });
 
   describe('HTML: thread layout class binding', () => {
-    it('chat and thread composers start with one row', async () => {
+    it('chat and thread composers use multiline tokenized textboxes', async () => {
       const fs = await import('node:fs');
       const path = await import('node:path');
       const htmlPath = path.resolve(import.meta.dirname, '..', 'index.html');
@@ -256,7 +256,8 @@ describe('Thread mobile responsive behavior', () => {
 
       expect(html).toContain('data-chat-composer="message"');
       expect(html).toContain('data-chat-composer="thread"');
-      expect(html).toContain('rows="1"');
+      expect(html).toContain('contenteditable="true"');
+      expect(html).toContain('aria-multiline="true"');
       expect(html).toContain('class="chat-input-actions"');
     });
 

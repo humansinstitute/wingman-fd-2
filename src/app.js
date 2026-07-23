@@ -105,6 +105,16 @@ import {
   WEEKDAY_OPTIONS,
 } from './task-board-state.js';
 import { renderMarkdownToHtml } from './markdown.js';
+import {
+  canonicalActorMentions,
+  composerCaretOffset,
+  createMentionPill,
+  hydrateMentionComposer,
+  insertPlainTextAtSelection,
+  removeAdjacentMentionPill,
+  replaceComposerTextRange,
+  serializeMentionComposer,
+} from './mention-composer.js';
 import { resolveChannelLabel, resolveChannelParticipants } from './channel-labels.js';
 import { isDmChannel } from './dm-scope.js';
 import { buildFlightDeckDocumentTitle } from './page-title.js';
@@ -7973,8 +7983,9 @@ export function initApp() {
     },
 
     handleMentionInput(el) {
-      const value = el.value;
-      const cursorPos = el.selectionStart;
+      const contentEditable = el?.isContentEditable || el?.getAttribute?.('contenteditable') === 'true';
+      const value = contentEditable ? (el.textContent || '') : el.value;
+      const cursorPos = contentEditable ? composerCaretOffset(el) : el.selectionStart;
 
       // Find the @ that starts the current mention (allow spaces in query, break on newline)
       let atPos = -1;
@@ -8040,6 +8051,13 @@ export function initApp() {
 
     handleComposerKeydown(event, sendAction) {
       this.handleMentionKeydown(event);
+      if (!event.defaultPrevented && ['Backspace', 'Delete'].includes(event.key)
+        && (event.currentTarget?.isContentEditable || event.currentTarget?.getAttribute?.('contenteditable') === 'true')
+        && removeAdjacentMentionPill(event.currentTarget, event.key === 'Backspace' ? 'backward' : 'forward')) {
+        event.preventDefault();
+        this.syncMentionComposerModel(event.currentTarget);
+        return;
+      }
       if (event.key === 'Enter' && !event.shiftKey && !event.defaultPrevented) {
         event.preventDefault();
         sendAction();
@@ -8049,6 +8067,21 @@ export function initApp() {
     selectMention(result) {
       const el = this._mentionTargetEl;
       if (!el || this._mentionStartPos < 0) return;
+
+      const contentEditable = el?.isContentEditable || el?.getAttribute?.('contenteditable') === 'true';
+      if (contentEditable) {
+        const cursorPos = composerCaretOffset(el);
+        const pill = createMentionPill(el.ownerDocument, {
+          type: result.type,
+          npub: result.id,
+          label: result.label,
+        });
+        replaceComposerTextRange(el, this._mentionStartPos, cursorPos, [pill, ' ']);
+        this.syncMentionComposerModel(el);
+        el.focus();
+        this.closeMentionPopover();
+        return;
+      }
 
       const value = el.value;
       const cursorPos = el.selectionStart;
@@ -8078,6 +8111,47 @@ export function initApp() {
       el.focus();
 
       this.closeMentionPopover();
+    },
+
+    initMentionComposer(el, composer) {
+      if (!el || !['message', 'thread'].includes(composer)) return;
+      el.dataset.chatComposer = composer;
+      hydrateMentionComposer(el, composer === 'thread' ? this.threadInput : this.messageInput);
+      this.autosizeComposer(el);
+    },
+
+    syncMentionComposerModel(el) {
+      const composer = String(el?.dataset?.chatComposer || '').trim();
+      if (!['message', 'thread'].includes(composer)) return '';
+      const value = serializeMentionComposer(el);
+      if (composer === 'thread') this.threadInput = value;
+      else this.messageInput = value;
+      const mentions = canonicalActorMentions(value);
+      this.selectedAgentMentionsByComposer = {
+        ...(this.selectedAgentMentionsByComposer || {}),
+        [composer]: mentions,
+      };
+      this.autosizeComposer(el);
+      return value;
+    },
+
+    syncMentionComposerFromModel(el, composer, value) {
+      if (!el || !['message', 'thread'].includes(composer)) return;
+      if (serializeMentionComposer(el) === String(value || '')) return;
+      hydrateMentionComposer(el, value);
+      this.autosizeComposer(el);
+    },
+
+    async handleMentionComposerPaste(event, composer) {
+      const clipboardItems = [...(event?.clipboardData?.items || [])];
+      if (clipboardItems.some((item) => String(item?.type || '').startsWith('image/'))) {
+        await this.handleChatPaste(event, composer);
+        return;
+      }
+      event.preventDefault();
+      insertPlainTextAtSelection(event.currentTarget, event.clipboardData?.getData('text/plain') || '');
+      this.syncMentionComposerModel(event.currentTarget);
+      this.handleMentionInput(event.currentTarget);
     },
 
     closeMentionPopover() {

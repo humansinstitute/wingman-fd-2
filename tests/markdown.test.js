@@ -22,6 +22,16 @@ afterEach(() => {
 });
 
 describe('renderMarkdownToHtml', () => {
+  it('renders canonical actor mentions as one inline mention pill without a double at-sign', () => {
+    const html = renderMarkdownToHtml('Hello @[Rick](mention:person:npub1rick)');
+
+    expect(html).toContain('class="mention-link mention-link-person"');
+    expect(html).toContain('data-mention-id="npub1rick"');
+    expect(html).toContain('>@Rick</a>');
+    expect(html).not.toContain('>@@Rick</a>');
+    expect(html).not.toContain('mention:person:npub1rick');
+  });
+
   it('renders richer markdown blocks and safe links', () => {
     const html = renderMarkdownToHtml([
       '# Title',

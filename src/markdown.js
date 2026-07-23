@@ -233,7 +233,7 @@ export function normalizeEscapedFileReferences(source) {
 
 export function normalizeDocumentMentionCardLinks(source) {
   return String(source ?? '')
-    .replace(/@\[([^\]]+)\]\(mention:(document|doc|task):([^)]+)\)/g, (_, label, type, id) => `[${label}](mention:${type}:${id})`);
+    .replace(/@\[([^\]]+)\]\(mention:([a-z]+):([^)]+)\)/gi, (_, label, type, id) => `[${label}](mention:${type}:${id})`);
 }
 
 const markdown = new Marked({

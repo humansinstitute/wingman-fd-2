@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-DRaY6sYf.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-BucIkPxl.css">
+  <script type="module" crossorigin src="/assets/index-BbWs7xf6.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-CcvESoto.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -3451,20 +3451,22 @@
               </div>
 
               <div class="chat-input-bar">
-                <textarea
+                <div
                   class="chat-input"
                   data-chat-composer="message"
                   data-channel-visible-mentions="true"
-                  placeholder="Message channel"
-                  rows="1"
-                  x-model="$store.chat.messageInput"
-                  x-init="$store.chat.autosizeComposer($el)"
-                  @input="$store.chat.autosizeComposer($event.target); $store.chat.handleMentionInput($event.target)"
+                  contenteditable="true"
+                  role="textbox"
+                  aria-label="Message channel"
+                  aria-multiline="true"
+                  data-placeholder="Message channel"
+                  x-init="$store.chat.initMentionComposer($el, 'message'); $watch('$store.chat.messageInput', value => $store.chat.syncMentionComposerFromModel($el, 'message', value))"
+                  @input="$store.chat.syncMentionComposerModel($event.currentTarget); $store.chat.handleMentionInput($event.currentTarget)"
                   @keydown="$store.chat.handleComposerKeydown($event, () => $store.chat.sendMessage())"
-                  @paste="$store.chat.handleChatPaste($event, 'message')"
+                  @paste="$store.chat.handleMentionComposerPaste($event, 'message')"
                   @dragover.prevent
                   @drop.prevent="$store.chat.handleChatFileDrop($event, 'message')"
-                ></textarea>
+                ></div>
                 <div class="chat-input-actions">
                   <div class="chat-composer-menu" x-data="{ open: false }" @click.outside="open = false">
                     <button class="chat-composer-menu-trigger" type="button" @click="open = !open" :aria-expanded="open" aria-haspopup="menu">Menu</button>
@@ -3696,20 +3698,22 @@
               </div>
 
               <div class="thread-input-bar">
-                <textarea
+                <div
                   class="chat-input"
                   data-chat-composer="thread"
-                  placeholder="Reply to thread..."
-                  rows="1"
-                  x-model="$store.chat.threadInput"
                   data-channel-visible-mentions="true"
-                  x-init="$store.chat.autosizeComposer($el)"
-                  @input="$store.chat.autosizeComposer($event.target); $store.chat.handleMentionInput($event.target)"
+                  contenteditable="true"
+                  role="textbox"
+                  aria-label="Reply to thread"
+                  aria-multiline="true"
+                  data-placeholder="Reply to thread..."
+                  x-init="$store.chat.initMentionComposer($el, 'thread'); $watch('$store.chat.threadInput', value => $store.chat.syncMentionComposerFromModel($el, 'thread', value))"
+                  @input="$store.chat.syncMentionComposerModel($event.currentTarget); $store.chat.handleMentionInput($event.currentTarget)"
                   @keydown="$store.chat.handleComposerKeydown($event, () => $store.chat.sendThreadReply())"
-                  @paste="$store.chat.handleChatPaste($event, 'thread')"
+                  @paste="$store.chat.handleMentionComposerPaste($event, 'thread')"
                   @dragover.prevent
                   @drop.prevent="$store.chat.handleChatFileDrop($event, 'thread')"
-                ></textarea>
+                ></div>
                 <div class="thread-input-actions">
                   <div class="chat-composer-menu" x-data="{ open: false }" @click.outside="open = false">
                     <button class="chat-composer-menu-trigger" type="button" @click="open = !open" :aria-expanded="open" aria-haspopup="menu">Menu</button>
@@ -5058,7 +5062,7 @@
                     </template>
                   </div>
                   <div class="workroom-thread-composer thread-input-bar" x-show="$store.chat.selectedWorkroomAnnouncementMessageId">
-                    <textarea class="chat-input" data-chat-composer="thread" data-workroom-composer="true" rows="1" x-model="$store.chat.threadInput" x-init="$store.chat.autosizeComposer($el)" placeholder="Reply to thread..." @input="$store.chat.autosizeComposer($event.target); $store.chat.handleMentionInput($event.target)" @keydown="$store.chat.handleComposerKeydown($event, () => $store.chat.sendSelectedWorkroomThreadReply())" @paste="$store.chat.handleChatPaste($event, 'thread')" @dragover.prevent @drop.prevent="$store.chat.handleChatFileDrop($event, 'thread')"></textarea>
+                    <div class="chat-input" data-chat-composer="thread" data-workroom-composer="true" contenteditable="true" role="textbox" aria-label="Reply to workroom thread" aria-multiline="true" data-placeholder="Reply to thread..." x-init="$store.chat.initMentionComposer($el, 'thread'); $watch('$store.chat.threadInput', value => $store.chat.syncMentionComposerFromModel($el, 'thread', value))" @input="$store.chat.syncMentionComposerModel($event.currentTarget); $store.chat.handleMentionInput($event.currentTarget)" @keydown="$store.chat.handleComposerKeydown($event, () => $store.chat.sendSelectedWorkroomThreadReply())" @paste="$store.chat.handleMentionComposerPaste($event, 'thread')" @dragover.prevent @drop.prevent="$store.chat.handleChatFileDrop($event, 'thread')"></div>
                     <div class="thread-input-actions"><div class="chat-composer-menu" x-data="{ open: false }" @click.outside="open = false"><button class="chat-composer-menu-trigger" type="button" @click="open = !open" :aria-expanded="open" aria-haspopup="menu">Menu</button><div class="chat-composer-menu-popover" x-show="open" x-cloak x-transition role="menu"><button type="button" role="menuitem" @click="$store.chat.openAudioRecorder('thread'); open = false">Record Audio</button><button type="button" role="menuitem" @click="$store.chat.openWorkroomCreation(); open = false" :disabled="!$store.chat.isTowerPgMode || !$store.chat.selectedChannelId">Start Workroom</button></div></div><button type="button" class="thread-reply-btn" @click="$store.chat.sendSelectedWorkroomThreadReply()" :disabled="((!$store.chat.threadInput.trim() && $store.chat.threadAudioDrafts.length === 0) || $store.chat.threadImageUploadCount > 0)">Reply</button></div>
                   </div>
                   <div class="audio-draft-list" x-show="$store.chat.threadAudioDrafts.length > 0"><template x-for="draft in $store.chat.threadAudioDrafts" :key="draft.draft_id"><div class="audio-card audio-card-draft"><div class="audio-card-main"><div class="audio-card-title" x-text="draft.title || 'Voice note'"></div><div class="audio-card-meta"><span x-text="draft.duration_seconds ? $store.chat.formatAudioDuration(draft.duration_seconds) : 'Pending'"></span><span>Ready to reply</span></div></div><button type="button" class="audio-card-remove" @click="$store.chat.removeAudioDraft('thread', draft.draft_id)">&times;</button></div></template></div>
