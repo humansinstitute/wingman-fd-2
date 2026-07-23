@@ -752,6 +752,30 @@ describe('PG write adapter', () => {
     });
   });
 
+  it('preserves canonical mentions alongside existing PG message metadata', async () => {
+    const api = await import('../src/api.js');
+    api.createTowerPgChannelMessage.mockResolvedValue({
+      message: {
+        id: 'message-mention', workspace_id: 'workspace-1', scope_id: 'scope-1', channel_id: 'channel-1',
+        thread_id: 'thread-mention', body: 'Mention Rick', row_version: 1,
+        metadata: { mentions: [{ type: 'agent', npub: 'npub1agent', label: 'Rick' }] },
+      },
+      thread: { id: 'thread-mention', source_message_id: 'message-mention' },
+    });
+
+    await createTowerPgMessageFromLocal(store(), {
+      record_id: 'local-message-mention',
+      channel_id: 'channel-1',
+      body: 'Mention Rick',
+      pg_metadata: { mentions: [{ type: 'agent', npub: 'npub1agent', label: 'Rick' }] },
+    });
+
+    expect(api.createTowerPgChannelMessage.mock.calls[0][2].metadata).toEqual({
+      mentions: [{ type: 'agent', npub: 'npub1agent', label: 'Rick' }],
+      client_record_id: 'local-message-mention',
+    });
+  });
+
   it('maps Tower PG replies to the local thread parent when the response omits thread metadata', async () => {
     const api = await import('../src/api.js');
     api.createTowerPgChannelMessage.mockResolvedValue({

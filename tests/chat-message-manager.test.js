@@ -1113,17 +1113,28 @@ describe('sendMessage', () => {
         workspaceOwnerNpub: 'npub1owner',
         selectedChannelId: 'ch1',
         channels: [{ record_id: 'ch1', owner_npub: 'npub1owner', group_ids: [] }],
-        messageInput: 'hello pg',
+        messageInput: 'hello pg @[Rick](mention:agent:npub1s4658awhcachmhzk5jhsg256gzdl7e4gh5a9zq8skjyt7g3k2axql224qz)',
+        selectedAgentMentionsByComposer: {
+          message: [{ type: 'agent', npub: 'npub1s4658awhcachmhzk5jhsg256gzdl7e4gh5a9zq8skjyt7g3k2axql224qz', label: 'Rick' }],
+          thread: [],
+        },
         getPreferredChannelWriteGroup: vi.fn().mockReturnValue(null),
       });
 
       await fn();
 
       const localRecordId = createTowerPgMessageFromLocal.mock.calls[0][1].record_id;
+      expect(createTowerPgMessageFromLocal.mock.calls[0][1].pg_metadata).toEqual({
+        mentions: [{
+          type: 'agent',
+          npub: 'npub1s4658awhcachmhzk5jhsg256gzdl7e4gh5a9zq8skjyt7g3k2axql224qz',
+          label: 'Rick',
+        }],
+      });
       expect(await getMessageById(localRecordId)).toBeUndefined();
       expect(await getMessageById('pg-message-1')).toMatchObject({
         record_id: 'pg-message-1',
-        body: 'hello pg',
+        body: 'hello pg @[Rick](mention:agent:npub1s4658awhcachmhzk5jhsg256gzdl7e4gh5a9zq8skjyt7g3k2axql224qz)',
         sync_status: 'synced',
         pg_backend: true,
       });
@@ -1382,7 +1393,11 @@ describe('sendThreadReply', () => {
         workspaceOwnerNpub: 'npub1owner',
         selectedChannelId: 'ch1',
         activeThreadId: 'stale-root',
-        threadInput: 'reply pg',
+        threadInput: 'reply pg @[Rick](mention:agent:npub1s4658awhcachmhzk5jhsg256gzdl7e4gh5a9zq8skjyt7g3k2axql224qz)',
+        selectedAgentMentionsByComposer: {
+          message: [],
+          thread: [{ type: 'agent', npub: 'npub1s4658awhcachmhzk5jhsg256gzdl7e4gh5a9zq8skjyt7g3k2axql224qz', label: 'Rick' }],
+        },
         channels: [{ record_id: 'ch1', owner_npub: 'npub1owner', group_ids: [] }],
         messages: [staleRoot],
         getPreferredChannelWriteGroup: vi.fn().mockReturnValue(null),
@@ -1438,7 +1453,11 @@ describe('sendThreadReply', () => {
         workspaceOwnerNpub: 'npub1owner',
         selectedChannelId: 'ch1',
         activeThreadId: 'root-1',
-        threadInput: 'reply pg',
+        threadInput: 'reply pg @[Rick](mention:agent:npub1s4658awhcachmhzk5jhsg256gzdl7e4gh5a9zq8skjyt7g3k2axql224qz)',
+        selectedAgentMentionsByComposer: {
+          message: [],
+          thread: [{ type: 'agent', npub: 'npub1s4658awhcachmhzk5jhsg256gzdl7e4gh5a9zq8skjyt7g3k2axql224qz', label: 'Rick' }],
+        },
         channels: [{ record_id: 'ch1', owner_npub: 'npub1owner', group_ids: [] }],
         messages: [rootMessage],
         getPreferredChannelWriteGroup: vi.fn().mockReturnValue(null),
@@ -1447,6 +1466,13 @@ describe('sendThreadReply', () => {
       await fn();
 
       const localRecordId = createTowerPgMessageFromLocal.mock.calls[0][1].record_id;
+      expect(createTowerPgMessageFromLocal.mock.calls[0][1].pg_metadata).toEqual({
+        mentions: [{
+          type: 'agent',
+          npub: 'npub1s4658awhcachmhzk5jhsg256gzdl7e4gh5a9zq8skjyt7g3k2axql224qz',
+          label: 'Rick',
+        }],
+      });
       expect(createTowerPgMessageFromLocal.mock.calls[0][2]).toMatchObject({
         parentMessage: rootMessage,
       });

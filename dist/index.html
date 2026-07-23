@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-D5zlz69d.js"></script>
+  <script type="module" crossorigin src="/assets/index-BkHp7Ak6.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-BucIkPxl.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
@@ -3454,6 +3454,7 @@
                 <textarea
                   class="chat-input"
                   data-chat-composer="message"
+                  data-channel-visible-mentions="true"
                   placeholder="Message channel"
                   rows="1"
                   x-model="$store.chat.messageInput"
@@ -3701,6 +3702,7 @@
                   placeholder="Reply to thread..."
                   rows="1"
                   x-model="$store.chat.threadInput"
+                  data-channel-visible-mentions="true"
                   x-init="$store.chat.autosizeComposer($el)"
                   @input="$store.chat.autosizeComposer($event.target); $store.chat.handleMentionInput($event.target)"
                   @keydown="$store.chat.handleComposerKeydown($event, () => $store.chat.sendThreadReply())"
@@ -8203,7 +8205,12 @@
             </div>
 
             <section class="channel-metadata-panel" x-show="$store.chat.isTowerPgMode">
-              <label class="task-field-label" for="channel-base-prompt-input">Base prompt</label>
+              <label class="channel-agent-chat-toggle">
+                <input type="checkbox" x-model="$store.chat.channelSettingsAgentChatEnabled" :disabled="$store.chat.channelSettingsSaving" data-testid="channel-agent-chat-enabled" />
+                <span>Enable Agent Direct Chat</span>
+              </label>
+              <p class="groups-subtitle">Mention an agent once to start; replies in that thread continue the conversation.</p>
+              <label class="task-field-label" for="channel-base-prompt-input">Channel context prompt</label>
               <textarea
                 id="channel-base-prompt-input"
                 class="new-channel-input channel-base-prompt-input"
@@ -8211,7 +8218,7 @@
                 placeholder="Describe how Autopilot should use this channel and the base project context to include with messages."
                 x-model="$store.chat.channelSettingsBasePrompt"
                 :disabled="$store.chat.channelSettingsSaving"
-                aria-label="Channel base prompt"
+                aria-label="Channel context prompt"
                 data-testid="channel-base-prompt-input"
               ></textarea>
               <div class="channel-metadata-actions">
@@ -8220,7 +8227,7 @@
                   class="btn-confirm"
                   @click="$store.chat.saveChannelBasePrompt()"
                   :disabled="$store.chat.channelSettingsSaving"
-                  x-text="$store.chat.channelSettingsSaving ? 'Saving...' : 'Save prompt'"
+                  x-text="$store.chat.channelSettingsSaving ? 'Saving...' : 'Save settings'"
                 ></button>
                 <p class="settings-success" x-show="$store.chat.channelSettingsNotice" x-text="$store.chat.channelSettingsNotice"></p>
                 <p class="groups-subtitle channel-access-error" x-show="$store.chat.channelSettingsError" x-text="$store.chat.channelSettingsError"></p>
@@ -8618,14 +8625,14 @@
                   <input class="new-channel-input" type="text" placeholder="What's this channel about?" x-model="$store.chat.newChannelDescription" aria-label="Channel description" data-testid="new-channel-description-input" />
 
                   <div x-show="$store.chat.isTowerPgMode" x-cloak>
-                    <label class="new-channel-label" for="new-channel-base-prompt-input">Base prompt <span class="new-channel-optional">(optional)</span></label>
+                    <label class="new-channel-label" for="new-channel-base-prompt-input">Channel context prompt <span class="new-channel-optional">(optional)</span></label>
                     <textarea
                       id="new-channel-base-prompt-input"
                       class="new-channel-input new-channel-textarea"
                       rows="5"
                       placeholder="Describe how Autopilot should use this channel and the base project context to include with messages."
                       x-model="$store.chat.newChannelBasePrompt"
-                      aria-label="Channel base prompt"
+                      aria-label="Channel context prompt"
                       data-testid="new-channel-base-prompt-input"
                     ></textarea>
                   </div>
@@ -9252,7 +9259,7 @@
           @click="$store.chat.selectMention(result)"
           @mouseenter="$store.chat.mentionSelectedIndex = idx"
         >
-          <span class="mention-result-type" x-text="result.type === 'person' ? '@' : result.type === 'doc' ? 'DOC' : result.type === 'scope' ? 'SCOPE' : result.type === 'flow' ? 'FLOW' : result.type === 'opportunity' ? 'OPP' : result.type === 'channel' ? 'CHAN' : 'TASK'"></span>
+          <span class="mention-result-type" x-text="result.type === 'person' || result.type === 'agent' ? '@' : result.type === 'doc' ? 'DOC' : result.type === 'scope' ? 'SCOPE' : result.type === 'flow' ? 'FLOW' : result.type === 'opportunity' ? 'OPP' : result.type === 'channel' ? 'CHAN' : 'TASK'"></span>
           <span class="mention-result-label" x-text="result.label"></span>
           <span class="mention-result-sublabel" x-show="result.sublabel" x-text="result.sublabel"></span>
         </li>

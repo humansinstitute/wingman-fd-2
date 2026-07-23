@@ -982,6 +982,7 @@ export function initApp() {
     _mentionDocumentIndexRefreshPromise: null,
     _mentionTargetEl: null,
     _mentionStartPos: -1,
+    selectedAgentMentionsByComposer: { message: [], thread: [] },
 
     currentFolderId: null,
     docFilter: '',
@@ -1100,6 +1101,7 @@ export function initApp() {
     showNewChannelScopePicker: false,
     newChannelScopeId: '',
     channelSettingsBasePrompt: '',
+    channelSettingsAgentChatEnabled: false,
     channelSettingsSaving: false,
     channelSettingsNotice: '',
     channelSettingsError: '',
@@ -7616,7 +7618,10 @@ export function initApp() {
 
     refreshMentionResultsFromLocalIndex(query, targetEl) {
       const normalizedQuery = String(query || '');
-      const mentionOptions = { visibleOnly: targetEl?.dataset?.workroomComposer === 'true' };
+      const mentionOptions = {
+        visibleOnly: targetEl?.dataset?.workroomComposer === 'true'
+          || targetEl?.dataset?.channelVisibleMentions === 'true',
+      };
       this.refreshMentionDocumentIndex()
         .then(() => {
           if (!this.mentionActive || this._mentionTargetEl !== targetEl || this.mentionQuery !== normalizedQuery) return;
@@ -7629,11 +7634,15 @@ export function initApp() {
 
     getMentionPeople({ visibleOnly = false, channelId = this.selectedChannelId } = {}) {
       const byNpub = new Map();
-      const add = (npub, fallbackLabel = '', sublabel = '') => {
+      const add = (npub, fallbackLabel = '', sublabel = '', kind = 'human') => {
         const clean = String(npub || '').trim();
-        if (!clean || byNpub.has(clean)) return;
+        if (!clean) return;
         const label = this.getSenderName?.(clean) || String(fallbackLabel || '').trim() || clean;
-        byNpub.set(clean, { type: 'person', id: clean, label, sublabel });
+        const type = String(kind || '').toLowerCase() === 'agent' ? 'agent' : 'person';
+        const existing = byNpub.get(clean);
+        if (existing && existing.type === 'agent') return;
+        if (existing && type !== 'agent') return;
+        byNpub.set(clean, { type, id: clean, label, sublabel });
       };
 
       for (const group of (this.currentWorkspaceGroups || [])) {
@@ -7641,7 +7650,13 @@ export function initApp() {
         for (const npub of (group?.member_npubs || [])) add(npub, '', groupLabel);
       }
       for (const member of (this.pgWorkspaceMembers || [])) {
-        add(member?.npub || member?.user_npub || member?.member_npub, member?.display_name || member?.label || member?.name, 'Workspace member');
+        const kind = member?.kind || member?.actor_kind || member?.actor?.kind;
+        add(
+          member?.npub || member?.user_npub || member?.member_npub,
+          member?.display_name || member?.label || member?.name,
+          String(kind || '').toLowerCase() === 'agent' ? 'Workspace agent' : 'Workspace member',
+          kind,
+        );
       }
       for (const participant of (this.workroomParticipants || [])) {
         add(participant?.actor_npub, participant?.label, participant?.role ? `Workroom ${participant.role}` : 'Workroom participant');
@@ -7684,7 +7699,7 @@ export function initApp() {
       // Parse type prefix: @scope:, @task:, @doc:, @channel:
       let typeFilter = null;
       let query = rawQuery;
-      const prefixMatch = rawQuery.match(/^(scope|task|doc|person|flow|opportunity|channel|chat):/i);
+      const prefixMatch = rawQuery.match(/^(scope|task|doc|person|agent|flow|opportunity|channel|chat):/i);
       if (prefixMatch) {
         typeFilter = prefixMatch[1].toLowerCase() === 'chat' ? 'channel' : prefixMatch[1].toLowerCase();
         query = rawQuery.slice(prefixMatch[0].length);
@@ -7695,8 +7710,9 @@ export function initApp() {
       const limit = typeFilter === 'channel' ? Number.MAX_SAFE_INTEGER : 10;
 
       // People from groups
-      if (!typeFilter || typeFilter === 'person') {
+      if (!typeFilter || typeFilter === 'person' || typeFilter === 'agent') {
         for (const person of this.getMentionPeople(options)) {
+          if (typeFilter === 'agent' && person.type !== 'agent') continue;
           if (
             !needle
             || person.label.toLowerCase().includes(needle)
@@ -7865,7 +7881,9 @@ export function initApp() {
       }
 
       const query = value.slice(atPos + 1, cursorPos);
-      const mentionOptions = { visibleOnly: el.dataset.workroomComposer === 'true' };
+      const mentionOptions = {
+        visibleOnly: el.dataset.workroomComposer === 'true' || el.dataset.channelVisibleMentions === 'true',
+      };
       if (query.length === 0) {
         // Show all results on bare @
         this.mentionActive = true;
@@ -7927,6 +7945,18 @@ export function initApp() {
       // Update the textarea value through Alpine's model
       el.value = newValue;
       el.dispatchEvent(new Event('input', { bubbles: true }));
+
+      const composer = String(el.dataset?.chatComposer || '').trim();
+      if (result.type === 'agent' && ['message', 'thread'].includes(composer)) {
+        const current = Array.isArray(this.selectedAgentMentionsByComposer?.[composer])
+          ? this.selectedAgentMentionsByComposer[composer]
+          : [];
+        const mention = { type: 'agent', npub: result.id, label: result.label };
+        this.selectedAgentMentionsByComposer = {
+          ...(this.selectedAgentMentionsByComposer || {}),
+          [composer]: [...current.filter((item) => item.npub !== mention.npub), mention],
+        };
+      }
 
       const newCursorPos = before.length + tag.length;
       el.setSelectionRange(newCursorPos, newCursorPos);

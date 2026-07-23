@@ -460,15 +460,18 @@ export function mapPgMessageToLocal(message, {
   const isThreadSourceMessage = Boolean(threadId && sourceMessageId && sourceMessageId === recordId);
   const threadRecordState = trimText(thread?.record_state) || (thread?.archived_at ? 'archived' : '');
   const messageRecordState = trimText(message?.record_state) || (message?.deleted_at ? 'deleted' : 'active');
-  const metadata = message?.metadata && typeof message.metadata === 'object' && !Array.isArray(message.metadata)
+  const sourceMetadata = message?.metadata && typeof message.metadata === 'object' && !Array.isArray(message.metadata)
     ? message.metadata
     : {};
+  const metadata = Array.isArray(message?.mentions)
+    ? { ...sourceMetadata, mentions: message.mentions }
+    : sourceMetadata;
   return {
     record_id: recordId,
     channel_id: trimText(message?.channel_id),
     parent_message_id: threadId && sourceMessageId && sourceMessageId !== recordId ? sourceMessageId : null,
     body: trimText(message?.body),
-    attachments: [],
+    attachments: Array.isArray(message?.attachments) ? message.attachments : [],
     sender_npub: resolveSenderNpub(message, actorNpubByActorId)
       || trimText(senderNpub),
     sync_status: 'synced',
@@ -486,6 +489,8 @@ export function mapPgMessageToLocal(message, {
     pg_archived_at: isThreadSourceMessage ? (trimText(thread?.archived_at) || null) : null,
     pg_created_by_actor_id: trimText(message?.created_by_actor_id),
     pg_updated_by_actor_id: trimText(message?.updated_by_actor_id),
+    pg_created_by_actor_npub: trimText(message?.created_by_actor_npub),
+    pg_created_by_actor_label: trimText(message?.created_by_actor_label),
     pg_client_record_id: trimText(metadata.client_record_id),
     pg_metadata: metadata,
   };

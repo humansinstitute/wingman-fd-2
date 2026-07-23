@@ -70,16 +70,16 @@ describe('channel mention lookup', () => {
   it('finds people from workspace members and workroom participants', async () => {
     const store = await createStore();
     store.groups = [];
-    store.pgWorkspaceMembers = [{ actor_id: 'actor-rick', npub: 'npub-rick', display_name: 'Rick' }];
+    store.pgWorkspaceMembers = [{ actor_id: 'actor-rick', npub: 'npub-rick', display_name: 'Rick', kind: 'agent' }];
     store.workroomParticipants = [{ actor_npub: 'npub-agent', label: 'Integrator Agent', role: 'integration' }];
     store.addressBookPeople = [];
     store.getSenderName = (npub) => ({ 'npub-rick': 'Rick', 'npub-agent': 'Integrator Agent' }[npub] || npub);
 
     expect(store.searchMentions('rick')).toEqual([{
-      type: 'person',
+      type: 'agent',
       id: 'npub-rick',
       label: 'Rick',
-      sublabel: 'Workspace member',
+      sublabel: 'Workspace agent',
     }]);
     expect(store.searchMentions('integrator')).toEqual([{
       type: 'person',

@@ -491,6 +491,35 @@ describe('PG read hydrator', () => {
     });
   });
 
+  it('preserves Tower agent author identity, canonical mentions, provenance, and attachments', () => {
+    expect(mapPgMessageToLocal({
+      id: 'message-agent',
+      workspace_id: 'workspace-1',
+      scope_id: 'scope-1',
+      channel_id: 'channel-1',
+      thread_id: 'thread-1',
+      body: 'Agent reply',
+      created_by_actor_id: 'actor-rick',
+      created_by_actor_npub: 'npub1rick',
+      created_by_actor_label: 'Rick',
+      mentions: [{ type: 'agent', actor_id: 'actor-rick', npub: 'npub1rick', label: 'Rick' }],
+      attachments: [{ id: 'attachment-1', kind: 'file' }],
+      metadata: { source: 'autopilot_session', session_id: 'session-1', turn_id: 'turn-1' },
+    }, { threadById: new Map() })).toMatchObject({
+      sender_npub: 'npub1rick',
+      attachments: [{ id: 'attachment-1', kind: 'file' }],
+      pg_created_by_actor_id: 'actor-rick',
+      pg_created_by_actor_npub: 'npub1rick',
+      pg_created_by_actor_label: 'Rick',
+      pg_metadata: {
+        source: 'autopilot_session',
+        session_id: 'session-1',
+        turn_id: 'turn-1',
+        mentions: [{ type: 'agent', actor_id: 'actor-rick', npub: 'npub1rick', label: 'Rick' }],
+      },
+    });
+  });
+
   it('maps PG tasks into classic task rows with scope and PG channel/thread refs', () => {
     expect(mapPgTaskToLocal({
       id: 'task-1',

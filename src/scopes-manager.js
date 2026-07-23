@@ -24,6 +24,7 @@ import {
   deleteTowerPgWorkspaceScope,
   updateTowerPgDoc,
 } from './api.js';
+import { writeAgentChatConfig } from './agent-direct-chat.js';
 import {
   outboundScope,
   resolveScopeChain,
@@ -1544,9 +1545,10 @@ export const scopesManagerMixin = {
             const result = await createTowerPgScopeChannel(workspaceId, scopeId, {
               name: channel.name,
               description: String(channel.description || '').trim() || undefined,
-              metadata: {
-                basePrompt: String(channel.basePrompt || '').trim(),
-              },
+              metadata: writeAgentChatConfig({}, {
+                enabled: false,
+                context_prompt: String(channel.basePrompt || '').trim(),
+              }),
               kind: 'channel',
               grants: grants.length > 0 ? grants : fallbackGrants,
             }, { baseUrl, appNpub });

@@ -81,6 +81,7 @@ import {
   resolveTowerPgWorkspaceContext,
 } from './pg-read-hydrator.js';
 import { buildPgChannelTaskBoardId, parsePgTaskBoardId } from './pg-record-context.js';
+import { readAgentChatConfig, writeAgentChatConfig } from './agent-direct-chat.js';
 
 // ---------------------------------------------------------------------------
 
@@ -1229,7 +1230,9 @@ export const channelsManagerMixin = {
     this.closeScopePicker();
     this.closeChannelScopePicker();
     this.channelDeleteConfirmArmed = false;
-    this.channelSettingsBasePrompt = String(selectedChannel.metadata?.basePrompt || '');
+    const agentChat = readAgentChatConfig(selectedChannel.metadata);
+    this.channelSettingsAgentChatEnabled = agentChat.enabled;
+    this.channelSettingsBasePrompt = agentChat.context_prompt;
     this.channelSettingsNotice = '';
     this.channelSettingsError = '';
     this.showChannelSettingsModal = true;
@@ -1259,10 +1262,10 @@ export const channelsManagerMixin = {
     try {
       const { workspaceId, baseUrl, appNpub, workspaceOwnerNpub } = resolveTowerPgWorkspaceContext(this);
       if (!workspaceId || !baseUrl) throw new Error('Flight Deck PG workspace is not connected');
-      const metadata = {
-        ...(channel.metadata && typeof channel.metadata === 'object' && !Array.isArray(channel.metadata) ? channel.metadata : {}),
-        basePrompt: String(this.channelSettingsBasePrompt || '').trim(),
-      };
+      const metadata = writeAgentChatConfig(channel.metadata, {
+        enabled: this.channelSettingsAgentChatEnabled,
+        context_prompt: String(this.channelSettingsBasePrompt || '').trim(),
+      });
       const result = await updateTowerPgChannel(workspaceId, channel.record_id, { metadata }, { baseUrl, appNpub });
       const updatedChannel = mapPgChannelToLocal(result.channel, { workspaceOwnerNpub });
       try {
@@ -1275,8 +1278,10 @@ export const channelsManagerMixin = {
       this.channels = (this.channels || []).map((candidate) =>
         candidate?.record_id === updatedChannel.record_id ? updatedChannel : candidate
       );
-      this.channelSettingsBasePrompt = String(updatedChannel.metadata?.basePrompt || '');
-      this.channelSettingsNotice = 'Channel prompt saved.';
+      const updatedAgentChat = readAgentChatConfig(updatedChannel.metadata);
+      this.channelSettingsAgentChatEnabled = updatedAgentChat.enabled;
+      this.channelSettingsBasePrompt = updatedAgentChat.context_prompt;
+      this.channelSettingsNotice = 'Agent Direct Chat settings saved.';
       this.scheduleChannelsRefresh?.('PG channel metadata update');
     } catch (error) {
       this.channelSettingsError = error?.message || 'Failed to save channel prompt.';
@@ -2512,9 +2517,10 @@ export const channelsManagerMixin = {
         const result = await createTowerPgScopeChannel(workspaceId, scopeId, {
           name: title,
           description: String(this.newChannelDescription || '').trim() || undefined,
-          metadata: {
-            basePrompt: String(this.newChannelBasePrompt || '').trim(),
-          },
+          metadata: writeAgentChatConfig({}, {
+            enabled: false,
+            context_prompt: String(this.newChannelBasePrompt || '').trim(),
+          }),
           kind: 'channel',
           grants: initialGrants,
         }, { baseUrl, appNpub });

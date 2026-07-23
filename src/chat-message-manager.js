@@ -66,6 +66,7 @@ import {
   schedulePreviewMeasurement,
   togglePreviewId,
 } from './preview-truncation.js';
+import { canonicalAgentMentionsFromSelection } from './agent-direct-chat.js';
 
 const chatDerivedCache = new WeakMap();
 const THREAD_REPLY_PREVIEW_WORD_LIMIT = 50;
@@ -1130,6 +1131,10 @@ export const chatMessageManagerMixin = {
     const msgId = crypto.randomUUID();
     const now = new Date().toISOString();
     const body = this.messageInput.trim();
+    const canonicalMentions = canonicalAgentMentionsFromSelection(
+      body,
+      this.selectedAgentMentionsByComposer?.message,
+    );
     if (pgMode && !(await ensureTowerPgAgentDmAccess(this, channel))) return;
 
     let channelWriteFields = null;
@@ -1158,12 +1163,17 @@ export const chatMessageManagerMixin = {
       version: 1,
       updated_at: now,
       ...(pgMode ? { pg_backend: true } : {}),
+      ...(pgMode && canonicalMentions.length > 0 ? { pg_metadata: { mentions: canonicalMentions } } : {}),
     };
 
     await upsertMessage(localRow);
     this.patchMessageLocal(localRow);
     this.scheduleChatFeedScrollToBottom();
     this.messageInput = '';
+    this.selectedAgentMentionsByComposer = {
+      ...(this.selectedAgentMentionsByComposer || {}),
+      message: [],
+    };
     this.messageAudioDrafts = [];
     this.scheduleComposerAutosize('message');
 
@@ -1258,6 +1268,10 @@ export const chatMessageManagerMixin = {
     const msgId = crypto.randomUUID();
     const now = new Date().toISOString();
     const body = this.threadInput.trim();
+    const canonicalMentions = canonicalAgentMentionsFromSelection(
+      body,
+      this.selectedAgentMentionsByComposer?.thread,
+    );
     const pgMode = isTowerPgBackendMode();
     if (pgMode && !(await ensureTowerPgAgentDmAccess(this, channel))) return;
     let pgParentMessage = null;
@@ -1297,12 +1311,17 @@ export const chatMessageManagerMixin = {
       version: 1,
       updated_at: now,
       ...(pgMode ? { pg_backend: true } : {}),
+      ...(pgMode && canonicalMentions.length > 0 ? { pg_metadata: { mentions: canonicalMentions } } : {}),
       ...(pgParentThreadId ? { pg_thread_id: pgParentThreadId } : {}),
     };
     await upsertMessage(localRow);
     this.patchMessageLocal(localRow);
     this.scheduleThreadRepliesScrollToBottom();
     this.threadInput = '';
+    this.selectedAgentMentionsByComposer = {
+      ...(this.selectedAgentMentionsByComposer || {}),
+      thread: [],
+    };
     this.threadAudioDrafts = [];
     this.scheduleComposerAutosize('thread');
 

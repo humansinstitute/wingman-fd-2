@@ -442,7 +442,11 @@ describe('scopes-manager pure utilities', () => {
       expect(mocks.createTowerPgScopeChannel).toHaveBeenCalledWith('workspace-1', 'scope-1', expect.objectContaining({
         name: 'Features',
         metadata: {
-          basePrompt: expect.stringContaining('feature work on the Product Score project'),
+          agent_chat: {
+            enabled: false,
+            context_prompt: expect.stringContaining('feature work on the Product Score project'),
+            activation: 'mention_then_continue',
+          },
         },
         grants: [{
           principal_type: 'group',
@@ -456,7 +460,11 @@ describe('scopes-manager pure utilities', () => {
       expect(mocks.createTowerPgScopeChannel).toHaveBeenCalledWith('workspace-1', 'scope-1', expect.objectContaining({
         name: 'Implementation',
         metadata: {
-          basePrompt: expect.stringContaining('Working directory: /Users/mini/code/product-score'),
+          agent_chat: {
+            enabled: false,
+            context_prompt: expect.stringContaining('Working directory: /Users/mini/code/product-score'),
+            activation: 'mention_then_continue',
+          },
         },
       }), {
         baseUrl: 'https://tower.example',
@@ -529,7 +537,7 @@ describe('scopes-manager pure utilities', () => {
         name: 'Implementation',
         description: 'Build work',
         metadata: {
-          basePrompt: 'Implementation context',
+          agent_chat: { enabled: false, context_prompt: 'Implementation context', activation: 'mention_then_continue' },
         },
         kind: 'channel',
         grants: [
@@ -545,7 +553,7 @@ describe('scopes-manager pure utilities', () => {
         name: 'Agents',
         description: undefined,
         metadata: {
-          basePrompt: 'Agent work',
+          agent_chat: { enabled: false, context_prompt: 'Agent work', activation: 'mention_then_continue' },
         },
         kind: 'channel',
         grants: [

@@ -678,7 +678,11 @@ describe('channels-manager pure utilities', () => {
       name: 'Ops',
       description: 'Operations work',
       metadata: {
-        basePrompt: 'Use this for operations context.',
+        agent_chat: {
+          enabled: false,
+          context_prompt: 'Use this for operations context.',
+          activation: 'mention_then_continue',
+        },
       },
       kind: 'channel',
       grants: [
@@ -822,7 +826,7 @@ describe('channels-manager pure utilities', () => {
       name: 'Ops',
       description: undefined,
       metadata: {
-        basePrompt: '',
+        agent_chat: { enabled: false, context_prompt: '', activation: 'mention_then_continue' },
       },
       kind: 'channel',
       grants: [
@@ -1111,7 +1115,7 @@ describe('channels-manager pure utilities', () => {
     expect(store.preparePgChannelAccessPanel).toHaveBeenCalledOnce();
   });
 
-  it('saves PG channel base prompt metadata', async () => {
+  it('migrates and saves canonical PG Agent Direct Chat metadata', async () => {
     updateTowerPgChannel.mockResolvedValueOnce({
       channel: {
         id: 'channel-1',
@@ -1120,7 +1124,10 @@ describe('channels-manager pure utilities', () => {
         name: 'Ops',
         description: 'Operations',
         kind: 'channel',
-        metadata: { basePrompt: 'New prompt', retained: true },
+        metadata: {
+          agent_chat: { enabled: true, context_prompt: 'New prompt', activation: 'mention_then_continue' },
+          retained: true,
+        },
       },
     });
     const store = createPgGrantStore({
@@ -1132,16 +1139,23 @@ describe('channels-manager pure utilities', () => {
         metadata: { basePrompt: 'Old prompt', retained: true },
       }],
       channelSettingsBasePrompt: 'New prompt',
+      channelSettingsAgentChatEnabled: true,
       scheduleChannelsRefresh: vi.fn(),
     });
 
     await store.saveChannelBasePrompt();
 
     expect(updateTowerPgChannel).toHaveBeenCalledWith('workspace-1', 'channel-1', {
-      metadata: { basePrompt: 'New prompt', retained: true },
+      metadata: {
+        retained: true,
+        agent_chat: { enabled: true, context_prompt: 'New prompt', activation: 'mention_then_continue' },
+      },
     }, { baseUrl: 'https://tower.example', appNpub: 'flightdeck-app' });
-    expect(store.channels[0].metadata).toEqual({ basePrompt: 'New prompt', retained: true });
-    expect(store.channelSettingsNotice).toBe('Channel prompt saved.');
+    expect(store.channels[0].metadata).toEqual({
+      agent_chat: { enabled: true, context_prompt: 'New prompt', activation: 'mention_then_continue' },
+      retained: true,
+    });
+    expect(store.channelSettingsNotice).toBe('Agent Direct Chat settings saved.');
     expect(store.scheduleChannelsRefresh).toHaveBeenCalledWith('PG channel metadata update');
   });
 
