@@ -33,14 +33,15 @@ export function canonicalAgentMentionsFromSelection(body = '', selectedMentions 
   const mentions = [];
   const seen = new Set();
   for (const selected of Array.isArray(selectedMentions) ? selectedMentions : []) {
-    if (selected?.type !== 'agent') continue;
+    const type = selected?.type === 'agent' ? 'agent' : selected?.type === 'person' ? 'person' : '';
+    if (!type) continue;
     const npub = String(selected.npub || '').trim();
     const label = String(selected.label || '').trim() || npub;
     if (!npub || seen.has(npub)) continue;
-    const token = `@[${label}](mention:agent:${npub})`;
+    const token = `@[${label}](mention:${type}:${npub})`;
     if (!text.includes(token)) continue;
     seen.add(npub);
-    mentions.push({ type: 'agent', npub, label });
+    mentions.push({ type, npub, label });
   }
   return mentions;
 }

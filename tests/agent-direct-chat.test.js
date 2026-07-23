@@ -26,7 +26,7 @@ describe('Agent Direct Chat contract helpers', () => {
     });
   });
 
-  it('builds canonical mentions only from picker selections still present in the body', () => {
+  it('builds canonical actor mentions only from picker selections still present in the body', () => {
     const rick = 'npub1s4658awhcachmhzk5jhsg256gzdl7e4gh5a9zq8skjyt7g3k2axql224qz';
     const sam = `npub1${'q'.repeat(58)}`;
     expect(canonicalAgentMentionsFromSelection(
@@ -43,5 +43,9 @@ describe('Agent Direct Chat contract helpers', () => {
       { type: 'agent', npub: rick, label: 'Rick' },
     ])).toEqual([]);
     expect(canonicalAgentMentionsFromSelection(`@[Rick](mention:agent:${rick})`, [])).toEqual([]);
+    expect(canonicalAgentMentionsFromSelection(
+      `@[Rick](mention:person:${rick})`,
+      [{ type: 'person', npub: rick, label: 'Rick' }],
+    )).toEqual([{ type: 'person', npub: rick, label: 'Rick' }]);
   });
 });

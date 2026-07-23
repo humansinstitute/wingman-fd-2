@@ -89,6 +89,42 @@ describe('channel mention lookup', () => {
     }]);
   });
 
+  it('preserves a selected Tower-human actor as a canonical person mention', async () => {
+    const store = await createStore();
+    const rickNpub = 'npub1s4658awhcachmhzk5jhsg256gzdl7e4gh5a9zq8skjyt7g3k2axql224qz';
+    store.channels = [{ record_id: 'channel-rick', title: 'Rick', record_state: 'active' }];
+    store.pgWorkspaceMembers = [{ npub: rickNpub, display_name: 'Rick', kind: 'human' }];
+    store.workroomParticipants = [];
+    store.addressBookPeople = [];
+    store.groups = [];
+    store.getSenderName = () => 'Rick';
+    store.getChannelLabel = (channel) => channel.title;
+
+    const results = store.searchMentions('Rick');
+    expect(results[0]).toEqual({
+      type: 'person', id: rickNpub, label: 'Rick', sublabel: 'Workspace member',
+    });
+
+    const target = {
+      value: '@Rick', selectionStart: 5, dataset: { chatComposer: 'message' },
+      dispatchEvent: vi.fn(), setSelectionRange: vi.fn(), focus: vi.fn(),
+    };
+    store._mentionTargetEl = target;
+    store._mentionStartPos = 0;
+    store.selectedAgentMentionsByComposer = {};
+    store.selectMention(results[0]);
+
+    expect(target.value).toBe(`@[Rick](mention:person:${rickNpub}) `);
+    expect(store.selectedAgentMentionsByComposer.message).toEqual([
+      { type: 'person', npub: rickNpub, label: 'Rick' },
+    ]);
+    const { canonicalAgentMentionsFromSelection } = await import('../src/agent-direct-chat.js');
+    expect(canonicalAgentMentionsFromSelection(
+      target.value,
+      store.selectedAgentMentionsByComposer.message,
+    )).toEqual([{ type: 'person', npub: rickNpub, label: 'Rick' }]);
+  });
+
   it('keeps a configured integration agent visible before grants and groups hydrate', async () => {
     const store = await createStore();
     const rickNpub = 'npub1s4658awhcachmhzk5jhsg256gzdl7e4gh5a9zq8skjyt7g3k2axql224qz';

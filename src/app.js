@@ -7858,16 +7858,18 @@ export function initApp() {
         }
       }
 
-      // An agent is the natural target of an unqualified @name. Keep explicit
-      // type-prefix ordering intact, but ensure an exact agent match outranks a
-      // same-labelled channel (for example the Rick DM channel).
+      // A deliberately selected actor is the natural target of an unqualified
+      // @name. Keep explicit type-prefix ordering intact, but ensure an exact
+      // person/agent match outranks a same-labelled channel.
       if (!typeFilter) {
         results.sort((left, right) => {
-          const leftExactAgent = left.type === 'agent' && left.label.toLowerCase() === needle;
-          const rightExactAgent = right.type === 'agent' && right.label.toLowerCase() === needle;
-          if (leftExactAgent !== rightExactAgent) return leftExactAgent ? -1 : 1;
-          if (left.type === 'agent' && right.type === 'channel') return -1;
-          if (left.type === 'channel' && right.type === 'agent') return 1;
+          const leftActor = left.type === 'agent' || left.type === 'person';
+          const rightActor = right.type === 'agent' || right.type === 'person';
+          const leftExactActor = leftActor && left.label.toLowerCase() === needle;
+          const rightExactActor = rightActor && right.label.toLowerCase() === needle;
+          if (leftExactActor !== rightExactActor) return leftExactActor ? -1 : 1;
+          if (leftActor && right.type === 'channel') return -1;
+          if (left.type === 'channel' && rightActor) return 1;
           return 0;
         });
       }
@@ -8019,11 +8021,11 @@ export function initApp() {
       el.dispatchEvent(new Event('input', { bubbles: true }));
 
       const composer = String(el.dataset?.chatComposer || '').trim();
-      if (result.type === 'agent' && ['message', 'thread'].includes(composer)) {
+      if (['agent', 'person'].includes(result.type) && ['message', 'thread'].includes(composer)) {
         const current = Array.isArray(this.selectedAgentMentionsByComposer?.[composer])
           ? this.selectedAgentMentionsByComposer[composer]
           : [];
-        const mention = { type: 'agent', npub: result.id, label: result.label };
+        const mention = { type: result.type, npub: result.id, label: result.label };
         this.selectedAgentMentionsByComposer = {
           ...(this.selectedAgentMentionsByComposer || {}),
           [composer]: [...current.filter((item) => item.npub !== mention.npub), mention],
