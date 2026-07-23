@@ -7638,10 +7638,20 @@ export function initApp() {
       const add = (npub, fallbackLabel = '', sublabel = '', kind = 'human') => {
         const clean = String(npub || '').trim();
         if (!clean) return;
-        const label = this.getSenderName?.(clean) || String(fallbackLabel || '').trim() || clean;
+        const senderLabel = String(this.getSenderName?.(clean) || '').trim();
+        const fallback = String(fallbackLabel || '').trim();
+        const label = (senderLabel && senderLabel !== clean ? senderLabel : '') || fallback || clean;
         const type = String(kind || '').toLowerCase() === 'agent' ? 'agent' : 'person';
         const existing = byNpub.get(clean);
-        if (existing && existing.type === 'agent') return;
+        if (existing && existing.type === 'agent') {
+          // A profile or participant row may carry a useful display label even
+          // when the authoritative agent source only knew the npub. Enrich the
+          // existing result while retaining its agent classification.
+          if (existing.label === clean && label !== clean) {
+            byNpub.set(clean, { ...existing, label, sublabel: existing.sublabel || sublabel });
+          }
+          return;
+        }
         if (existing && type !== 'agent') return;
         byNpub.set(clean, { type, id: clean, label, sublabel });
       };
@@ -7664,18 +7674,18 @@ export function initApp() {
       // same npub, especially when access is inherited through a group.
       const workroomDefaults = channel?.metadata?.workroom_defaults;
       if (workroomDefaults && typeof workroomDefaults === 'object') {
-        const integrationNpubs = new Set([
+        const integrationNpubs = new Map([
           workroomDefaults.integration_autopilot_npub,
           channel?.metadata?.integration_autopilot_npub,
-        ].map((value) => String(value || '').trim()).filter(Boolean));
+        ].map((value) => [String(value || '').trim(), '']).filter(([npub]) => Boolean(npub)));
         for (const participant of (Array.isArray(workroomDefaults.participants) ? workroomDefaults.participants : [])) {
           const role = String(participant?.role || '').toLowerCase();
           const kind = String(participant?.kind || '').toLowerCase();
           if (role !== 'integration' && !['agent', 'autopilot'].includes(kind)) continue;
           const npub = String(participant?.actor_npub || participant?.npub || participant?.actor?.npub || '').trim();
-          if (npub) integrationNpubs.add(npub);
+          if (npub) integrationNpubs.set(npub, String(participant?.label || participant?.actor?.display_name || '').trim());
         }
-        for (const npub of integrationNpubs) add(npub, '', 'Channel integration agent', 'agent');
+        for (const [npub, label] of integrationNpubs) add(npub, label, 'Channel integration agent', 'agent');
       }
       for (const participant of (this.workroomParticipants || [])) {
         add(participant?.actor_npub, participant?.label, participant?.role ? `Workroom ${participant.role}` : 'Workroom participant');

@@ -102,14 +102,14 @@ describe('channel mention lookup', () => {
         metadata: {
           workroom_defaults: {
             integration_autopilot_npub: rickNpub,
-            participants: [{ actor_npub: rickNpub, role: 'integration' }],
+            participants: [{ actor_npub: rickNpub, role: 'integration', label: 'Rick' }],
           },
         },
       },
       { record_id: 'channel-rick-dm', title: 'Rick', record_state: 'active' },
     ];
     store.groups = [{ group_id: 'group-agents', name: 'Agents', member_npubs: [rickNpub] }];
-    store.pgWorkspaceMembers = [{ npub: rickNpub, display_name: 'Rick', kind: 'human' }];
+    store.pgWorkspaceMembers = [{ npub: rickNpub, display_name: '', kind: 'human' }];
     store.workroomParticipants = [];
     store.addressBookPeople = [];
     store.channelGrantsChannelId = 'channel-features';
@@ -118,11 +118,11 @@ describe('channel mention lookup', () => {
       principal_id: 'group-agents',
       permissions: ['channel.view'],
     }];
-    store.getSenderName = (npub) => npub === rickNpub ? 'Rick' : npub;
+    store.getSenderName = (npub) => npub;
     store.getChannelLabel = (channel) => channel.title;
     store.getChannelParticipants = () => [];
 
-    expect(store.searchMentions('rick', { visibleOnly: true })).toEqual([
+    expect(store.searchMentions('Ric', { visibleOnly: true })).toEqual([
       { type: 'agent', id: rickNpub, label: 'Rick', sublabel: 'Channel integration agent' },
       { type: 'channel', id: 'channel-rick-dm', label: 'Rick', sublabel: 'Channel' },
     ]);
@@ -138,7 +138,7 @@ describe('channel mention lookup', () => {
     store._mentionTargetEl = target;
     store._mentionStartPos = 0;
     store.selectedAgentMentionsByComposer = {};
-    store.selectMention(store.searchMentions('rick', { visibleOnly: true })[0]);
+    store.selectMention(store.searchMentions('Ric', { visibleOnly: true })[0]);
 
     expect(target.value).toBe(`@[Rick](mention:agent:${rickNpub}) `);
     expect(store.selectedAgentMentionsByComposer.message).toEqual([
