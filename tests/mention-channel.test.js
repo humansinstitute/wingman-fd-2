@@ -89,7 +89,7 @@ describe('channel mention lookup', () => {
     }]);
   });
 
-  it('classifies a group-granted integration participant as an agent before a same-named DM channel', async () => {
+  it('keeps a configured integration agent visible before grants and groups hydrate', async () => {
     const store = await createStore();
     const rickNpub = 'npub1s4658awhcachmhzk5jhsg256gzdl7e4gh5a9zq8skjyt7g3k2axql224qz';
     store.selectedChannelId = 'channel-features';
@@ -98,7 +98,6 @@ describe('channel mention lookup', () => {
         record_id: 'channel-features',
         title: 'Features',
         record_state: 'active',
-        group_ids: ['group-agents'],
         metadata: {
           workroom_defaults: {
             integration_autopilot_npub: rickNpub,
@@ -108,16 +107,12 @@ describe('channel mention lookup', () => {
       },
       { record_id: 'channel-rick-dm', title: 'Rick', record_state: 'active' },
     ];
-    store.groups = [{ group_id: 'group-agents', name: 'Agents', member_npubs: [rickNpub] }];
+    store.groups = [];
     store.pgWorkspaceMembers = [{ npub: rickNpub, display_name: '', kind: 'human' }];
     store.workroomParticipants = [];
     store.addressBookPeople = [];
     store.channelGrantsChannelId = 'channel-features';
-    store.channelGrants = [{
-      principal_type: 'group',
-      principal_id: 'group-agents',
-      permissions: ['channel.view'],
-    }];
+    store.channelGrants = [];
     store.getSenderName = (npub) => npub;
     store.getChannelLabel = (channel) => channel.title;
     store.getChannelParticipants = () => [];

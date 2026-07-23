@@ -7635,6 +7635,7 @@ export function initApp() {
     getMentionPeople({ visibleOnly = false, channelId = this.selectedChannelId } = {}) {
       const byNpub = new Map();
       const channel = (this.channels || []).find((row) => row?.record_id === channelId);
+      const authoritativeIntegrationNpubs = new Set();
       const add = (npub, fallbackLabel = '', sublabel = '', kind = 'human') => {
         const clean = String(npub || '').trim();
         if (!clean) return;
@@ -7685,7 +7686,10 @@ export function initApp() {
           const npub = String(participant?.actor_npub || participant?.npub || participant?.actor?.npub || '').trim();
           if (npub) integrationNpubs.set(npub, String(participant?.label || participant?.actor?.display_name || '').trim());
         }
-        for (const [npub, label] of integrationNpubs) add(npub, label, 'Channel integration agent', 'agent');
+        for (const [npub, label] of integrationNpubs) {
+          authoritativeIntegrationNpubs.add(npub);
+          add(npub, label, 'Channel integration agent', 'agent');
+        }
       }
       for (const participant of (this.workroomParticipants || [])) {
         add(participant?.actor_npub, participant?.label, participant?.role ? `Workroom ${participant.role}` : 'Workroom participant');
@@ -7726,6 +7730,10 @@ export function initApp() {
         sessionNpub: this.session?.npub,
         currentViewerNpub: this.currentPgActorNpub,
       }));
+      // The selected channel explicitly names these integration agents. Keep
+      // them mentionable even before grants/groups finish hydrating; this does
+      // not admit unrelated workspace agents.
+      for (const npub of authoritativeIntegrationNpubs) visibleNpubs.add(npub);
       for (const grant of channelAgentGrants) {
         const capacity = String(grant?.capacity || grant?.access_level || '').toLowerCase();
         const kind = String(grant?.principal?.kind || grant?.principal_actor_kind || '').toLowerCase();
