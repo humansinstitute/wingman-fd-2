@@ -678,7 +678,15 @@ export async function updateTowerPgChannel(workspaceId, channelId, body, { baseU
   if (!encodedChannelId) throw new Error('Tower PG channel id is required');
   const requestPath = `/api/v4/flightdeck-pg/workspaces/${encodedWorkspaceId}/channels/${encodedChannelId}`;
   const requestUrl = resolveTowerPgUrl(requestPath, baseUrl);
-  const resp = await signedTowerPgFetch(requestPath, { method: 'PATCH', body, baseUrl, appNpub });
+  // Channel settings are an interactive mutation. Do not leave the modal in a
+  // permanent "Saving" state when a browser signer is unavailable.
+  const resp = await signedTowerPgFetch(requestPath, {
+    method: 'PATCH',
+    body,
+    baseUrl,
+    appNpub,
+    authTimeoutMs: AUTH_HEADER_TIMEOUT_MS,
+  });
   return json(resp, { requestUrl, method: 'PATCH', prefix: 'Tower PG API' });
 }
 

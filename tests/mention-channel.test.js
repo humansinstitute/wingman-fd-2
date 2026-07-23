@@ -89,6 +89,52 @@ describe('channel mention lookup', () => {
     }]);
   });
 
+  it('offers a configured channel agent before a same-named DM channel', async () => {
+    const store = await createStore();
+    store.selectedChannelId = 'channel-features';
+    store.channels = [
+      { record_id: 'channel-features', title: 'Features', record_state: 'active' },
+      { record_id: 'channel-rick-dm', title: 'Rick', record_state: 'active' },
+    ];
+    store.pgWorkspaceMembers = [];
+    store.workroomParticipants = [];
+    store.addressBookPeople = [];
+    store.channelGrantsChannelId = 'channel-features';
+    store.channelGrants = [{
+      principal_type: 'actor',
+      principal_id: 'actor-rick',
+      principal_npub: 'npub1rick',
+      principal_actor_kind: 'agent',
+      capacity: 'agent',
+      principal: { npub: 'npub1rick', kind: 'agent', display_name: 'Rick' },
+    }];
+    store.getSenderName = (npub) => npub === 'npub1rick' ? 'Rick' : npub;
+    store.getChannelLabel = (channel) => channel.title;
+
+    expect(store.searchMentions('rick', { visibleOnly: true })).toEqual([
+      { type: 'agent', id: 'npub1rick', label: 'Rick', sublabel: 'Channel agent' },
+      { type: 'channel', id: 'channel-rick-dm', label: 'Rick', sublabel: 'Channel' },
+    ]);
+
+    const target = {
+      value: '@rick',
+      selectionStart: 5,
+      dataset: { chatComposer: 'message' },
+      dispatchEvent: vi.fn(),
+      setSelectionRange: vi.fn(),
+      focus: vi.fn(),
+    };
+    store._mentionTargetEl = target;
+    store._mentionStartPos = 0;
+    store.selectedAgentMentionsByComposer = {};
+    store.selectMention(store.searchMentions('rick', { visibleOnly: true })[0]);
+
+    expect(target.value).toBe('@[Rick](mention:agent:npub1rick) ');
+    expect(store.selectedAgentMentionsByComposer.message).toEqual([
+      { type: 'agent', npub: 'npub1rick', label: 'Rick' },
+    ]);
+  });
+
   it('scopes workroom mentions to channel-visible members through assigned groups', async () => {
     const store = await createStore();
     store.selectedChannelId = 'channel-ops';

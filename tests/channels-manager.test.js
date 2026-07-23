@@ -1159,6 +1159,21 @@ describe('channels-manager pure utilities', () => {
     expect(store.scheduleChannelsRefresh).toHaveBeenCalledWith('PG channel metadata update');
   });
 
+  it('clears saving and exposes the Tower error when Agent Direct settings fail', async () => {
+    updateTowerPgChannel.mockRejectedValueOnce(new Error('NIP-98 signing timed out'));
+    const store = createPgGrantStore({
+      channels: [{ record_id: 'channel-1', title: 'Ops', metadata: {} }],
+      channelSettingsAgentChatEnabled: true,
+    });
+
+    await store.saveChannelBasePrompt();
+
+    expect(store.channelSettingsSaving).toBe(false);
+    expect(store.channelSettingsNotice).toBe('');
+    expect(store.channelSettingsError).toBe('NIP-98 signing timed out');
+    expect(store.channels[0].metadata).toEqual({});
+  });
+
   // --- mapGroupEntry ---
   describe('mapGroupEntry', () => {
     it('maps a group with id field', () => {

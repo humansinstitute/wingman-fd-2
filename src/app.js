@@ -7661,6 +7661,20 @@ export function initApp() {
       for (const participant of (this.workroomParticipants || [])) {
         add(participant?.actor_npub, participant?.label, participant?.role ? `Workroom ${participant.role}` : 'Workroom participant');
       }
+      // Channel access is also a source of configured agents. This matters
+      // when the workspace member directory has not been hydrated yet (the
+      // common path immediately after opening a channel).
+      const channelAgentGrants = (this.channelGrantRows || this.channelGrants || [])
+        .flatMap((grant) => Array.isArray(grant?.grants) && grant.grants.length > 0 ? grant.grants : [grant]);
+      for (const grant of channelAgentGrants) {
+        const capacity = String(grant?.capacity || grant?.access_level || '').toLowerCase();
+        const kind = String(grant?.principal?.kind || grant?.principal_actor_kind || '').toLowerCase();
+        if (capacity !== 'agent' && kind !== 'agent') continue;
+        const npub = String(
+          grant?.principal_npub || grant?.actor_npub || grant?.npub || grant?.principal?.npub || '',
+        ).trim();
+        add(npub, grant?.principal?.display_name || grant?.display_name, 'Channel agent', 'agent');
+      }
       for (const person of (this.addressBookPeople || [])) {
         add(person?.npub, person?.label || person?.name, 'Person');
       }
@@ -7684,6 +7698,15 @@ export function initApp() {
         sessionNpub: this.session?.npub,
         currentViewerNpub: this.currentPgActorNpub,
       }));
+      for (const grant of channelAgentGrants) {
+        const capacity = String(grant?.capacity || grant?.access_level || '').toLowerCase();
+        const kind = String(grant?.principal?.kind || grant?.principal_actor_kind || '').toLowerCase();
+        if (capacity !== 'agent' && kind !== 'agent') continue;
+        const npub = String(
+          grant?.principal_npub || grant?.actor_npub || grant?.npub || grant?.principal?.npub || '',
+        ).trim();
+        if (npub) visibleNpubs.add(npub);
+      }
       for (const participant of (this.workroomParticipants || [])) {
         if (!this.activeWorkroomId || participant?.workroom_id === this.activeWorkroomId) {
           const npub = String(participant?.actor_npub || '').trim();
@@ -7799,6 +7822,19 @@ export function initApp() {
         }
       }
 
+      // An agent is the natural target of an unqualified @name. Keep explicit
+      // type-prefix ordering intact, but ensure an exact agent match outranks a
+      // same-labelled channel (for example the Rick DM channel).
+      if (!typeFilter) {
+        results.sort((left, right) => {
+          const leftExactAgent = left.type === 'agent' && left.label.toLowerCase() === needle;
+          const rightExactAgent = right.type === 'agent' && right.label.toLowerCase() === needle;
+          if (leftExactAgent !== rightExactAgent) return leftExactAgent ? -1 : 1;
+          if (left.type === 'agent' && right.type === 'channel') return -1;
+          if (left.type === 'channel' && right.type === 'agent') return 1;
+          return 0;
+        });
+      }
       return results.slice(0, limit);
     },
 
