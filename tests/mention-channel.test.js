@@ -182,7 +182,7 @@ describe('channel mention lookup', () => {
     )).toEqual([{ type: 'agent', npub: rickNpub, label: 'Rick' }]);
   });
 
-  it('keeps a durable workspace agent visible and labelled in an ordinary Agent Direct channel', async () => {
+  it('keeps a durable workspace agent visible in a default-enabled ordinary channel', async () => {
     const store = await createStore();
     const ownerNpub = 'npub1owner';
     const rickNpub = 'npub1s4658awhcachmhzk5jhsg256gzdl7e4gh5a9zq8skjyt7g3k2axql224qz';
@@ -191,10 +191,10 @@ describe('channel mention lookup', () => {
     store.channels = [
       {
         record_id: 'channel-autopilot', title: 'Autopilot', record_state: 'active',
-        metadata: { agent_chat: { enabled: true } },
+        metadata: {},
       },
       {
-        record_id: 'channel-rick-dm', title: 'Rick', kind: 'dm', record_state: 'active',
+        record_id: 'channel-rick-dm', title: `DM: ${rickNpub}`, kind: 'dm', record_state: 'active',
         participant_npubs: ['npub1pete', rickNpub],
       },
     ];
@@ -210,26 +210,48 @@ describe('channel mention lookup', () => {
     store.getChannelParticipants = (candidate) => candidate.participant_npubs || [];
     store.getChannelLabel = (candidate) => candidate.title;
 
-    const results = store.searchMentions('Rick', { visibleOnly: true });
+    // Tower currently has no display name for this actor, so the npub is the
+    // only honest searchable identity until Tower normalizes its actor profile.
+    const results = store.searchMentions(rickNpub, { visibleOnly: true });
     expect(results[0]).toEqual({
-      type: 'agent', id: rickNpub, label: 'Rick', sublabel: 'Group: Agents',
-    });
-    expect(results[1]).toEqual({
-      type: 'channel', id: 'channel-rick-dm', label: 'Rick', sublabel: 'Channel',
+      type: 'agent', id: rickNpub, label: rickNpub, sublabel: 'Group: Agents',
     });
 
     const target = {
-      value: '@Rick', selectionStart: 5, dataset: { chatComposer: 'message' },
+      value: `@${rickNpub}`, selectionStart: rickNpub.length + 1, dataset: { chatComposer: 'message' },
       dispatchEvent: vi.fn(), setSelectionRange: vi.fn(), focus: vi.fn(),
     };
     store._mentionTargetEl = target;
     store._mentionStartPos = 0;
     store.selectedAgentMentionsByComposer = {};
     store.selectMention(results[0]);
-    expect(target.value).toBe(`@[Rick](mention:agent:${rickNpub}) `);
+    expect(target.value).toBe(`@[${rickNpub}](mention:agent:${rickNpub}) `);
     expect(store.selectedAgentMentionsByComposer.message).toEqual([
-      { type: 'agent', npub: rickNpub, label: 'Rick' },
+      { type: 'agent', npub: rickNpub, label: rickNpub },
     ]);
+  });
+
+  it('does not bypass visibility for workspace agents on an explicitly disabled channel', async () => {
+    const store = await createStore();
+    const rickNpub = 'npub1s4658awhcachmhzk5jhsg256gzdl7e4gh5a9zq8skjyt7g3k2axql224qz';
+    store.currentWorkspaceOwnerNpub = 'npub1owner';
+    store.selectedChannelId = 'channel-disabled';
+    store.channels = [{
+      record_id: 'channel-disabled', title: 'Disabled', record_state: 'active',
+      metadata: { agent_chat: { enabled: false } },
+    }];
+    store.groups = [{
+      group_id: 'group-agents', owner_npub: 'npub1owner', name: 'Agents', member_npubs: [rickNpub],
+    }];
+    store.pgWorkspaceMembers = [{ npub: rickNpub, display_name: 'Rick', kind: 'human' }];
+    store.workroomParticipants = [];
+    store.addressBookPeople = [];
+    store.channelGrants = [];
+    store.channelGrantsChannelId = 'channel-disabled';
+    store.getSenderName = () => 'Rick';
+    store.getChannelParticipants = () => [];
+
+    expect(store.searchMentions('Rick', { visibleOnly: true })).toEqual([]);
   });
 
   it('scopes workroom mentions to channel-visible members through assigned groups', async () => {

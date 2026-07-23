@@ -7659,7 +7659,12 @@ export function initApp() {
           ? this.getChannelParticipants(candidate)
           : resolveChannelParticipants(candidate);
         const label = this.getChannelLabel?.(candidate) || candidate?.title || candidate?.name;
-        for (const npub of (participants || [])) rememberLabel(npub, label);
+        for (const npub of (participants || [])) {
+          const cleanNpub = String(npub || '').trim();
+          const cleanLabel = String(label || '').trim();
+          // An npub-derived DM title is an identifier, not a durable alias.
+          if (cleanNpub && !cleanLabel.includes(cleanNpub)) rememberLabel(cleanNpub, cleanLabel);
+        }
       }
       const add = (npub, fallbackLabel = '', sublabel = '', kind = 'human') => {
         const clean = String(npub || '').trim();
@@ -7771,7 +7776,9 @@ export function initApp() {
       // them mentionable even before grants/groups finish hydrating; this does
       // not admit unrelated workspace agents.
       for (const npub of authoritativeIntegrationNpubs) visibleNpubs.add(npub);
-      if (channel?.metadata?.agent_chat?.enabled === true) {
+      // Agent Direct is default-on. Only an explicit false opts this channel
+      // out, matching the Autopilot dispatch policy.
+      if (channel?.metadata?.agent_chat?.enabled !== false) {
         for (const npub of workspaceAgentNpubs) if (npub) visibleNpubs.add(npub);
       }
       for (const grant of channelAgentGrants) {
