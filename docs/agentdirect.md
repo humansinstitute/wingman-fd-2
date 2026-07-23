@@ -171,6 +171,49 @@ Flight Deck depends on Tower providing:
 
 Flight Deck does not depend on Autopilot APIs.
 
+## Single Implementation Work Package
+
+Implement this MVP as one Flight Deck work package named **Agent Direct Chat: Flight Deck surface and canonical mentions**. Assign the complete package to one worker/session in this repository. Do not split channel settings, mention serialization, message hydration, and tests into separate independently handed-off tasks: they form one user-visible browser contract and must be reviewed together.
+
+### Package objective
+
+Make Flight Deck author and render the Tower-side Agent Direct Chat contract without knowing or calling Autopilot.
+
+### Prerequisites
+
+- The Tower request/response shapes for `metadata.agent_chat`, normalized mentions, and message creation are agreed and represented in this document.
+- The implementation may begin against fixtures/mocks before Tower is deployed, but final acceptance requires the live Tower contract.
+
+### Included work
+
+- normalize channel Agent Direct Chat configuration and compatibility reads;
+- add the enable control and channel context prompt UI;
+- retain canonical agent mention identity from picker selection through message creation;
+- send normalized mention metadata through the Tower PG write path;
+- preserve mention, author, provenance, and thread data through hydration/materialization;
+- render the resulting agent-authored message as ordinary chat;
+- add focused tests and update the production build output.
+
+### Explicit exclusions
+
+- no Autopilot API calls or session state in the browser;
+- no pipeline or invocation launch;
+- no project-directory selector;
+- no working indicator, session inspector, or End Conversation UI;
+- no ACP implementation.
+
+### Deliverables
+
+- source and template changes implementing the included work;
+- focused automated coverage for settings and mention round-tripping;
+- regenerated `dist/` from the normal build;
+- any fixture/translator updates required by the final Tower contract;
+- a handoff stating the Tower contract version/commit used for integration.
+
+### Validation and definition of done
+
+Run focused tests while developing, then run the repository's full test and build commands. The package is done only when all Flight Deck acceptance tests below pass, the production build is current, no browser-to-Autopilot path exists, and the integrated mention-to-agent-reply vertical slice has been exercised against compatible Tower and Autopilot builds.
+
 ## Implementation Directions
 
 1. Identify the canonical Tower PG channel metadata translation in `src/translators/` and channel settings logic in `src/channels-manager.js`.
