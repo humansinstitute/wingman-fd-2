@@ -7634,6 +7634,7 @@ export function initApp() {
 
     getMentionPeople({ visibleOnly = false, channelId = this.selectedChannelId } = {}) {
       const byNpub = new Map();
+      const channel = (this.channels || []).find((row) => row?.record_id === channelId);
       const add = (npub, fallbackLabel = '', sublabel = '', kind = 'human') => {
         const clean = String(npub || '').trim();
         if (!clean) return;
@@ -7658,6 +7659,24 @@ export function initApp() {
           kind,
         );
       }
+      // The channel's workroom integration configuration is authoritative for
+      // agent identity. Tower may retain an older `human` actor kind for the
+      // same npub, especially when access is inherited through a group.
+      const workroomDefaults = channel?.metadata?.workroom_defaults;
+      if (workroomDefaults && typeof workroomDefaults === 'object') {
+        const integrationNpubs = new Set([
+          workroomDefaults.integration_autopilot_npub,
+          channel?.metadata?.integration_autopilot_npub,
+        ].map((value) => String(value || '').trim()).filter(Boolean));
+        for (const participant of (Array.isArray(workroomDefaults.participants) ? workroomDefaults.participants : [])) {
+          const role = String(participant?.role || '').toLowerCase();
+          const kind = String(participant?.kind || '').toLowerCase();
+          if (role !== 'integration' && !['agent', 'autopilot'].includes(kind)) continue;
+          const npub = String(participant?.actor_npub || participant?.npub || participant?.actor?.npub || '').trim();
+          if (npub) integrationNpubs.add(npub);
+        }
+        for (const npub of integrationNpubs) add(npub, '', 'Channel integration agent', 'agent');
+      }
       for (const participant of (this.workroomParticipants || [])) {
         add(participant?.actor_npub, participant?.label, participant?.role ? `Workroom ${participant.role}` : 'Workroom participant');
       }
@@ -7681,7 +7700,6 @@ export function initApp() {
 
       if (!visibleOnly) return Array.from(byNpub.values());
 
-      const channel = (this.channels || []).find((row) => row?.record_id === channelId);
       if (!channel) return Array.from(byNpub.values());
       const visibleNpubs = new Set(workroomVisibleParticipantNpubs(channel, {
         baseParticipants: typeof this.getChannelParticipants === 'function'

@@ -89,30 +89,41 @@ describe('channel mention lookup', () => {
     }]);
   });
 
-  it('offers a configured channel agent before a same-named DM channel', async () => {
+  it('classifies a group-granted integration participant as an agent before a same-named DM channel', async () => {
     const store = await createStore();
+    const rickNpub = 'npub1s4658awhcachmhzk5jhsg256gzdl7e4gh5a9zq8skjyt7g3k2axql224qz';
     store.selectedChannelId = 'channel-features';
     store.channels = [
-      { record_id: 'channel-features', title: 'Features', record_state: 'active' },
+      {
+        record_id: 'channel-features',
+        title: 'Features',
+        record_state: 'active',
+        group_ids: ['group-agents'],
+        metadata: {
+          workroom_defaults: {
+            integration_autopilot_npub: rickNpub,
+            participants: [{ actor_npub: rickNpub, role: 'integration' }],
+          },
+        },
+      },
       { record_id: 'channel-rick-dm', title: 'Rick', record_state: 'active' },
     ];
-    store.pgWorkspaceMembers = [];
+    store.groups = [{ group_id: 'group-agents', name: 'Agents', member_npubs: [rickNpub] }];
+    store.pgWorkspaceMembers = [{ npub: rickNpub, display_name: 'Rick', kind: 'human' }];
     store.workroomParticipants = [];
     store.addressBookPeople = [];
     store.channelGrantsChannelId = 'channel-features';
     store.channelGrants = [{
-      principal_type: 'actor',
-      principal_id: 'actor-rick',
-      principal_npub: 'npub1rick',
-      principal_actor_kind: 'agent',
-      capacity: 'agent',
-      principal: { npub: 'npub1rick', kind: 'agent', display_name: 'Rick' },
+      principal_type: 'group',
+      principal_id: 'group-agents',
+      permissions: ['channel.view'],
     }];
-    store.getSenderName = (npub) => npub === 'npub1rick' ? 'Rick' : npub;
+    store.getSenderName = (npub) => npub === rickNpub ? 'Rick' : npub;
     store.getChannelLabel = (channel) => channel.title;
+    store.getChannelParticipants = () => [];
 
     expect(store.searchMentions('rick', { visibleOnly: true })).toEqual([
-      { type: 'agent', id: 'npub1rick', label: 'Rick', sublabel: 'Channel agent' },
+      { type: 'agent', id: rickNpub, label: 'Rick', sublabel: 'Channel integration agent' },
       { type: 'channel', id: 'channel-rick-dm', label: 'Rick', sublabel: 'Channel' },
     ]);
 
@@ -129,10 +140,15 @@ describe('channel mention lookup', () => {
     store.selectedAgentMentionsByComposer = {};
     store.selectMention(store.searchMentions('rick', { visibleOnly: true })[0]);
 
-    expect(target.value).toBe('@[Rick](mention:agent:npub1rick) ');
+    expect(target.value).toBe(`@[Rick](mention:agent:${rickNpub}) `);
     expect(store.selectedAgentMentionsByComposer.message).toEqual([
-      { type: 'agent', npub: 'npub1rick', label: 'Rick' },
+      { type: 'agent', npub: rickNpub, label: 'Rick' },
     ]);
+    const { canonicalAgentMentionsFromSelection } = await import('../src/agent-direct-chat.js');
+    expect(canonicalAgentMentionsFromSelection(
+      target.value,
+      store.selectedAgentMentionsByComposer.message,
+    )).toEqual([{ type: 'agent', npub: rickNpub, label: 'Rick' }]);
   });
 
   it('scopes workroom mentions to channel-visible members through assigned groups', async () => {
