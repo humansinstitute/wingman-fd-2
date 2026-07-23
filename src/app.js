@@ -106,6 +106,7 @@ import {
 } from './task-board-state.js';
 import { renderMarkdownToHtml } from './markdown.js';
 import { resolveChannelLabel, resolveChannelParticipants } from './channel-labels.js';
+import { isDmChannel } from './dm-scope.js';
 import { buildFlightDeckDocumentTitle } from './page-title.js';
 import {
   blockDisabledFlightDeckSurface,
@@ -7636,11 +7637,35 @@ export function initApp() {
       const byNpub = new Map();
       const channel = (this.channels || []).find((row) => row?.record_id === channelId);
       const authoritativeIntegrationNpubs = new Set();
+      const workspaceAgentNpubs = new Set();
+      const durableLabels = new Map();
+      const rememberLabel = (npub, label) => {
+        const cleanNpub = String(npub || '').trim();
+        const cleanLabel = String(label || '').trim();
+        if (!cleanNpub || !cleanLabel || cleanLabel === cleanNpub || durableLabels.has(cleanNpub)) return;
+        durableLabels.set(cleanNpub, cleanLabel);
+      };
+      for (const member of (this.pgWorkspaceMembers || [])) {
+        rememberLabel(member?.npub || member?.user_npub || member?.member_npub, member?.display_name || member?.label || member?.name);
+      }
+      for (const person of (this.addressBookPeople || [])) rememberLabel(person?.npub, person?.label || person?.name);
+      for (const message of [...(this.messages || []), ...(this.threadReplies || [])]) {
+        const mentions = message?.pg_metadata?.mentions || message?.metadata?.mentions;
+        for (const mention of (Array.isArray(mentions) ? mentions : [])) rememberLabel(mention?.npub, mention?.label);
+      }
+      for (const candidate of (this.channels || [])) {
+        if (!isDmChannel(candidate)) continue;
+        const participants = typeof this.getChannelParticipants === 'function'
+          ? this.getChannelParticipants(candidate)
+          : resolveChannelParticipants(candidate);
+        const label = this.getChannelLabel?.(candidate) || candidate?.title || candidate?.name;
+        for (const npub of (participants || [])) rememberLabel(npub, label);
+      }
       const add = (npub, fallbackLabel = '', sublabel = '', kind = 'human') => {
         const clean = String(npub || '').trim();
         if (!clean) return;
         const senderLabel = String(this.getSenderName?.(clean) || '').trim();
-        const fallback = String(fallbackLabel || '').trim();
+        const fallback = String(fallbackLabel || '').trim() || durableLabels.get(clean) || '';
         const label = (senderLabel && senderLabel !== clean ? senderLabel : '') || fallback || clean;
         const type = String(kind || '').toLowerCase() === 'agent' ? 'agent' : 'person';
         const existing = byNpub.get(clean);
@@ -7657,9 +7682,21 @@ export function initApp() {
         byNpub.set(clean, { type, id: clean, label, sublabel });
       };
 
-      for (const group of (this.currentWorkspaceGroups || [])) {
+      const mentionGroups = [
+        ...(Array.isArray(this.currentWorkspaceGroups) ? this.currentWorkspaceGroups : []),
+        ...(Array.isArray(this.groups) ? this.groups : []),
+      ];
+      for (const group of mentionGroups) {
         const groupLabel = group?.name ? `Group: ${group.name}` : '';
-        for (const npub of (group?.member_npubs || [])) add(npub, '', groupLabel);
+        const groupIdentity = String(group?.name || group?.label || group?.group_kind || '')
+          .toLowerCase().replace(/[^a-z0-9]/g, '');
+        const groupActorKind = ['agent', 'agents', 'aiagent', 'aiagents', 'wingmen'].includes(groupIdentity)
+          ? 'agent'
+          : 'human';
+        for (const npub of (group?.effective_member_npubs || group?.member_npubs || [])) {
+          if (groupActorKind === 'agent') workspaceAgentNpubs.add(String(npub || '').trim());
+          add(npub, durableLabels.get(String(npub || '').trim()), groupLabel, groupActorKind);
+        }
       }
       for (const member of (this.pgWorkspaceMembers || [])) {
         const kind = member?.kind || member?.actor_kind || member?.actor?.kind;
@@ -7734,6 +7771,9 @@ export function initApp() {
       // them mentionable even before grants/groups finish hydrating; this does
       // not admit unrelated workspace agents.
       for (const npub of authoritativeIntegrationNpubs) visibleNpubs.add(npub);
+      if (channel?.metadata?.agent_chat?.enabled === true) {
+        for (const npub of workspaceAgentNpubs) if (npub) visibleNpubs.add(npub);
+      }
       for (const grant of channelAgentGrants) {
         const capacity = String(grant?.capacity || grant?.access_level || '').toLowerCase();
         const kind = String(grant?.principal?.kind || grant?.principal_actor_kind || '').toLowerCase();
