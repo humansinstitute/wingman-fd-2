@@ -592,11 +592,10 @@ export async function tryAutoLoginFromStorage() {
   }
 
   if (creds.method === 'extension') {
-    const available = await waitForExtensionSigner(1500, 120);
-    if (!available) return null;
-    const extensionPubkey = await getExtensionPublicKey().catch(() => null);
-    if (!extensionPubkey) return null;
-    if (extensionPubkey !== creds.pubkey) return null;
+    // Mobile extension browsers can inject NIP-07 well after the app shell has
+    // loaded (especially when a push notification wakes the PWA). Restore the
+    // persisted session immediately; signing still verifies the live extension
+    // pubkey before every authenticated request.
     setMemoryPubkey(creds.pubkey);
     await refreshCredentialExpiry();
     return { method: 'extension', pubkey: creds.pubkey };

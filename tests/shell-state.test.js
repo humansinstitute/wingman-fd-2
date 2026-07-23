@@ -141,6 +141,73 @@ describe('shell navigation data retention', () => {
   });
 });
 
+describe('notification route restoration', () => {
+  it('uses the notified channel even when the previous scope hides it', async () => {
+    const originalWindow = globalThis.window;
+    globalThis.window = { location: { href: 'https://flightdeck.example/pete/chat?channelid=channel-target&threadid=thread-target' } };
+    try {
+      const shell = createShellState();
+      Object.assign(shell, {
+        currentWorkspace: { pgBackendMode: true },
+        pgBackendMode: true,
+        selectedBoardId: 'scope-quick-apps',
+        selectedChannelId: 'word5',
+        channels: [
+          { record_id: 'word5', scope_id: 'scope-quick-apps' },
+          { record_id: 'channel-target', scope_id: 'scope-correct' },
+        ],
+        selectChannel: vi.fn(async function selectChannel(channelId) {
+          this.selectedChannelId = channelId;
+        }),
+        openThread: vi.fn(),
+        closeThread: vi.fn(),
+        persistSelectedBoardId: vi.fn(),
+        startWorkspaceLiveQueries: vi.fn(),
+        syncRoute: vi.fn(),
+      });
+      Object.defineProperty(shell, 'scopeFilteredChannels', {
+        configurable: true,
+        get() {
+          if (this.selectedBoardId === '__pg_channel__:channel-target') {
+            return [this.channels[1]];
+          }
+          return [this.channels[0]];
+        },
+      });
+
+      await shell.applyRouteFromLocation();
+
+      expect(shell.selectedBoardId).toBe('__pg_channel__:channel-target');
+      expect(shell.selectChannel).toHaveBeenCalledWith('channel-target', { syncRoute: false });
+      expect(shell.openThread).toHaveBeenCalledWith('thread-target', { syncRoute: false });
+    } finally {
+      globalThis.window = originalWindow;
+    }
+  });
+
+  it('keeps the notification section while switching to its workspace', async () => {
+    const originalWindow = globalThis.window;
+    globalThis.window = { location: { href: 'https://flightdeck.example/chat?workspaceid=workspace-target&channelid=channel-target' } };
+    try {
+      const shell = createShellState({ initialSection: 'status' });
+      shell.currentWorkspaceKey = 'workspace:current';
+      shell.knownWorkspaces = [{
+        workspaceId: 'workspace-target',
+        workspaceKey: 'workspace:target',
+        workspaceOwnerNpub: 'npub1target',
+      }];
+      shell.handleWorkspaceSwitcherSelect = vi.fn(async () => {});
+
+      await shell.applyRouteFromLocation();
+
+      expect(shell.navSection).toBe('chat');
+      expect(shell.handleWorkspaceSwitcherSelect).toHaveBeenCalledWith('workspace:target');
+    } finally {
+      globalThis.window = originalWindow;
+    }
+  });
+});
+
 describe('shell state key inventory', () => {
   // App/session state
   it('includes identity and session keys', () => {

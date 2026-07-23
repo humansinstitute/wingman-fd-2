@@ -56,7 +56,7 @@ import { parseSuperBasedToken } from './superbased-token.js';
 import { extractInviteToken } from './invite-link.js';
 import { flightDeckLog } from './logging.js';
 import { isTowerPgBackendMode } from './backend-mode.js';
-import { parsePgTaskBoardId } from './pg-record-context.js';
+import { buildPgChannelTaskBoardId, parsePgTaskBoardId } from './pg-record-context.js';
 
 /**
  * Canonical list of shell state keys (data properties and getters).
@@ -699,11 +699,13 @@ export function createShellState(options = {}) {
 
     async applyRouteFromLocation() {
       const route = parseRouteLocation();
+      const routeSection = normalizeEnabledFlightDeckSection(route.section);
       this.routeSyncPaused = true;
       try {
         if (route.params.workspacekey) {
           const targetByKey = findWorkspaceByKey(this.knownWorkspaces, route.params.workspacekey);
           if (targetByKey && targetByKey.workspaceKey !== this.currentWorkspaceKey) {
+            this.navSection = routeSection;
             this.routeSyncPaused = false;
             await this.handleWorkspaceSwitcherSelect(targetByKey.workspaceKey);
             return;
@@ -712,6 +714,7 @@ export function createShellState(options = {}) {
         if (route.params.workspaceid) {
           const targetById = findWorkspaceById(this.knownWorkspaces, route.params.workspaceid);
           if (targetById && targetById.workspaceKey !== this.currentWorkspaceKey) {
+            this.navSection = routeSection;
             this.routeSyncPaused = false;
             await this.handleWorkspaceSwitcherSelect(targetById.workspaceKey || targetById.workspaceOwnerNpub);
             return;
@@ -720,13 +723,14 @@ export function createShellState(options = {}) {
         if (route.workspaceSlug) {
           const target = findWorkspaceBySlug(this.knownWorkspaces, route.workspaceSlug);
           if (target && target.workspaceKey !== this.currentWorkspaceKey) {
+            this.navSection = routeSection;
             this.routeSyncPaused = false;
             await this.handleWorkspaceSwitcherSelect(target.workspaceKey || target.workspaceOwnerNpub);
             return;
           }
         }
 
-        this.navSection = normalizeEnabledFlightDeckSection(route.section);
+        this.navSection = routeSection;
         this.mobileNavOpen = false;
 
         if (route.params.scopeid || route.params.groupid) {
@@ -739,15 +743,23 @@ export function createShellState(options = {}) {
         }
 
         if (this.navSection === 'chat') {
-          const visibleChannels = Array.isArray(this.scopeFilteredChannels) ? this.scopeFilteredChannels : [];
+          let visibleChannels = Array.isArray(this.scopeFilteredChannels) ? this.scopeFilteredChannels : [];
           const isVisibleChannel = (channelId) => visibleChannels.some((channel) => channel.record_id === channelId);
           const routeChannelId = route.params.channelid || null;
+          const routeChannel = routeChannelId
+            ? (this.channels || []).find((channel) => channel?.record_id === routeChannelId && channel.record_state !== 'deleted') || null
+            : null;
+          if (routeChannel && !isVisibleChannel(routeChannelId)) {
+            this.selectedBoardId = buildPgChannelTaskBoardId(routeChannelId);
+            this.persistSelectedBoardId(this.selectedBoardId);
+            visibleChannels = Array.isArray(this.scopeFilteredChannels) ? this.scopeFilteredChannels : [];
+          }
           const selectedVisibleChannelId = this.selectedChannelId && isVisibleChannel(this.selectedChannelId)
             ? this.selectedChannelId
             : null;
           const selectedPgBoard = parsePgTaskBoardId(this.selectedBoardId);
           const pgScopeHome = Boolean((this.currentWorkspace?.pgBackendMode || this.pgBackendMode) && selectedPgBoard.type === 'scope' && selectedPgBoard.scopeId);
-          const channelId = routeChannelId && isVisibleChannel(routeChannelId)
+          const channelId = routeChannelId && (routeChannel || isVisibleChannel(routeChannelId))
             ? routeChannelId
             : (pgScopeHome ? null : selectedVisibleChannelId || visibleChannels[0]?.record_id || null);
           if (channelId) {

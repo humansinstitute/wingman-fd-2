@@ -67,6 +67,7 @@ import {
   setAutoLogin,
   setMemoryPubkey,
   signLoginEvent,
+  tryAutoLoginFromStorage,
   waitForExtensionSigner,
 } from '../src/auth/nostr.js';
 
@@ -143,6 +144,21 @@ describe('auth/nostr helpers', () => {
     }, 20);
 
     await expect(waitForExtensionSigner(250, 10)).resolves.toBe(true);
+  });
+
+  it('restores a persisted extension session before mobile signer injection', async () => {
+    storedCreds = {
+      method: 'extension',
+      pubkey: 'c'.repeat(64),
+      authEvent: { id: 'stored-login' },
+    };
+
+    await expect(tryAutoLoginFromStorage()).resolves.toEqual({
+      method: 'extension',
+      pubkey: 'c'.repeat(64),
+    });
+    expect(getMemoryPubkey()).toBe('c'.repeat(64));
+    expect(refreshCredentialExpiryMock).toHaveBeenCalledOnce();
   });
 
   it('createNip98AuthHeader signs a request with the current session', async () => {
