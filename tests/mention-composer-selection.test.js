@@ -34,6 +34,21 @@ beforeEach(() => {
 });
 
 describe('mention composer selection range', () => {
+  it('does not inspect the selection range for ordinary text without an @ trigger', async () => {
+    const store = await createStore();
+    const root = document.createElement('div');
+    root.setAttribute('contenteditable', 'true');
+    root.textContent = 'ordinary mobile typing';
+    document.body.append(root);
+    const selection = document.getSelection();
+    const getRangeAt = vi.spyOn(selection, 'getRangeAt');
+
+    store.handleMentionInput(root);
+
+    expect(getRangeAt).not.toHaveBeenCalled();
+    expect(store.mentionActive).toBe(false);
+  });
+
   it.each(['message', 'thread'])('preserves a long multiline %s suffix when click selection moves focus outside the composer', async (composer) => {
     const store = await createStore();
     const existing = '@[Pete](mention:person:npub1pete)';

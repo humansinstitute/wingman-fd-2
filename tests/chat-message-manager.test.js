@@ -783,6 +783,38 @@ describe('scroll and composer methods', () => {
     expect(() => fn('message')).not.toThrow();
   });
 
+  it('coalesces repeated element autosizes into the latest animation frame', () => {
+    const { fn, store } = bindMethod('scheduleComposerElementAutosize');
+    const callbacks = new Map();
+    let nextFrame = 0;
+    const requestSpy = vi.fn((callback) => {
+      nextFrame += 1;
+      callbacks.set(nextFrame, callback);
+      return nextFrame;
+    });
+    const cancelSpy = vi.fn((id) => callbacks.delete(id));
+    vi.stubGlobal('window', {
+      requestAnimationFrame: requestSpy,
+      cancelAnimationFrame: cancelSpy,
+    });
+    store.autosizeComposer = vi.fn();
+    const element = {};
+
+    try {
+      fn(element);
+      fn(element);
+
+      expect(requestSpy).toHaveBeenCalledTimes(2);
+      expect(cancelSpy).toHaveBeenCalledWith(1);
+      expect(callbacks.has(1)).toBe(false);
+      callbacks.get(2)();
+      expect(store.autosizeComposer).toHaveBeenCalledTimes(1);
+      expect(store.autosizeComposer).toHaveBeenCalledWith(element);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('scheduleChatPreviewMeasurement does not throw in test env', () => {
     const { fn } = bindMethod('scheduleChatPreviewMeasurement');
     expect(() => fn()).not.toThrow();

@@ -74,6 +74,7 @@ const chatDerivedCache = new WeakMap();
 const THREAD_REPLY_PREVIEW_WORD_LIMIT = 50;
 const RESPONSE_ACTIVITY_WORDS = ['Thinking', 'Implementing', 'Writing'];
 const RESPONSE_ACTIVITY_SUFFIXES = ['.', '.+', '.*', '..+', '..*', '...', '+', '*'];
+const composerAutosizeFrames = new WeakMap();
 
 function isVisibleResponseActivity(activity = {}, nowMs = Date.now()) {
   if (!activity?.record_id) return false;
@@ -574,12 +575,23 @@ export const chatMessageManagerMixin = {
     textarea.style.overflowY = textarea.scrollHeight > maxHeight ? 'auto' : 'hidden';
   },
 
+  scheduleComposerElementAutosize(element) {
+    if (!element || typeof window === 'undefined') return;
+    const previousFrame = composerAutosizeFrames.get(element);
+    if (previousFrame != null) window.cancelAnimationFrame(previousFrame);
+    const frame = window.requestAnimationFrame(() => {
+      composerAutosizeFrames.delete(element);
+      this.autosizeComposer(element);
+    });
+    composerAutosizeFrames.set(element, frame);
+  },
+
   scheduleComposerAutosize(context) {
     if (typeof window === 'undefined' || typeof document === 'undefined') return;
     scheduleUiNextTick(() => {
       const textarea = document.querySelector(`[data-chat-composer="${context}"]`);
       if (!textarea) return;
-      this.autosizeComposer(textarea);
+      this.scheduleComposerElementAutosize(textarea);
     });
   },
 

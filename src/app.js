@@ -8030,6 +8030,12 @@ export function initApp() {
     handleMentionInput(el) {
       const contentEditable = el?.isContentEditable || el?.getAttribute?.('contenteditable') === 'true';
       const value = contentEditable ? (el.textContent || '') : el.value;
+      // Most composer input is ordinary text. Avoid cloning and walking the
+      // current selection range on every keystroke unless a mention can exist.
+      if (!value.includes('@')) {
+        this.closeMentionPopover();
+        return;
+      }
       const cursorPos = contentEditable ? composerCaretOffset(el) : el.selectionStart;
 
       // Find the @ that starts the current mention (allow spaces in query, break on newline)
@@ -8172,11 +8178,20 @@ export function initApp() {
       if (composer === 'thread') this.threadInput = value;
       else this.messageInput = value;
       const mentions = canonicalActorMentions(value);
-      this.selectedAgentMentionsByComposer = {
-        ...(this.selectedAgentMentionsByComposer || {}),
-        [composer]: mentions,
-      };
-      this.autosizeComposer(el);
+      const currentMentions = this.selectedAgentMentionsByComposer?.[composer] || [];
+      const mentionsChanged = mentions.length !== currentMentions.length
+        || mentions.some((mention, index) => (
+          mention.type !== currentMentions[index]?.type
+          || mention.npub !== currentMentions[index]?.npub
+          || mention.label !== currentMentions[index]?.label
+        ));
+      if (mentionsChanged) {
+        this.selectedAgentMentionsByComposer = {
+          ...(this.selectedAgentMentionsByComposer || {}),
+          [composer]: mentions,
+        };
+      }
+      this.scheduleComposerElementAutosize(el);
       return value;
     },
 
