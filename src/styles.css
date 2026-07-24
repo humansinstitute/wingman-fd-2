@@ -7123,10 +7123,7 @@ button:disabled {
 }
 
 .mention-composer-pill,
-.chat-post-markdown .mention-link-person,
-.chat-post-markdown .mention-link-agent,
-.thread-msg-text .mention-link-person,
-.thread-msg-text .mention-link-agent {
+.mention-pill {
   display: inline-flex;
   align-items: center;
   max-width: 100%;
@@ -7149,10 +7146,7 @@ button:disabled {
 }
 
 .mention-composer-pill:focus,
-.chat-post-markdown .mention-link-person:focus-visible,
-.chat-post-markdown .mention-link-agent:focus-visible,
-.thread-msg-text .mention-link-person:focus-visible,
-.thread-msg-text .mention-link-agent:focus-visible {
+.mention-pill:focus-visible {
   outline: 2px solid #2563eb;
   outline-offset: 1px;
 }
@@ -16716,20 +16710,21 @@ button:disabled {
 
 /* Rendered mention links */
 
-.mention-link {
+.mention-link:not(.mention-pill) {
   color: var(--accent, #3b82f6);
   text-decoration: none;
   font-weight: 500;
   cursor: pointer;
 }
 
-.mention-link:hover {
+.mention-link:not(.mention-pill):hover {
   text-decoration: underline;
 }
 
-.mention-link.md-reference-record-card,
-.mention-link.md-reference-record-card:hover {
-  color: var(--text);
+.mention-link.mention-pill:hover {
+  border-color: #6f94c7;
+  background: #dceaff;
+  color: #102f58;
   text-decoration: none;
 }
 

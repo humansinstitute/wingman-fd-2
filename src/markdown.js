@@ -173,26 +173,12 @@ function buildReferenceFileCardMarkup(labelHtml, href, title) {
   ].join('');
 }
 
-function buildMentionReferenceCardMarkup(labelHtml, mentionType, mentionId) {
-  const displayName = stripHtml(labelHtml) || 'Referenced record';
+function buildMentionPillMarkup(labelHtml, mentionType, mentionId) {
+  const displayName = stripHtml(labelHtml) || 'Mention';
   const safeType = escapeHtml(mentionType);
   const safeId = escapeHtml(mentionId);
-  const referenceLabel = mentionType === 'doc'
-    ? 'Flight Deck document'
-    : mentionType === 'task'
-      ? 'Flight Deck task'
-      : 'Flight Deck reference';
-  return [
-    `<a href="#" class="mention-link mention-link-${safeType} md-storage-file-card md-reference-record-card" data-mention-type="${safeType}" data-mention-id="${safeId}">`,
-    '<span class="md-storage-file-icon" aria-hidden="true">',
-    '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><path d="M8 13h8"></path><path d="M8 17h5"></path></svg>',
-    '</span>',
-    '<span class="md-storage-file-copy">',
-    `<strong>${labelHtml || escapeHtml(displayName)}</strong>`,
-    `<small>${referenceLabel}</small>`,
-    '</span>',
-    '</a>',
-  ].join('');
+  const actorPrefix = mentionType === 'person' || mentionType === 'agent' ? '@' : '';
+  return `<a href="#" class="mention-link mention-pill mention-link-${safeType} mention-pill-${safeType}" data-mention-render="pill" data-mention-type="${safeType}" data-mention-id="${safeId}" aria-label="${safeType} ${escapeHtml(displayName)}">${actorPrefix}${labelHtml || escapeHtml(displayName)}</a>`;
 }
 
 function escapeMarkdownLabel(value) {
@@ -253,11 +239,7 @@ renderer.link = function ({ href, title, tokens }) {
     const parts = mentionHref.replace(/^mention:/, '').split(':');
     const mentionType = normalizeRecordLinkType(parts[0] || 'unknown') || 'unknown';
     const mentionId = parts.slice(1).join(':');
-    const safeId = escapeHtml(mentionId);
-    if (title === 'reference-card' || mentionType === 'doc' || mentionType === 'task') {
-      return buildMentionReferenceCardMarkup(label, mentionType, mentionId);
-    }
-    return `<a href="#" class="mention-link mention-link-${escapeHtml(mentionType)}" data-mention-type="${escapeHtml(mentionType)}" data-mention-id="${safeId}">@${label}</a>`;
+    return buildMentionPillMarkup(label, mentionType, mentionId);
   }
   const storageHref = sanitizeUrl(href, ['storage:']);
   if (storageHref) {

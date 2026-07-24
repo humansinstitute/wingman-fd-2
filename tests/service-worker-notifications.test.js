@@ -63,7 +63,7 @@ async function dispatchPush(payload) {
 }
 
 describe('generated notification service worker', () => {
-  it('reloads app windows when a new build replaces an older Flight Deck cache', async () => {
+  it('cleans old build caches without reloading app windows', async () => {
     const navigations = [];
     const client = {
       url: 'https://flightdeck.example/pete/workroom/room-1',
@@ -86,7 +86,7 @@ describe('generated notification service worker', () => {
     await Promise.all(waits);
 
     expect(deletedCaches).toEqual(['wingman-fd-old-build']);
-    expect(navigations).toEqual(['https://flightdeck.example/pete/workroom/room-1']);
+    expect(navigations).toEqual([]);
   });
 
   it('routes chat thread notifications to channel and thread params', async () => {

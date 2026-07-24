@@ -25,7 +25,7 @@ describe('renderMarkdownToHtml', () => {
   it('renders canonical actor mentions as one inline mention pill without a double at-sign', () => {
     const html = renderMarkdownToHtml('Hello @[Rick](mention:person:npub1rick)');
 
-    expect(html).toContain('class="mention-link mention-link-person"');
+    expect(html).toContain('class="mention-link mention-pill mention-link-person mention-pill-person"');
     expect(html).toContain('data-mention-id="npub1rick"');
     expect(html).toContain('>@Rick</a>');
     expect(html).not.toContain('>@@Rick</a>');
@@ -132,7 +132,7 @@ describe('renderMarkdownToHtml', () => {
     expect(html).toContain('<strong>Conversation Summary</strong>');
   });
 
-  it('expands exact double-at document references into document cards', () => {
+  it('expands exact double-at document references into compact document pills', () => {
     const source = 'Published as @@Flight Deck and Pipelines - Conversation Summary';
     const expanded = expandInlineReferenceLinks(source, [{
       type: 'doc',
@@ -149,11 +149,11 @@ describe('renderMarkdownToHtml', () => {
         label: 'Flight Deck and Pipelines - Conversation Summary',
       }],
     });
-    expect(html).toContain('mention-link mention-link-doc');
-    expect(html).toContain('md-reference-record-card');
+    expect(html).toContain('mention-link mention-pill mention-link-doc mention-pill-doc');
+    expect(html).toContain('data-mention-render="pill"');
     expect(html).toContain('data-mention-id="doc-1"');
-    expect(html).toContain('<strong>Flight Deck and Pipelines - Conversation Summary</strong>');
-    expect(html).toContain('Flight Deck document');
+    expect(html).toContain('>Flight Deck and Pipelines - Conversation Summary</a>');
+    expect(html).not.toContain('md-reference-record-card');
     expect(html).not.toContain('@@Flight Deck and Pipelines - Conversation Summary');
   });
 
@@ -205,35 +205,46 @@ describe('renderMarkdownToHtml', () => {
     expect(html).toContain('>bad<');
   });
 
-  it('normalizes document mention links to document cards using the shared doc router type', () => {
+  it('normalizes document mention links to compact pills using the shared doc router type', () => {
     const source = '@[Spec](mention:document:doc-42)';
     expect(normalizeDocumentMentionCardLinks(source)).toBe('[Spec](mention:document:doc-42)');
 
     const html = renderMarkdownToHtml(source);
 
-    expect(html).toContain('mention-link mention-link-doc');
-    expect(html).toContain('md-reference-record-card');
+    expect(html).toContain('mention-link mention-pill mention-link-doc mention-pill-doc');
     expect(html).toContain('data-mention-type="doc"');
     expect(html).toContain('data-mention-id="doc-42"');
-    expect(html).toContain('<strong>Spec</strong>');
-    expect(html).toContain('Flight Deck document');
-    expect(html).not.toContain('>@');
+    expect(html).toContain('>Spec</a>');
+    expect(html).not.toContain('md-reference-record-card');
   });
 
-  it('renders task mention links as Flight Deck task cards', () => {
+  it('renders task mention links as compact pills', () => {
     const source = '@[Fix chat task modal](mention:task:task-42)';
     expect(normalizeDocumentMentionCardLinks(source)).toBe('[Fix chat task modal](mention:task:task-42)');
 
     const html = renderMarkdownToHtml(source);
 
-    expect(html).toContain('mention-link mention-link-task');
-    expect(html).toContain('md-reference-record-card');
+    expect(html).toContain('mention-link mention-pill mention-link-task mention-pill-task');
     expect(html).toContain('data-mention-type="task"');
     expect(html).toContain('data-mention-id="task-42"');
-    expect(html).toContain('<strong>Fix chat task modal</strong>');
-    expect(html).toContain('Flight Deck task');
-    expect(html).not.toContain('>@');
+    expect(html).toContain('>Fix chat task modal</a>');
+    expect(html).not.toContain('md-reference-record-card');
   });
+
+  it.each(['doc', 'task', 'scope', 'channel', 'chat', 'file', 'directory', 'report', 'flow', 'opportunity', 'person', 'agent'])(
+    'uses the generic compact pill markup for %s mentions',
+    (type) => {
+      const html = renderMarkdownToHtml(`@[Example](mention:${type}:${type}-1)`);
+
+      expect(html).toContain('class="mention-link mention-pill ');
+      expect(html).toContain(`mention-pill-${type}`);
+      expect(html).toContain('data-mention-render="pill"');
+      expect(html).toContain(`data-mention-type="${type}"`);
+      expect(html).toContain(`data-mention-id="${type}-1"`);
+      expect(html).not.toContain('md-storage-file-card');
+      expect(html).not.toContain('md-reference-record-card');
+    },
+  );
 
   it('keeps same-origin doc links on the docs route even when copied from chat', () => {
     setWindowHref('http://localhost/demo/chat?channelid=chan-1');

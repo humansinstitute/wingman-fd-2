@@ -2,7 +2,6 @@ import { forceRefreshToLatestBuild } from './service-worker-registration.js';
 
 const RUNNING_BUILD_ID = typeof __APP_BUILD_ID__ !== 'undefined' ? __APP_BUILD_ID__ : 'dev';
 const CHECK_INTERVAL_MS = 5 * 60 * 1000;
-const AUTO_REFRESH_STORAGE_PREFIX = 'flightdeck:auto-refresh-attempted:';
 const IS_DEV = import.meta.env.DEV;
 
 let updateBanner = null;
@@ -13,21 +12,6 @@ export function getRunningBuildId() {
   return RUNNING_BUILD_ID;
 }
 
-function autoRefreshStorageKey(buildId) {
-  return `${AUTO_REFRESH_STORAGE_PREFIX}${buildId}`;
-}
-
-function shouldAutoRefreshBuild(buildId) {
-  if (!buildId || typeof window === 'undefined') return false;
-  try {
-    if (window.sessionStorage?.getItem(autoRefreshStorageKey(buildId)) === '1') return false;
-    window.sessionStorage?.setItem(autoRefreshStorageKey(buildId), '1');
-    return true;
-  } catch {
-    return true;
-  }
-}
-
 async function checkForUpdate() {
   if (dismissed || IS_DEV) return;
   try {
@@ -35,12 +19,6 @@ async function checkForUpdate() {
     if (!res.ok) return;
     const data = await res.json();
     if (data.buildId && data.buildId !== RUNNING_BUILD_ID) {
-      if (shouldAutoRefreshBuild(data.buildId)) {
-        try {
-          await forceRefreshToLatestBuild();
-          return;
-        } catch {}
-      }
       showUpdateBanner(data.buildId);
     }
   } catch {}

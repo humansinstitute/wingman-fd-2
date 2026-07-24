@@ -98,7 +98,7 @@ This matters for the shipped UX:
 - the shell is still one Alpine store registered as `Alpine.store('chat', storeObj)`
 - `index.html` is still coupled directly to `$store.chat.*`
 - service-worker registration is silent in production; `src/service-worker-registration.js` itself does not render UI
-- when a later refresh-to-latest flow is triggered elsewhere, the service worker can activate and reload into the new build
+- version polling shows the blue update banner when a new build is available; the service worker activates and reloads only after the user chooses **Update now**
 
 ### Top-level shell
 
