@@ -360,6 +360,42 @@ describe('channel mention lookup', () => {
     expect(store.selectChannel).toHaveBeenCalledWith('channel-ops');
   });
 
+  it.each(['person', 'agent'])('opens the identity card for a rendered %s mention using its canonical npub', async (type) => {
+    const store = await createStore();
+    const npub = `npub1${type}`;
+    const link = {
+      dataset: { mentionType: type, mentionId: npub },
+      getBoundingClientRect: vi.fn(() => ({ left: 120, bottom: 240 })),
+    };
+    const event = { preventDefault: vi.fn(), clientX: 14, clientY: 18 };
+    store.openIdentityCard = vi.fn();
+    store.handleMentionNavigate = vi.fn();
+
+    expect(store.handleMentionLinkClick(event, link)).toBe(true);
+
+    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+    expect(store.openIdentityCard).toHaveBeenCalledWith({
+      currentTarget: link,
+      clientX: 14,
+      clientY: 18,
+    }, npub);
+    expect(store.handleMentionNavigate).not.toHaveBeenCalled();
+  });
+
+  it('preserves record navigation for non-actor rendered mentions', async () => {
+    const store = await createStore();
+    const link = { dataset: { mentionType: 'channel', mentionId: 'channel-ops' } };
+    const event = { preventDefault: vi.fn() };
+    store.openIdentityCard = vi.fn();
+    store.handleMentionNavigate = vi.fn();
+
+    expect(store.handleMentionLinkClick(event, link)).toBe(true);
+
+    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+    expect(store.handleMentionNavigate).toHaveBeenCalledWith('channel', 'channel-ops');
+    expect(store.openIdentityCard).not.toHaveBeenCalled();
+  });
+
   it('navigates copied chat references to the source channel and thread', async () => {
     const store = await createStore();
     store.navSection = 'docs';

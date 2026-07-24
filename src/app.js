@@ -2237,10 +2237,7 @@ export function initApp() {
 
         const link = e.target.closest('.mention-link');
         if (!link) return;
-        e.preventDefault();
-        const type = link.dataset.mentionType;
-        const id = link.dataset.mentionId;
-        if (type && id) this.handleMentionNavigate(type, id);
+        this.handleMentionLinkClick(e, link);
       });
       document.addEventListener('pointerover', (e) => {
         const link = e.target.closest('.mention-link[data-mention-type]');
@@ -8218,6 +8215,23 @@ export function initApp() {
         this.openReportModalById?.(id);
         this.syncRoute?.();
       }
+    },
+
+    handleMentionLinkClick(event, link = event?.target?.closest?.('.mention-link')) {
+      const type = String(link?.dataset?.mentionType || '').trim().toLowerCase();
+      const id = String(link?.dataset?.mentionId || '').trim();
+      if (!type || !id) return false;
+      event?.preventDefault?.();
+      if (type === 'person' || type === 'agent') {
+        this.openIdentityCard({
+          currentTarget: link,
+          clientX: event?.clientX,
+          clientY: event?.clientY,
+        }, id);
+      } else {
+        this.handleMentionNavigate(type, id);
+      }
+      return true;
     },
 
     createOptimisticChatDoc(recordId, title = '') {
