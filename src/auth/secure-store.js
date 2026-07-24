@@ -10,6 +10,33 @@ db.version(1).stores({
 const CRED_ID = 'primary';
 const DEVICE_KEY_ID = 'device-key';
 const AUTH_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
+export const CREDENTIAL_RECOVERY_STORAGE_KEY = 'nostr_secure_auth_recovery_v1';
+
+function readRecoveryCredentials() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(CREDENTIAL_RECOVERY_STORAGE_KEY) || 'null');
+    if (!parsed?.method || !parsed?.pubkey) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeRecoveryCredentials(record) {
+  try {
+    localStorage.setItem(CREDENTIAL_RECOVERY_STORAGE_KEY, JSON.stringify(record));
+  } catch {
+    // IndexedDB remains the primary credential store when localStorage is unavailable.
+  }
+}
+
+function clearRecoveryCredentials() {
+  try {
+    localStorage.removeItem(CREDENTIAL_RECOVERY_STORAGE_KEY);
+  } catch {
+    // Ignore storage cleanup failures during logout.
+  }
+}
 
 function hasDeviceCrypto() {
   return Boolean(
@@ -76,12 +103,23 @@ async function decryptWithDeviceKey(payload) {
 }
 
 export async function storeCredentials({ method, pubkey, secretHex, authEvent, bunkerUri }) {
-  const record = {
-    id: CRED_ID,
+  const recoveryRecord = {
     method,
     pubkey,
     createdAt: Date.now(),
     expiresAt: Date.now() + AUTH_EXPIRY_MS,
+  };
+  if (secretHex) recoveryRecord.secretHex = secretHex;
+  if (authEvent) recoveryRecord.authEvent = authEvent;
+  if (bunkerUri) recoveryRecord.bunkerUri = bunkerUri;
+  writeRecoveryCredentials(recoveryRecord);
+
+  const record = {
+    id: CRED_ID,
+    method,
+    pubkey,
+    createdAt: recoveryRecord.createdAt,
+    expiresAt: recoveryRecord.expiresAt,
     storageMode: hasDeviceCrypto() ? 'encrypted' : 'plain',
   };
 
@@ -99,13 +137,9 @@ export async function storeCredentials({ method, pubkey, secretHex, authEvent, b
 }
 
 export async function getStoredCredentials() {
-  const record = await db.credentials.get(CRED_ID);
-  if (!record) return null;
-
-  if (record.expiresAt && Date.now() > record.expiresAt) {
-    await clearCredentials();
-    return null;
-  }
+  const recoveryRecord = readRecoveryCredentials();
+  const record = await db.credentials.get(CRED_ID).catch(() => null);
+  if (!record) return recoveryRecord;
 
   const result = {
     method: record.method,
@@ -123,20 +157,28 @@ export async function getStoredCredentials() {
       result.bunkerUri = await decryptWithDeviceKey(record.encryptedBunkerUri);
     }
   } catch (error) {
-    await clearCredentials();
-    return null;
+    // A browser/device-key failure must not silently log the user out or erase
+    // the only remaining credential. Use the recovery copy when available.
+    return recoveryRecord;
   }
 
   return result;
 }
 
 export async function clearCredentials() {
-  await db.credentials.delete(CRED_ID);
+  clearRecoveryCredentials();
+  await db.credentials.delete(CRED_ID).catch(() => undefined);
 }
 
 export async function refreshCredentialExpiry() {
-  const record = await db.credentials.get(CRED_ID);
+  const expiresAt = Date.now() + AUTH_EXPIRY_MS;
+  const recoveryRecord = readRecoveryCredentials();
+  if (recoveryRecord) {
+    recoveryRecord.expiresAt = expiresAt;
+    writeRecoveryCredentials(recoveryRecord);
+  }
+  const record = await db.credentials.get(CRED_ID).catch(() => null);
   if (!record) return;
-  record.expiresAt = Date.now() + AUTH_EXPIRY_MS;
-  await db.credentials.put(record);
+  record.expiresAt = expiresAt;
+  await db.credentials.put(record).catch(() => undefined);
 }
