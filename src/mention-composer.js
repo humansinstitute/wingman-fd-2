@@ -111,6 +111,22 @@ export function replaceComposerTextRange(root, start, end, replacement) {
   selection?.addRange(range);
 }
 
+export function insertMentionAtComposerSelection(root, mention) {
+  if (!root?.ownerDocument) return false;
+  const offset = composerCaretOffset(root);
+  const value = serializeMentionComposer(root);
+  const needsLeadingSpace = offset > 0 && !/\s/.test(value[offset - 1] || '');
+  const needsTrailingSpace = offset >= value.length || !/\s/.test(value[offset] || '');
+  const pill = createMentionPill(root.ownerDocument, mention);
+  replaceComposerTextRange(root, offset, offset, [
+    ...(needsLeadingSpace ? [' '] : []),
+    pill,
+    ...(needsTrailingSpace ? [' '] : []),
+  ]);
+  root.focus();
+  return true;
+}
+
 export function insertPlainTextAtSelection(root, text) {
   const doc = root?.ownerDocument;
   const selection = doc?.getSelection?.();

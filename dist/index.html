@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-4qKMXQI_.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-Dnyp4erc.css">
+  <script type="module" crossorigin src="/assets/index-b0ugrD4G.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-NP91J-f7.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -3472,6 +3472,15 @@
                   <div><strong>Editing message</strong><span x-show="$store.chat.messageEdit.error" x-text="$store.chat.messageEdit.error"></span></div>
                   <button type="button" @click="$store.chat.cancelMessageEdit()" :disabled="$store.chat.messageEdit.submitting">Cancel</button>
                 </div>
+                <div class="recent-mention-chips" x-show="$store.chat.getRecentMentionChips('message').length" x-cloak aria-label="Recently mentioned participants">
+                  <template x-for="person in $store.chat.getRecentMentionChips('message')" :key="person.id">
+                    <button type="button" class="recent-mention-chip" @click="$store.chat.insertRecentMention('message', person, $event)" :aria-label="'Mention ' + person.label">
+                      <img x-show="person.avatarUrl" :src="person.avatarUrl" alt="" />
+                      <span class="recent-mention-chip-avatar" x-show="!person.avatarUrl" aria-hidden="true" x-text="$store.chat.getInitials(person.label)"></span>
+                      <span x-text="person.label"></span>
+                    </button>
+                  </template>
+                </div>
                 <div
                   class="chat-input"
                   data-chat-composer="message"
@@ -3745,6 +3754,15 @@
                 <div class="chat-editing-banner" x-show="$store.chat.isEditingMessage('thread')" x-cloak>
                   <div><strong>Editing reply</strong><span x-show="$store.chat.messageEdit.error" x-text="$store.chat.messageEdit.error"></span></div>
                   <button type="button" @click="$store.chat.cancelMessageEdit()" :disabled="$store.chat.messageEdit.submitting">Cancel</button>
+                </div>
+                <div class="recent-mention-chips" x-show="$store.chat.getRecentMentionChips('thread').length" x-cloak aria-label="Recently mentioned participants">
+                  <template x-for="person in $store.chat.getRecentMentionChips('thread')" :key="person.id">
+                    <button type="button" class="recent-mention-chip" @click="$store.chat.insertRecentMention('thread', person, $event)" :aria-label="'Mention ' + person.label">
+                      <img x-show="person.avatarUrl" :src="person.avatarUrl" alt="" />
+                      <span class="recent-mention-chip-avatar" x-show="!person.avatarUrl" aria-hidden="true" x-text="$store.chat.getInitials(person.label)"></span>
+                      <span x-text="person.label"></span>
+                    </button>
+                  </template>
                 </div>
                 <div
                   class="chat-input"

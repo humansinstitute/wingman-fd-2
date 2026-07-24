@@ -108,6 +108,7 @@ import { renderMarkdownToHtml } from './markdown.js';
 import {
   canonicalActorMentions,
   composerCaretOffset,
+  insertMentionAtComposerSelection,
   createMentionPill,
   hydrateMentionComposer,
   insertPlainTextAtSelection,
@@ -115,6 +116,7 @@ import {
   replaceComposerTextRange,
   serializeMentionComposer,
 } from './mention-composer.js';
+import { rankRecentActorMentions } from './recent-mentions.js';
 import { resolveChannelLabel, resolveChannelParticipants } from './channel-labels.js';
 import { isDmChannel } from './dm-scope.js';
 import { buildFlightDeckDocumentTitle } from './page-title.js';
@@ -7602,6 +7604,35 @@ export function initApp() {
       for (const doc of (this.mentionDocumentIndex || [])) add(doc);
       for (const doc of (this.documents || [])) add(doc);
       return Array.from(byId.values());
+    },
+
+    getRecentMentionChips(composer = 'message', limit = 8) {
+      const draft = composer === 'thread' ? this.threadInput : this.messageInput;
+      return rankRecentActorMentions({
+        messages: this.messages,
+        threadId: this.activeThreadId,
+        mentionPeople: this.getMentionPeople({ visibleOnly: true }),
+        currentUserNpub: this.currentPgActorNpub || this.session?.npub,
+        draft,
+        limit,
+      }).map((person) => ({
+        ...person,
+        avatarUrl: this.getSenderAvatar?.(person.id) || '',
+      }));
+    },
+
+    insertRecentMention(composer, person, event = null) {
+      const inputBar = event?.currentTarget?.closest?.('.chat-input-bar, .thread-input-bar, .workroom-thread-composer');
+      const el = inputBar?.querySelector?.(`[data-chat-composer="${composer}"]`)
+        || document.querySelector(`[data-chat-composer="${composer}"]`);
+      if (!el || !person?.id) return;
+      insertMentionAtComposerSelection(el, {
+        type: person.type,
+        npub: person.id,
+        label: person.label,
+      });
+      this.syncMentionComposerModel(el);
+      this.closeMentionPopover();
     },
 
     patchMentionDocumentIndex(nextDocument) {

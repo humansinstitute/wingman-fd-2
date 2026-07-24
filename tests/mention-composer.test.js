@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   canonicalActorMentions,
   createMentionPill,
   hydrateMentionComposer,
+  insertMentionAtComposerSelection,
   insertPlainTextAtSelection,
   removeAdjacentMentionPill,
   serializeMentionComposer,
@@ -31,6 +32,16 @@ function caret(root, node, offset) {
 }
 
 describe('tokenized mention composer', () => {
+  it('inserts a structured mention at the caret and restores focus', () => {
+    const root = composer('Hello there');
+    caret(root, root.firstChild, 5);
+    const focus = vi.spyOn(root, 'focus');
+
+    expect(insertMentionAtComposerSelection(root, { type: 'agent', npub: rick, label: 'Rick' })).toBe(true);
+    expect(serializeMentionComposer(root)).toBe(`Hello @[Rick](mention:agent:${rick}) there`);
+    expect(focus).toHaveBeenCalled();
+  });
+
   it('hydrates a canonical actor mention as an atomic accessible pill and serializes losslessly', () => {
     const root = composer(`Hello ${token} there`);
     const pill = root.querySelector('[data-mention-token]');
