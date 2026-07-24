@@ -111,6 +111,7 @@ describe('channel mention lookup', () => {
     };
     store._mentionTargetEl = target;
     store._mentionStartPos = 0;
+    store._mentionEndPos = target.selectionStart;
     store.selectedAgentMentionsByComposer = {};
     store.selectMention(results[0]);
 
@@ -188,6 +189,7 @@ describe('channel mention lookup', () => {
     };
     store._mentionTargetEl = target;
     store._mentionStartPos = 0;
+    store._mentionEndPos = target.selectionStart;
     store.selectedAgentMentionsByComposer = {};
     store.selectMention(store.searchMentions('Ric', { visibleOnly: true })[0]);
 
@@ -243,6 +245,7 @@ describe('channel mention lookup', () => {
     };
     store._mentionTargetEl = target;
     store._mentionStartPos = 0;
+    store._mentionEndPos = target.selectionStart;
     store.selectedAgentMentionsByComposer = {};
     store.selectMention(results[0]);
     expect(target.value).toBe(`@[${rickNpub}](mention:person:${rickNpub}) `);

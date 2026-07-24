@@ -993,6 +993,7 @@ export function initApp() {
     _mentionDocumentIndexRefreshPromise: null,
     _mentionTargetEl: null,
     _mentionStartPos: -1,
+    _mentionEndPos: -1,
     selectedAgentMentionsByComposer: { message: [], thread: [] },
 
     currentFolderId: null,
@@ -8013,6 +8014,7 @@ export function initApp() {
         this.mentionActive = true;
         this._mentionTargetEl = el;
         this._mentionStartPos = atPos;
+        this._mentionEndPos = cursorPos;
         this.mentionQuery = '';
         this.mentionResults = this.getDefaultMentionResults(8, mentionOptions);
         this.mentionSelectedIndex = 0;
@@ -8023,6 +8025,7 @@ export function initApp() {
       this.mentionActive = true;
       this._mentionTargetEl = el;
       this._mentionStartPos = atPos;
+      this._mentionEndPos = cursorPos;
       this.mentionQuery = query;
       this.mentionResults = this.searchMentions(query, mentionOptions);
       this.mentionSelectedIndex = 0;
@@ -8064,17 +8067,16 @@ export function initApp() {
 
     selectMention(result) {
       const el = this._mentionTargetEl;
-      if (!el || this._mentionStartPos < 0) return;
+      if (!el || this._mentionStartPos < 0 || this._mentionEndPos < this._mentionStartPos) return;
 
       const contentEditable = el?.isContentEditable || el?.getAttribute?.('contenteditable') === 'true';
       if (contentEditable) {
-        const cursorPos = composerCaretOffset(el);
         const pill = createMentionPill(el.ownerDocument, {
           type: result.type,
           npub: result.id,
           label: result.label,
         });
-        replaceComposerTextRange(el, this._mentionStartPos, cursorPos, [pill, ' ']);
+        replaceComposerTextRange(el, this._mentionStartPos, this._mentionEndPos, [pill, ' ']);
         this.syncMentionComposerModel(el);
         el.focus();
         this.closeMentionPopover();
@@ -8082,9 +8084,8 @@ export function initApp() {
       }
 
       const value = el.value;
-      const cursorPos = el.selectionStart;
       const before = value.slice(0, this._mentionStartPos);
-      const after = value.slice(cursorPos);
+      const after = value.slice(this._mentionEndPos);
       const tag = `@[${result.label}](mention:${result.type}:${result.id}) `;
       const newValue = before + tag + after;
 
@@ -8159,6 +8160,7 @@ export function initApp() {
       this.mentionSelectedIndex = 0;
       this._mentionTargetEl = null;
       this._mentionStartPos = -1;
+      this._mentionEndPos = -1;
     },
 
     handleMentionNavigate(type, id) {
