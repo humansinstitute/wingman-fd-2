@@ -3,6 +3,7 @@ import {
   hydrateTowerPgChannels,
   hydrateTowerPgChannelMessages,
   hydrateTowerPgChannelResponseActivities,
+  hydrateTowerPgChannelAgentActivities,
   hydrateTowerPgEventUpdates,
   hydrateTowerPgAudioNotes,
   hydrateTowerPgDoc,
@@ -971,6 +972,8 @@ describe('PG read hydrator', () => {
     const replaceChannelsForOwner = vi.fn(async () => 1);
     const replacePgMessagesForChannel = vi.fn(async () => 2);
     const getTowerPgResponseActivities = vi.fn(async () => ({ response_activities: [] }));
+    const getTowerPgAgentActivities = vi.fn(async () => ({ agent_activities: [] }));
+    const replacePgAgentActivitiesForChannel = vi.fn(async () => 0);
     const replacePgResponseActivitiesForChannel = vi.fn(async () => 0);
 
     await hydrateTowerPgChannels(target, {
@@ -978,6 +981,8 @@ describe('PG read hydrator', () => {
       getTowerPgChannelThreads,
       getTowerPgChannelMessages,
       getTowerPgResponseActivities,
+      getTowerPgAgentActivities,
+      replacePgAgentActivitiesForChannel,
       replaceChannelsForOwner,
       replacePgMessagesForChannel,
       replacePgResponseActivitiesForChannel,
@@ -1004,6 +1009,8 @@ describe('PG read hydrator', () => {
     const replacePgMessagesForChannel = vi.fn(async () => 2);
     const getTowerPgResponseActivities = vi.fn(async () => ({ response_activities: [] }));
     const replacePgResponseActivitiesForChannel = vi.fn(async () => 0);
+    const getTowerPgAgentActivities = vi.fn(async () => ({ agent_activities: [] }));
+    const replacePgAgentActivitiesForChannel = vi.fn(async () => 0);
 
     const rows = await hydrateTowerPgChannelMessages(target, 'channel-1', {
       getTowerPgChannelThreads,
@@ -1011,6 +1018,8 @@ describe('PG read hydrator', () => {
       getTowerPgResponseActivities,
       replacePgMessagesForChannel,
       replacePgResponseActivitiesForChannel,
+      getTowerPgAgentActivities,
+      replacePgAgentActivitiesForChannel,
     });
 
     expect(getTowerPgChannelThreads).toHaveBeenCalledWith('workspace-1', 'channel-1', {
@@ -1046,6 +1055,8 @@ describe('PG read hydrator', () => {
     const replacePgMessagesForChannel = vi.fn(async () => 1);
     const getTowerPgResponseActivities = vi.fn(async () => ({ response_activities: [] }));
     const replacePgResponseActivitiesForChannel = vi.fn(async () => 0);
+    const getTowerPgAgentActivities = vi.fn(async () => ({ agent_activities: [] }));
+    const replacePgAgentActivitiesForChannel = vi.fn(async () => 0);
 
     const rows = await hydrateTowerPgChannelMessages(target, 'channel-1', {
       getTowerPgChannelThreads,
@@ -1053,6 +1064,8 @@ describe('PG read hydrator', () => {
       getTowerPgResponseActivities,
       replacePgMessagesForChannel,
       replacePgResponseActivitiesForChannel,
+      getTowerPgAgentActivities,
+      replacePgAgentActivitiesForChannel,
     });
 
     expect(rows).toEqual([
@@ -1084,6 +1097,8 @@ describe('PG read hydrator', () => {
     const replacePgMessagesForChannel = vi.fn(async () => 0);
     const getTowerPgResponseActivities = vi.fn(async () => ({ response_activities: [] }));
     const replacePgResponseActivitiesForChannel = vi.fn(async () => 0);
+    const getTowerPgAgentActivities = vi.fn(async () => ({ agent_activities: [] }));
+    const replacePgAgentActivitiesForChannel = vi.fn(async () => 0);
 
     const rows = await hydrateTowerPgChannelMessages(target, 'channel-1', {
       getTowerPgChannelThreads,
@@ -1091,6 +1106,8 @@ describe('PG read hydrator', () => {
       getTowerPgResponseActivities,
       replacePgMessagesForChannel,
       replacePgResponseActivitiesForChannel,
+      getTowerPgAgentActivities,
+      replacePgAgentActivitiesForChannel,
     });
 
     expect(rows).toEqual([]);
@@ -1112,6 +1129,8 @@ describe('PG read hydrator', () => {
     const replacePgTasksForChannel = vi.fn(async () => 1);
     const getTowerPgResponseActivities = vi.fn(async () => ({ response_activities: [] }));
     const replacePgResponseActivitiesForChannel = vi.fn(async () => 0);
+    const getTowerPgAgentActivities = vi.fn(async () => ({ agent_activities: [] }));
+    const replacePgAgentActivitiesForChannel = vi.fn(async () => 0);
 
     const result = await hydrateTowerPgEventUpdates(target, [
       { entity_type: 'message', channel_id: 'channel-1' },
@@ -1126,6 +1145,8 @@ describe('PG read hydrator', () => {
       replacePgMessagesForChannel,
       replacePgTasksForChannel,
       replacePgResponseActivitiesForChannel,
+      getTowerPgAgentActivities,
+      replacePgAgentActivitiesForChannel,
     });
 
     expect(result).toEqual({ channels: 2, appliedTargets: 3, fallbackEvents: 0, events: 4 });
@@ -2114,6 +2135,47 @@ describe('PG read hydrator', () => {
       }),
     ]);
     expect(replacePgResponseActivitiesForChannel).toHaveBeenCalledWith('channel-1', activities);
+  });
+
+  it('hydrates current user-visible agent activity after reconnect', async () => {
+    const target = store();
+    const getTowerPgAgentActivities = vi.fn(async () => ({
+      agent_activities: [{
+        id: 'row-1', activity_id: 'activity-1', workspace_id: 'workspace-1', channel_id: 'channel-1',
+        thread_id: 'thread-1', trigger_message_id: 'message-1', session_id: 'session-1',
+        agent_npub: 'npub1agent', state: 'working', visibility: 'user_visible', sequence: 3,
+        summary: 'Running tests', expires_at: '2999-01-01T00:00:00.000Z',
+      }],
+    }));
+    const replacePgAgentActivitiesForChannel = vi.fn(async () => 1);
+
+    const activities = await hydrateTowerPgChannelAgentActivities(target, 'channel-1', {
+      getTowerPgAgentActivities,
+      replacePgAgentActivitiesForChannel,
+    });
+
+    expect(activities).toEqual([expect.objectContaining({ activity_id: 'activity-1', sequence: 3 })]);
+    expect(replacePgAgentActivitiesForChannel).toHaveBeenCalledWith('channel-1', activities);
+  });
+
+  it('applies only the newest SSE activity snapshot and removes terminal activity', async () => {
+    const upsertAgentActivity = vi.fn(async () => true);
+    const clearAgentActivity = vi.fn(async () => 1);
+    const snapshot = (sequence, state) => ({
+      event_type: 'flightdeck_pg.agent_activity.snapshot', entity_type: 'agent_activity', entity_id: 'row-1',
+      payload: { agent_activity: {
+        id: 'row-1', activity_id: 'activity-1', channel_id: 'channel-1', thread_id: 'thread-1',
+        trigger_message_id: 'message-1', session_id: 'session-1', agent_npub: 'npub1agent',
+        state, visibility: 'user_visible', sequence, expires_at: '2999-01-01T00:00:00.000Z',
+      } },
+    });
+
+    await hydrateTowerPgEventUpdates(store(), [snapshot(2, 'working'), snapshot(1, 'working')], { upsertAgentActivity, clearAgentActivity });
+    expect(upsertAgentActivity).toHaveBeenCalledOnce();
+    expect(upsertAgentActivity).toHaveBeenCalledWith(expect.objectContaining({ sequence: 2 }));
+
+    await hydrateTowerPgEventUpdates(store(), [snapshot(3, 'completed')], { upsertAgentActivity, clearAgentActivity });
+    expect(clearAgentActivity).toHaveBeenCalledWith('row-1');
   });
 
   it('hydrates PG response activities for an open thread target', async () => {

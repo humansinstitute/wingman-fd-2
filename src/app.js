@@ -645,6 +645,8 @@ export function initApp() {
     reactionRows: [],
     channelResponseActivities: [],
     threadResponseActivities: [],
+    agentActivities: [],
+    expandedAgentActivityIds: {},
     reactionPickerTargetKey: '',
     audioNotes: [],
     groups: [],

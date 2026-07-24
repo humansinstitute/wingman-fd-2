@@ -3420,6 +3420,20 @@
                         <span class="chat-post-response-activity-title" x-text="$store.chat.formatResponseActivityTitle(activity)"></span>
                       </div>
                     </template>
+                    <template x-for="activity in $store.chat.getAgentActivitiesForMessage(msg)" :key="activity.record_id">
+                      <div class="agent-activity" aria-live="polite">
+                        <button type="button" class="agent-activity-toggle" @click.stop="$store.chat.toggleAgentActivity(activity.activity_id)" :aria-expanded="$store.chat.isAgentActivityExpanded(activity.activity_id)">
+                          <span class="agent-activity-pulse" aria-hidden="true"></span>
+                          <span class="agent-activity-title" x-text="$store.chat.formatAgentActivityTitle(activity)"></span>
+                          <span class="agent-activity-summary" x-show="activity.summary" x-text="activity.summary"></span>
+                          <span class="agent-activity-chevron" aria-hidden="true" x-text="$store.chat.isAgentActivityExpanded(activity.activity_id) ? '−' : '+'"></span>
+                        </button>
+                        <div class="agent-activity-detail" x-show="$store.chat.isAgentActivityExpanded(activity.activity_id)" x-cloak>
+                          <p x-show="activity.body" x-text="activity.body"></p>
+                          <span x-text="activity.updated_at ? 'Updated ' + new Date(activity.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''"></span>
+                        </div>
+                      </div>
+                    </template>
                     <template x-if="$store.chat.getThreadReplyCount(msg.record_id) > 0">
                       <div class="chat-thread-summary" @click="$store.chat.openThread(msg.record_id)">
                         <div class="chat-thread-preview">
@@ -3690,6 +3704,23 @@
                         <span x-text="$store.chat.formatResponseActivityTitle(activity)"></span>
                       </div>
                       <p x-show="activity.message" x-text="activity.message"></p>
+                    </div>
+                  </div>
+                </template>
+                <template x-for="activity in $store.chat.activeThreadAgentActivities" :key="activity.record_id">
+                  <div class="thread-response-activity agent-activity-thread" aria-live="polite">
+                    <button type="button" class="identity-avatar-button" @click.stop="$store.chat.openIdentityCard($event, activity.agent_npub)" :title="$store.chat.getSenderName(activity.agent_npub)">
+                      <template x-if="$store.chat.getSenderAvatar(activity.agent_npub)"><img class="thread-avatar" :src="$store.chat.getSenderAvatar(activity.agent_npub)" alt="Profile picture" /></template>
+                      <template x-if="!$store.chat.getSenderAvatar(activity.agent_npub)"><div class="thread-avatar thread-avatar-fallback" x-text="$store.chat.getInitials($store.chat.getSenderName(activity.agent_npub))"></div></template>
+                    </button>
+                    <div class="thread-response-activity-body">
+                      <button type="button" class="agent-activity-toggle" @click="$store.chat.toggleAgentActivity(activity.activity_id)" :aria-expanded="$store.chat.isAgentActivityExpanded(activity.activity_id)">
+                        <span class="agent-activity-pulse" aria-hidden="true"></span>
+                        <span class="agent-activity-title" x-text="$store.chat.formatAgentActivityTitle(activity)"></span>
+                        <span class="agent-activity-summary" x-show="activity.summary" x-text="activity.summary"></span>
+                        <span class="agent-activity-chevron" aria-hidden="true" x-text="$store.chat.isAgentActivityExpanded(activity.activity_id) ? '−' : '+'"></span>
+                      </button>
+                      <div class="agent-activity-detail" x-show="$store.chat.isAgentActivityExpanded(activity.activity_id)" x-cloak><p x-show="activity.body" x-text="activity.body"></p><span x-text="activity.updated_at ? 'Updated ' + new Date(activity.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''"></span></div>
                     </div>
                   </div>
                 </template>

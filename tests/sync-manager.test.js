@@ -1416,6 +1416,20 @@ describe('sync family progress helpers', () => {
     expect(refreshChannels).not.toHaveBeenCalled();
   });
 
+  it('hydrates the selected PG channel on SSE reconnect', async () => {
+    isTowerPgBackendMode.mockReturnValue(true);
+    hydrateTowerPgChannelMessages.mockResolvedValueOnce([]);
+    const { fn, store } = bindMethod('handleSSEStatus', {
+      selectedChannelId: 'channel-1',
+    });
+
+    fn({ status: 'connected' });
+    await Promise.resolve();
+
+    expect(hydrateTowerPgChannelMessages).toHaveBeenCalledWith(expect.any(Object), 'channel-1');
+    expect(hydrateTowerPgChannelMessages.mock.calls[0][0]).toBe(store);
+  });
+
   it('serializes PG SSE hydration so an older refresh cannot overwrite a newer one', async () => {
     isTowerPgBackendMode.mockReturnValue(true);
     let resolveFirst;

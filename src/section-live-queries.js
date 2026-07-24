@@ -21,6 +21,7 @@ import {
   getReactionsByTargets,
   getResponseActivitiesForChannel,
   getResponseActivitiesForTarget,
+  getAgentActivitiesForChannel,
   isWorkspaceDbOpenForKey,
 } from './db.js';
 import { recordFamilyHash } from './translators/chat.js';
@@ -466,6 +467,14 @@ function buildDetailSpecs(store) {
           onNext: (activities) => {
             if (!isSameWorkspace(store, workspaceKey, ownerNpub) || store.selectedChannelId !== channelId) return;
             return store.applyChannelResponseActivities?.(activities);
+          },
+        },
+        {
+          key: `chat:agent-activities:${channelId}`,
+          query: () => getAgentActivitiesForChannel(channelId),
+          onNext: (activities) => {
+            if (!isSameWorkspace(store, workspaceKey, ownerNpub) || store.selectedChannelId !== channelId) return;
+            return store.applyAgentActivities?.(activities);
           },
         },
       ];

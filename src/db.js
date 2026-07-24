@@ -98,6 +98,10 @@ const WORKSPACE_STORES_V16 = {
   workroom_links: 'record_id, workroom_id, link_type, target_type, target_id, status, updated_at',
   workroom_approvals: 'record_id, workspace_id, target_type, target_id, action, status, channel_id, reviewer_npub, requested_by_npub, updated_at',
 };
+const WORKSPACE_STORES_V17 = {
+  ...WORKSPACE_STORES_V16,
+  agent_activities: 'record_id, activity_id, channel_id, thread_id, trigger_message_id, session_id, agent_npub, state, sequence, expires_at, updated_at',
+};
 
 function createWorkspaceDb(workspaceDbKey) {
   const db = new Dexie(`wingman-fd-ws-${workspaceDbKey}`);
@@ -173,6 +177,7 @@ function createWorkspaceDb(workspaceDbKey) {
   db.version(14).stores(WORKSPACE_STORES_V14);
   db.version(15).stores(WORKSPACE_STORES_V15);
   db.version(16).stores(WORKSPACE_STORES_V16);
+  db.version(17).stores(WORKSPACE_STORES_V17);
   return db;
 }
 
@@ -1404,6 +1409,46 @@ export async function pruneExpiredResponseActivities(now = new Date()) {
   return wsDb().response_activities.where('expires_at').belowOrEqual(nowIso).delete();
 }
 
+export async function upsertAgentActivity(activity) {
+  const row = sanitizeForStorage(activity);
+  if (!row?.record_id || !row?.activity_id) return false;
+  const table = wsDb().agent_activities;
+  const existing = await table.where('activity_id').equals(row.activity_id).first();
+  if (existing && Number(existing.sequence) >= Number(row.sequence)) return false;
+  if (existing && existing.record_id !== row.record_id) await table.delete(existing.record_id);
+  await table.put(row);
+  return true;
+}
+
+export async function clearAgentActivity(recordId) {
+  const id = String(recordId || '').trim();
+  if (!id) return 0;
+  return wsDb().agent_activities.delete(id);
+}
+
+export async function replacePgAgentActivitiesForChannel(channelId, activities = []) {
+  const id = String(channelId || '').trim();
+  if (!id) return 0;
+  const rows = (Array.isArray(activities) ? activities : []).map(sanitizeForStorage).filter((row) => row?.record_id);
+  const db = wsDb();
+  return db.transaction('rw', db.agent_activities, async () => {
+    const existing = await db.agent_activities.where('channel_id').equals(id).toArray();
+    if (existing.length) await db.agent_activities.bulkDelete(existing.map((row) => row.record_id));
+    if (rows.length) await db.agent_activities.bulkPut(rows);
+    return rows.length;
+  });
+}
+
+export async function getAgentActivitiesForChannel(channelId) {
+  const id = String(channelId || '').trim();
+  if (!id) return [];
+  return wsDb().agent_activities.where('channel_id').equals(id).toArray();
+}
+
+export async function pruneExpiredAgentActivities(now = new Date()) {
+  return wsDb().agent_activities.where('expires_at').belowOrEqual(now.toISOString()).delete();
+}
+
 export async function deleteRuntimeRecordByFamily(familyIdOrHash, recordId) {
   const family = getSyncFamily(familyIdOrHash);
   const tableName = family?.table;
@@ -1777,6 +1822,7 @@ export async function clearRuntimeData() {
     db.comments.clear(),
     db.reactions.clear(),
     db.response_activities.clear(),
+    db.agent_activities.clear(),
     db.audio_notes.clear(),
     db.scopes.clear(),
     db.flows.clear(),

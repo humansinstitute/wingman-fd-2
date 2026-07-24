@@ -67,6 +67,7 @@ import {
   togglePreviewId,
 } from './preview-truncation.js';
 import { canonicalAgentMentionsFromSelection } from './agent-direct-chat.js';
+import { isVisibleAgentActivity } from './agent-activity.js';
 
 const chatDerivedCache = new WeakMap();
 const THREAD_REPLY_PREVIEW_WORD_LIMIT = 50;
@@ -346,6 +347,16 @@ export const chatMessageManagerMixin = {
     return (Array.isArray(this.threadResponseActivities) ? this.threadResponseActivities : [])
       .filter((activity) => isVisibleResponseActivity(activity, now))
       .sort((left, right) => String(left.updated_at || '').localeCompare(String(right.updated_at || '')));
+  },
+  get activeThreadAgentActivities() {
+    const thread = this.getThreadParentMessage?.();
+    const threadIds = new Set([
+      this.activeThreadId,
+      thread?.record_id,
+      thread?.pg_thread_id,
+      thread?.thread_id,
+    ].map((value) => String(value || '').trim()).filter(Boolean));
+    return this.getVisibleAgentActivities().filter((activity) => threadIds.has(String(activity.thread_id || '').trim()));
   },
 
   get resolvedThreadVisibleReplyCount() {
@@ -650,9 +661,14 @@ export const chatMessageManagerMixin = {
     this.channelResponseActivities = Array.isArray(activities) ? activities : [];
     this.updateResponseActivityTimer();
   },
+  applyAgentActivities(activities = []) {
+    this.agentActivities = Array.isArray(activities) ? activities : [];
+    this.updateResponseActivityTimer();
+  },
   updateResponseActivityTimer() {
     const hasActiveActivities = this.activeThreadResponseActivities.length > 0
-      || this.getVisibleChannelResponseActivities().length > 0;
+      || this.getVisibleChannelResponseActivities().length > 0
+      || this.getVisibleAgentActivities().length > 0;
     if (!hasActiveActivities) {
       if (this.responseActivityTimer && typeof window !== 'undefined') {
         window.clearInterval(this.responseActivityTimer);
@@ -663,7 +679,7 @@ export const chatMessageManagerMixin = {
     if (this.responseActivityTimer || typeof window === 'undefined') return;
     this.responseActivityTimer = window.setInterval(() => {
       this.responseActivityTick = Number(this.responseActivityTick || 0) + 1;
-      if (this.activeThreadResponseActivities.length === 0 && this.getVisibleChannelResponseActivities().length === 0) {
+      if (this.activeThreadResponseActivities.length === 0 && this.getVisibleChannelResponseActivities().length === 0 && this.getVisibleAgentActivities().length === 0) {
         this.updateResponseActivityTimer();
       }
     }, 900);
@@ -672,6 +688,31 @@ export const chatMessageManagerMixin = {
     const now = Date.now();
     return sortResponseActivities((Array.isArray(this.channelResponseActivities) ? this.channelResponseActivities : [])
       .filter((activity) => isVisibleResponseActivity(activity, now)));
+  },
+  getVisibleAgentActivities() {
+    void this.responseActivityTick;
+    return (Array.isArray(this.agentActivities) ? this.agentActivities : [])
+      .filter((activity) => isVisibleAgentActivity(activity))
+      .sort((left, right) => Number(left.sequence) - Number(right.sequence));
+  },
+  getAgentActivitiesForMessage(message) {
+    const messageId = String(message?.record_id || message || '').trim();
+    if (!messageId) return [];
+    return this.getVisibleAgentActivities().filter((activity) => activity.trigger_message_id === messageId);
+  },
+  formatAgentActivityTitle(activity = {}) {
+    const senderName = this.getSenderName(activity.agent_npub);
+    const tick = Number(this.responseActivityTick || 0);
+    const label = activity.label || RESPONSE_ACTIVITY_WORDS[Math.floor(tick / RESPONSE_ACTIVITY_SUFFIXES.length) % RESPONSE_ACTIVITY_WORDS.length];
+    return `${senderName} is ${label}${RESPONSE_ACTIVITY_SUFFIXES[tick % RESPONSE_ACTIVITY_SUFFIXES.length]}`;
+  },
+  toggleAgentActivity(activityId) {
+    const id = String(activityId || '').trim();
+    if (!id) return;
+    this.expandedAgentActivityIds = { ...this.expandedAgentActivityIds, [id]: !this.expandedAgentActivityIds?.[id] };
+  },
+  isAgentActivityExpanded(activityId) {
+    return Boolean(this.expandedAgentActivityIds?.[String(activityId || '').trim()]);
   },
   getResponseActivitiesForThread(threadOrMessage) {
     const ids = new Set();

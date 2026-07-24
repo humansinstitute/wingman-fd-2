@@ -19,6 +19,7 @@ import {
   getTowerPgChannelMessages,
   getTowerPgReactions,
   getTowerPgResponseActivities,
+  getTowerPgAgentActivities,
   getTowerPgChannelTasks,
   getTowerPgTask,
   getTowerPgTaskComments,
@@ -46,6 +47,7 @@ import {
   replacePgReactionsForTarget,
   replacePgResponseActivitiesForChannel,
   replacePgResponseActivitiesForTarget,
+  replacePgAgentActivitiesForChannel,
   replacePgTasksForChannel,
   replacePgWorkroomsForChannel,
   replacePgWorkroomsForWorkspace,
@@ -57,9 +59,12 @@ import {
   replaceTasksForOwner,
   replaceScopesForOwner,
   clearResponseActivity,
+  clearAgentActivity,
+  upsertAgentActivity,
   upsertDocument,
   upsertTask,
 } from './db.js';
+import { isTerminalAgentActivity, mapPgAgentActivity } from './agent-activity.js';
 import { recordFamilyHash } from './translators/chat.js';
 import { recordFamilyHash as taskFamilyHash } from './translators/tasks.js';
 
@@ -1267,8 +1272,10 @@ export async function hydrateTowerPgChannelMessages(store, channelId, deps = {})
   const readThreads = deps.getTowerPgChannelThreads || getTowerPgChannelThreads;
   const readMessages = deps.getTowerPgChannelMessages || getTowerPgChannelMessages;
   const readActivities = deps.getTowerPgResponseActivities || getTowerPgResponseActivities;
+  const readAgentActivities = deps.getTowerPgAgentActivities || getTowerPgAgentActivities;
   const replaceMessages = deps.replacePgMessagesForChannel || replacePgMessagesForChannel;
   const replaceActivities = deps.replacePgResponseActivitiesForChannel || replacePgResponseActivitiesForChannel;
+  const replaceAgentActivities = deps.replacePgAgentActivitiesForChannel || replacePgAgentActivitiesForChannel;
   const actorNpubByActorId = await resolveActorNpubByActorIdWithFallback(store, deps, context);
 
   const result = await readThreads(context.workspaceId, targetChannelId, {
@@ -1311,12 +1318,35 @@ export async function hydrateTowerPgChannelMessages(store, channelId, deps = {})
     getTowerPgResponseActivities: readActivities,
     replacePgResponseActivitiesForChannel: replaceActivities,
   });
+  await hydrateTowerPgChannelAgentActivities(store, targetChannelId, {
+    ...deps,
+    getTowerPgAgentActivities: readAgentActivities,
+    replacePgAgentActivitiesForChannel: replaceAgentActivities,
+  });
 
   if (store.selectedChannelId === targetChannelId && typeof store.refreshMessages === 'function') {
     await store.refreshMessages({ scrollToLatest: false });
   }
 
   return rows;
+}
+
+export async function hydrateTowerPgChannelAgentActivities(store, channelId, deps = {}) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  const targetChannelId = trimText(channelId);
+  if (!context.workspaceId || !context.workspaceOwnerNpub || !context.baseUrl || !targetChannelId) return [];
+  const readActivities = deps.getTowerPgAgentActivities || getTowerPgAgentActivities;
+  const replaceActivities = deps.replacePgAgentActivitiesForChannel || replacePgAgentActivitiesForChannel;
+  const result = await readActivities(context.workspaceId, {
+    channelId: targetChannelId,
+    baseUrl: context.baseUrl,
+    appNpub: context.appNpub,
+  });
+  const activities = (Array.isArray(result?.agent_activities) ? result.agent_activities : [])
+    .map(mapPgAgentActivity)
+    .filter((activity) => activity?.record_id && !isTerminalAgentActivity(activity));
+  await replaceActivities(targetChannelId, activities);
+  return activities;
 }
 
 export async function hydrateTowerPgChannelResponseActivities(store, channelId, deps = {}) {
@@ -1801,6 +1831,8 @@ export async function hydrateTowerPgWorkroom(store, workroomId, deps = {}) {
 
 export async function hydrateTowerPgEventUpdates(store, events = [], deps = {}) {
   const pgEvents = Array.isArray(events) ? events : [];
+  const writeAgentActivity = deps.upsertAgentActivity || upsertAgentActivity;
+  const removeAgentActivity = deps.clearAgentActivity || clearAgentActivity;
   const messageChannels = new Set();
   const taskChannels = new Set();
   const taskIds = new Set();
@@ -1813,6 +1845,7 @@ export async function hydrateTowerPgEventUpdates(store, events = [], deps = {}) 
   const personalWappOwnerIds = new Set();
   const responseActivityWrites = [];
   const responseActivityDeletes = [];
+  const agentActivityUpdates = [];
   const workroomIds = new Set();
   const workroomChannels = new Set();
   const workroomEventIds = new Set();
@@ -1869,6 +1902,16 @@ export async function hydrateTowerPgEventUpdates(store, events = [], deps = {}) 
       } else {
         fallbackEvents += 1;
       }
+    } else if (entityType === 'agent_activity') {
+      const activity = mapPgAgentActivity(payload.agent_activity || payload.activity || payload);
+      const recordId = activity?.record_id || trimText(event?.entity_id);
+      if (activity && isTerminalAgentActivity(activity)) {
+        if (recordId) agentActivityUpdates.push({ activity, recordId, terminal: true });
+      } else if (activity) {
+        agentActivityUpdates.push({ activity, recordId, terminal: false });
+      } else {
+        fallbackEvents += 1;
+      }
     } else if (entityType === 'workroom') {
       const workroomId = trimText(event?.entity_id || payload.workroom_id || payload.id);
       if (workroomId) workroomIds.add(workroomId);
@@ -1891,6 +1934,13 @@ export async function hydrateTowerPgEventUpdates(store, events = [], deps = {}) 
     }
   }
 
+  const latestAgentActivityUpdates = [...agentActivityUpdates.reduce((latest, update) => {
+    const key = update.activity.activity_id || update.recordId;
+    const current = latest.get(key);
+    if (!current || Number(update.activity.sequence) > Number(current.activity.sequence)) latest.set(key, update);
+    return latest;
+  }, new Map()).values()];
+
   const jobs = [
     ...(workspaceMembersChanged && typeof store?.refreshTowerPgWorkspaceMembers === 'function'
       ? [store.refreshTowerPgWorkspaceMembers({ force: true, limit: 200 })]
@@ -1911,6 +1961,9 @@ export async function hydrateTowerPgEventUpdates(store, events = [], deps = {}) 
         : hydrateTowerPgChannelResponseActivities(store, activity.channel_id, deps)
     )),
     ...responseActivityDeletes.map((recordId) => clearResponseActivity(recordId)),
+    ...latestAgentActivityUpdates.map((update) => (
+      update.terminal ? removeAgentActivity(update.recordId) : writeAgentActivity(update.activity)
+    )),
     ...[...workroomIds].map((workroomId) => hydrateTowerPgWorkroom(store, workroomId, deps)),
     ...[...workroomChannels].map((channelId) => hydrateTowerPgWorkrooms(store, { ...deps, channelId })),
     ...[...workroomEventIds].map((workroomId) => hydrateTowerPgWorkroomEvents(store, workroomId, deps)),

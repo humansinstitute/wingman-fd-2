@@ -2210,6 +2210,13 @@ export const syncManagerMixin = {
     }
 
     if (status === 'connected') {
+      if (this.isEncryptedRecordSyncDisabled && this.selectedChannelId) {
+        hydrateTowerPgChannelMessages(this, this.selectedChannelId).catch((error) => {
+          flightDeckLog('warn', 'sse', 'failed to hydrate PG chat activity after reconnect', {
+            error: error?.message || String(error),
+          });
+        });
+      }
       // Widen heartbeat polling now that SSE is live
       this.scheduleBackgroundSync();
       return;

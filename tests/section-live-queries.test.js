@@ -18,6 +18,7 @@ describe('section live query plan', () => {
       'chat:messages:channel-1',
       'chat:reactions:channel-1',
       'chat:channel-response-activities:channel-1',
+      'chat:agent-activities:channel-1',
     ]);
   });
 

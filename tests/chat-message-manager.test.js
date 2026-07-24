@@ -998,6 +998,32 @@ describe('response activity rendering', () => {
   });
 });
 
+describe('agent activity rendering', () => {
+  it('correlates activity to its trigger message while normal replies remain visible', () => {
+    const store = createStore({
+      messages: [
+        { record_id: 'message-human', parent_message_id: null },
+        { record_id: 'message-final', parent_message_id: 'message-human', body: 'Final response' },
+      ],
+      agentActivities: [{
+        record_id: 'row-1', activity_id: 'activity-1', trigger_message_id: 'message-human',
+        visibility: 'user_visible', state: 'working', sequence: 2,
+        expires_at: '2999-01-01T00:00:00.000Z',
+      }],
+    });
+
+    expect(store.getAgentActivitiesForMessage(store.messages[0])).toHaveLength(1);
+    expect(store.getAgentActivitiesForMessage(store.messages[1])).toHaveLength(0);
+    expect(store.messages.find((message) => message.record_id === 'message-final')?.body).toBe('Final response');
+  });
+
+  it('expands safe activity details without changing the snapshot', () => {
+    const store = createStore({ expandedAgentActivityIds: {} });
+    store.toggleAgentActivity('activity-1');
+    expect(store.isAgentActivityExpanded('activity-1')).toBe(true);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // sendMessage validation
 // ---------------------------------------------------------------------------
