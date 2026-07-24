@@ -261,6 +261,15 @@ describe('Thread mobile responsive behavior', () => {
       expect(html).toContain('class="chat-input-actions"');
     });
 
+    it('clips horizontal composer overflow without disabling vertical autosizing', async () => {
+      const css = await loadStylesheet();
+      const composerDecl = css.match(/\.chat-input\s*\{([^}]*)\}/)?.[1] || '';
+
+      expect(composerDecl).toMatch(/overflow-x\s*:\s*hidden/);
+      expect(composerDecl).toMatch(/overflow-y\s*:\s*hidden/);
+      expect(composerDecl).toMatch(/max-height\s*:\s*calc\(\(5 \* 1\.4em\) \+ 1\.2rem \+ 2px\)/);
+    });
+
     it('thread full size state is available for the modal class', async () => {
       const store = createStore({ activeThreadId: 'msg-1', threadSize: 'full' });
       const shouldApplyFull = !!(store.activeThreadId && store.threadSize === 'full');

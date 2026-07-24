@@ -7105,6 +7105,7 @@ button:disabled {
   line-height: 1.4;
   min-height: calc((2 * 1.4em) + 1.2rem + 2px);
   max-height: calc((5 * 1.4em) + 1.2rem + 2px);
+  overflow-x: hidden;
   overflow-y: hidden;
   background: var(--surface);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
