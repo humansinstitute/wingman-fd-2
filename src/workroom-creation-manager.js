@@ -506,6 +506,7 @@ export const workroomCreationMixin = {
     };
   },
   async openWorkroomCreation() {
+    if (this.workroomsEnabled === false) return;
     const channel = this.selectedChannel;
     if (!channel?.record_id) {
       this.error = 'Select a channel before creating a workroom.';

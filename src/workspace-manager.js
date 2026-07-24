@@ -76,6 +76,11 @@ import { APP_NAME, APP_NPUB, DEFAULT_SUPERBASED_URL, FLIGHT_DECK_PG_APP_NPUB } f
 import { getRecordWriteFieldsForStore } from './preferred-write-group.js';
 import { pgWorkspaceSessionNpubFromMe } from './pg-workspace-descriptor.js';
 import { blockDisabledFlightDeckSurface, isFlightDeckSurfaceDisabled } from './disabled-surfaces.js';
+import {
+  WORKROOMS_FEATURE_FLAG,
+  isWorkspaceFeatureEnabled,
+  withWorkspaceFeatureFlag,
+} from './workspace-feature-flags.js';
 
 const WORKSPACE_ALL_BOARD_ID = '__all__';
 const PERSONAL_HARNESS_SETTINGS_PREFIX = 'flightdeck:personal-harness-settings:v1';
@@ -237,6 +242,10 @@ export const workspaceManagerMixin = {
       && Array.isArray(group.member_npubs)
       && group.member_npubs.includes(viewerNpub)
     );
+  },
+
+  get workroomsEnabled() {
+    return isWorkspaceFeatureEnabled(this.currentWorkspace?.metadata, WORKROOMS_FEATURE_FLAG);
   },
 
   get memberPrivateGroup() {
@@ -538,6 +547,7 @@ export const workspaceManagerMixin = {
     this.workspaceProfileSlugInput = String(workspace?.slug || '').trim() || slugify(workspace?.name);
     this.workspaceProfileDescriptionInput = String(workspace?.description || '').trim();
     this.workspaceProfileDashboardGreetingTemplateInput = String(workspace?.dashboardGreetingTemplate || '').trim();
+    this.workspaceWorkroomsEnabledInput = isWorkspaceFeatureEnabled(workspace?.metadata, WORKROOMS_FEATURE_FLAG);
     this.workspaceProfileAvatarInput = storedAvatar;
     this.workspaceAdvancedOptionsEnabled = this.loadWorkspaceAdvancedOptionsPreference(workspace);
     this.setWorkspaceAvatarPreview(storedObjectId ? '' : (this.getWorkspaceAvatar(workspace) || ''));
@@ -564,6 +574,11 @@ export const workspaceManagerMixin = {
     if (field === 'slug') this.workspaceProfileSlugInput = slugify(value);
     if (field === 'description') this.workspaceProfileDescriptionInput = value;
     if (field === 'dashboardGreetingTemplate') this.workspaceProfileDashboardGreetingTemplateInput = value;
+    this.markWorkspaceProfileDirty();
+  },
+
+  handleWorkspaceWorkroomsEnabled(enabled) {
+    this.workspaceWorkroomsEnabledInput = enabled === true;
     this.markWorkspaceProfileDirty();
   },
 
@@ -829,6 +844,12 @@ export const workspaceManagerMixin = {
         description,
         avatar_url: avatarUrl,
       };
+      const metadata = withWorkspaceFeatureFlag(
+        workspace.metadata,
+        WORKROOMS_FEATURE_FLAG,
+        this.workspaceWorkroomsEnabledInput,
+      );
+      if (workspace.pgBackendMode) requestBody.metadata = metadata;
       const response = workspace.pgBackendMode
         ? await updateTowerPgWorkspace(workspace.workspaceId, requestBody, {
           baseUrl: workspace.directHttpsUrl || this.currentWorkspaceBackendUrl,
@@ -846,6 +867,7 @@ export const workspaceManagerMixin = {
           description: response?.description ?? description,
           avatarUrl: response?.avatar_url ?? avatarUrl,
           dashboardGreetingTemplate,
+          metadata: response?.metadata ?? metadata,
           slug: savedSlug,
         },
       };
@@ -856,6 +878,7 @@ export const workspaceManagerMixin = {
         description: response?.description ?? description,
         avatarUrl: response?.avatar_url ?? avatarUrl,
         dashboardGreetingTemplate,
+        metadata: response?.metadata ?? metadata,
         slug: savedSlug,
       }]);
       await this.persistWorkspaceSettings();

@@ -460,7 +460,7 @@ export const commandPaletteMixin = {
       const [reports] = await Promise.all([
         isFlightDeckSurfaceDisabled('reports') ? [] : getReportsByOwner(ownerNpub),
       ]);
-      const workrooms = typeof this.loadWorkroomRowsForPalette === 'function'
+      const workrooms = this.workroomsEnabled !== false && typeof this.loadWorkroomRowsForPalette === 'function'
         ? await this.loadWorkroomRowsForPalette()
         : [];
       const channelMessages = await Promise.all(
@@ -706,6 +706,7 @@ export const commandPaletteMixin = {
         this.syncRoute();
         return;
       case 'open-workroom':
+        if (this.workroomsEnabled === false) return;
         await this.openWorkroomDetail?.(item.recordId);
         return;
       default:

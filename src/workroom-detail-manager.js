@@ -413,6 +413,7 @@ export const workroomDetailMixin = {
   },
 
   async openWorkroomDetail(workroomId, options = {}) {
+    if (this.workroomsEnabled === false) return;
     const id = text(workroomId);
     if (!id) return;
     const hasCachedRoom = this.workrooms.some((row) => row?.record_id === id);

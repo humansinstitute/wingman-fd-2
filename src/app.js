@@ -1155,6 +1155,7 @@ export function initApp() {
     workspaceProfileSlugInput: '',
     workspaceProfileDescriptionInput: '',
     workspaceProfileDashboardGreetingTemplateInput: '',
+    workspaceWorkroomsEnabledInput: false,
     workspaceProfileAvatarInput: '',
     workspaceProfileAvatarPreviewUrl: '',
     workspaceProfilePendingAvatarFile: null,

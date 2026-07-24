@@ -611,11 +611,13 @@ describe('workspace profile editing', () => {
           name: 'This Works',
           slug: 'thisworks',
           pgBackendMode: true,
+          metadata: { retained: 'yes' },
         },
         workspaceProfileNameInput: 'Testing Space',
         workspaceProfileSlugInput: 'testing-space',
         workspaceProfileDescriptionInput: 'PG profile',
         workspaceProfileDashboardGreetingTemplateInput: 'Welcome $user.name,\\nwhere next?',
+        workspaceWorkroomsEnabledInput: true,
         workspaceProfileAvatarInput: '',
         persistWorkspaceSettings,
         syncWorkspaceProfileDraft,
@@ -629,6 +631,10 @@ describe('workspace profile editing', () => {
         slug: 'testing-space',
         description: 'PG profile',
         avatar_url: null,
+        metadata: {
+          retained: 'yes',
+          feature_flags: { workrooms: true },
+        },
       }, {
         baseUrl: 'https://tower.example',
         appNpub: 'flightdeck_pg',
@@ -637,6 +643,10 @@ describe('workspace profile editing', () => {
       expect(mergeKnownWorkspaces).toHaveBeenCalledWith([
         expect.objectContaining({
           dashboardGreetingTemplate: 'Welcome $user.name,\\nwhere next?',
+          metadata: {
+            retained: 'yes',
+            feature_flags: { workrooms: true },
+          },
         }),
       ]);
       expect(persistWorkspaceSettings).toHaveBeenCalledTimes(1);
