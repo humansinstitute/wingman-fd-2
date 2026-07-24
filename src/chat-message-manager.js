@@ -49,6 +49,7 @@ import { isTowerPgBackendMode } from './backend-mode.js';
 import { DM_SCOPE_ID, buildDmChannelDescription, findExistingDmChannel } from './dm-scope.js';
 import {
   createTowerPgMessageFromLocal,
+  updateTowerPgMessageFromLocal,
   archiveTowerPgThreadFromLocal,
   deleteTowerPgMessageFromLocal,
   deleteTowerPgThreadFromLocal,
@@ -825,6 +826,8 @@ export const chatMessageManagerMixin = {
   },
 
   closeThread(options = {}) {
+    if (this.messageEdit?.context === 'thread' && this.messageEdit.submitting) return false;
+    if (this.messageEdit?.context === 'thread') this.cancelMessageEdit();
     this.activeThreadId = null;
     this.threadResponseActivities = [];
     this.threadInput = '';
@@ -833,6 +836,7 @@ export const chatMessageManagerMixin = {
     this.pendingThreadScrollToLatest = false;
     if (typeof this.startWorkspaceLiveQueries === 'function') this.startWorkspaceLiveQueries();
     if (options.syncRoute !== false) this.syncRoute();
+    return true;
   },
 
   showMoreThreadMessages() {
@@ -1148,6 +1152,9 @@ export const chatMessageManagerMixin = {
   },
 
   async sendMessage() {
+    if (this.messageEdit?.recordId && this.messageEdit.context === 'message') {
+      return this.saveMessageEdit();
+    }
     this.error = null;
     const pgMode = isTowerPgBackendMode();
     const drafts = [...this.messageAudioDrafts];
@@ -1289,6 +1296,9 @@ export const chatMessageManagerMixin = {
   },
 
   async sendThreadReply() {
+    if (this.messageEdit?.recordId && this.messageEdit.context === 'thread') {
+      return this.saveMessageEdit();
+    }
     this.error = null;
     const drafts = [...this.threadAudioDrafts];
     if (this.threadImageUploadCount > 0 || this.containsInlineImageUploadToken(this.threadInput)) {
@@ -1438,6 +1448,148 @@ export const chatMessageManagerMixin = {
   },
 
   // --- message actions menu ---
+
+  canEditMessage(message) {
+    const senderNpub = String(message?.sender_npub || message?.pg_created_by_actor_npub || '').trim();
+    const viewerNpub = String(this.session?.npub || '').trim();
+    return Boolean(
+      isTowerPgBackendMode()
+      && message?.pg_backend === true
+      && message?.record_state !== 'deleted'
+      && message?.sync_status === 'synced'
+      && senderNpub
+      && viewerNpub
+      && senderNpub === viewerNpub
+    );
+  },
+
+  isEditingMessage(context = '') {
+    if (!this.messageEdit?.recordId) return false;
+    return !context || this.messageEdit.context === context;
+  },
+
+  startMessageEdit(recordId) {
+    const message = this.getChatMessageById(recordId);
+    if (!this.canEditMessage(message) || this.messageEdit?.submitting) return;
+    if (this.messageEdit?.recordId) this.cancelMessageEdit();
+
+    const context = message.parent_message_id ? 'thread' : 'message';
+    const modelKey = context === 'thread' ? 'threadInput' : 'messageInput';
+    const existingMentions = message?.pg_metadata?.mentions || message?.metadata?.mentions;
+    const mentions = (Array.isArray(existingMentions) ? existingMentions : [])
+      .filter((mention) => ['agent', 'person'].includes(mention?.type) && mention?.npub)
+      .map((mention) => ({ type: mention.type, npub: mention.npub, label: mention.label || mention.npub }));
+
+    if (context === 'thread' && this.activeThreadId !== message.parent_message_id) {
+      this.openThread(message.parent_message_id, { preserveComposer: true });
+    }
+    this.messageEdit = {
+      recordId: message.record_id,
+      context,
+      channelId: message.channel_id,
+      threadRootId: message.parent_message_id || '',
+      originalBody: message.body || '',
+      draftBeforeEdit: this[modelKey] || '',
+      mentionsBeforeEdit: [...(this.selectedAgentMentionsByComposer?.[context] || [])],
+      submitting: false,
+      error: '',
+    };
+    this[modelKey] = message.body || '';
+    this.selectedAgentMentionsByComposer = {
+      ...(this.selectedAgentMentionsByComposer || {}),
+      [context]: mentions,
+    };
+    this.closeMessageActionsMenu();
+    this.scheduleComposerAutosize(context);
+    scheduleUiNextTick(() => {
+      const composer = typeof document !== 'undefined'
+        ? document.querySelector(`[data-chat-composer="${context}"]`)
+        : null;
+      composer?.focus?.();
+    });
+  },
+
+  cancelMessageEdit(options = {}) {
+    const edit = this.messageEdit;
+    if (!edit?.recordId || edit.submitting) return false;
+    const restoreDraft = options.restoreDraft !== false;
+    const modelKey = edit.context === 'thread' ? 'threadInput' : 'messageInput';
+    if (restoreDraft) {
+      this[modelKey] = edit.draftBeforeEdit || '';
+      this.selectedAgentMentionsByComposer = {
+        ...(this.selectedAgentMentionsByComposer || {}),
+        [edit.context]: [...(edit.mentionsBeforeEdit || [])],
+      };
+    }
+    this.messageEdit = {
+      recordId: '', context: '', channelId: '', threadRootId: '', originalBody: '',
+      draftBeforeEdit: '', mentionsBeforeEdit: [], submitting: false, error: '',
+    };
+    this.closeMentionPopover?.();
+    this.scheduleComposerAutosize(edit.context);
+    return true;
+  },
+
+  async saveMessageEdit() {
+    const edit = this.messageEdit;
+    if (!edit?.recordId || edit.submitting) return;
+    const message = this.getChatMessageById(edit.recordId);
+    if (!this.canEditMessage(message)) {
+      this.messageEdit = { ...edit, error: 'This message can no longer be edited.' };
+      return;
+    }
+    if (message.channel_id !== this.selectedChannelId
+      || (edit.context === 'thread' && message.parent_message_id !== this.activeThreadId)) {
+      this.messageEdit = { ...edit, error: 'The chat context changed. Cancel and reopen the message to edit it.' };
+      return;
+    }
+    const modelKey = edit.context === 'thread' ? 'threadInput' : 'messageInput';
+    const body = String(this[modelKey] || '').trim();
+    if (!body) {
+      this.messageEdit = { ...edit, error: 'A message cannot be empty.' };
+      return;
+    }
+    const mentions = canonicalAgentMentionsFromSelection(
+      body,
+      this.selectedAgentMentionsByComposer?.[edit.context],
+    );
+    this.messageEdit = { ...edit, submitting: true, error: '' };
+    this.error = null;
+    await this.setMessageSyncStatus(message.record_id, 'pending');
+    try {
+      const accepted = await updateTowerPgMessageFromLocal(this, message, { body, mentions });
+      await upsertMessage(accepted);
+      this.patchMessageLocal(accepted);
+      const draftBeforeEdit = edit.draftBeforeEdit || '';
+      const mentionsBeforeEdit = [...(edit.mentionsBeforeEdit || [])];
+      this.messageEdit = { ...this.messageEdit, submitting: false };
+      this.cancelMessageEdit({ restoreDraft: false });
+      this[modelKey] = draftBeforeEdit;
+      this.selectedAgentMentionsByComposer = {
+        ...(this.selectedAgentMentionsByComposer || {}),
+        [edit.context]: mentionsBeforeEdit,
+      };
+      this.scheduleComposerAutosize(edit.context);
+    } catch (error) {
+      await this.setMessageSyncStatus(message.record_id, 'synced');
+      const conflict = error?.status === 409 || error?.code === 'stale_row_version';
+      this.messageEdit = {
+        ...this.messageEdit,
+        submitting: false,
+        error: conflict
+          ? 'This message changed elsewhere. Cancel, review the latest version, and try again.'
+          : (error?.message || 'Failed to save message edit.'),
+      };
+      if (conflict) {
+        Promise.resolve(this.refreshMessages?.()).catch(() => {});
+      }
+    }
+  },
+
+  isMessageEdited(message) {
+    if (!message?.created_at || !message?.updated_at) return false;
+    return Date.parse(message.updated_at) > Date.parse(message.created_at) + 1000;
+  },
 
   openMessageActionsMenu(recordId) {
     this.messageActionsMenuId = recordId;

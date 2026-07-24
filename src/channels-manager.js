@@ -2211,6 +2211,14 @@ export const channelsManagerMixin = {
   },
 
   async selectChannel(recordId, options = {}) {
+    const changingChannel = String(recordId || '').trim() !== String(this.selectedChannelId || '').trim();
+    if (changingChannel && this.messageEdit?.submitting) {
+      this.error = 'Wait for the message edit to finish saving.';
+      return;
+    }
+    if (changingChannel) {
+      this.cancelMessageEdit?.();
+    }
     const openDocument = this.navSection === 'docs'
       && this.docsEditorOpen
       && this.selectedDocument?.record_id

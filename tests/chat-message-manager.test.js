@@ -18,6 +18,7 @@ vi.mock('../src/backend-mode.js', () => ({
 
 vi.mock('../src/pg-write-adapter.js', () => ({
   createTowerPgMessageFromLocal: vi.fn(),
+  updateTowerPgMessageFromLocal: vi.fn(),
   archiveTowerPgThreadFromLocal: vi.fn(),
   deleteTowerPgMessageFromLocal: vi.fn(),
   deleteTowerPgThreadFromLocal: vi.fn(),
@@ -27,7 +28,7 @@ import { isTowerPgBackendMode } from '../src/backend-mode.js';
 import { chatMessageManagerMixin } from '../src/chat-message-manager.js';
 import { createChatThreadFlowDispatchState } from '../src/chat-thread-flow-dispatch.js';
 import { createChatGetItDoneState } from '../src/chat-get-it-done.js';
-import { createTowerPgMessageFromLocal } from '../src/pg-write-adapter.js';
+import { createTowerPgMessageFromLocal, updateTowerPgMessageFromLocal } from '../src/pg-write-adapter.js';
 import {
   archiveTowerPgThreadFromLocal,
   deleteTowerPgMessageFromLocal,
@@ -45,6 +46,7 @@ import {
 beforeEach(() => {
   isTowerPgBackendMode.mockReturnValue(false);
   createTowerPgMessageFromLocal.mockReset();
+  updateTowerPgMessageFromLocal.mockReset();
   archiveTowerPgThreadFromLocal.mockReset();
   deleteTowerPgMessageFromLocal.mockReset();
   deleteTowerPgThreadFromLocal.mockReset();
@@ -84,6 +86,11 @@ function createStore(overrides = {}) {
     flowStartTarget: null,
     flowStartContext: '',
     messageActionsMenuId: null,
+    messageEdit: {
+      recordId: '', context: '', channelId: '', threadRootId: '', originalBody: '',
+      draftBeforeEdit: '', mentionsBeforeEdit: [], submitting: false, error: '',
+    },
+    selectedAgentMentionsByComposer: { message: [], thread: [] },
     showArchivedChatThreads: false,
     chatThreadArchiveSubmittingId: '',
     chatThreadArchiveSubmittingAction: '',
@@ -1654,6 +1661,143 @@ describe('deleteSelectedChannel', () => {
 // ---------------------------------------------------------------------------
 describe('chat message actions menu', () => {
   const autopilotSessionId = '1f3ff8b3-2b0a-4876-889b-14c8a8a5ec63';
+
+  it('allows only the synced PG message author to edit', () => {
+    isTowerPgBackendMode.mockReturnValue(true);
+    const { fn } = bindMethod('canEditMessage', { session: { npub: 'npub1pete' } });
+    const authored = {
+      pg_backend: true, sender_npub: 'npub1pete', sync_status: 'synced', record_state: 'active',
+    };
+    expect(fn(authored)).toBe(true);
+    expect(fn({ ...authored, sender_npub: 'npub1other' })).toBe(false);
+    expect(fn({ ...authored, sync_status: 'pending' })).toBe(false);
+    expect(fn({ ...authored, record_state: 'deleted' })).toBe(false);
+  });
+
+  it('loads a root message and its structured mentions into the main composer', () => {
+    isTowerPgBackendMode.mockReturnValue(true);
+    const message = {
+      record_id: 'msg-1', channel_id: 'channel-1', parent_message_id: null,
+      body: 'Hello @[Rick](mention:agent:npub1rick)', sender_npub: 'npub1pete',
+      pg_backend: true, sync_status: 'synced', record_state: 'active',
+      pg_metadata: { mentions: [{ type: 'agent', npub: 'npub1rick', label: 'Rick' }] },
+    };
+    const { fn, store } = bindMethod('startMessageEdit', {
+      session: { npub: 'npub1pete' }, messages: [message], selectedChannelId: 'channel-1',
+      messageInput: 'preserved draft',
+      selectedAgentMentionsByComposer: { message: [{ type: 'agent', npub: 'npub1sam', label: 'Sam' }], thread: [] },
+    });
+
+    fn('msg-1');
+
+    expect(store.messageInput).toBe(message.body);
+    expect(store.messageEdit).toMatchObject({ recordId: 'msg-1', context: 'message', draftBeforeEdit: 'preserved draft' });
+    expect(store.selectedAgentMentionsByComposer.message).toEqual([{ type: 'agent', npub: 'npub1rick', label: 'Rick' }]);
+  });
+
+  it('restores the prior composer draft and mention selection when editing is cancelled', () => {
+    const { fn, store } = bindMethod('cancelMessageEdit', {
+      messageInput: 'edited body',
+      selectedAgentMentionsByComposer: { message: [{ type: 'agent', npub: 'npub1rick', label: 'Rick' }], thread: [] },
+      messageEdit: {
+        recordId: 'msg-1', context: 'message', channelId: 'channel-1', threadRootId: '', originalBody: 'old',
+        draftBeforeEdit: 'preserved draft', mentionsBeforeEdit: [{ type: 'agent', npub: 'npub1sam', label: 'Sam' }],
+        submitting: false, error: '',
+      },
+    });
+
+    expect(fn()).toBe(true);
+    expect(store.messageInput).toBe('preserved draft');
+    expect(store.selectedAgentMentionsByComposer.message).toEqual([{ type: 'agent', npub: 'npub1sam', label: 'Sam' }]);
+    expect(store.messageEdit.recordId).toBe('');
+  });
+
+  it('saves a revised message with only structured mentions still present in the body', async () => {
+    const workspaceDbKey = 'chat-message-manager-edit-message-pg';
+    openWorkspaceDb(workspaceDbKey);
+    await clearRuntimeData();
+    isTowerPgBackendMode.mockReturnValue(true);
+    const original = {
+      record_id: 'msg-1', channel_id: 'channel-1', parent_message_id: null, body: 'Original',
+      sender_npub: 'npub1pete', pg_backend: true, sync_status: 'synced', record_state: 'active',
+      version: 2, created_at: '2026-07-24T00:00:00.000Z', updated_at: '2026-07-24T00:00:00.000Z',
+    };
+    const accepted = {
+      ...original, body: 'Revised @[Rick](mention:agent:npub1rick)', version: 3,
+      updated_at: '2026-07-24T00:05:00.000Z',
+      pg_metadata: { mentions: [{ type: 'agent', npub: 'npub1rick', label: 'Rick' }] },
+    };
+    updateTowerPgMessageFromLocal.mockResolvedValue(accepted);
+
+    try {
+      const { fn, store } = bindMethod('saveMessageEdit', {
+        session: { npub: 'npub1pete' }, messages: [original], selectedChannelId: 'channel-1',
+        messageInput: accepted.body,
+        selectedAgentMentionsByComposer: {
+          message: [
+            { type: 'agent', npub: 'npub1rick', label: 'Rick' },
+            { type: 'agent', npub: 'npub1sam', label: 'Sam' },
+          ],
+          thread: [],
+        },
+        messageEdit: {
+          recordId: 'msg-1', context: 'message', channelId: 'channel-1', threadRootId: '', originalBody: 'Original',
+          draftBeforeEdit: 'draft', mentionsBeforeEdit: [], submitting: false, error: '',
+        },
+      });
+
+      await fn();
+
+      expect(updateTowerPgMessageFromLocal).toHaveBeenCalledWith(store, expect.objectContaining({ record_id: 'msg-1', version: 2 }), {
+        body: accepted.body,
+        mentions: [{ type: 'agent', npub: 'npub1rick', label: 'Rick' }],
+      });
+      expect(store.messages[0]).toMatchObject({ body: accepted.body, version: 3, sync_status: 'synced' });
+      expect(store.messageInput).toBe('draft');
+      expect(store.messageEdit.recordId).toBe('');
+    } finally {
+      await deleteWorkspaceDb(workspaceDbKey);
+    }
+  });
+
+  it('keeps the edited draft open and reports an optimistic conflict', async () => {
+    isTowerPgBackendMode.mockReturnValue(true);
+    updateTowerPgMessageFromLocal.mockRejectedValue(Object.assign(new Error('stale'), {
+      status: 409,
+      code: 'stale_row_version',
+    }));
+    const message = {
+      record_id: 'msg-1', channel_id: 'channel-1', parent_message_id: null, body: 'Original',
+      sender_npub: 'npub1pete', pg_backend: true, sync_status: 'synced', record_state: 'active', version: 2,
+    };
+    const setMessageSyncStatus = vi.fn().mockImplementation((_id, status) => {
+      message.sync_status = status;
+    });
+    const refreshMessages = vi.fn().mockResolvedValue(undefined);
+    const { fn, store } = bindMethod('saveMessageEdit', {
+      session: { npub: 'npub1pete' }, messages: [message], selectedChannelId: 'channel-1',
+      messageInput: 'Conflicting revision', setMessageSyncStatus, refreshMessages,
+      messageEdit: {
+        recordId: 'msg-1', context: 'message', channelId: 'channel-1', threadRootId: '', originalBody: 'Original',
+        draftBeforeEdit: '', mentionsBeforeEdit: [], submitting: false, error: '',
+      },
+    });
+
+    await fn();
+    await Promise.resolve();
+
+    expect(store.messageEdit.recordId).toBe('msg-1');
+    expect(store.messageEdit.submitting).toBe(false);
+    expect(store.messageEdit.error).toContain('changed elsewhere');
+    expect(setMessageSyncStatus).toHaveBeenLastCalledWith('msg-1', 'synced');
+    expect(refreshMessages).toHaveBeenCalled();
+  });
+
+  it('shows edited metadata only when updated_at materially follows created_at', () => {
+    const { fn } = bindMethod('isMessageEdited');
+    expect(fn({ created_at: '2026-07-24T00:00:00.000Z', updated_at: '2026-07-24T00:00:02.000Z' })).toBe(true);
+    expect(fn({ created_at: '2026-07-24T00:00:00.000Z', updated_at: '2026-07-24T00:00:00.500Z' })).toBe(false);
+  });
 
   it('openMessageActionsMenu sets the active menu record id', () => {
     const { fn, store } = bindMethod('openMessageActionsMenu');

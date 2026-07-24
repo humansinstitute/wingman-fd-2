@@ -16,6 +16,7 @@ import {
   updateTowerPgDoc,
   updateTowerPgDocComment,
   updateTowerPgFile,
+  updateTowerPgMessage,
   updateTowerPgTask,
   updateTowerPgTaskState,
 } from './api.js';
@@ -479,6 +480,43 @@ export async function createTowerPgMessageFromLocal(store, message, options = {}
     ? { ...result.message, thread_id: threadId }
     : result.message;
   return mapPgMessageToLocal(messageForMapping, {
+    workspaceOwnerNpub: context.workspaceOwnerNpub,
+    senderNpub: store?.session?.npub,
+    threadById,
+  });
+}
+
+export async function updateTowerPgMessageFromLocal(store, message, { body, mentions = [] } = {}) {
+  const context = resolveTowerPgWorkspaceContext(store);
+  const messageId = trimText(message?.record_id);
+  const channelId = trimText(message?.channel_id);
+  const threadId = trimText(message?.pg_thread_id || message?.thread_id);
+  const rowVersion = Number(message?.version);
+  const revisedBody = trimText(body);
+  if (!context.workspaceId || !messageId || !channelId) throw new Error('Tower PG message is not ready');
+  if (!Number.isInteger(rowVersion) || rowVersion < 1) throw new Error('Tower PG message revision is missing');
+  const messageSignature = await buildAgentInstructionSignature({
+    body: revisedBody,
+    workspaceId: context.workspaceId,
+    channelId,
+    threadId,
+    messageId,
+    revision: rowVersion + 1,
+  });
+  const result = await updateTowerPgMessage(context.workspaceId, messageId, {
+    body: revisedBody,
+    row_version: rowVersion,
+    mentions: Array.isArray(mentions) ? mentions : [],
+    message_signature: messageSignature,
+  }, pgRequestOptions(context));
+  const threadById = new Map();
+  if (threadId) {
+    threadById.set(threadId, {
+      id: threadId,
+      source_message_id: trimText(message?.parent_message_id) || messageId,
+    });
+  }
+  return mapPgMessageToLocal(result.message, {
     workspaceOwnerNpub: context.workspaceOwnerNpub,
     senderNpub: store?.session?.npub,
     threadById,

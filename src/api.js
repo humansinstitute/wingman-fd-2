@@ -1322,6 +1322,17 @@ export async function createTowerPgChannelMessage(workspaceId, channelId, body, 
   return json(resp, { requestUrl, method: 'POST', prefix: 'Tower PG API' });
 }
 
+export async function updateTowerPgMessage(workspaceId, messageId, body, { baseUrl = _baseUrl, appNpub = FLIGHT_DECK_PG_APP_NPUB } = {}) {
+  const encodedWorkspaceId = encodeURIComponent(String(workspaceId || '').trim());
+  const encodedMessageId = encodeURIComponent(String(messageId || '').trim());
+  if (!encodedWorkspaceId) throw new Error('Tower PG workspace id is required');
+  if (!encodedMessageId) throw new Error('Tower PG message id is required');
+  const requestPath = `/api/v4/flightdeck-pg/workspaces/${encodedWorkspaceId}/messages/${encodedMessageId}`;
+  const requestUrl = resolveTowerPgUrl(requestPath, baseUrl);
+  const resp = await signedTowerPgFetch(requestPath, { method: 'PATCH', body, baseUrl, appNpub });
+  return json(resp, { requestUrl, method: 'PATCH', prefix: 'Tower PG API' });
+}
+
 export async function deleteTowerPgMessage(workspaceId, messageId, { baseUrl = _baseUrl, appNpub = FLIGHT_DECK_PG_APP_NPUB, rowVersion = null } = {}) {
   const encodedWorkspaceId = encodeURIComponent(String(workspaceId || '').trim());
   const encodedMessageId = encodeURIComponent(String(messageId || '').trim());

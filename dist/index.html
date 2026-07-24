@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/wingman-logo-192x192.png" />
   <title>Wingman: Flight Deck</title>
-  <script type="module" crossorigin src="/assets/index-cfdBQKl1.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-f4_-rIhg.css">
+  <script type="module" crossorigin src="/assets/index-4qKMXQI_.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-Dnyp4erc.css">
 </head>
 <body x-data x-init="$store.chat.init()" x-cloak>
   <!-- Catch-up sync overlay — shown during initial load or long-gap reconnect -->
@@ -3329,6 +3329,7 @@
                       </button>
                       <div class="chat-msg-actions-popover" x-show="$store.chat.isMessageActionsMenuOpen(msg.record_id)" x-cloak x-transition>
                         <button type="button" :data-record-id="msg.record_id" data-source-surface="main_feed" data-chat-get-it-done="true">Get it done</button>
+                        <button type="button" x-show="$store.chat.canEditMessage(msg)" @click.stop.prevent="$store.chat.startMessageEdit(msg.record_id)">Edit</button>
                         <button type="button" @click.stop.prevent="$store.chat.copyMessageRawText(msg.record_id)">Copy message</button>
                         <button type="button" x-show="$store.chat.hasAutopilotSessionLink(msg)" @click.stop.prevent="$store.chat.openMessageAutopilotSession(msg)">Autopilot Link</button>
                         <button type="button" @click.stop.prevent="$store.chat.copyFlightDeckReference('chat', $store.chat.buildChatMessageFlightDeckReferenceId(msg.record_id), 'Chat message'); $store.chat.closeMessageActionsMenu()">FD Ref</button>
@@ -3355,6 +3356,7 @@
                       <span class="chat-post-sender" x-text="$store.chat.getSenderName(msg.sender_npub)"></span>
                       <span class="chat-archived-badge" x-show="$store.chat.isChatThreadArchived(msg.record_id)" x-cloak>Archived</span>
                       <span class="chat-post-time" x-text="new Date(msg.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })"></span>
+                      <span class="chat-edited-indicator" x-show="$store.chat.isMessageEdited(msg)" x-cloak>edited</span>
                     </div>
                     <div
                       class="chat-post-content"
@@ -3466,6 +3468,10 @@
               </div>
 
               <div class="chat-input-bar">
+                <div class="chat-editing-banner" x-show="$store.chat.isEditingMessage('message')" x-cloak>
+                  <div><strong>Editing message</strong><span x-show="$store.chat.messageEdit.error" x-text="$store.chat.messageEdit.error"></span></div>
+                  <button type="button" @click="$store.chat.cancelMessageEdit()" :disabled="$store.chat.messageEdit.submitting">Cancel</button>
+                </div>
                 <div
                   class="chat-input"
                   data-chat-composer="message"
@@ -3490,7 +3496,7 @@
                       <button type="button" role="menuitem" x-show="$store.chat.workroomsEnabled" @click="$store.chat.openWorkroomCreation(); open = false" :disabled="!$store.chat.isTowerPgMode || !$store.chat.selectedChannelId">Start Workroom</button>
                     </div>
                   </div>
-                  <button class="chat-send-btn-text" @click="$store.chat.sendMessage()" :disabled="((!$store.chat.messageInput.trim() && $store.chat.messageAudioDrafts.length === 0) || $store.chat.messageImageUploadCount > 0)">Send</button>
+                  <button class="chat-send-btn-text" @click="$store.chat.sendMessage()" :disabled="((!$store.chat.messageInput.trim() && $store.chat.messageAudioDrafts.length === 0) || $store.chat.messageImageUploadCount > 0 || $store.chat.messageEdit.submitting)" x-text="$store.chat.isEditingMessage('message') ? ($store.chat.messageEdit.submitting ? 'Saving…' : 'Save') : 'Send'"></button>
                 </div>
               </div>
               <div class="audio-draft-list" x-show="$store.chat.messageAudioDrafts.length > 0">
@@ -3553,6 +3559,7 @@
                       </button>
                       <div class="chat-msg-actions-popover" x-show="$store.chat.isMessageActionsMenuOpen($store.chat.getThreadParentMessage()?.record_id)" x-cloak x-transition>
                         <button type="button" :data-record-id="$store.chat.getThreadParentMessage()?.record_id || ''" data-source-surface="thread_parent" data-chat-get-it-done="true">Get it done</button>
+                        <button type="button" x-show="$store.chat.canEditMessage($store.chat.getThreadParentMessage())" @click.stop.prevent="$store.chat.startMessageEdit($store.chat.getThreadParentMessage()?.record_id)">Edit</button>
                         <button type="button" @click.stop.prevent="$store.chat.copyMessageRawText($store.chat.getThreadParentMessage()?.record_id)">Copy message</button>
                         <button type="button" x-show="$store.chat.hasAutopilotSessionLink($store.chat.getThreadParentMessage())" @click.stop.prevent="$store.chat.openMessageAutopilotSession($store.chat.getThreadParentMessage())">Autopilot Link</button>
                         <button type="button" @click.stop.prevent="$store.chat.copyThreadRawText($store.chat.getThreadParentMessage()?.record_id)">Copy thread</button>
@@ -3583,6 +3590,7 @@
                         <span class="chat-sender" x-text="$store.chat.getSenderName($store.chat.getThreadParentMessage()?.sender_npub)"></span>
                         <span class="chat-archived-badge" x-show="$store.chat.isChatThreadArchived($store.chat.getThreadParentMessage()?.record_id)" x-cloak>Archived</span>
                         <span class="chat-time" x-text="new Date($store.chat.getThreadParentMessage()?.updated_at || '').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })"></span>
+                        <span class="chat-edited-indicator" x-show="$store.chat.isMessageEdited($store.chat.getThreadParentMessage())" x-cloak>edited</span>
                       </div>
                       <div class="thread-msg-text">
                         <div class="chat-post-markdown" x-html="$store.chat.renderMarkdown($store.chat.getThreadParentMessage()?.body || '')"></div>
@@ -3633,6 +3641,7 @@
                       </button>
                       <div class="chat-msg-actions-popover" x-show="$store.chat.isMessageActionsMenuOpen(reply.record_id)" x-cloak x-transition>
                         <button type="button" :data-record-id="reply.record_id" data-source-surface="thread_reply" data-chat-get-it-done="true">Get it done</button>
+                        <button type="button" x-show="$store.chat.canEditMessage(reply)" @click.stop.prevent="$store.chat.startMessageEdit(reply.record_id)">Edit</button>
                         <button type="button" @click.stop.prevent="$store.chat.copyMessageRawText(reply.record_id)">Copy message</button>
                         <button type="button" x-show="$store.chat.hasAutopilotSessionLink(reply)" @click.stop.prevent="$store.chat.openMessageAutopilotSession(reply)">Autopilot Link</button>
                         <button type="button" @click.stop.prevent="$store.chat.copyFlightDeckReference('chat', $store.chat.buildChatMessageFlightDeckReferenceId(reply.record_id), 'Chat reply'); $store.chat.closeMessageActionsMenu()">FD Ref</button>
@@ -3657,6 +3666,7 @@
                       <div class="thread-msg-header">
                         <span class="chat-sender" x-text="$store.chat.getSenderName(reply.sender_npub)"></span>
                         <span class="chat-time" x-text="new Date(reply.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })"></span>
+                        <span class="chat-edited-indicator" x-show="$store.chat.isMessageEdited(reply)" x-cloak>edited</span>
                       </div>
                       <div class="thread-msg-text">
                         <div class="chat-post-markdown" x-html="$store.chat.renderMarkdown(reply.body)"></div>
@@ -3732,6 +3742,10 @@
               </div>
 
               <div class="thread-input-bar">
+                <div class="chat-editing-banner" x-show="$store.chat.isEditingMessage('thread')" x-cloak>
+                  <div><strong>Editing reply</strong><span x-show="$store.chat.messageEdit.error" x-text="$store.chat.messageEdit.error"></span></div>
+                  <button type="button" @click="$store.chat.cancelMessageEdit()" :disabled="$store.chat.messageEdit.submitting">Cancel</button>
+                </div>
                 <div
                   class="chat-input"
                   data-chat-composer="thread"
@@ -3756,7 +3770,7 @@
                       <button type="button" role="menuitem" x-show="$store.chat.workroomsEnabled" @click="$store.chat.openWorkroomCreation(); open = false" :disabled="!$store.chat.isTowerPgMode || !$store.chat.selectedChannelId">Start Workroom</button>
                     </div>
                   </div>
-                  <button class="thread-reply-btn" @click="$store.chat.sendThreadReply()" :disabled="((!$store.chat.threadInput.trim() && $store.chat.threadAudioDrafts.length === 0) || $store.chat.threadImageUploadCount > 0)">Reply</button>
+                  <button class="thread-reply-btn" @click="$store.chat.sendThreadReply()" :disabled="((!$store.chat.threadInput.trim() && $store.chat.threadAudioDrafts.length === 0) || $store.chat.threadImageUploadCount > 0 || $store.chat.messageEdit.submitting)" x-text="$store.chat.isEditingMessage('thread') ? ($store.chat.messageEdit.submitting ? 'Saving…' : 'Save') : 'Reply'"></button>
                 </div>
               </div>
               <div class="audio-draft-list" x-show="$store.chat.threadAudioDrafts.length > 0">

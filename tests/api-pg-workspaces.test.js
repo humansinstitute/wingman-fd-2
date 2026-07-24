@@ -933,6 +933,33 @@ describe('Tower PG API helpers', () => {
     expect(createNip98AuthHeaderForSecret).not.toHaveBeenCalled();
   });
 
+  it('patches Tower PG message revisions with browser NIP-98 auth', async () => {
+    const api = await import('../src/api.js');
+    api.setBaseUrl('https://tower.example');
+    const body = {
+      body: 'Revised',
+      row_version: 3,
+      mentions: [{ type: 'agent', npub: 'npub1rick', label: 'Rick' }],
+      message_signature: { version: 1, body_sha256: 'abc' },
+    };
+
+    await api.updateTowerPgMessage('workspace-1', 'message-1', body, {
+      appNpub: 'flightdeck_pg',
+    });
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/messages/message-1',
+      expect.objectContaining({
+        method: 'PATCH',
+        headers: expect.objectContaining({
+          Authorization: 'NIP98 PATCH https://tower.example/api/v4/flightdeck-pg/workspaces/workspace-1/messages/message-1',
+          'x-flightdeck-pg-app-npub': 'flightdeck_pg',
+        }),
+        body: JSON.stringify(body),
+      }),
+    );
+  });
+
   it('prefers the active workspace key for Tower PG message deletes', async () => {
     const { createNip98AuthHeader, createNip98AuthHeaderForSecret } = await import('../src/auth/nostr.js');
     const { getActiveWorkspaceKeySecretForAuth } = await import('../src/crypto/workspace-keys.js');

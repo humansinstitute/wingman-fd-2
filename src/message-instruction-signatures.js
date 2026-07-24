@@ -22,6 +22,8 @@ export async function buildAgentInstructionSignature(input, signEvent = signNost
   const workspaceId = String(input?.workspaceId ?? '').trim();
   const channelId = String(input?.channelId ?? '').trim();
   const threadId = String(input?.threadId ?? '').trim();
+  const messageId = String(input?.messageId ?? '').trim();
+  const revision = Number(input?.revision);
   const bodySha256 = await sha256Hex(body);
   const tags = [
     ['protocol', AGENT_INSTRUCTION_SIGNATURE_PROTOCOL],
@@ -30,6 +32,8 @@ export async function buildAgentInstructionSignature(input, signEvent = signNost
   if (workspaceId) tags.push(['workspace_id', workspaceId]);
   if (channelId) tags.push(['channel_id', channelId]);
   if (threadId) tags.push(['thread_id', threadId]);
+  if (messageId) tags.push(['message_id', messageId]);
+  if (Number.isInteger(revision) && revision > 0) tags.push(['revision', String(revision)]);
 
   const event = await signEvent({
     kind: AGENT_INSTRUCTION_SIGNATURE_KIND,
@@ -45,5 +49,7 @@ export async function buildAgentInstructionSignature(input, signEvent = signNost
     signer_npub: nip19.npubEncode(event.pubkey),
     body_sha256: bodySha256,
     nostr_event: event,
+    ...(messageId ? { message_id: messageId } : {}),
+    ...(Number.isInteger(revision) && revision > 0 ? { revision } : {}),
   };
 }

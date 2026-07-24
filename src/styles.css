@@ -7594,6 +7594,45 @@ button:disabled {
   color: var(--muted);
 }
 
+.chat-edited-indicator {
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
+.chat-input-bar,
+.thread-input-bar {
+  flex-wrap: wrap;
+}
+
+.chat-editing-banner {
+  flex: 0 0 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.45rem 0.65rem;
+  border-left: 3px solid var(--text);
+  border-radius: 6px;
+  background: var(--surface-hover);
+  color: var(--text);
+  font-size: 0.78rem;
+}
+
+.chat-editing-banner div {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.chat-editing-banner span {
+  color: #b91c1c;
+}
+
+.chat-editing-banner button {
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-decoration: underline;
+}
+
 .audio-trigger-btn,
 .btn-secondary {
   padding: 0.5rem 0.75rem;

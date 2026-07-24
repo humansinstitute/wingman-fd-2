@@ -6,6 +6,7 @@ import {
   createTowerPgDocFromLocal,
   createTowerPgFileFromLocal,
   createTowerPgMessageFromLocal,
+  updateTowerPgMessageFromLocal,
   createTowerPgTaskCommentFromLocal,
   createTowerPgTaskFromLocal,
   archiveTowerPgThreadFromLocal,
@@ -52,6 +53,7 @@ vi.mock('../src/api.js', () => ({
   updateTowerPgDoc: vi.fn(),
   updateTowerPgDocComment: vi.fn(),
   updateTowerPgFile: vi.fn(),
+  updateTowerPgMessage: vi.fn(),
   updateTowerPgTask: vi.fn(),
   updateTowerPgTaskState: vi.fn(),
   unassignTowerPgTask: vi.fn(),
@@ -774,6 +776,63 @@ describe('PG write adapter', () => {
       mentions: [{ type: 'agent', npub: 'npub1agent', label: 'Rick' }],
       client_record_id: 'local-message-mention',
     });
+  });
+
+  it('revises a Tower PG message with the complete mention set and next-revision signature context', async () => {
+    const api = await import('../src/api.js');
+    const signatures = await import('../src/message-instruction-signatures.js');
+    api.updateTowerPgMessage.mockResolvedValue({
+      message: {
+        id: 'message-1', workspace_id: 'workspace-1', scope_id: 'scope-1', channel_id: 'channel-1',
+        thread_id: 'thread-1', body: 'Revised', row_version: 4,
+        created_by_actor_npub: 'npub1pete',
+        metadata: { mentions: [{ type: 'agent', actor_id: 'actor-rick', npub: 'npub1rick', label: 'Rick' }] },
+        created_at: '2026-07-24T00:00:00.000Z', updated_at: '2026-07-24T00:05:00.000Z',
+      },
+    });
+
+    const revised = await updateTowerPgMessageFromLocal(store(), {
+      record_id: 'message-1', channel_id: 'channel-1', pg_thread_id: 'thread-1', version: 3,
+    }, {
+      body: 'Revised',
+      mentions: [{ type: 'agent', npub: 'npub1rick', label: 'Rick' }],
+    });
+
+    expect(signatures.buildAgentInstructionSignature).toHaveBeenCalledWith({
+      body: 'Revised',
+      workspaceId: 'workspace-1',
+      channelId: 'channel-1',
+      threadId: 'thread-1',
+      messageId: 'message-1',
+      revision: 4,
+    });
+    expect(api.updateTowerPgMessage).toHaveBeenCalledWith('workspace-1', 'message-1', {
+      body: 'Revised',
+      row_version: 3,
+      mentions: [{ type: 'agent', npub: 'npub1rick', label: 'Rick' }],
+      message_signature: { signed_event_id: 'signature-1' },
+    }, { baseUrl: 'https://tower.example', appNpub: 'flightdeck_pg' });
+    expect(revised).toMatchObject({
+      record_id: 'message-1', body: 'Revised', version: 4, sender_npub: 'npub1pete', parent_message_id: null,
+      pg_metadata: { mentions: [{ type: 'agent', actor_id: 'actor-rick', npub: 'npub1rick', label: 'Rick' }] },
+    });
+  });
+
+  it('preserves the local thread parent when revising a reply', async () => {
+    const api = await import('../src/api.js');
+    api.updateTowerPgMessage.mockResolvedValue({
+      message: {
+        id: 'reply-1', workspace_id: 'workspace-1', scope_id: 'scope-1', channel_id: 'channel-1',
+        thread_id: 'thread-1', body: 'Revised reply', row_version: 2,
+      },
+    });
+
+    const revised = await updateTowerPgMessageFromLocal(store(), {
+      record_id: 'reply-1', channel_id: 'channel-1', parent_message_id: 'root-1',
+      pg_thread_id: 'thread-1', version: 1,
+    }, { body: 'Revised reply', mentions: [] });
+
+    expect(revised.parent_message_id).toBe('root-1');
   });
 
   it('maps Tower PG replies to the local thread parent when the response omits thread metadata', async () => {

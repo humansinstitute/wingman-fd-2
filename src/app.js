@@ -724,6 +724,17 @@ export function initApp() {
     expandedChatMessageIds: [],
     truncatedChatMessageIds: [],
     messageActionsMenuId: null,
+    messageEdit: {
+      recordId: '',
+      context: '',
+      channelId: '',
+      threadRootId: '',
+      originalBody: '',
+      draftBeforeEdit: '',
+      mentionsBeforeEdit: [],
+      submitting: false,
+      error: '',
+    },
     showArchivedChatThreads: false,
     chatThreadArchiveSubmittingId: '',
     chatThreadArchiveSubmittingAction: '',
@@ -2725,6 +2736,7 @@ export function initApp() {
       await this.closeChatTaskModal();
       this.messageInput = '';
       this.threadInput = '';
+      this.cancelMessageEdit?.({ restoreDraft: false });
       this.docEditorTitle = '';
       this.docEditorContent = '';
       this.docEditorShares = [];
@@ -2838,6 +2850,7 @@ export function initApp() {
     // Data is re-fetched via liveQuery when navigating back.
     clearInactiveSectionData(activeSection) {
       if (activeSection !== 'chat') {
+        this.cancelMessageEdit?.();
         this.messages = [];
         this.audioNotes = [];
       }

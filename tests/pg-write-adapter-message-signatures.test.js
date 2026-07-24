@@ -20,6 +20,20 @@ const mockState = vi.hoisted(() => {
       },
       thread: null,
     })),
+    updateTowerPgMessage: vi.fn(async (_workspaceId, messageId, body) => ({
+      message: {
+        id: messageId,
+        workspace_id: 'workspace-1',
+        scope_id: 'scope-1',
+        channel_id: 'channel-1',
+        thread_id: 'thread-1',
+        body: body.body,
+        row_version: body.row_version + 1,
+        created_by_actor_npub: 'npub1sender',
+        created_at: '2026-06-10T00:00:00.000Z',
+        updated_at: '2026-06-10T00:05:00.000Z',
+      },
+    })),
   };
 });
 
@@ -34,6 +48,7 @@ vi.mock('../src/api.js', () => ({
   updateTowerPgDoc: vi.fn(),
   updateTowerPgTask: vi.fn(),
   updateTowerPgTaskState: vi.fn(),
+  updateTowerPgMessage: mockState.updateTowerPgMessage,
 }));
 
 vi.mock('../src/auth/nostr.js', () => ({
@@ -45,7 +60,7 @@ vi.mock('../src/auth/nostr.js', () => ({
   })),
 }));
 
-import { createTowerPgMessageFromLocal } from '../src/pg-write-adapter.js';
+import { createTowerPgMessageFromLocal, updateTowerPgMessageFromLocal } from '../src/pg-write-adapter.js';
 
 describe('createTowerPgMessageFromLocal', () => {
   it('sends a signed agent instruction with the PG chat message body', async () => {
@@ -82,6 +97,41 @@ describe('createTowerPgMessageFromLocal', () => {
       ['protocol', 'flightdeck_pg_message_instruction'],
       ['workspace_id', 'workspace-1'],
       ['channel_id', 'channel-1'],
+      ['thread_id', 'thread-1'],
+    ]));
+  });
+});
+
+describe('updateTowerPgMessageFromLocal', () => {
+  it('binds an edit signature to the message id and next saved revision', async () => {
+    await updateTowerPgMessageFromLocal({
+      backendUrl: 'https://tower.example.com',
+      session: { npub: 'npub1sender' },
+      currentWorkspace: {
+        workspaceId: 'workspace-1',
+        workspaceOwnerNpub: 'npub1workspace',
+        appNpub: 'npub1app',
+      },
+    }, {
+      record_id: 'message-1',
+      channel_id: 'channel-1',
+      pg_thread_id: 'thread-1',
+      version: 7,
+    }, {
+      body: 'Revised instruction',
+      mentions: [{ type: 'agent', npub: 'npub1rick', label: 'Rick' }],
+    });
+
+    const [, , requestBody] = mockState.updateTowerPgMessage.mock.calls[0];
+    expect(requestBody).toMatchObject({
+      body: 'Revised instruction',
+      row_version: 7,
+      mentions: [{ type: 'agent', npub: 'npub1rick', label: 'Rick' }],
+      message_signature: { message_id: 'message-1', revision: 8 },
+    });
+    expect(requestBody.message_signature.nostr_event.tags).toEqual(expect.arrayContaining([
+      ['message_id', 'message-1'],
+      ['revision', '8'],
       ['thread_id', 'thread-1'],
     ]));
   });
