@@ -1653,6 +1653,8 @@ describe('deleteSelectedChannel', () => {
 // Chat message actions menu
 // ---------------------------------------------------------------------------
 describe('chat message actions menu', () => {
+  const autopilotSessionId = '1f3ff8b3-2b0a-4876-889b-14c8a8a5ec63';
+
   it('openMessageActionsMenu sets the active menu record id', () => {
     const { fn, store } = bindMethod('openMessageActionsMenu');
     fn('msg-1');
@@ -1712,6 +1714,41 @@ describe('chat message actions menu', () => {
     });
     fn('msg-2');
     expect(store.messageActionsMenuId).toBe('msg-2');
+  });
+
+  it('shows an Autopilot session link only for trusted session metadata and a configured base URL', () => {
+    const { fn } = bindMethod('hasAutopilotSessionLink', {
+      workspaceHarnessUrl: 'https://wingman.example.test',
+    });
+
+    expect(fn({ pg_metadata: { source: 'autopilot_session', session_id: autopilotSessionId } })).toBe(true);
+    expect(fn({ pg_metadata: { source: 'user', session_id: autopilotSessionId } })).toBe(false);
+    expect(fn({ pg_metadata: { source: 'autopilot_session', session_id: 'not-a-session' } })).toBe(false);
+    expect(fn({ metadata: { source: 'autopilot_session', session_id: '  ' } })).toBe(false);
+  });
+
+  it('hides the Autopilot session link when no Autopilot base URL is configured', () => {
+    const { fn } = bindMethod('hasAutopilotSessionLink', { workspaceHarnessUrl: '' });
+    expect(fn({ metadata: { source: 'autopilot_session', session_id: autopilotSessionId } })).toBe(false);
+  });
+
+  it('opens the canonical Autopilot live-session target and closes the menu', () => {
+    const open = vi.fn();
+    vi.stubGlobal('window', { open });
+    const { fn, store } = bindMethod('openMessageAutopilotSession', {
+      workspaceHarnessUrl: 'https://wingman.example.test/settings?tab=apps',
+      messageActionsMenuId: 'msg-1',
+    });
+
+    fn({ pg_metadata: { source: 'autopilot_session', session_id: autopilotSessionId } });
+
+    expect(open).toHaveBeenCalledWith(
+      `https://wingman.example.test/live/${autopilotSessionId}`,
+      '_blank',
+      'noopener,noreferrer',
+    );
+    expect(store.messageActionsMenuId).toBeNull();
+    vi.unstubAllGlobals();
   });
 
   it('inspectMessageSyncStatus calls openRecordStatusModal with chat_message family', () => {

@@ -1481,6 +1481,37 @@ export const chatMessageManagerMixin = {
     return this.messages.find((message) => message.record_id === id) || null;
   },
 
+  getAutopilotSessionId(message) {
+    const metadata = message?.pg_metadata && typeof message.pg_metadata === 'object' && !Array.isArray(message.pg_metadata)
+      ? message.pg_metadata
+      : message?.metadata && typeof message.metadata === 'object' && !Array.isArray(message.metadata)
+        ? message.metadata
+        : {};
+    if (String(metadata.source || '').trim() !== 'autopilot_session') return '';
+    const sessionId = String(metadata.session_id || '').trim();
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(sessionId)
+      ? sessionId
+      : '';
+  },
+
+  hasAutopilotSessionLink(message) {
+    return Boolean(this.workspaceHarnessUrl && this.getAutopilotSessionId(message));
+  },
+
+  openMessageAutopilotSession(message) {
+    const sessionId = this.getAutopilotSessionId(message);
+    const baseUrl = String(this.workspaceHarnessUrl || '').trim();
+    if (!sessionId || !baseUrl || typeof window === 'undefined') return;
+    let target;
+    try {
+      target = new URL(`/live/${encodeURIComponent(sessionId)}`, baseUrl).toString();
+    } catch {
+      return;
+    }
+    window.open(target, '_blank', 'noopener,noreferrer');
+    this.closeMessageActionsMenu();
+  },
+
   resolveFlightDeckReferenceLabel(type, recordId, fallback = '') {
     const linkType = normalizeRecordLinkType(type);
     const id = String(recordId || '').trim();
